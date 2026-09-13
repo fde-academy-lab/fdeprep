@@ -343,50 +343,135 @@ __FDEPREP_07__
 # Repo .claude/skills/ is the only skill route that works reliably in a cloud
 # session. The /plugin command is terminal-only and does nothing here.
 #
-# Read what this pulls in before you commit it. A skill is instructions an
-# agent follows, and some of them run shell commands.
+# Only the skills named in the allowlists below are copied in. A skill is
+# instructions an agent follows, and some of them run shell commands or fetch
+# from the network, so the default is to take nothing and add deliberately.
 # ---------------------------------------------------------------------------
 if [ "$WITH_SKILLS" = "1" ]; then
   DEST=".claude/skills/vendor"
   mkdir -p "$DEST"
 
   # Pinned to the commits actually reviewed and vendored on 2026-09-13.
-  # Move a pin only after reading the diff: a skill is instructions an agent
-  # follows. Find a newer SHA with: git ls-remote https://github.com/<owner>/<repo> main
-  #
-  # A re-run copies the WHOLE upstream skills/ tree again, so the curation
-  # recorded in git (39 of 56 skills deleted) is undone. After any re-run,
-  # check `git status` and restore the deletions before committing.
+  # Move a pin only after reading the diff. Find a newer SHA with:
+  #   git ls-remote https://github.com/<owner>/<repo> main
   MATTPOCOCK_REF="3cca18b368ae95cdbdebbff572ccafa662551015"
   ANTHROPIC_REF="34040c9c568585f6929bedeaad110ad08f079624"
 
+  # Allowlists. Paths are relative to each repo's skills/ directory, and nothing
+  # outside these lists is copied, so a re-run cannot restore a skill that was
+  # reviewed and rejected. Of the 56 skills these two repos ship, 17 are taken.
+  #
+  # The rule used to build these: keep a skill only if it changes how code gets
+  # designed, written, tested, reviewed or shipped in a TypeScript/Next.js plus
+  # Python plus AWS repository. That dropped the document-production skills
+  # (docx, pptx, xlsx, pdf), the design-asset skills, the two that impose a
+  # ready-made visual identity and so collide with docs/08 (brand-guidelines,
+  # theme-factory), the conversation-management skills, the eight the upstream
+  # author marks in-progress, and the mattpocock skills that need a configured
+  # issue tracker this repo does not use.
+  #
+  # Adding a line here vendors an agent instruction set into the repo. Read the
+  # SKILL.md first, check whether it runs shell commands or fetches from the
+  # network, and say so in the pull request.
+  MATTPOCOCK_KEEP="
+engineering/code-review
+engineering/codebase-design
+engineering/diagnosing-bugs
+engineering/domain-modeling
+engineering/grill-with-docs
+engineering/prototype
+engineering/research
+engineering/resolving-merge-conflicts
+engineering/tdd
+engineering/wizard
+misc/setup-pre-commit
+productivity/grill-me
+productivity/grilling
+productivity/writing-for-agents
+"
+
+  ANTHROPIC_KEEP="
+claude-api
+frontend-design
+webapp-testing
+"
+
+  # A pinned SHA is not a branch, so the first clone form always fails on one
+  # and the fallback is what actually does the work. Both are kept: the shallow
+  # form is faster whenever a ref is a branch name again.
   fetch_skills() {
-    repo="$1"; ref="$2"; name="$3"; subdir="$4"
+    repo="$1"; ref="$2"; name="$3"; subdir="$4"; keep="$5"
     tmp="$(mktemp -d)"
     say "fetching $repo @ $ref"
-    if git clone --quiet --depth 1 --branch "$ref" "https://github.com/$repo" "$tmp" 2>/dev/null \
-       || { git clone --quiet --filter=blob:none --no-checkout "https://github.com/$repo" "$tmp" \
-            && git -C "$tmp" checkout --quiet "$ref"; }; then
-      rm -rf "${DEST:?}/$name"
-      mkdir -p "$DEST/$name"
-      if [ -d "$tmp/$subdir" ]; then
-        cp -r "$tmp/$subdir"/. "$DEST/$name"/
-      else
-        say "  no $subdir/ in $repo, skipping"
-        rm -rf "$DEST/$name"
-      fi
-      echo "$repo@$(git -C "$tmp" rev-parse HEAD 2>/dev/null || echo "$ref")" > "$DEST/$name/.source" 2>/dev/null || true
-    else
+
+    if ! { git clone --quiet --depth 1 --branch "$ref" "https://github.com/$repo" "$tmp" 2>/dev/null \
+           || { git clone --quiet --filter=blob:none --no-checkout "https://github.com/$repo" "$tmp" \
+                && git -C "$tmp" checkout --quiet "$ref"; }; }; then
       say "  could not fetch $repo, continuing"
+      rm -rf "$tmp"
+      return 0
     fi
+
+    if [ ! -d "$tmp/$subdir" ]; then
+      say "  no $subdir/ in $repo, leaving $DEST/$name untouched"
+      rm -rf "$tmp"
+      return 0
+    fi
+
+    # Everything upstream ships, so the run can report what it declined to take.
+    find "$tmp/$subdir" -name SKILL.md -exec dirname {} \; \
+      | sed "s|^$tmp/$subdir/||" | sort > "$tmp/.upstream"
+    printf '%s\n' "$keep" | sed '/^[[:space:]]*$/d' | sort > "$tmp/.keep"
+
+    rm -rf "${DEST:?}/$name"
+    mkdir -p "$DEST/$name"
+
+    copied=0
+    missing=""
+    while IFS= read -r path; do
+      [ -z "$path" ] && continue
+      if [ -d "$tmp/$subdir/$path" ]; then
+        mkdir -p "$DEST/$name/$(dirname "$path")"
+        cp -R "$tmp/$subdir/$path" "$DEST/$name/$(dirname "$path")/"
+        copied=$((copied + 1))
+      else
+        missing="$missing $path"
+      fi
+    done <<__KEEPLIST__
+$keep
+__KEEPLIST__
+
+    sha="$(git -C "$tmp" rev-parse HEAD 2>/dev/null || echo "$ref")"
+    upstream_total="$(wc -l < "$tmp/.upstream" | tr -d ' ')"
+    declined="$(comm -13 "$tmp/.keep" "$tmp/.upstream" | wc -l | tr -d ' ')"
+
+    {
+      echo "$repo@$sha"
+      echo "curated subset: $copied of $upstream_total skills upstream ships at this ref."
+      echo "The allowlist is MATTPOCOCK_KEEP / ANTHROPIC_KEEP in scripts/bootstrap.sh."
+      echo "This folder is not a mirror. Do not re-add a skill by hand; add it to the list."
+    } > "$DEST/$name/.source"
+
+    say "  vendored $copied of $upstream_total, declined $declined"
+
+    # A path in the list that is not in the clone means the pin moved under the
+    # allowlist or upstream renamed something. Silence here would lose a skill
+    # nobody decided to drop, so it is loud and it fails the run.
+    if [ -n "$missing" ]; then
+      say "  ERROR: allowlisted but absent at $ref:$missing"
+      say "  upstream renamed or removed these. Fix the allowlist, then re-run."
+      rm -rf "$tmp"
+      return 1
+    fi
+
     rm -rf "$tmp"
   }
 
-  fetch_skills "mattpocock/skills" "$MATTPOCOCK_REF" "mattpocock" "skills"
-  fetch_skills "anthropics/skills" "$ANTHROPIC_REF"  "anthropic"  "skills"
+  fetch_skills "mattpocock/skills" "$MATTPOCOCK_REF" "mattpocock" "skills" "$MATTPOCOCK_KEEP"
+  fetch_skills "anthropics/skills" "$ANTHROPIC_REF"  "anthropic"  "skills" "$ANTHROPIC_KEEP"
 
   say "vendored skills written to $DEST"
-  say "read them, delete the ones you will not use, then commit"
+  say "re-running is safe: only the allowlisted skills are copied"
 fi
 
 echo
