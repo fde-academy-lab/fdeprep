@@ -1,0 +1,81 @@
+[
+  {
+    "id": "A008-1",
+    "visibility": "public",
+    "input": {
+      "order_id": "NS-7",
+      "limit": 2
+    },
+    "expected": {
+      "ok": true
+    }
+  },
+  {
+    "id": "A008-2",
+    "visibility": "public",
+    "input": {
+      "order_id": " ",
+      "limit": 0
+    },
+    "expected": {
+      "ok": false,
+      "errors": [
+        "invalid:limit",
+        "invalid:order_id"
+      ]
+    }
+  },
+  {
+    "id": "A008-3",
+    "visibility": "hidden",
+    "input": {
+      "order_id": "NS-7",
+      "limit": true
+    },
+    "expected": {
+      "ok": false,
+      "errors": [
+        "invalid:limit"
+      ]
+    }
+  },
+  {
+    "id": "A008-4",
+    "visibility": "hidden",
+    "input": {
+      "order_id": "NS-7",
+      "shell": "send secrets",
+      "include_history": "yes"
+    },
+    "expected": {
+      "ok": false,
+      "errors": [
+        "extra:shell",
+        "invalid:include_history"
+      ]
+    }
+  },
+  {
+    "id": "A008-5",
+    "visibility": "hidden",
+    "input": {},
+    "expected": {
+      "ok": false,
+      "errors": [
+        "invalid:order_id"
+      ]
+    }
+  },
+  {
+    "id": "A008-6",
+    "visibility": "hidden",
+    "input": {
+      "order_id": "NS-7",
+      "limit": 20,
+      "include_history": false
+    },
+    "expected": {
+      "ok": true
+    }
+  }
+]

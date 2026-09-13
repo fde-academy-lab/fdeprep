@@ -1,0 +1,3280 @@
+{
+  "version": "0.1.0",
+  "catalog_status": "planning_catalog_not_120_finished_challenges",
+  "reference_count": 43,
+  "total": 120,
+  "problems": [
+    {
+      "id": "A001",
+      "domain": "Agentic AI",
+      "topic": "Agent loops",
+      "difficulty": "Easy",
+      "title": "Finish a bounded support loop",
+      "objective": "Implement action/observation transitions and validated completion.",
+      "adversarial_case": "Malformed completion and a model that never terminates.",
+      "source_url": "https://www.agenticprep.io/problems/react-loop-basic",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "G004",
+        "A044"
+      ]
+    },
+    {
+      "id": "A002",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Easy",
+      "title": "Dispatch only registered actions",
+      "objective": "Route a structured action to an allowlisted handler.",
+      "adversarial_case": "Unknown tool and malicious argument expression.",
+      "source_url": "https://www.agenticprep.io/problems/react-loop-tool-routing",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A003",
+      "domain": "Agentic AI",
+      "topic": "Agent loops",
+      "difficulty": "Medium",
+      "title": "Turn a tool failure into usable state",
+      "objective": "Translate tool exceptions into typed observations without losing progress.",
+      "adversarial_case": "Timeout followed by a successful independent action.",
+      "source_url": "https://www.agenticprep.io/problems/react-loop-observation-recovery",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A004",
+      "domain": "Agentic AI",
+      "topic": "Agent loops",
+      "difficulty": "Easy",
+      "title": "Stop before the seventh action",
+      "objective": "Enforce a six-action ceiling with an explicit terminal status.",
+      "adversarial_case": "No final response at the budget boundary.",
+      "source_url": "https://www.agenticprep.io/problems/react-loop-budgeted-stop",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "A001"
+      ]
+    },
+    {
+      "id": "A005",
+      "domain": "Agentic AI",
+      "topic": "Memory",
+      "difficulty": "Medium",
+      "title": "Compact state without losing the current task",
+      "objective": "Compress older observations and preserve active constraints.",
+      "adversarial_case": "Summary drops a required approval or unresolved question.",
+      "source_url": "https://www.agenticprep.io/problems/react-loop-scratchpad-summary",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A006",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Easy",
+      "title": "Publish a callable tool contract",
+      "objective": "Derive a JSON schema for a supported Python signature.",
+      "adversarial_case": "Unsupported annotation must fail clearly.",
+      "source_url": "https://www.agenticprep.io/problems/tool-schema-json",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A007",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Easy",
+      "title": "Separate missing and nullable parameters",
+      "objective": "Translate supported annotations and defaults into parameter metadata.",
+      "adversarial_case": "Optional value with no default versus default None.",
+      "source_url": "https://www.agenticprep.io/problems/tool-schema-typing",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A008",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Medium",
+      "title": "Reject invalid action arguments",
+      "objective": "Validate shape, types, ranges and extra fields before dispatch.",
+      "adversarial_case": "Boolean accepted accidentally as an integer.",
+      "source_url": "https://www.agenticprep.io/problems/tool-schema-validation",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "A006",
+        "A007"
+      ]
+    },
+    {
+      "id": "A009",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Medium",
+      "title": "Collect parallel results without losing identity",
+      "objective": "Preserve call IDs and deterministic presentation order.",
+      "adversarial_case": "Duplicate tool names with different call IDs and one failure.",
+      "source_url": "https://www.agenticprep.io/problems/tool-batch-runner",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A010",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Medium",
+      "title": "Give every observation a stable envelope",
+      "objective": "Normalize strings, objects and errors into a typed result envelope.",
+      "adversarial_case": "Nested exception text contains a synthetic credential.",
+      "source_url": "https://www.agenticprep.io/problems/tool-result-normalizer",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A011",
+      "domain": "Agentic AI",
+      "topic": "Memory",
+      "difficulty": "Medium",
+      "title": "Fit recent turns around a pinned policy",
+      "objective": "Keep complete recent turns inside a context budget.",
+      "adversarial_case": "Pinned policy alone exceeds the budget.",
+      "source_url": "https://www.agenticprep.io/problems/sliding-window-memory",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A012",
+      "domain": "Agentic AI",
+      "topic": "Memory",
+      "difficulty": "Medium",
+      "title": "Carry unresolved work across compaction",
+      "objective": "Summarize removed turns while retaining provenance and open issues.",
+      "adversarial_case": "An unresolved issue exists only in the oldest turn.",
+      "source_url": "https://www.agenticprep.io/problems/memory-summary-compression",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A013",
+      "domain": "Agentic AI",
+      "topic": "Memory",
+      "difficulty": "Medium",
+      "title": "Reconcile customer facts by trust and recency",
+      "objective": "Resolve duplicate and conflicting records with explicit source rank.",
+      "adversarial_case": "A newer untrusted record contradicts a verified record.",
+      "source_url": "https://www.agenticprep.io/problems/memory-deduplicate-facts",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A014",
+      "domain": "Agentic AI",
+      "topic": "Memory",
+      "difficulty": "Medium",
+      "title": "Protect task constraints during eviction",
+      "objective": "Evict low-priority context without losing active obligations.",
+      "adversarial_case": "All remaining records are mandatory and cannot fit.",
+      "source_url": "https://www.agenticprep.io/problems/memory-pin-important",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A015",
+      "domain": "Agentic AI",
+      "topic": "Retrieval",
+      "difficulty": "Medium",
+      "title": "Choose useful evidence without repetition",
+      "objective": "Rerank candidates using relevance and source diversity.",
+      "adversarial_case": "Top results duplicate one paragraph and omit the answer.",
+      "source_url": "https://www.agenticprep.io/problems/rag-rerank",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A016",
+      "domain": "Agentic AI",
+      "topic": "Retrieval",
+      "difficulty": "Medium",
+      "title": "Keep an answer intact across chunk boundaries",
+      "objective": "Split documents with stable source offsets and controlled overlap.",
+      "adversarial_case": "The answer straddles two paragraphs at a size boundary.",
+      "source_url": "https://www.agenticprep.io/problems/rag-chunk-splitter",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A017",
+      "domain": "Agentic AI",
+      "topic": "Retrieval",
+      "difficulty": "Medium",
+      "title": "Attach a source to each evidence block",
+      "objective": "Build bounded context with stable citation IDs.",
+      "adversarial_case": "Repeated source names and a truncated chunk.",
+      "source_url": "https://www.agenticprep.io/problems/rag-context-citations",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A018",
+      "domain": "Agentic AI",
+      "topic": "Retrieval",
+      "difficulty": "Easy",
+      "title": "Abstain when evidence is too weak",
+      "objective": "Apply a published evidence threshold and empty-result policy.",
+      "adversarial_case": "No result reaches the threshold.",
+      "source_url": "https://www.agenticprep.io/problems/rag-relevance-filter",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A019",
+      "domain": "Agentic AI",
+      "topic": "Evaluation",
+      "difficulty": "Easy",
+      "title": "Normalize answers without accepting leakage",
+      "objective": "Apply documented normalization while rejecting internal artifacts.",
+      "adversarial_case": "Correct answer wrapped in a leaked tool transcript.",
+      "source_url": "https://www.agenticprep.io/problems/eval-exact-match",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A020",
+      "domain": "Agentic AI",
+      "topic": "Evaluation",
+      "difficulty": "Medium",
+      "title": "Score outcome and behavior separately",
+      "objective": "Compute rubric dimensions and retain failure reasons.",
+      "adversarial_case": "A correct answer follows an unauthorized action.",
+      "source_url": "https://www.agenticprep.io/problems/eval-score-rubric",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A021",
+      "domain": "Agentic AI",
+      "topic": "Agent loops",
+      "difficulty": "Hard",
+      "title": "Execute a dependent action plan",
+      "objective": "Resolve dependencies and carry typed outputs between steps.",
+      "adversarial_case": "A failed prerequisite blocks only its dependents.",
+      "source_url": "https://www.agenticprep.io/problems/react-loop-multi-tool-plan",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "A002",
+        "A008"
+      ]
+    },
+    {
+      "id": "A022",
+      "domain": "Agentic AI",
+      "topic": "Safety",
+      "difficulty": "Hard",
+      "title": "Bind approval to an exact action",
+      "objective": "Require approval for a specific action version, actor and expiry.",
+      "adversarial_case": "Arguments change after approval is granted.",
+      "source_url": "https://www.agenticprep.io/problems/agent-human-approval-gate",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "A008"
+      ]
+    },
+    {
+      "id": "A023",
+      "domain": "Agentic AI",
+      "topic": "Operations",
+      "difficulty": "Medium",
+      "title": "Choose a model within hard constraints",
+      "objective": "Select from supplied cost, quality and latency metadata.",
+      "adversarial_case": "No candidate satisfies all constraints.",
+      "source_url": "https://www.agenticprep.io/problems/agent-cost-latency-router",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A024",
+      "domain": "Agentic AI",
+      "topic": "Agent loops",
+      "difficulty": "Hard",
+      "title": "Coordinate workers with one global budget",
+      "objective": "Schedule capable workers while honoring dependencies and quotas.",
+      "adversarial_case": "One worker consumes the budget needed by another.",
+      "source_url": "https://www.agenticprep.io/problems/agent-supervisor-workflow",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "A021"
+      ]
+    },
+    {
+      "id": "A025",
+      "domain": "Agentic AI",
+      "topic": "Safety",
+      "difficulty": "Hard",
+      "title": "Answer from evidence through a guarded workflow",
+      "objective": "Combine authorized retrieval, bounded tools and supported answers.",
+      "adversarial_case": "A retrieved document tells the agent to reveal another tenant's data.",
+      "source_url": "https://www.agenticprep.io/problems/agent-guarded-knowledge-workflow",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "A017",
+        "A022"
+      ]
+    },
+    {
+      "id": "A026",
+      "domain": "Agentic AI",
+      "topic": "Agent loops",
+      "difficulty": "Hard",
+      "title": "Integrate a deployable agent control loop",
+      "objective": "Compose planning, state, permissions, execution and auditable results.",
+      "adversarial_case": "Cancellation arrives between approval and tool execution.",
+      "source_url": "https://www.agenticprep.io/problems/agent-capstone-runtime",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "A024",
+        "A025",
+        "A028"
+      ]
+    },
+    {
+      "id": "A027",
+      "domain": "Agentic AI",
+      "topic": "Safety",
+      "difficulty": "Medium",
+      "title": "Check action policy before execution",
+      "objective": "Enforce allowlists and explicit constraints outside the model.",
+      "adversarial_case": "Blocked request hidden in nested JSON; benign quoted attack text.",
+      "source_url": "https://www.agenticprep.io/problems/guardrails-input-filter",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A028",
+      "domain": "Agentic AI",
+      "topic": "Observability",
+      "difficulty": "Medium",
+      "title": "Record a redacted execution timeline",
+      "objective": "Create stable correlated events with durations and terminal status.",
+      "adversarial_case": "Secrets and unbounded payloads in error messages.",
+      "source_url": "https://www.agenticprep.io/problems/agent-observer-logger",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A029",
+      "domain": "Agentic AI",
+      "topic": "Observability",
+      "difficulty": "Hard",
+      "title": "Locate the first failing transition",
+      "objective": "Detect repetition, invalid state and latency bottlenecks.",
+      "adversarial_case": "Later errors distract from an earlier broken prerequisite.",
+      "source_url": "https://www.agenticprep.io/problems/agent-trace-diagnostics",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A030",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Hard",
+      "title": "Retry a transient failure within a deadline",
+      "objective": "Apply bounded exponential delay, jitter and a total deadline.",
+      "adversarial_case": "Next backoff would exceed the remaining deadline.",
+      "source_url": "https://www.agenticprep.io/problems/tool-retry-backoff",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A031",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Hard",
+      "title": "Switch tools only when policy permits",
+      "objective": "Classify failures and apply safe retry or fallback rules.",
+      "adversarial_case": "Authentication failure must not trigger a broader-privilege fallback.",
+      "source_url": "https://www.agenticprep.io/problems/tool-retry-fallback-policy",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A032",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Medium",
+      "title": "Build a source-preserving research workflow",
+      "objective": "Compose search, extraction and synthesis with partial results.",
+      "adversarial_case": "Extraction succeeds for only one of three sources.",
+      "source_url": "https://www.agenticprep.io/problems/tool-research-assistant-pipeline",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A033",
+      "domain": "Agentic AI",
+      "topic": "Memory",
+      "difficulty": "Hard",
+      "title": "Retrieve memories with stable ranking",
+      "objective": "Select relevant authorized memories with deterministic ties.",
+      "adversarial_case": "Equally ranked records from different tenants.",
+      "source_url": "https://www.agenticprep.io/problems/memory-retrieve-query",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A034",
+      "domain": "Agentic AI",
+      "topic": "Memory",
+      "difficulty": "Hard",
+      "title": "Expire context without abandoning active work",
+      "objective": "Apply expiry rules and preserve live task dependencies.",
+      "adversarial_case": "A pinned but legally deleted record must not survive.",
+      "source_url": "https://www.agenticprep.io/problems/memory-ttl-eviction",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A035",
+      "domain": "Agentic AI",
+      "topic": "Retrieval",
+      "difficulty": "Hard",
+      "title": "Resolve a follow-up without changing intent",
+      "objective": "Rewrite an ambiguous query using authorized conversation context.",
+      "adversarial_case": "The prior turn refers to a different customer or product.",
+      "source_url": "https://www.agenticprep.io/problems/rag-query-rewrite",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A036",
+      "domain": "Agentic AI",
+      "topic": "Retrieval",
+      "difficulty": "Hard",
+      "title": "Deliver a grounded support answer end to end",
+      "objective": "Rewrite, retrieve, cite and abstain with explicit evidence checks.",
+      "adversarial_case": "Conflicting policy versions and insufficient evidence.",
+      "source_url": "https://www.agenticprep.io/problems/rag-support-agent-pipeline",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A037",
+      "domain": "Agentic AI",
+      "topic": "Retrieval",
+      "difficulty": "Hard",
+      "title": "Fuse lexical and semantic rankings",
+      "objective": "Deduplicate and rank two result lists by a published fusion rule.",
+      "adversarial_case": "Missing ranks, duplicate IDs and deterministic ties.",
+      "source_url": "https://www.agenticprep.io/problems/rag-hybrid-merge",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A038",
+      "domain": "Agentic AI",
+      "topic": "Safety",
+      "difficulty": "Hard",
+      "title": "Evaluate instruction-boundary failures",
+      "objective": "Build a labeled evaluator for attempted instruction overrides.",
+      "adversarial_case": "Quoted security training text versus an active override attempt.",
+      "source_url": "https://www.agenticprep.io/problems/eval-prompt-injection",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A039",
+      "domain": "Agentic AI",
+      "topic": "Evaluation",
+      "difficulty": "Hard",
+      "title": "Check trace invariants across valid paths",
+      "objective": "Evaluate required precedence and forbidden events rather than one exact path.",
+      "adversarial_case": "Two valid tool orders should both pass.",
+      "source_url": "https://www.agenticprep.io/problems/eval-trajectory-trace",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A040",
+      "domain": "Agentic AI",
+      "topic": "Evaluation",
+      "difficulty": "Medium",
+      "title": "Report variability across repeated trials",
+      "objective": "Aggregate per-case trial outcomes and show unstable slices.",
+      "adversarial_case": "Missing trials and a best-of-run result that hides failures.",
+      "source_url": "https://www.agenticprep.io/problems/eval-seed-aggregation",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A041",
+      "domain": "Agentic AI",
+      "topic": "Evaluation",
+      "difficulty": "Medium",
+      "title": "Explain failure categories without exposing answers",
+      "objective": "Generate useful category-level feedback from trusted evaluator records.",
+      "adversarial_case": "A hidden input contains text asking to print the expected answer.",
+      "source_url": "https://www.agenticprep.io/problems/eval-failure-summary",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A042",
+      "domain": "Agentic AI",
+      "topic": "FDE judgment",
+      "difficulty": "Hard",
+      "title": "Review a proposal against delivery constraints",
+      "objective": "Score architecture decisions against an explicit client brief.",
+      "adversarial_case": "Technically elegant design violates budget or operating ownership.",
+      "source_url": "https://www.agenticprep.io/problems/agent-system-design-review",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A043",
+      "domain": "Agentic AI",
+      "topic": "FDE judgment",
+      "difficulty": "Hard",
+      "title": "Prioritize repairs from config and trace evidence",
+      "objective": "Combine observed failures into a ranked remediation plan.",
+      "adversarial_case": "A plausible hypothesis contradicts recorded events.",
+      "source_url": "https://www.agenticprep.io/problems/agent-final-review-diagnostic",
+      "origin": "original_equivalent",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G001",
+      "domain": "Generative AI",
+      "topic": "Prompting",
+      "difficulty": "Easy",
+      "title": "Complete an evidence-only system prompt",
+      "objective": "Fill policy slots for sources, abstention and output shape.",
+      "adversarial_case": "Source text asks the model to ignore the policy.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G002",
+      "domain": "Generative AI",
+      "topic": "Prompting",
+      "difficulty": "Easy",
+      "title": "Remove one unsafe promise",
+      "objective": "Delete only the word always from a specified policy clause.",
+      "adversarial_case": "Other occurrences of always in examples must remain unchanged.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G003",
+      "domain": "Generative AI",
+      "topic": "Structured output",
+      "difficulty": "Easy",
+      "title": "Repair an invalid JSON response",
+      "objective": "Return a schema-valid object without invented fields.",
+      "adversarial_case": "Markdown fences, trailing commas and missing required keys.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G004",
+      "domain": "Generative AI",
+      "topic": "Data handling",
+      "difficulty": "Easy",
+      "title": "Separate instructions from customer text",
+      "objective": "Build a typed message envelope that labels untrusted data.",
+      "adversarial_case": "Customer text contains fake system-role delimiters.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G005",
+      "domain": "Generative AI",
+      "topic": "Tokens",
+      "difficulty": "Easy",
+      "title": "Fit a response inside a token allowance",
+      "objective": "Allocate input and output budgets using a supplied tokenizer.",
+      "adversarial_case": "Multilingual text uses more tokens than a character heuristic predicts.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G006",
+      "domain": "Generative AI",
+      "topic": "Prompting",
+      "difficulty": "Easy",
+      "title": "Choose examples that teach the boundary",
+      "objective": "Select representative few-shot examples from a labeled set.",
+      "adversarial_case": "All selected examples belong to one class.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G007",
+      "domain": "Generative AI",
+      "topic": "Extraction",
+      "difficulty": "Easy",
+      "title": "Extract a support ticket without guessing",
+      "objective": "Populate typed fields and mark unknown values explicitly.",
+      "adversarial_case": "Customer text contradicts itself about an order ID.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G008",
+      "domain": "Generative AI",
+      "topic": "Evaluation",
+      "difficulty": "Easy",
+      "title": "Add the missing boundary test",
+      "objective": "Write a test for the empty-evidence path.",
+      "adversarial_case": "Only the happy path has been tested.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G009",
+      "domain": "Generative AI",
+      "topic": "Prompting",
+      "difficulty": "Medium",
+      "title": "Repair a contradictory system prompt",
+      "objective": "Resolve competing rules while preserving valid obligations.",
+      "adversarial_case": "A later broad instruction overrides a required restriction.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "G001",
+        "G004"
+      ]
+    },
+    {
+      "id": "G010",
+      "domain": "Generative AI",
+      "topic": "Prompting",
+      "difficulty": "Medium",
+      "title": "Compress a prompt without losing a constraint",
+      "objective": "Reduce a prompt under a stated budget and preserve behavior.",
+      "adversarial_case": "A negative constraint is lost during shortening.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G011",
+      "domain": "Generative AI",
+      "topic": "Structured output",
+      "difficulty": "Medium",
+      "title": "Validate and repair output once",
+      "objective": "Add one bounded repair attempt with explicit failure status.",
+      "adversarial_case": "The repair response is also invalid.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G012",
+      "domain": "Generative AI",
+      "topic": "Extraction",
+      "difficulty": "Medium",
+      "title": "Handle conflicting evidence fields",
+      "objective": "Return a conflict state with source references.",
+      "adversarial_case": "The most recent document is less authoritative.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G013",
+      "domain": "Generative AI",
+      "topic": "Retrieval",
+      "difficulty": "Medium",
+      "title": "Reject unsupported answer claims",
+      "objective": "Associate each generated factual claim with evidence.",
+      "adversarial_case": "Citation exists but does not support the associated claim.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G014",
+      "domain": "Generative AI",
+      "topic": "Evaluation",
+      "difficulty": "Medium",
+      "title": "Compare two prompts on paired cases",
+      "objective": "Compute paired improvements and regressions by slice.",
+      "adversarial_case": "Overall accuracy rises while the rare critical slice worsens.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "G008"
+      ]
+    },
+    {
+      "id": "G015",
+      "domain": "Generative AI",
+      "topic": "Evaluation",
+      "difficulty": "Medium",
+      "title": "Make a model judge resist answer instructions",
+      "objective": "Delimit candidate content and validate the judge output.",
+      "adversarial_case": "Candidate answer includes a forged evaluator instruction.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G016",
+      "domain": "Generative AI",
+      "topic": "Streaming",
+      "difficulty": "Medium",
+      "title": "Recover from a partial streamed object",
+      "objective": "Buffer partial data and display a recoverable interrupted state.",
+      "adversarial_case": "Connection breaks midway through a quoted string.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G017",
+      "domain": "Generative AI",
+      "topic": "Privacy",
+      "difficulty": "Medium",
+      "title": "Redact synthetic PII before inference",
+      "objective": "Apply documented field rules before model invocation.",
+      "adversarial_case": "PII appears in nested metadata and a quoted log.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G018",
+      "domain": "Generative AI",
+      "topic": "Operations",
+      "difficulty": "Medium",
+      "title": "Cache only equivalent authorized requests",
+      "objective": "Build a cache key with tenant, policy and model versions.",
+      "adversarial_case": "Identical text from different tenants.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G019",
+      "domain": "Generative AI",
+      "topic": "Operations",
+      "difficulty": "Medium",
+      "title": "Use a cheaper model after measured evidence",
+      "objective": "Route cases using published measured capability thresholds.",
+      "adversarial_case": "Cheap model passes averages but fails a required language slice.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G020",
+      "domain": "Generative AI",
+      "topic": "Prompting",
+      "difficulty": "Medium",
+      "title": "Distinguish refusal from missing evidence",
+      "objective": "Return explicit cannot-answer and policy-refusal states.",
+      "adversarial_case": "A safe but unsupported question is mistaken for a prohibited one.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G021",
+      "domain": "Generative AI",
+      "topic": "Evaluation",
+      "difficulty": "Hard",
+      "title": "Calibrate a semantic evaluator with human labels",
+      "objective": "Measure agreement and tune a documented threshold.",
+      "adversarial_case": "A judge systematically favors verbose wrong answers.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "G014"
+      ]
+    },
+    {
+      "id": "G022",
+      "domain": "Generative AI",
+      "topic": "Retrieval",
+      "difficulty": "Hard",
+      "title": "Diagnose conflicting context at generation time",
+      "objective": "Trace context selection and answer claims before proposing a fix.",
+      "adversarial_case": "The correct evidence was retrieved but removed by the context budget.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G023",
+      "domain": "Generative AI",
+      "topic": "Prompting",
+      "difficulty": "Hard",
+      "title": "Preserve policy across multilingual inputs",
+      "objective": "Evaluate the same contract across supplied language cases.",
+      "adversarial_case": "Translated injection and mixed-script instructions.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G024",
+      "domain": "Generative AI",
+      "topic": "Operations",
+      "difficulty": "Hard",
+      "title": "Ship a prompt change with a rollback rule",
+      "objective": "Version prompts and compare on holdout slices before promotion.",
+      "adversarial_case": "An improvement on development cases regresses the holdout.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G025",
+      "domain": "Generative AI",
+      "topic": "Evaluation",
+      "difficulty": "Hard",
+      "title": "Design a holdout that does not leak",
+      "objective": "Split related cases by source and template family.",
+      "adversarial_case": "Near-duplicate examples cross the development and holdout boundary.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G026",
+      "domain": "Generative AI",
+      "topic": "Operations",
+      "difficulty": "Hard",
+      "title": "Choose RAG or fine-tuning for a client brief",
+      "objective": "Compare evidence, update rate and measured failure patterns.",
+      "adversarial_case": "A memorization problem is mislabeled as missing knowledge.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G027",
+      "domain": "Generative AI",
+      "topic": "Multimodal",
+      "difficulty": "Hard",
+      "title": "Validate extracted table evidence",
+      "objective": "Reconcile a supplied image-derived table with row provenance.",
+      "adversarial_case": "Merged cells and a misplaced decimal change the answer.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G028",
+      "domain": "Generative AI",
+      "topic": "Safety",
+      "difficulty": "Hard",
+      "title": "Detect a poisoned document before answer generation",
+      "objective": "Evaluate boundary controls and downstream behavior on injected sources.",
+      "adversarial_case": "Obfuscated instructions coexist with useful evidence.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G029",
+      "domain": "Generative AI",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Build an evidence-grounded support copilot",
+      "objective": "Deliver an evaluated solution from a client brief and fixtures.",
+      "adversarial_case": "Conflicting policies, outages, injection and a strict operating budget.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "G013",
+        "G024"
+      ]
+    },
+    {
+      "id": "G030",
+      "domain": "Generative AI",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Rescue a failing document extraction pilot",
+      "objective": "Diagnose evidence, implement a repair and justify rollout.",
+      "adversarial_case": "Training examples hide the most expensive failure segment.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G031",
+      "domain": "Generative AI",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Reduce model spend without breaking the service",
+      "objective": "Propose and implement a measured cost reduction under quality constraints.",
+      "adversarial_case": "Caching creates tenant leakage and routing harms critical cases.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "G032",
+      "domain": "Generative AI",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Rebuild a brittle prompt workflow",
+      "objective": "Deliver a maintainable workflow with documented limits and holdout evidence.",
+      "adversarial_case": "The incumbent prompt contains competing undocumented rules.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F001",
+      "domain": "FDE Practice",
+      "topic": "Discovery",
+      "difficulty": "Easy",
+      "title": "Turn a vague request into a testable outcome",
+      "objective": "Write a measurable workflow goal and a non-goal.",
+      "adversarial_case": "The stated metric measures activity rather than customer value.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F002",
+      "domain": "FDE Practice",
+      "topic": "Data contracts",
+      "difficulty": "Easy",
+      "title": "Validate a customer API payload",
+      "objective": "Repair a typed adapter against a provided contract.",
+      "adversarial_case": "Missing field, unexpected enum and a null nested object.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F003",
+      "domain": "FDE Practice",
+      "topic": "Delivery",
+      "difficulty": "Easy",
+      "title": "Choose the smallest useful vertical slice",
+      "objective": "Select one usable path connecting UI, service and evidence.",
+      "adversarial_case": "A polished dashboard hides a non-working core action.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F004",
+      "domain": "FDE Practice",
+      "topic": "Observability",
+      "difficulty": "Easy",
+      "title": "Add a useful error to a broken integration",
+      "objective": "Return a safe error and a trace correlation ID.",
+      "adversarial_case": "Raw provider error exposes an internal credential.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F005",
+      "domain": "FDE Practice",
+      "topic": "Operations",
+      "difficulty": "Easy",
+      "title": "Calculate cost per successful task",
+      "objective": "Compute spend divided by completed useful outcomes.",
+      "adversarial_case": "Retries and failed tasks were excluded from total spend.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F006",
+      "domain": "FDE Practice",
+      "topic": "Discovery",
+      "difficulty": "Medium",
+      "title": "Challenge an unrealistic automation target",
+      "objective": "Translate a client target into measurable assumptions and a pilot.",
+      "adversarial_case": "Accuracy target ignores the cost of rare failures.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F007",
+      "domain": "FDE Practice",
+      "topic": "Integration",
+      "difficulty": "Medium",
+      "title": "Repair a webhook without duplicate work",
+      "objective": "Implement idempotency and safe acknowledgement.",
+      "adversarial_case": "Provider retries while the first delivery is still processing.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F008",
+      "domain": "FDE Practice",
+      "topic": "Integration",
+      "difficulty": "Medium",
+      "title": "Recover from an API schema change",
+      "objective": "Add compatible parsing and version-aware errors.",
+      "adversarial_case": "A field changes units while keeping its old name.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F009",
+      "domain": "FDE Practice",
+      "topic": "Operations",
+      "difficulty": "Medium",
+      "title": "Set a release threshold from evidence",
+      "objective": "Choose metrics and critical-slice requirements from supplied results.",
+      "adversarial_case": "High average success conceals unauthorized actions.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F010",
+      "domain": "FDE Practice",
+      "topic": "Communication",
+      "difficulty": "Medium",
+      "title": "Explain a trade-off to a client engineer",
+      "objective": "Write a concise decision record with consequences and evidence.",
+      "adversarial_case": "The preferred option lacks an operational owner.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F011",
+      "domain": "FDE Practice",
+      "topic": "Delivery",
+      "difficulty": "Medium",
+      "title": "Convert a notebook into a service contract",
+      "objective": "Define inputs, errors, versioning and observable behavior.",
+      "adversarial_case": "Notebook state silently affects the second request.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F012",
+      "domain": "FDE Practice",
+      "topic": "Security",
+      "difficulty": "Medium",
+      "title": "Keep tenant scope through the whole request",
+      "objective": "Propagate verified tenant identity across adapters.",
+      "adversarial_case": "A user-supplied tenant ID overrides the authenticated scope.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F013",
+      "domain": "FDE Practice",
+      "topic": "Operations",
+      "difficulty": "Medium",
+      "title": "Triage a delayed cohort job",
+      "objective": "Use queue and trace evidence to distinguish causes.",
+      "adversarial_case": "Infrastructure failure is reported as a learner mistake.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F014",
+      "domain": "FDE Practice",
+      "topic": "Discovery",
+      "difficulty": "Medium",
+      "title": "Prioritize a pilot backlog by evidence",
+      "objective": "Rank work by impact, effort and validated uncertainty.",
+      "adversarial_case": "A senior request has no evidence of customer impact.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F015",
+      "domain": "FDE Practice",
+      "topic": "Communication",
+      "difficulty": "Medium",
+      "title": "Write an honest production handoff",
+      "objective": "Document service limits, rollback and ownership.",
+      "adversarial_case": "A critical dependency is owned by nobody.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F016",
+      "domain": "FDE Practice",
+      "topic": "Operations",
+      "difficulty": "Hard",
+      "title": "Roll back an unsafe model change",
+      "objective": "Design a canary and rollback decision from segmented metrics.",
+      "adversarial_case": "Rollback restores code but leaves the new prompt version active.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F017",
+      "domain": "FDE Practice",
+      "topic": "Integration",
+      "difficulty": "Hard",
+      "title": "Design an idempotent side-effect boundary",
+      "objective": "Make repeated action delivery safe with a durable ledger.",
+      "adversarial_case": "Worker crashes after external success but before local acknowledgement.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F018",
+      "domain": "FDE Practice",
+      "topic": "Delivery",
+      "difficulty": "Hard",
+      "title": "Handle a customer environment with no outbound internet",
+      "objective": "Select a feasible inference and artifact distribution plan.",
+      "adversarial_case": "The proposed package installer needs blocked internet access.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F019",
+      "domain": "FDE Practice",
+      "topic": "Discovery",
+      "difficulty": "Hard",
+      "title": "Prove whether a pilot is worth expanding",
+      "objective": "Analyze adoption, quality, cost and operating effort together.",
+      "adversarial_case": "User satisfaction improves while manual correction work doubles.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F020",
+      "domain": "FDE Practice",
+      "topic": "Security",
+      "difficulty": "Hard",
+      "title": "Design deletion across derived AI artifacts",
+      "objective": "Propagate deletion into caches, indexes and summaries.",
+      "adversarial_case": "An old summary reintroduces a deleted fact.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F021",
+      "domain": "FDE Practice",
+      "topic": "Operations",
+      "difficulty": "Hard",
+      "title": "Investigate an incident from incomplete telemetry",
+      "objective": "State evidence, hypotheses, containment and next checks.",
+      "adversarial_case": "Missing spans tempt the engineer to claim an unobserved cause.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F022",
+      "domain": "FDE Practice",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Deliver a Client Zero engagement",
+      "objective": "Scope, build, evaluate and hand over a simulated client solution.",
+      "adversarial_case": "Requirements change after a credible prototype exists.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "F006",
+        "F010",
+        "F019"
+      ]
+    },
+    {
+      "id": "F023",
+      "domain": "FDE Practice",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Repair a brownfield AI service under constraints",
+      "objective": "Ship a minimal repair with regression and rollback evidence.",
+      "adversarial_case": "No clean rewrite is possible and the legacy contract must remain stable.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F024",
+      "domain": "FDE Practice",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Defend a build in a technical screen",
+      "objective": "Demonstrate working behavior and answer a surprise constraint.",
+      "adversarial_case": "The interviewer removes the assumption the design depends on.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "F025",
+      "domain": "FDE Practice",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Run an incident and recovery exercise",
+      "objective": "Diagnose, contain, repair and brief stakeholders from fixtures.",
+      "adversarial_case": "The first apparent fix improves latency but breaches a policy.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A044",
+      "domain": "Agentic AI",
+      "topic": "Agent state",
+      "difficulty": "Easy",
+      "title": "Separate actions from final answers",
+      "objective": "Validate a tagged action-or-final union.",
+      "adversarial_case": "Response contains both variants.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A045",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Easy",
+      "title": "Remove an overpowered tool",
+      "objective": "Replace a broad shell-like capability with a narrow function.",
+      "adversarial_case": "Tool arguments try to reintroduce arbitrary execution.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A046",
+      "domain": "Agentic AI",
+      "topic": "Agent state",
+      "difficulty": "Easy",
+      "title": "Preserve tool-call identity",
+      "objective": "Match each result to its request ID.",
+      "adversarial_case": "Results arrive out of order.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 20,
+      "guidance": "worked_micro_example + ordered_steps + marked_TODOs + progressive_hints",
+      "recommended_personas": [
+        "Builder"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "basic Python or the stated editing format"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A047",
+      "domain": "Agentic AI",
+      "topic": "Safety",
+      "difficulty": "Medium",
+      "title": "Cancel an agent without executing another action",
+      "objective": "Check cancellation at every execution boundary.",
+      "adversarial_case": "Cancellation arrives after planning but before dispatch.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A048",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Medium",
+      "title": "Give one request a safe tool capability",
+      "objective": "Scope access to one action, run and expiration.",
+      "adversarial_case": "A stale capability is replayed in another run.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A049",
+      "domain": "Agentic AI",
+      "topic": "Memory",
+      "difficulty": "Medium",
+      "title": "Resume from a versioned checkpoint",
+      "objective": "Recover state while avoiding repeated completed effects.",
+      "adversarial_case": "Checkpoint predates a successful side effect.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A050",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Medium",
+      "title": "Validate an MCP tool result",
+      "objective": "Handle structured content and error states through an adapter.",
+      "adversarial_case": "A tool result embeds an instruction as metadata.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A051",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Medium",
+      "title": "Mock a tool for reproducible evaluation",
+      "objective": "Record and replay a versioned deterministic response fixture.",
+      "adversarial_case": "Recorded output belongs to another schema version.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A052",
+      "domain": "Agentic AI",
+      "topic": "Agent loops",
+      "difficulty": "Medium",
+      "title": "Choose a workflow before adding another agent",
+      "objective": "Implement a state machine for a fixed dependency graph.",
+      "adversarial_case": "Unnecessary agent routing adds variable behavior.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 35,
+      "guidance": "contract + partial_stub + optional_concept_hints",
+      "recommended_personas": [
+        "Builder",
+        "Navigator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "repair_and_explain",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "typed inputs and outputs",
+        "public test interpretation"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A053",
+      "domain": "Agentic AI",
+      "topic": "Safety",
+      "difficulty": "Hard",
+      "title": "Reject stale approval after a plan changes",
+      "objective": "Bind approval to an immutable action digest.",
+      "adversarial_case": "Same tool name with a different destination.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A054",
+      "domain": "Agentic AI",
+      "topic": "Agent loops",
+      "difficulty": "Hard",
+      "title": "Recover a partially completed plan",
+      "objective": "Resume only safe incomplete steps.",
+      "adversarial_case": "One completed step is non-idempotent.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A055",
+      "domain": "Agentic AI",
+      "topic": "Safety",
+      "difficulty": "Hard",
+      "title": "Prevent data crossing worker boundaries",
+      "objective": "Scope task context and tools by worker capability.",
+      "adversarial_case": "One worker requests another tenant's memory.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A056",
+      "domain": "Agentic AI",
+      "topic": "Evaluation",
+      "difficulty": "Hard",
+      "title": "Find a useful attack that breaks a naive agent",
+      "objective": "Author an adversarial case with an expected safe outcome.",
+      "adversarial_case": "An attack test also rejects harmless quoted text.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A057",
+      "domain": "Agentic AI",
+      "topic": "Operations",
+      "difficulty": "Hard",
+      "title": "Enforce one budget across concurrent branches",
+      "objective": "Use atomic reservations and reconciliation.",
+      "adversarial_case": "Two branches each observe the same remaining budget.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A058",
+      "domain": "Agentic AI",
+      "topic": "Observability",
+      "difficulty": "Hard",
+      "title": "Replay an agent failure from recorded evidence",
+      "objective": "Reconstruct actions with versioned fixtures and compare invariants.",
+      "adversarial_case": "Tool schema drift makes an old trace incompatible.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A059",
+      "domain": "Agentic AI",
+      "topic": "Tools",
+      "difficulty": "Hard",
+      "title": "Quarantine an untrusted tool response",
+      "objective": "Validate output and allow only declared downstream use.",
+      "adversarial_case": "A response contains a URL designed to trigger data export.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 60,
+      "guidance": "brief + interface_contract + minimal_scaffold",
+      "recommended_personas": [
+        "Navigator",
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "coding_or_design_screen",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "domain fundamentals",
+        "failure classification",
+        "evaluation basics"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A060",
+      "domain": "Agentic AI",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Build an approved-action service agent",
+      "objective": "Deliver a constrained agent with an auditable effect boundary.",
+      "adversarial_case": "Duplicate requests, revoked approval and a dependency outage.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": [
+        "A022",
+        "A047",
+        "A057"
+      ]
+    },
+    {
+      "id": "A061",
+      "domain": "Agentic AI",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Coordinate a multi-worker investigation",
+      "objective": "Solve a client incident using bounded specialized workers.",
+      "adversarial_case": "Workers disagree, repeat evidence and compete for the budget.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A062",
+      "domain": "Agentic AI",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Replace a fragile autonomous workflow",
+      "objective": "Choose the appropriate control model and prove the improvement.",
+      "adversarial_case": "The best solution may use fewer autonomous steps.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    },
+    {
+      "id": "A063",
+      "domain": "Agentic AI",
+      "topic": "FDE delivery",
+      "difficulty": "Extreme",
+      "title": "Recover a long-running agent after interruption",
+      "objective": "Deliver safe resumption with observable partial progress.",
+      "adversarial_case": "A crash occurs between external action and durable recording.",
+      "source_url": null,
+      "origin": "original_extension",
+      "status": "authoring_brief",
+      "estimated_minutes": 120,
+      "guidance": "client_brief + fixtures + deliverables + constraints_only",
+      "recommended_personas": [
+        "Accelerator"
+      ],
+      "access": "all_cohort_members",
+      "screening_style": "work_sample",
+      "evidence_label": "Interview-style; not verified as an actual employer question",
+      "grading_contract": "Author public examples, boundary cases, adversarial cases, trusted oracle and failure categories before publication.",
+      "prerequisite_skills": [
+        "independent implementation",
+        "evaluation design",
+        "deployment trade-offs"
+      ],
+      "recommended_prerequisite_problem_ids": []
+    }
+  ]
+}

@@ -1,0 +1,140 @@
+[
+  {
+    "id": "A022-1",
+    "visibility": "public",
+    "input": {
+      "action": {
+        "tool": "escalate",
+        "ticket_id": "NS-7",
+        "destination": "review"
+      },
+      "actor": "learner-1",
+      "approval": {
+        "approved": true,
+        "actor": "learner-1",
+        "digest": "206b000d47c44fd4fec43b1fc9f770a5c0573d583abd69e13165a775ea7d0f0a",
+        "expires_at": 101
+      },
+      "now": 100
+    },
+    "expected": {
+      "allowed": true,
+      "digest": "206b000d47c44fd4fec43b1fc9f770a5c0573d583abd69e13165a775ea7d0f0a"
+    }
+  },
+  {
+    "id": "A022-2",
+    "visibility": "public",
+    "input": {
+      "action": {
+        "tool": "escalate",
+        "ticket_id": "NS-7",
+        "destination": "review"
+      },
+      "actor": "learner-1",
+      "approval": {
+        "approved": false,
+        "actor": "learner-1",
+        "digest": "206b000d47c44fd4fec43b1fc9f770a5c0573d583abd69e13165a775ea7d0f0a",
+        "expires_at": 101
+      },
+      "now": 100
+    },
+    "expected": {
+      "allowed": false,
+      "reason": "not_approved"
+    }
+  },
+  {
+    "id": "A022-3",
+    "visibility": "hidden",
+    "input": {
+      "action": {
+        "tool": "escalate",
+        "ticket_id": "NS-7",
+        "destination": "review"
+      },
+      "actor": "learner-1",
+      "approval": {
+        "approved": true,
+        "actor": "learner-2",
+        "digest": "206b000d47c44fd4fec43b1fc9f770a5c0573d583abd69e13165a775ea7d0f0a",
+        "expires_at": 101
+      },
+      "now": 100
+    },
+    "expected": {
+      "allowed": false,
+      "reason": "actor_mismatch"
+    }
+  },
+  {
+    "id": "A022-4",
+    "visibility": "hidden",
+    "input": {
+      "action": {
+        "tool": "escalate",
+        "ticket_id": "NS-7",
+        "destination": "review"
+      },
+      "actor": "learner-1",
+      "approval": {
+        "approved": true,
+        "actor": "learner-1",
+        "digest": "forged",
+        "expires_at": 101
+      },
+      "now": 100
+    },
+    "expected": {
+      "allowed": false,
+      "reason": "action_changed"
+    }
+  },
+  {
+    "id": "A022-5",
+    "visibility": "hidden",
+    "input": {
+      "action": {
+        "tool": "escalate",
+        "ticket_id": "NS-7",
+        "destination": "review"
+      },
+      "actor": "learner-1",
+      "approval": {
+        "approved": true,
+        "actor": "learner-1",
+        "digest": "206b000d47c44fd4fec43b1fc9f770a5c0573d583abd69e13165a775ea7d0f0a",
+        "expires_at": 100
+      },
+      "now": 100
+    },
+    "expected": {
+      "allowed": false,
+      "reason": "expired"
+    }
+  },
+  {
+    "id": "A022-6",
+    "visibility": "hidden",
+    "input": {
+      "action": {
+        "tool": "escalate",
+        "ticket_id": "NS-7",
+        "destination": "external"
+      },
+      "actor": "learner-1",
+      "approval": {
+        "approved": true,
+        "actor": "learner-1",
+        "digest": "206b000d47c44fd4fec43b1fc9f770a5c0573d583abd69e13165a775ea7d0f0a",
+        "expires_at": 101
+      },
+      "now": 100
+    },
+    "expected": {
+      "allowed": false,
+      "reason": "action_changed"
+    }
+  }
+]

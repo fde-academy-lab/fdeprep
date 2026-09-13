@@ -1,0 +1,28 @@
+[
+  {
+    "id": "A008-1",
+    "visibility": "public",
+    "input": {
+      "order_id": "NS-7",
+      "limit": 2
+    },
+    "expected": {
+      "ok": true
+    }
+  },
+  {
+    "id": "A008-2",
+    "visibility": "public",
+    "input": {
+      "order_id": " ",
+      "limit": 0
+    },
+    "expected": {
+      "ok": false,
+      "errors": [
+        "invalid:limit",
+        "invalid:order_id"
+      ]
+    }
+  }
+]

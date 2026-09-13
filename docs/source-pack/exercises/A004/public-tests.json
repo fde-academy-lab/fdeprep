@@ -1,0 +1,37 @@
+[
+  {
+    "id": "A004-1",
+    "visibility": "public",
+    "input": {
+      "events": [
+        {
+          "type": "tool",
+          "value": "lookup"
+        },
+        {
+          "type": "final",
+          "value": "Open"
+        }
+      ],
+      "max_actions": 3
+    },
+    "expected": {
+      "status": "completed",
+      "answer": "Open",
+      "actions": 1
+    }
+  },
+  {
+    "id": "A004-2",
+    "visibility": "public",
+    "input": {
+      "events": [],
+      "max_actions": 3
+    },
+    "expected": {
+      "status": "no_final",
+      "answer": null,
+      "actions": 0
+    }
+  }
+]

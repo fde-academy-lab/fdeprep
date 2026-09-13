@@ -1,0 +1,362 @@
+[
+  {
+    "id": "I001",
+    "topic": "Prompt contracts",
+    "depth": "Core",
+    "question": "A support prompt must answer confidently and never invent facts. What happens when evidence is missing?",
+    "good_answer_signals": "Identify the conflict, define abstention and enforce output structure outside the prompt.",
+    "follow_up": "The customer insists on a definite answer. What changes?",
+    "practice_problem": "G009",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I002",
+    "topic": "Prompt contracts",
+    "depth": "Applied",
+    "question": "You removed the word always from a prompt. How do you prove the repair helped?",
+    "good_answer_signals": "Separate an exact edit check from behavioral evaluation; test both supported and unsupported cases.",
+    "follow_up": "The new prompt refuses every question. Did the edit succeed?",
+    "practice_problem": "G002",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I003",
+    "topic": "Prompt contracts",
+    "depth": "Deep dive",
+    "question": "A shorter prompt saves tokens but loses one rare safety constraint. Would you ship it?",
+    "good_answer_signals": "Measure slice-level regression and retain mandatory constraints; cost is not the sole gate.",
+    "follow_up": "The rare case occurs once in ten thousand requests. Does that change the gate?",
+    "practice_problem": "G010",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I004",
+    "topic": "Structured output",
+    "depth": "Core",
+    "question": "Why can valid JSON still be an invalid business response?",
+    "good_answer_signals": "Distinguish syntax, schema, semantic validity and authorization with a concrete example.",
+    "follow_up": "The schema allows any string for status. What fails next?",
+    "practice_problem": "G003",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I005",
+    "topic": "Structured output",
+    "depth": "Applied",
+    "question": "A model returns malformed output twice. How should the service respond?",
+    "good_answer_signals": "Use bounded repair, an explicit failure state and a safe user experience without invented fields.",
+    "follow_up": "The first response already caused a side effect. Can you retry safely?",
+    "practice_problem": "G011",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I006",
+    "topic": "Structured output",
+    "depth": "Deep dive",
+    "question": "How would you version an extraction contract without breaking a customer integration?",
+    "good_answer_signals": "Use explicit versions, compatible evolution, contract tests and a migration path.",
+    "follow_up": "A numeric field changes from dollars to cents without being renamed.",
+    "practice_problem": "F008",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I007",
+    "topic": "Evidence and RAG",
+    "depth": "Core",
+    "question": "A citation points to a real document but the claim is unsupported. Is the answer grounded?",
+    "good_answer_signals": "Check claim-level support, not only existence of a source identifier.",
+    "follow_up": "The claim combines facts from two different source versions.",
+    "practice_problem": "G013",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I008",
+    "topic": "Evidence and RAG",
+    "depth": "Applied",
+    "question": "The correct document was retrieved but the answer is wrong. What do you inspect next?",
+    "good_answer_signals": "Inspect context assembly, truncation, conflict and the generation contract before changing retrieval.",
+    "follow_up": "The correct paragraph was removed to fit the budget.",
+    "practice_problem": "G022",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I009",
+    "topic": "Evidence and RAG",
+    "depth": "Deep dive",
+    "question": "When would you choose retrieval instead of fine-tuning for a client?",
+    "good_answer_signals": "Tie the choice to update frequency, factual knowledge, behavior adaptation and measured failure patterns.",
+    "follow_up": "The client needs daily policy updates and a consistent response style.",
+    "practice_problem": "G026",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I010",
+    "topic": "Agent control",
+    "depth": "Core",
+    "question": "What is the minimum useful difference between an agent and a fixed workflow?",
+    "good_answer_signals": "Explain who selects the next action and where deterministic limits still apply.",
+    "follow_up": "Every valid task follows the same three steps.",
+    "practice_problem": "A052",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I011",
+    "topic": "Agent control",
+    "depth": "Applied",
+    "question": "An agent never emits a final answer. How do you stop it safely?",
+    "good_answer_signals": "Use application-enforced step/time/cost limits and an explicit terminal state.",
+    "follow_up": "The last permitted action returned useful partial evidence.",
+    "practice_problem": "A004",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I012",
+    "topic": "Agent control",
+    "depth": "Deep dive",
+    "question": "When would multiple agents make this workflow worse?",
+    "good_answer_signals": "Discuss coordination cost, context duplication, failure coupling and evidence from a simpler baseline.",
+    "follow_up": "One specialized capability is isolated behind a tool already.",
+    "practice_problem": "A062",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I013",
+    "topic": "Tool contracts",
+    "depth": "Core",
+    "question": "Why should tool arguments be validated after a model chooses the tool?",
+    "good_answer_signals": "Model output is untrusted; validate structure, meaning and actor permissions before dispatch.",
+    "follow_up": "The field is an integer but the value is true.",
+    "practice_problem": "A008",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I014",
+    "topic": "Tool contracts",
+    "depth": "Applied",
+    "question": "A tool times out after possibly creating a ticket. Should you retry?",
+    "good_answer_signals": "Distinguish uncertain side effect from safe transient failure; use idempotency or reconciliation.",
+    "follow_up": "The provider does not support idempotency keys.",
+    "practice_problem": "F017",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I015",
+    "topic": "Tool contracts",
+    "depth": "Deep dive",
+    "question": "Two tools can answer the same question but have different permissions. How do you route?",
+    "good_answer_signals": "Filter by capability and authorization first, then evaluate quality/cost and fallback policy.",
+    "follow_up": "The lower-privilege tool fails with an authentication error.",
+    "practice_problem": "A031",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I016",
+    "topic": "Memory",
+    "depth": "Core",
+    "question": "What belongs in durable memory rather than the active context window?",
+    "good_answer_signals": "Use purpose, provenance, consent/retention and future utility; distinguish verified facts from generated summaries.",
+    "follow_up": "A user mentions another person's private information.",
+    "practice_problem": "A013",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I017",
+    "topic": "Memory",
+    "depth": "Applied",
+    "question": "How do you evict stale state without abandoning active work?",
+    "good_answer_signals": "Preserve explicit task dependencies while expiring eligible context; surface budget conflicts.",
+    "follow_up": "A deletion request applies to a pinned record.",
+    "practice_problem": "A034",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I018",
+    "topic": "Memory",
+    "depth": "Deep dive",
+    "question": "How can a corrected fact remain wrong in a memory-enabled system?",
+    "good_answer_signals": "Track derived summaries, caches and indexes and invalidate them by provenance.",
+    "follow_up": "An old episode is semantically relevant but factually obsolete.",
+    "practice_problem": "F020",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I019",
+    "topic": "Safety and authority",
+    "depth": "Core",
+    "question": "The answer is correct but the agent used an unauthorized tool. Did it pass?",
+    "good_answer_signals": "Separate output quality from mandatory authorization invariants; inspect authoritative tool events.",
+    "follow_up": "The learner's own trace says no tool was called.",
+    "practice_problem": "A020",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I020",
+    "topic": "Safety and authority",
+    "depth": "Applied",
+    "question": "Approval was granted, then the action arguments changed. Can the agent proceed?",
+    "good_answer_signals": "Bind approval to exact actor/action/version and revalidate immediately before execution.",
+    "follow_up": "Approval is still current but has been revoked.",
+    "practice_problem": "A022",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I021",
+    "topic": "Safety and authority",
+    "depth": "Deep dive",
+    "question": "A document contains both useful evidence and an attack. Must you discard all of it?",
+    "good_answer_signals": "Explain threat boundaries, source handling and downstream controls; avoid claiming keyword filtering is complete.",
+    "follow_up": "The attack is quoted in legitimate security training text.",
+    "practice_problem": "G028",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I022",
+    "topic": "Evaluation",
+    "depth": "Core",
+    "question": "Why are deterministic tests useful in an AI application?",
+    "good_answer_signals": "Use repeatable checks for explicit invariants and controlled model/tool boundaries.",
+    "follow_up": "The property is whether an answer is semantically helpful.",
+    "practice_problem": "A019",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I023",
+    "topic": "Evaluation",
+    "depth": "Applied",
+    "question": "Prompt B improves average accuracy but hurts a critical slice. How do you decide?",
+    "good_answer_signals": "Compare paired cases and critical thresholds; do not average away mandatory failures.",
+    "follow_up": "The critical slice has only five cases.",
+    "practice_problem": "G024",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I024",
+    "topic": "Evaluation",
+    "depth": "Deep dive",
+    "question": "How do you make an LLM judge defensible enough to support release decisions?",
+    "good_answer_signals": "Calibrate against human labels, test bias/injection, repeat unstable cases and separate advisory scores from gates.",
+    "follow_up": "The judge prefers verbose incorrect answers.",
+    "practice_problem": "G021",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I025",
+    "topic": "Operations and cost",
+    "depth": "Core",
+    "question": "What is the right denominator for model cost per successful task?",
+    "good_answer_signals": "Include all retries and failures in spend, divided by useful completed outcomes.",
+    "follow_up": "One task uses three agents and five judge calls.",
+    "practice_problem": "F005",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I026",
+    "topic": "Operations and cost",
+    "depth": "Applied",
+    "question": "A class of 200 learners presses Submit at once. What determines responsiveness?",
+    "good_answer_signals": "Separate signed-in users from jobs; model arrival rate, service time, slots and provider quotas.",
+    "follow_up": "Each submission requires four provider API calls.",
+    "practice_problem": "F013",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I027",
+    "topic": "Operations and cost",
+    "depth": "Deep dive",
+    "question": "Two agent branches share a budget. Why is a simple remaining-balance read unsafe?",
+    "good_answer_signals": "Explain atomic reservation, race conditions, reconciliation and run-wide limits.",
+    "follow_up": "One branch times out before reporting actual usage.",
+    "practice_problem": "A057",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I028",
+    "topic": "Customer discovery",
+    "depth": "Core",
+    "question": "How would you turn \u201cwe need an AI copilot\u201d into a useful first problem?",
+    "good_answer_signals": "Identify user workflow, pain, measurable outcome, constraints and smallest useful slice.",
+    "follow_up": "The requested metric is number of generated answers.",
+    "practice_problem": "F001",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I029",
+    "topic": "Customer discovery",
+    "depth": "Applied",
+    "question": "A client demands 100% automation in four weeks. What do you do first?",
+    "good_answer_signals": "Clarify risk and scope, validate baseline and select a bounded pilot with escalation.",
+    "follow_up": "The client treats human review as project failure.",
+    "practice_problem": "F006",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I030",
+    "topic": "Customer discovery",
+    "depth": "Deep dive",
+    "question": "A pilot's accuracy rises but adoption stays low. How do you investigate?",
+    "good_answer_signals": "Inspect workflow integration, latency, trust, correction effort and user behavior.",
+    "follow_up": "The evaluation dataset is easier than real work.",
+    "practice_problem": "F019",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I031",
+    "topic": "Integration and delivery",
+    "depth": "Core",
+    "question": "What makes a prototype a useful vertical slice?",
+    "good_answer_signals": "A working path through interface, service and data that solves one real task.",
+    "follow_up": "The interface is polished but its action uses a static response.",
+    "practice_problem": "F003",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I032",
+    "topic": "Integration and delivery",
+    "depth": "Applied",
+    "question": "How do you turn a stateful notebook into a reliable service?",
+    "good_answer_signals": "Define contract, isolate request state, handle errors, version dependencies and instrument behavior.",
+    "follow_up": "The second request depends on a variable created by the first.",
+    "practice_problem": "F011",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I033",
+    "topic": "Integration and delivery",
+    "depth": "Deep dive",
+    "question": "You cannot rewrite a fragile customer service. How do you improve it safely?",
+    "good_answer_signals": "Choose a scoped change, protect contracts, add targeted regression evidence and prepare rollback.",
+    "follow_up": "The main defect sits behind an undocumented integration.",
+    "practice_problem": "F023",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I034",
+    "topic": "Technical defense",
+    "depth": "Core",
+    "question": "How would you explain one engineering trade-off to a client?",
+    "good_answer_signals": "State the decision, relevant evidence, rejected alternative and consequence in plain language.",
+    "follow_up": "The client asks what they lose with your recommendation.",
+    "practice_problem": "F010",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I035",
+    "topic": "Technical defense",
+    "depth": "Applied",
+    "question": "A production incident has missing traces. How do you explain the cause?",
+    "good_answer_signals": "Separate observed facts, hypotheses, containment and next checks; avoid invented certainty.",
+    "follow_up": "An executive asks for a definite root cause immediately.",
+    "practice_problem": "F021",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  },
+  {
+    "id": "I036",
+    "topic": "Technical defense",
+    "depth": "Deep dive",
+    "question": "An interviewer removes the key assumption in your design. What do you demonstrate?",
+    "good_answer_signals": "Re-evaluate constraints, state what breaks, adapt the smallest viable part and explain evidence needed.",
+    "follow_up": "The model service must now run without outbound internet.",
+    "practice_problem": "F024",
+    "evidence_label": "Original interview-style practice; actual employer frequency unverified"
+  }
+]

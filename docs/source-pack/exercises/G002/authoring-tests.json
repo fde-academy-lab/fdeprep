@@ -1,0 +1,18 @@
+[
+  {
+    "id": "G002-1",
+    "visibility": "public",
+    "input": {
+      "text": "You must always answer from supplied evidence.\nIf evidence is missing, always state that it is missing."
+    },
+    "expected": "You must answer from supplied evidence.\nIf evidence is missing, always state that it is missing."
+  },
+  {
+    "id": "G002-2",
+    "visibility": "hidden",
+    "input": {
+      "text": "You must always answer from supplied evidence.\nQuoted example: always answer is unsafe."
+    },
+    "expected": "You must answer from supplied evidence.\nQuoted example: always answer is unsafe."
+  }
+]

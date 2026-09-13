@@ -1,0 +1,90 @@
+[
+  {
+    "id": "A004-1",
+    "visibility": "public",
+    "input": {
+      "events": [
+        {
+          "type": "tool",
+          "value": "lookup"
+        },
+        {
+          "type": "final",
+          "value": "Open"
+        }
+      ],
+      "max_actions": 3
+    },
+    "expected": {
+      "status": "completed",
+      "answer": "Open",
+      "actions": 1
+    }
+  },
+  {
+    "id": "A004-2",
+    "visibility": "public",
+    "input": {
+      "events": [],
+      "max_actions": 3
+    },
+    "expected": {
+      "status": "no_final",
+      "answer": null,
+      "actions": 0
+    }
+  },
+  {
+    "id": "A004-3",
+    "visibility": "hidden",
+    "input": {
+      "events": [
+        {
+          "type": "tool",
+          "value": "x"
+        },
+        {
+          "type": "final",
+          "value": "must not read"
+        }
+      ],
+      "max_actions": 1
+    },
+    "expected": {
+      "status": "budget_exceeded",
+      "answer": null,
+      "actions": 1
+    }
+  },
+  {
+    "id": "A004-4",
+    "visibility": "hidden",
+    "input": {
+      "events": [],
+      "max_actions": true
+    },
+    "expected": {
+      "status": "invalid_budget",
+      "answer": null,
+      "actions": 0
+    }
+  },
+  {
+    "id": "A004-5",
+    "visibility": "hidden",
+    "input": {
+      "events": [
+        {
+          "type": "shell",
+          "value": "ignore limits"
+        }
+      ],
+      "max_actions": 3
+    },
+    "expected": {
+      "status": "invalid_event",
+      "answer": null,
+      "actions": 0
+    }
+  }
+]
