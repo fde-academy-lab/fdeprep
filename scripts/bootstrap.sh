@@ -19,6 +19,11 @@ set -euo pipefail
 WITH_SKILLS=0
 [ "${1:-}" = "--with-skills" ] && WITH_SKILLS=1
 
+# Allowlist entries that turned out not to exist at their pinned ref. Collected
+# across every repo and reported together at the end, so one run tells you
+# everything to fix rather than one thing at a time.
+VENDOR_ERRORS=""
+
 if [ ! -f CLAUDE.md ] || [ ! -d docs ]; then
   echo "Run this from the repository root. Expected CLAUDE.md and docs/ here."
   exit 1
@@ -456,12 +461,15 @@ __KEEPLIST__
 
     # A path in the list that is not in the clone means the pin moved under the
     # allowlist or upstream renamed something. Silence here would lose a skill
-    # nobody decided to drop, so it is loud and it fails the run.
+    # nobody decided to drop, so record it and keep going: every other repo
+    # still gets vendored, and the run reports the whole list at the end.
     if [ -n "$missing" ]; then
-      say "  ERROR: allowlisted but absent at $ref:$missing"
-      say "  upstream renamed or removed these. Fix the allowlist, then re-run."
-      rm -rf "$tmp"
-      return 1
+      listname="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')_KEEP"
+      for path in $missing; do
+        say "  MISSING: $path"
+        VENDOR_ERRORS="$VENDOR_ERRORS$path  (in $listname, from $repo @ $ref)
+"
+      done
     fi
 
     rm -rf "$tmp"
@@ -479,4 +487,16 @@ say "done. files created:"
 find .claude -type f | sort | sed 's/^/[bootstrap]   /'
 [ -f .gitignore ] && say "  .gitignore"
 echo
+
+if [ -n "$VENDOR_ERRORS" ]; then
+  say "FAILED: these allowlist entries do not exist at their pinned ref"
+  printf '%s' "$VENDOR_ERRORS" | sed 's/^/[bootstrap]   /'
+  echo
+  say "Upstream renamed or removed them, or a pin moved under the allowlist."
+  say "Everything else was vendored, so the tree is complete apart from these."
+  say "Fix the named lists in this script, then re-run. Do not commit until the"
+  say "run is clean: a skill is missing here because nobody chose to drop it."
+  exit 1
+fi
+
 say "next: git add -A && git commit -m \"chore: agent configuration\" && git push"
