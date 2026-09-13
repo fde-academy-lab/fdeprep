@@ -8,9 +8,11 @@ Built with Claude Code on the web against this repository.
 
 ## Start here
 
-1. Read `SETUP.md`. It takes about fifteen minutes to follow end to end and it is the only thing standing between this repository and a running build.
-2. Create the `fdeprep` cloud environment at <https://claude.ai/code> using `scripts/cloud-setup.sh`.
-3. Open `PROMPTS.md` and run Session 0.
+1. Create the `fdeprep` cloud environment at <https://claude.ai/code>, pasting `scripts/cloud-setup.sh` into the setup script field.
+2. Start a session on this repository and run Session B from `PROMPTS.md`. It creates `.claude/` and `.gitignore`, which GitHub's web uploader cannot upload because their names start with a dot.
+3. Run Session 0 from `PROMPTS.md`, then the rest in order.
+
+`SETUP.md` has every field value and every link.
 
 ---
 

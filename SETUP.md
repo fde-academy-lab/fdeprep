@@ -8,7 +8,7 @@ Claude Code on the web is available on Pro, Max and Team plans, and on Enterpris
 
 ## Step 1: put this pack in the repository
 
-Unzip and copy the contents of `fdeprep/` into your clone of <https://github.com/fde-academy-lab/fdeprep>, then push to `main`.
+Upload through the GitHub web UI, or push from a clone. Either works.
 
 ```
 fdeprep/
@@ -16,38 +16,37 @@ fdeprep/
   SETUP.md                   this file
   PROMPTS.md                 one prompt per build session
   README.md                  the two-minute version of this file
-  .gitignore
-  .claude/
+  .gitignore                 created by bootstrap.sh
+  .claude/                   created by bootstrap.sh
     settings.json            SessionStart hook
-    rules/                   trust boundaries and writing rules, load automatically
-    skills/                  three skills this build actually needs
+    rules/                   trust boundaries and writing rules
+    skills/                  three skills this build needs
   scripts/
+    bootstrap.sh             creates .claude/ and .gitignore inside a session
     cloud-setup.sh           paste into the cloud environment dialog
     install_pkgs.sh          the hook the settings file points at
-    sync-skills.sh           run locally, once, to vendor third-party skills
+    sync-skills.sh           optional local skill vendoring
   docs/
     00-PRD.md .. 09-SOURCE-PACK-RECONCILIATION.md
     source-pack/             the earlier pack, kept as reference material
 ```
 
-```bash
-git clone https://github.com/fde-academy-lab/fdeprep && cd fdeprep
-# copy the unzipped contents in, then
-chmod +x scripts/*.sh
-git add -A && git commit -m "chore: specification, agent config and setup scripts" && git push
-```
+**GitHub's web uploader silently skips any folder whose name starts with a
+dot.** After a browser upload, `.claude/` and `.gitignore` will be missing.
+That is expected and you do not need to create them by hand. `scripts/`
+uploads fine, and `scripts/bootstrap.sh` writes the dot-folders from inside
+your first Claude Code session. See Step 5.
 
-Commit the specs as plain markdown files, not as an archive. A session clones the repo and greps it; a zip is a blob it has to unpack first, and these documents will change during the build.
+Nothing needs `chmod`. The hook invokes `bash scripts/install_pkgs.sh`
+explicitly, so the executable bit is irrelevant.
 
----
+## Step 2: make the repository private
 
-## Step 2: connect GitHub
+Settings, General, scroll to the bottom, **Change repository visibility**, Private.
 
-Install the Claude GitHub App on the `fde-academy-lab` organisation, or at minimum on the `fdeprep` repository. <https://github.com/apps/claude>
+Do this before Session 2. From then on the repository holds hidden test fixtures and reference solutions, and a public repository hands those to any learner who looks.
 
-Installing it on the repository also turns on Auto-fix for pull requests, which is worth having: Claude watches a PR and responds to CI failures and review comments. <https://code.claude.com/docs/en/claude-code-on-the-web>
-
-If you already use the `gh` CLI locally, `/web-setup` in a terminal session is the alternative route.
+The Claude GitHub App needs access to the repository once it is private. If it is already installed on the organisation, confirm `fdeprep` is in its repository list at <https://github.com/apps/claude>.
 
 ---
 
@@ -207,11 +206,14 @@ There are large community skill collections that turn up when you search, coveri
 
 ## Step 7: run the build
 
+Session B first, then the numbered phases.
+
 One phase, one session, one branch, one pull request, merged before the next starts. A session can only push to its own working branch, which is a property of the GitHub proxy and the reason this shape fits.
 
 `PROMPTS.md` has the prompt for each. Paste it into a new session at <https://claude.ai/code> with the `fdeprep` environment selected and the repository attached.
 
 ```
+Session B   bootstrap config           straight to main, no PR
 Session 0   foundations                chore/phase-0-foundations
 Session 1   runner and mock LLM        feat/phase-1-runner
 Session 2   problems and workspace     feat/phase-2-workspace

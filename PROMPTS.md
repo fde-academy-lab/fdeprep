@@ -10,6 +10,43 @@ Before pasting a phase prompt, consider running `/grill-me` against it in a loca
 
 ---
 
+## Session B: bootstrap (run this first, once)
+
+GitHub's web uploader skips any folder whose name starts with a dot, so
+`.claude/` and `.gitignore` are missing from the repository after a browser
+upload. This session puts them there. It takes about a minute.
+
+```
+Run: bash scripts/bootstrap.sh --with-skills
+
+That script writes .claude/settings.json, .claude/rules/, .claude/skills/ and
+.gitignore into the repository. GitHub's web uploader cannot create dot-folders,
+which is why they are missing.
+
+Then do four things:
+
+1. Print the tree of .claude/ so I can see what was created.
+2. Read every SKILL.md under .claude/skills/vendor/ that the script fetched.
+   Give me a one-line summary of each and flag any that run shell commands or
+   fetch from the network. Delete any that are irrelevant to a Next.js plus
+   Python plus AWS build, and tell me which you deleted and why.
+3. Pin the vendored sources: replace MATTPOCOCK_REF and ANTHROPIC_REF in
+   scripts/bootstrap.sh with the commit SHAs that were actually fetched, which
+   are recorded in each vendor folder's .source file.
+4. Confirm .gitignore covers .env, node_modules, cdk.out, __pycache__ and
+   audio files.
+
+Commit everything to main directly. This is configuration, not code, so it does
+not need a pull request.
+
+Do not build anything else in this session.
+```
+
+After this finishes, every later session picks up the rules and skills
+automatically on clone.
+
+---
+
 ## Session 0: foundations
 
 ```
