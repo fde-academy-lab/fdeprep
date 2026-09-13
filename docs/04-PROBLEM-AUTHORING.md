@@ -20,6 +20,7 @@ The import fails, with the offending line number, when any of these hold.
 | Fewer than three rubric exemplars on a design problem | The judge drifts without anchors |
 | A probe whose assertion references a pattern absent from the problem | Author error, always |
 | `call_budget` not set on a code problem | Budget scoring silently disables |
+| A `contains` or `regex` matcher that already matches the case's own `input`, with a later entry after it | The input is in the first prompt and a scratchpad keeps it there, so that entry wins on every call and every entry below it is unreachable. Use `call_index` when the intent is "the first call". |
 
 Run the validator in CI on the problems repository so a bad problem never reaches the import screen.
 
@@ -157,7 +158,7 @@ tests:
       kind: agent_run
       input: { question: "Where is order 7?" }
       llm_script:
-        - { match: { contains: "Where is order 7" }, reply: "Action: track(id=7)" }
+        - { match: { call_index: 1 }, reply: "Action: track(id=7)" }
         - { match: "*", reply: "Final Answer: It is in transit." }
       tools:
         track: { returns: { status: 200, data: { state: "in_transit" } } }

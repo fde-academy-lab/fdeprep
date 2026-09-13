@@ -64,13 +64,11 @@ tests:
       kind: agent_run
       input: { question: "Where is order 7?" }
       llm_script:
-        # Transcribed from docs/04 section 3 with one change. The spec writes this
-        # matcher as { contains: "Where is order 7" }. The scratchpad keeps the
-        # question in the prompt, so under the first-match-wins rule in docs/03
-        # section 2.2 that entry matches on every call and the Final Answer reply
-        # below is unreachable, which makes returns_matches "(?i)transit"
-        # unsatisfiable. call_index 1 is the matcher the spec already defines for
-        # "the first call" and preserves the test's intent.
+        # call_index rather than a contains on the question: the scratchpad keeps
+        # the question in the prompt, so a contains matcher here would win on
+        # every call under the first-match-wins rule in docs/03 section 2.2 and
+        # the Final Answer reply below would be unreachable. See the matching
+        # validator rule in docs/04 section 1.
         - { match: { call_index: 1 }, reply: "Action: track(id=7)" }
         - { match: "*", reply: "Final Answer: It is in transit." }
       tools:

@@ -7,6 +7,7 @@ docs/04 section 1 is a separate concern and is not run at import time.
 from __future__ import annotations
 
 import pathlib
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -111,12 +112,48 @@ def from_dict(data: dict[str, Any], source: str = "<dict>") -> Problem:
 
 
 def _check_script(spec: dict[str, Any], case_name: str, source: str) -> None:
-    """docs/04 section 1: a script with no fallback raises mid-test in front of a learner."""
+    """The two docs/04 section 1 rules that apply to a script."""
     script = spec.get("llm_script")
     if not script:
         return
+
     if not any(entry.get("match") == "*" for entry in script):
         raise ProblemError(
             f"{source}: llm_script in {case_name} has no \"*\" fallback, so the mock would "
             "raise partway through and the learner would see an infrastructure error"
         )
+
+    # A matcher that already matches the case's own input wins on the first call,
+    # and a scratchpad keeps the input in the prompt, so it keeps winning and
+    # every entry below it is unreachable.
+    seeded = " ".join(str(v) for v in (spec.get("input") or {}).values())
+    if not seeded:
+        return
+    for index, entry in enumerate(script[:-1]):
+        pattern = _matches_seed(entry.get("match"), seeded)
+        if pattern is not None:
+            raise ProblemError(
+                f"{source}: llm_script entry {index + 1} in {case_name} matches the case's "
+                f"own input ({pattern!r}), so it wins on every call and the "
+                f"{len(script) - index - 1} entries below it are unreachable. Use "
+                "call_index when the intent is \"the first call\"."
+            )
+
+
+def _matches_seed(rule: Any, seeded: str) -> str | None:
+    """Return the offending pattern, or None when the rule cannot match the input."""
+    if not isinstance(rule, dict) or len(rule) != 1:
+        return None
+    (kind, value), = rule.items()
+    if kind == "contains":
+        return str(value) if str(value) in seeded else None
+    if kind == "regex":
+        try:
+            return str(value) if re.search(str(value), seeded) else None
+        except re.error:
+            return None
+    if kind == "all":
+        hits = [_matches_seed(nested, seeded) for nested in value]
+        if hits and all(hit is not None for hit in hits):
+            return ", ".join(hits)
+    return None

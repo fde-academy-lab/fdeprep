@@ -33,10 +33,16 @@ cleanup
 
 say "starting the emulator on port $PORT"
 docker run -d --name "$NAME" --platform linux/amd64 -p "${PORT}:8080" "$IMAGE" >/dev/null
+ready=0
 for _ in $(seq 1 30); do
-  curl -sS --noproxy '*' -o /dev/null "$ENDPOINT" -d '{}' && break
+  if curl -sS --noproxy '*' -o /dev/null "$ENDPOINT" -d '{}'; then ready=1; break; fi
   sleep 1
 done
+if [ "$ready" != "1" ]; then
+  say "the emulator never answered on $ENDPOINT"
+  docker logs "$NAME" 2>&1 | tail -20
+  exit 1
+fi
 
 event_for() {
   python3 - "$1" <<'PY'
