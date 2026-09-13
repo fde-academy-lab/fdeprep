@@ -323,9 +323,18 @@ playwright-report/
 test-results/
 
 # learner audio must never land in git
+# docs/07 section 7 "Capture": 16kHz mono PCM streamed to Transcribe, plus a
+# MediaRecorder copy for playback. MediaRecorder emits webm on Chromium and
+# mp4/m4a on Safari.
 *.wav
 *.webm
 *.mp3
+*.m4a
+*.mp4
+*.ogg
+*.opus
+*.flac
+*.pcm
 __FDEPREP_07__
 
 # ---------------------------------------------------------------------------
@@ -341,10 +350,15 @@ if [ "$WITH_SKILLS" = "1" ]; then
   DEST=".claude/skills/vendor"
   mkdir -p "$DEST"
 
-  # Pin to a reviewed commit by replacing "main" with a SHA.
-  # Find one with: git ls-remote https://github.com/<owner>/<repo> main
-  MATTPOCOCK_REF="main"
-  ANTHROPIC_REF="main"
+  # Pinned to the commits actually reviewed and vendored on 2026-09-13.
+  # Move a pin only after reading the diff: a skill is instructions an agent
+  # follows. Find a newer SHA with: git ls-remote https://github.com/<owner>/<repo> main
+  #
+  # A re-run copies the WHOLE upstream skills/ tree again, so the curation
+  # recorded in git (39 of 56 skills deleted) is undone. After any re-run,
+  # check `git status` and restore the deletions before committing.
+  MATTPOCOCK_REF="3cca18b368ae95cdbdebbff572ccafa662551015"
+  ANTHROPIC_REF="34040c9c568585f6929bedeaad110ad08f079624"
 
   fetch_skills() {
     repo="$1"; ref="$2"; name="$3"; subdir="$4"

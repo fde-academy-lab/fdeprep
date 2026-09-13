@@ -1,0 +1,43 @@
+# secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# node
+node_modules/
+.next/
+out/
+.turbo/
+
+# python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# infra
+cdk.out/
+.aws-sam/
+
+# local
+.DS_Store
+coverage/
+playwright-report/
+test-results/
+
+# learner audio must never land in git
+# docs/07 section 7 "Capture": 16kHz mono PCM streamed to Transcribe, plus a
+# MediaRecorder copy for playback. MediaRecorder emits webm on Chromium and
+# mp4/m4a on Safari.
+*.wav
+*.webm
+*.mp3
+*.m4a
+*.mp4
+*.ogg
+*.opus
+*.flac
+*.pcm
