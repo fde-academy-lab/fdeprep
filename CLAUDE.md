@@ -71,10 +71,42 @@ In a cloud session, use the pre-installed PostgreSQL 16 for development and test
 
 - Do not run `cdk deploy`, `aws lambda update-function-code`, `vercel deploy`, or any other command that changes live infrastructure. Write the infrastructure code and the GitHub Actions workflow; a human runs the deploy. If a task seems to require deploying, stop and say so.
 - Do not commit secrets, `.env` files, AWS keys, or database URLs with credentials in them.
-- Do not push to `main`. Work on the branch the session starts on and open a pull request.
+- Do not push to `main`. Work on the branch the session starts on and open a pull request. Configuration is the one exception, and the section below says exactly what counts.
 - Do not add a dependency that duplicates one already in `package.json` or `pyproject.toml`. Say what you would add and why before adding it.
 - Do not copy code, markup, stylesheets or problem text from any existing interview-practice product. The feature model in `docs/` is the specification; the implementation is original work.
 - Do not invent a problem, a question, a rubric or an exemplar unless the task asks for content. Building content into code makes it unreviewable.
+
+### The configuration exception
+
+Configuration commits go straight to `main` with no pull request, because a
+review gate on the agent's own settings slows down every session that needs
+them fixed. Configuration means these paths and nothing else:
+
+| Path | What it covers |
+|---|---|
+| `.claude/` | Settings, rules, first-party skills and the vendored skills. |
+| `CLAUDE.md` | This file, including this exception. |
+| `.gitignore` | The ignore rules, which keep secrets and learner audio out of the repository. |
+| `scripts/bootstrap.sh`, `scripts/install_pkgs.sh`, `scripts/cloud-setup.sh`, `scripts/sync-skills.sh` | Session and environment setup that neither CI nor the product invokes. |
+
+Everything else opens a pull request. Three paths read as configuration and are
+still code: `.github/workflows/` decides what runs on every pull request,
+`infra/` is the deploy, and `docs/` is the specification the whole build answers
+to. A new file under `scripts/` is configuration only while nothing in CI and
+nothing in the product imports or runs it, so `scripts/validate_problem.py` is
+code the day it is written.
+
+All three of these hold, or it goes to a branch:
+
+- The working tree holds nothing outside the paths above. A change that mixes
+  configuration with code goes to a branch in full, rather than being split so
+  the configuration half can skip review.
+- The diff carries no secret, key or credentialed URL. That rule is two bullets
+  up and it does not soften here. With no pull request there is no reviewer to
+  catch it, so run `.claude/skills/spec-check` against the diff yourself first.
+- The commit message carries what a pull request body would have carried: what
+  changed, why, and anything you found wrong on the way. No pull request means
+  the message is the only record.
 
 ---
 
