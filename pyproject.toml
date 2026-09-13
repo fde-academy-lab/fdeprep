@@ -1,0 +1,19 @@
+[project]
+name = "fdeprep-runner"
+version = "0.1.0"
+description = "FDE Prep runner: executes learner code against a mock LLM and grades it."
+requires-python = ">=3.12"
+dependencies = [
+    "PyYAML>=6.0.2",
+    "jsonschema>=4.23.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.3.0"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["error"]
+
+[tool.setuptools.packages.find]
+include = ["runner*"]
