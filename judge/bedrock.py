@@ -19,6 +19,15 @@ docs/03 section 4.2 asks for:
   not both, and Anthropic's parameter page says to modify one of the two. The
   spec asks for both. Temperature 0 is the one that matters, so top_p is not
   sent.
+
+A third thing is not in the spec at all and breaks a request that looks
+correct. AWS documents that "thinking isn't compatible with `temperature`,
+`top_p`, or `top_k` modifications", and separately that "adaptive thinking is on
+by default on Claude Sonnet 5 and Claude Opus 5. A request that omits the
+`thinking` field runs with adaptive thinking." So sending temperature 0 and
+saying nothing about thinking sends the one combination the model rejects. The
+judge states its thinking mode in every request and only sends temperature when
+it has turned thinking off.
 """
 
 from __future__ import annotations
@@ -50,14 +59,23 @@ class BedrockTransport:
         return self._client
 
     def complete(self, *, system: str, user: str, max_tokens: int | None = None) -> str:
+        inference: dict[str, Any] = {"maxTokens": max_tokens or self.config.max_tokens}
+        # Temperature only where thinking is off. With thinking on there is no
+        # legal sampling parameter to send, and the determinism the grading path
+        # needs comes from running each probe twice and requiring agreement.
+        if self.config.thinking == "disabled":
+            inference["temperature"] = 0
+
         request = {
             "modelId": self.config.model_id,
             "system": [{"text": system}],
             "messages": [{"role": "user", "content": [{"text": user}]}],
-            "inferenceConfig": {
-                "maxTokens": max_tokens or self.config.max_tokens,
-                "temperature": 0,
-            },
+            "inferenceConfig": inference,
+            # Converse carries model-specific fields here, which is where the
+            # thinking object goes. Stated every time rather than left to the
+            # model default, because that default changed between Sonnet 4.6
+            # and Sonnet 5 and silently turned thinking on.
+            "additionalModelRequestFields": {"thinking": {"type": self.config.thinking}},
         }
 
         last: Exception | None = None

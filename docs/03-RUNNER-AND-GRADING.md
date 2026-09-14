@@ -156,8 +156,8 @@ Import allowlist comes from `problem_version.contract_md` parsed at import time 
    Cost: zero model calls.
 2. Probes from prompt_probe. Each probe sends
    [system = learner's edited prompt, user = probe.user_message]
-   to the pinned model at temperature 0, top_p 1, with a fixed seed
-   where the model supports it, and evaluates probe.assertion.
+   to the pinned model with thinking off and temperature 0, and
+   evaluates probe.assertion.
 3. Rubric judge over the edited prompt, anchored on rubric_exemplar.
 ```
 
@@ -174,6 +174,33 @@ Probe assertions:
 Probes are the only place in the grading path that spends tokens. Each probe is one call. A prompt problem with six probes costs six calls per submission, which is why prompt problems carry the same submit caps as code problems.
 
 Run each probe twice and require both to agree. Disagreement marks the submission `error` and requeues once rather than scoring a coin flip.
+
+That two-run agreement is the whole determinism guarantee on the model path. An
+earlier version of this section also asked for `top_p` 1 and a fixed seed, and
+both were wrong. The Bedrock Converse API takes four inference parameters,
+`maxTokens`, `stopSequences`, `temperature` and `topP`, and the Anthropic
+parameter set on Bedrock adds no seed either, so there is no seed to send. AWS
+documents that recent Claude models accept `temperature` or `top_p` and not
+both, so sending the pair is a rejected request rather than a tighter setting.
+
+The thinking mode has to be stated rather than left to the model. AWS documents
+that "thinking isn't compatible with `temperature`, `top_p`, or `top_k`
+modifications", and separately that adaptive thinking is on by default on Claude
+Opus 5 and Claude Sonnet 5, where a request omitting the `thinking` field runs
+with thinking on. A request carrying temperature 0 and no `thinking` field is
+therefore the one combination those models reject. Probes and the judge send
+`{"thinking": {"type": "disabled"}}` in `additionalModelRequestFields` alongside
+temperature 0.
+
+A deployment that wants the model's own reasoning instead sets the judge to
+adaptive thinking, which sends no sampling parameters at all, because that is
+the only legal shape with thinking on. Grading stays reproducible either way,
+because the control is the two runs and not the temperature. The models AWS
+lists as adaptive-only, the Fable and Mythos families, cannot turn thinking off
+and are refused at start-up rather than failing on every judgement.
+
+Checked 2026-09-14 against the Converse API reference, the Claude Opus 5 and
+Claude Sonnet 5 model cards, and the extended and adaptive thinking pages.
 
 ### 4.3 Design argument
 

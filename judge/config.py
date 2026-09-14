@@ -23,6 +23,21 @@ from dataclasses import dataclass
 # useful. So the prefix is required here and the failure happens at start-up.
 PROFILE_PREFIXES = ("us.", "eu.", "au.", "apac.", "global.", "us-gov.")
 
+# AWS on extended thinking: "Thinking isn't compatible with temperature, top_p,
+# or top_k modifications." AWS on adaptive thinking: "Adaptive thinking is on by
+# default on Claude Sonnet 5 and Claude Opus 5. A request that omits the
+# thinking field runs with adaptive thinking."
+#
+# Those two together mean a judge that sends temperature 0 and says nothing
+# about thinking is sending a combination the model rejects. The judge asks for
+# temperature 0, so it turns thinking off in the same request and says so.
+THINKING_MODES = ("disabled", "adaptive")
+
+# Models AWS documents as adaptive-only, where thinking.type disabled returns a
+# 400. Matched on the family in the id rather than the whole id, since the geo
+# prefix varies. Checked 2026-09-14 against the adaptive thinking page.
+ADAPTIVE_ONLY = ("claude-fable-", "claude-mythos-")
+
 DEFAULT_MAX_TOKENS = 1500
 DEFAULT_PROBE_MAX_TOKENS = 600
 
@@ -31,6 +46,11 @@ DEFAULT_PROBE_MAX_TOKENS = 600
 class JudgeConfig:
     model_id: str
     region: str
+    # "disabled" buys reproducible grading: thinking off, temperature 0.
+    # "adaptive" buys the model's own judgement at the cost of sending no
+    # sampling parameters at all, which is the only legal shape with thinking
+    # on. Two-run agreement is the determinism control either way.
+    thinking: str = "disabled"
     max_tokens: int = DEFAULT_MAX_TOKENS
     probe_max_tokens: int = DEFAULT_PROBE_MAX_TOKENS
     # docs/03 section 8: retry twice with backoff, then mark error.
@@ -53,12 +73,29 @@ def validate_model_id(model_id: str) -> str:
     return model_id
 
 
+def validate_thinking(mode: str, model_id: str) -> str:
+    if mode not in THINKING_MODES:
+        raise ValueError(
+            f"JUDGE_THINKING {mode!r} is not one of {', '.join(THINKING_MODES)}. "
+            "Manual extended thinking with a token budget is not supported on the models "
+            "this judge runs against.")
+    if mode == "disabled" and any(family in model_id for family in ADAPTIVE_ONLY):
+        raise ValueError(
+            f"JUDGE_MODEL_ID {model_id!r} supports adaptive thinking only, so "
+            "thinking.type disabled returns a 400 on it. Set JUDGE_THINKING=adaptive, "
+            "which sends no sampling parameters, or pick a model that can turn thinking off.")
+    return mode
+
+
 def load_config() -> JudgeConfig:
     model_id = validate_model_id(os.environ.get("JUDGE_MODEL_ID", "").strip())
     region = os.environ.get("JUDGE_REGION") or os.environ.get("AWS_REGION") or "us-east-1"
+    thinking = validate_thinking(
+        os.environ.get("JUDGE_THINKING", "disabled").strip().lower(), model_id)
     return JudgeConfig(
         model_id=model_id,
         region=region,
+        thinking=thinking,
         max_tokens=int(os.environ.get("JUDGE_MAX_TOKENS", DEFAULT_MAX_TOKENS)),
         probe_max_tokens=int(os.environ.get("JUDGE_PROBE_MAX_TOKENS", DEFAULT_PROBE_MAX_TOKENS)),
         retries=int(os.environ.get("JUDGE_RETRIES", 2)),

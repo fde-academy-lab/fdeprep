@@ -60,12 +60,31 @@ class TestConverseRequest:
         assert config["temperature"] == 0
         assert isinstance(config["maxTokens"], int)
 
+    def test_thinking_is_turned_off_explicitly_when_temperature_is_sent(self):
+        """AWS: "Thinking isn't compatible with temperature, top_p, or top_k
+        modifications", and adaptive thinking is on by default on Claude Opus 5
+        and Sonnet 5, so a request that omits the thinking field runs with
+        thinking on. Sending temperature 0 without turning thinking off is the
+        combination the model rejects."""
+        sent = self._sent()
+        assert sent["additionalModelRequestFields"]["thinking"] == {"type": "disabled"}
+
     def test_no_seed_is_sent(self):
         """docs/03 section 4.2 asks for a fixed seed. Converse has no seed
         field and neither does the Anthropic parameter set on Bedrock, so the
         determinism the spec wants comes from the two-run agreement rule
         instead. Sending an unknown key is a 400."""
         assert "seed" not in self._sent()["inferenceConfig"]
+
+    def test_adaptive_thinking_sends_no_sampling_parameters(self):
+        """The other half of the same rule. With thinking on, temperature is
+        the parameter that has to go."""
+        config = JudgeConfig(model_id="us.anthropic.claude-opus-5", region="us-east-1",
+                             thinking="adaptive")
+        sent = self._sent(config)
+        assert sent["additionalModelRequestFields"]["thinking"] == {"type": "adaptive"}
+        assert "temperature" not in sent["inferenceConfig"]
+        assert "topP" not in sent["inferenceConfig"]
 
     def test_top_p_is_not_sent_alongside_temperature(self):
         """AWS documents that recent Claude models accept temperature or top_p
@@ -143,6 +162,32 @@ class TestConfig:
 
     def test_an_unset_model_is_refused(self, monkeypatch):
         monkeypatch.delenv("JUDGE_MODEL_ID", raising=False)
+        with pytest.raises(ValueError):
+            load_config()
+
+    def test_thinking_defaults_to_disabled(self, monkeypatch):
+        monkeypatch.setenv("JUDGE_MODEL_ID", "us.anthropic.claude-opus-5")
+        assert load_config().thinking == "disabled"
+
+    def test_a_model_that_only_does_adaptive_thinking_refuses_disabled(self, monkeypatch):
+        """AWS documents that Fable and Mythos support adaptive thinking only,
+        and that thinking.type disabled returns a 400 on them. Refusing here
+        turns that into a start-up failure with a reason rather than every
+        judgement erroring."""
+        monkeypatch.setenv("JUDGE_MODEL_ID", "us.anthropic.claude-fable-5-1")
+        monkeypatch.setenv("JUDGE_THINKING", "disabled")
+        with pytest.raises(ValueError) as excinfo:
+            load_config()
+        assert "adaptive" in str(excinfo.value)
+
+    def test_the_same_model_is_accepted_with_adaptive_thinking(self, monkeypatch):
+        monkeypatch.setenv("JUDGE_MODEL_ID", "us.anthropic.claude-fable-5-1")
+        monkeypatch.setenv("JUDGE_THINKING", "adaptive")
+        assert load_config().thinking == "adaptive"
+
+    def test_an_unknown_thinking_mode_is_refused(self, monkeypatch):
+        monkeypatch.setenv("JUDGE_MODEL_ID", "us.anthropic.claude-opus-5")
+        monkeypatch.setenv("JUDGE_THINKING", "enabled")
         with pytest.raises(ValueError):
             load_config()
 
