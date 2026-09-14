@@ -1,8 +1,14 @@
-/** Screen S4, the code workspace. */
+/**
+ * Screen S4, the code workspace.
+ *
+ * This component asks the policy module what to render and renders that. It
+ * takes no view of its own on what a tier does, which is what keeps the four
+ * tiers from drifting apart as the ladder changes.
+ */
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db/pool";
-import { policyFor, hintButtonLabel, type Difficulty } from "@/lib/policy/difficulty";
+import { resolvePolicy } from "@/lib/policy";
 import { currentLearner } from "@/lib/session/current";
 import Workspace from "./workspace";
 
@@ -13,36 +19,24 @@ export default async function WorkspacePage({ params }: { params: Promise<{ slug
   const learner = await currentLearner();
 
   const { rows } = await db().query<{
-    id: string; title: string; difficulty: Difficulty; track: string;
+    id: string; title: string; track: string; tier: string;
     brief_md: string; contract_md: string | null; stub_code: string | null;
     steps: Array<{ id: string; text: string }>; call_budget: number | null;
-    allowed_imports: string[]; hints: number; failed_runs: number;
-    attempt_note: string | null; submits_left: number;
+    allowed_imports: string[]; reference_md: string | null;
   }>(
-    `select p.id, p.title, p.difficulty::text as difficulty, p.track,
-            v.brief_md, v.contract_md, v.stub_code, v.steps, v.call_budget, v.allowed_imports,
-            (select count(*) from hint h where h.problem_version_id = v.id)::int as hints,
-            coalesce((select count(*) from submission s join attempt a2 on a2.id = s.attempt_id
-                       where a2.enrolment_id = $2 and a2.problem_id = p.id
-                         and s.verdict is not null and s.verdict <> 'pass'), 0)::int as failed_runs,
-            a.attempt_note,
-            greatest(0, coalesce(pol.max_count, 0) - coalesce(c.count, 0))::int as submits_left
+    `select p.id, p.title, p.track, p.difficulty::text as tier,
+            v.brief_md, v.contract_md, v.stub_code, v.steps, v.call_budget,
+            v.allowed_imports, v.reference_md
        from problem p
        join problem_version v on v.problem_id = p.id and v.version = p.current_version
-       left join attempt a on a.problem_id = p.id and a.enrolment_id = $2
-       left join rate_limit_policy pol
-              on pol.scope = 'submit_daily' and pol.difficulty = p.difficulty
-       left join rate_limit_counter c
-              on c.enrolment_id = $2 and c.scope = 'submit_daily' and c.problem_id = p.id
-             and c.window_start > now() - interval '1 day'
-      where p.slug = $1`, [slug, learner.enrolmentId]);
+      where p.slug = $1`, [slug]);
 
   const problem = rows[0];
   if (!problem) notFound();
 
-  // Every question about what this tier renders is answered by the policy
-  // module. No component reads difficulty to decide for itself.
-  const policy = policyFor(problem.difficulty);
+  const policy = await resolvePolicy({
+    enrolmentId: learner.enrolmentId, problemId: Number(problem.id),
+  });
 
   return (
     <main className="flex h-screen flex-col">
@@ -50,26 +44,29 @@ export default async function WorkspacePage({ params }: { params: Promise<{ slug
         <div className="flex items-baseline gap-3">
           <Link href="/problems" className="text-text-dim hover:text-accent">&lt; Problems</Link>
           <h1 className="font-semibold">{problem.title}</h1>
-          <span className="capitalize text-text-dim">{problem.difficulty}</span>
+          <span className="capitalize text-text-dim">{problem.tier}</span>
           <span className="text-text-dim">{problem.track}</span>
         </div>
-        <span className="tnum text-text-dim">Submits left today: {problem.submits_left}</span>
+        <span className="tnum text-text-dim">
+          {policy.submit.max === null
+            ? "Submits today: unlimited"
+            : `Submits left today: ${policy.submit.remaining}`}
+        </span>
       </header>
 
       <Workspace
         problemId={Number(problem.id)}
-        title={problem.title}
+        policy={policy}
         briefMd={problem.brief_md}
-        contractMd={policy.showsContract ? problem.contract_md : null}
-        stubCode={policy.showsStub ? (problem.stub_code ?? "") : ""}
-        steps={policy.showsSteps ? (problem.steps ?? []) : []}
+        // Each of these renders only if the policy says its layer is on. The
+        // server withholds the content rather than hiding it in the client, so
+        // a tier that should not show a stub does not ship one to the browser.
+        contractMd={policy.layers.contract ? problem.contract_md : null}
+        stubCode={policy.layers.stub ? (problem.stub_code ?? "") : ""}
+        steps={policy.layers.steps ? (problem.steps ?? []) : []}
+        referenceMd={policy.layers.reference ? problem.reference_md : null}
         callBudget={problem.call_budget}
         allowedImports={problem.allowed_imports ?? []}
-        hintCount={problem.hints}
-        hintLabel={hintButtonLabel(
-          problem.difficulty, problem.failed_runs, problem.attempt_note?.length ?? 0)}
-        showsHiddenCount={policy.showsHiddenCount}
-        confirmBeforeSubmit={policy.confirmBeforeSubmit}
       />
     </main>
   );

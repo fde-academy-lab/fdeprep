@@ -60,6 +60,10 @@ jobs:
         working-directory: web
       - run: npm run typecheck
         working-directory: web
+      # CLAUDE.md's "no component reads difficulty directly" is enforced by a
+      # lint rule rather than remembered. eslint-rules/no-direct-difficulty.js.
+      - run: npm run lint
+        working-directory: web
       - run: npm test
         working-directory: web
 
