@@ -8,7 +8,8 @@
  * cannot overwrite a fresh result or revive a cancelled submission.
  */
 import { inTransaction } from "../db/pool.ts";
-import { refundAllowance } from "../submissions/create.ts";
+import { applyForSubmission } from "../competency/score.ts";
+import { refund } from "../policy/caps.ts";
 
 export interface ResultMessage {
   submission_id: number;
@@ -58,8 +59,12 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
 
     // docs/03 section 8: infrastructure failures are the platform's problem.
     if (verdict === "error" || verdict === "timeout") {
-      await refundAllowance(client, message.submission_id);
+      await refund(client, message.submission_id);
     }
+
+    // docs/02 section 7: transitions are computed on every finished
+    // submission, not only on a pass, because attempted is a state too.
+    await applyForSubmission(client, message.submission_id);
 
     if (verdict === "pass") {
       await client.query(

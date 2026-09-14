@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {
-  createSubmission, DuplicateSubmissionError, RateLimitError, type RunKind,
+  createSubmission, DuplicateSubmissionError, GateRefused, RateLimitError, type RunKind,
 } from "@/lib/submissions/create";
 import { dispatchOnce } from "@/lib/queue/dispatcher";
 import { currentLearner } from "@/lib/session/current";
@@ -34,7 +34,7 @@ export async function POST(request: Request) {
     if (error instanceof RateLimitError) {
       return NextResponse.json({ message: error.message }, { status: 429 });
     }
-    if (error instanceof DuplicateSubmissionError) {
+    if (error instanceof DuplicateSubmissionError || error instanceof GateRefused) {
       return NextResponse.json({ message: error.message }, { status: 409 });
     }
     throw error;

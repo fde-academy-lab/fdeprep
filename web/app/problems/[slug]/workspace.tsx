@@ -8,20 +8,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import type { SubmissionView } from "@/lib/submissions/view";
+import type { Decision } from "@/lib/policy";
 
 interface Props {
   problemId: number;
-  title: string;
+  policy: Decision;
   briefMd: string;
   contractMd: string | null;
   stubCode: string;
   steps: Array<{ id: string; text: string }>;
+  referenceMd: string | null;
   callBudget: number | null;
   allowedImports: string[];
-  hintCount: number;
-  hintLabel: string;
-  showsHiddenCount: boolean;
-  confirmBeforeSubmit: boolean;
 }
 
 type Tab = "problem" | "attempts" | "trace";
@@ -31,6 +29,31 @@ const MAX_LEFT = 60;
 const MIN_EDITOR = 25;
 
 export default function Workspace(props: Props) {
+  // The single source of truth for what this tier does. Re-fetched after any
+  // action that can move a gate, so the buttons never lie about their state.
+  const [policy, setPolicy] = useState<Decision>(props.policy);
+  const [hints, setHints] = useState<Array<{ ordinal: number; bodyMd: string }>>([]);
+  const [note, setNote] = useState("");
+  const [learnerTest, setLearnerTest] = useState("");
+  const [gateNotice, setGateNotice] = useState<string | null>(null);
+
+  const refreshPolicy = useCallback(async () => {
+    const response = await fetch(`/api/problems/${props.problemId}/policy`);
+    if (response.ok) setPolicy((await response.json()) as Decision);
+  }, [props.problemId]);
+
+  const act = useCallback(async (path: string, init?: RequestInit) => {
+    setGateNotice(null);
+    const response = await fetch(`/api/problems/${props.problemId}/${path}`, init);
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setGateNotice((payload as { message?: string }).message ?? "That did not go through.");
+      return null;
+    }
+    await refreshPolicy();
+    return payload;
+  }, [props.problemId, refreshPolicy]);
+
   const storageKey = `fdeprep.split.${props.problemId}`;
   const [leftWidth, setLeftWidth] = useState(34);
   const [editorHeight, setEditorHeight] = useState(55);
@@ -100,7 +123,7 @@ export default function Workspace(props: Props) {
   };
 
   const submit = async (kind: "run" | "submit") => {
-    if (kind === "submit" && props.confirmBeforeSubmit &&
+    if (kind === "submit" && policy.confirmBeforeSubmit &&
         !confirm("This is your only attempt today on an Extreme problem. Submit it?")) return;
 
     setRunning(true);
@@ -118,6 +141,7 @@ export default function Workspace(props: Props) {
       const problem = (await response.json()) as { message?: string };
       setNotice(problem.message ?? "That did not go through. Try again.");
       setRunning(false);
+      await refreshPolicy();
       return;
     }
 
@@ -128,7 +152,13 @@ export default function Workspace(props: Props) {
   /** Server-sent events, with polling as the fallback. */
   const listen = (id: number) => {
     let settled = false;
-    const stop = () => { settled = true; streamRef.current?.close(); setRunning(false); };
+    const stop = () => {
+      settled = true;
+      streamRef.current?.close();
+      setRunning(false);
+      // A finished run can move a gate: one failed run unlocks Medium hints.
+      void refreshPolicy();
+    };
 
     try {
       const stream = new EventSource(`/api/submissions/${id}/events`);
@@ -176,7 +206,11 @@ export default function Workspace(props: Props) {
         {tab === "problem" && (
           <div className="space-y-5 px-4 py-4">
             <Section title="Brief"><Prose text={props.briefMd} /></Section>
-            {props.contractMd && <Section title="Contract"><Prose text={props.contractMd} /></Section>}
+
+            {props.contractMd && (
+              <Section title="Contract"><Prose text={props.contractMd} /></Section>
+            )}
+
             {props.steps.length > 0 && (
               <Section title="Steps">
                 <ul className="space-y-1">
@@ -188,13 +222,96 @@ export default function Workspace(props: Props) {
                 </ul>
               </Section>
             )}
-            <Section title="Hints">
-              <button type="button" disabled={props.hintLabel !== "Reveal a hint"}
+
+            {policy.attemptNote.required && (
+              <Section title="Attempt note">
+                <p className="mb-1 text-text-dim">
+                  Say what you have tried and where it stops working. Hints unlock at{" "}
+                  {policy.attemptNote.chars + policy.attemptNote.needed} characters.
+                </p>
+                <textarea
+                  value={note} onChange={(e) => setNote(e.target.value)}
+                  onBlur={() => void act("note", {
+                    method: "PUT", headers: { "content-type": "application/json" },
+                    body: JSON.stringify({ note }),
+                  })}
+                  rows={5} aria-label="Attempt note"
+                  className="w-full rounded border border-border bg-surface-2 p-2 font-mono"
+                />
+                <p className="tnum mt-1 text-text-faint">
+                  {note.length} characters
+                  {policy.attemptNote.needed > 0 && `, ${policy.attemptNote.needed} to go`}
+                </p>
+              </Section>
+            )}
+
+            {policy.learnerTests.required && (
+              <Section title="Write your tests first">
+                <p className="mb-1 text-text-dim">
+                  On Extreme the tests come first. Submit stays closed until one of them
+                  contains an assertion.
+                </p>
+                <textarea
+                  value={learnerTest} onChange={(e) => setLearnerTest(e.target.value)}
+                  rows={6} aria-label="Your test"
+                  className="w-full rounded border border-border bg-surface-2 p-2 font-mono"
+                />
+                <button type="button"
+                        onClick={() => void act("learner-tests", {
+                          method: "POST", headers: { "content-type": "application/json" },
+                          body: JSON.stringify({ body: learnerTest }),
+                        }).then(() => setLearnerTest(""))}
+                        className="mt-1 rounded border border-border px-2 py-1 text-text-dim
+                                   hover:text-text">
+                  Save this test
+                </button>
+              </Section>
+            )}
+
+            {policy.layers.hints && (
+              <Section title="Hints">
+                {hints.map((hint) => (
+                  <p key={hint.ordinal} className="mb-2 text-text">
+                    <span className="text-text-faint">{hint.ordinal}.</span> {hint.bodyMd}
+                  </p>
+                ))}
+                <button type="button" disabled={!policy.hints.allowed}
+                        onClick={() => void act("hints", { method: "POST" }).then((h) => {
+                          if (h) setHints((prior) => [...prior,
+                            h as { ordinal: number; bodyMd: string }]);
+                        })}
+                        className="rounded border border-border px-2 py-1 text-text-dim
+                                   hover:text-text disabled:text-text-faint">
+                  {policy.hints.label}
+                </button>
+                {!policy.hints.allowed && policy.hints.reason && (
+                  <p className="mt-1 text-text-faint">{policy.hints.reason}</p>
+                )}
+              </Section>
+            )}
+
+            {props.referenceMd && (
+              <Section title="Walkthrough"><Prose text={props.referenceMd} /></Section>
+            )}
+
+            <Section title="Stuck">
+              <button type="button" disabled={!policy.giveUp.allowed}
+                      onClick={() => {
+                        if (!confirm(
+                          "Give up on this problem? The walkthrough unlocks and the choice is " +
+                          "recorded on your attempt.")) return;
+                        void act("give-up", {
+                          method: "POST", headers: { "content-type": "application/json" },
+                          body: JSON.stringify({ reason: note || null }),
+                        });
+                      }}
                       className="rounded border border-border px-2 py-1 text-text-dim
-                                 disabled:text-text-faint">
-                {props.hintLabel}{props.hintCount ? ` (${props.hintCount})` : ""}
+                                 hover:text-text disabled:text-text-faint">
+                {policy.giveUp.label}
               </button>
             </Section>
+
+            {gateNotice && <p className="text-warn">{gateNotice}</p>}
           </div>
         )}
         {tab === "attempts" && (
@@ -234,15 +351,19 @@ export default function Workspace(props: Props) {
                     className="rounded border border-border px-3 py-1 text-text-dim hover:text-text">
               Reset
             </button>
-            <button type="button" onClick={() => void submit("run")} disabled={running}
+            <button type="button" onClick={() => void submit("run")}
+                    disabled={running || !policy.run.allowed}
+                    title={policy.run.reason ?? undefined}
                     className="rounded border border-accent px-3 py-1 text-accent
                                disabled:border-border disabled:text-text-faint">
-              {running ? "Running" : "Run"}
+              {running ? "Running" : policy.run.label}
             </button>
-            <button type="button" onClick={() => void submit("submit")} disabled={running}
+            <button type="button" onClick={() => void submit("submit")}
+                    disabled={running || !policy.submit.allowed}
+                    title={policy.submit.reason ?? undefined}
                     className="ml-auto rounded border border-border px-3 py-1 text-text-dim
                                hover:text-text disabled:text-text-faint">
-              Submit
+              {policy.submit.label}
             </button>
           </div>
         </div>
@@ -251,8 +372,8 @@ export default function Workspace(props: Props) {
              aria-label="Resize the output pane"
              className="h-1 cursor-row-resize bg-border hover:bg-accent" />
 
-        <Output view={view} running={running} notice={notice}
-                showsHiddenCount={props.showsHiddenCount} />
+        <Output view={view} running={running} notice={notice ?? gateNotice}
+                showsHiddenCount={policy.visibility.hiddenCount} />
       </section>
     </div>
   );
