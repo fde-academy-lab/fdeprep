@@ -184,6 +184,31 @@ describe("the submissions route", () => {
     expect(rows[0]!.kind).toBe("defence");
   });
 
+  it("has finished dispatching by the time it answers", async () => {
+    // The route nudges the dispatcher. While that nudge was fired and not
+    // awaited, it outlived the request, and the next test's resetDatabase
+    // truncate deadlocked against it on outbox:
+    //
+    //   Process 116: truncate outbox, queue_message, ... restart identity cascade
+    //   Process 108: update outbox set sent_at = now() where id = $1
+    //
+    // Only the dispatcher sets sent_at, so a row still unsent here means a
+    // transaction is running that nobody holds a handle to.
+    const { POST } = await import("../app/api/submissions/route.ts");
+    const problemId = await problemBySlug("echo-the-question");
+
+    const response = await POST(new Request("http://local/api/submissions", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ problemId, kind: "run", body: "def run_agent(q, llm, tools): return q" }),
+    }));
+    expect(response.status).toBe(202);
+
+    const { rows } = await db().query<{ sent_at: Date | null }>(
+      "select sent_at from outbox order by id desc limit 1");
+    expect(rows[0]!.sent_at).not.toBeNull();
+  });
+
   it("falls back to a run for a kind it does not know", async () => {
     const { POST } = await import("../app/api/submissions/route.ts");
     const problemId = await problemBySlug("echo-the-question");

@@ -32,7 +32,13 @@ export async function POST(request: Request) {
 
     // Nudge the dispatcher so a local run does not wait for the next tick. The
     // deployed dispatcher runs on its own schedule and this is a no-op there.
-    void dispatchOnce().catch(() => {});
+    //
+    // Awaited, not fired and forgotten. An un-awaited dispatch outlives the
+    // request that started it, and anything that then touches outbox, a test's
+    // truncate included, deadlocks against a transaction nobody is holding a
+    // handle to. Awaiting also makes the 202 mean the message is queued rather
+    // than probably queued. The cost is one bounded batch of queries.
+    await dispatchOnce().catch(() => {});
 
     return NextResponse.json({ id: submission.id }, { status: 202 });
   } catch (error) {
