@@ -1,0 +1,94 @@
+# Throwaway fixture for Phase 2. Crude on purpose: real content lands in Phase 8.
+slug: echo-the-question
+title: Echo the question
+artefact_type: code
+difficulty: easy
+track: agent-loop
+est_minutes: 10
+call_budget: 6
+time_limit_s: 5
+allowed_imports: [json, re]
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+
+brief_md: |
+  A fixture problem used to exercise the catalogue and the workspace. It asks
+  for an agent loop that calls the probe tool once and returns what the model
+  finally says.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  Budget: at most 6 model calls. Allowed imports: json, re.
+
+stub_code: |
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Question: {question}\n"
+      for _ in range(6):
+          output = llm(scratchpad)
+          # TODO: return the text when output is a Final Answer
+          # TODO: otherwise call the probe tool and append what it returned
+          pass
+      return "I could not complete this request."
+
+hints:
+  - Look at what the tool returns, not at the status code.
+  - An unchanged prompt gets an unchanged reply.
+
+tests:
+  - name: public_one
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "case 1 for echo-the-question" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: probe(id=1)" }
+        - { match: "*", reply: "Final Answer: done 1" }
+      tools:
+        probe: { returns: { status: 200, data: { state: "ok" } } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 5000 }
+      assertions:
+        - { type: returns_nonempty }
+  - name: public_two
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "case 2 for echo-the-question" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: probe(id=2)" }
+        - { match: "*", reply: "Final Answer: done 2" }
+      tools:
+        probe: { returns: { status: 200, data: { state: "ok" } } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 5000 }
+      assertions:
+        - { type: returns_nonempty }
+  - name: hidden_one
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "case 3 for echo-the-question" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: probe(id=3)" }
+        - { match: "*", reply: "Final Answer: done 3" }
+      tools:
+        probe: { returns: { status: 200, data: { state: "ok" } } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 5000 }
+      assertions:
+        - { type: returns_nonempty }
+        - { type: terminates }
+  - name: hidden_two
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "case 4 for echo-the-question" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: probe(id=4)" }
+        - { match: "*", reply: "Final Answer: done 4" }
+      tools:
+        probe: { returns: { status: 200, data: { state: "ok" } } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 5000 }
+      assertions:
+        - { type: returns_nonempty }
+        - { type: terminates }

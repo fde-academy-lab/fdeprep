@@ -1,0 +1,39 @@
+@import "tailwindcss";
+
+/* docs/08 section 3. One accent, four state colours, each meaning one thing. */
+@theme {
+  --color-bg: #0B0C0E;
+  --color-surface: #131519;
+  --color-surface-2: #1A1D23;
+  --color-border: #24282F;
+  --color-text: #E6E9EF;
+  --color-text-dim: #9AA3B0;
+  --color-text-faint: #5C6470;
+  --color-accent: #4F8EF7;
+  --color-pass: #3FB950;
+  --color-fail: #F85149;
+  --color-warn: #D29922;
+  --color-info: #58A6FF;
+
+  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+}
+
+:root { color-scheme: dark; }
+
+html, body {
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+/* Figures that change width while a timer runs make a dashboard feel unstable. */
+table, .tnum { font-feature-settings: "tnum" 1; }
+
+/* docs/08: transitions under 150ms, and none in a results pane. */
+button, a, input, select { transition: background-color 120ms, border-color 120ms, color 120ms; }
+.results-pane * { transition: none !important; animation: none !important; }
+
+:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }

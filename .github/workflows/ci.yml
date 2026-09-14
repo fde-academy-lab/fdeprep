@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  problems:
+    name: Validate problems
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - run: npm ci
+        working-directory: web
+      # docs/04: a broken problem should never reach the import screen, so this
+      # gate runs on every push rather than at import time.
+      - run: npm run validate:problems
+        working-directory: web
+
+  web:
+    name: Web typecheck and tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          # CLAUDE.md forbids a credentialed database URL in the repository, so
+          # the service container trusts local connections and DATABASE_URL
+          # below carries no password.
+          POSTGRES_HOST_AUTH_METHOD: trust
+          POSTGRES_DB: fdeprep_test
+        options: >-
+          --health-cmd pg_isready --health-interval 10s
+          --health-timeout 5s --health-retries 5
+        ports: ["5432:5432"]
+    env:
+      DATABASE_URL: postgresql://postgres@localhost:5432/fdeprep_test
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      # The end-to-end tests drive real submissions through the Phase 1
+      # battery, which is Python. Without it the worker cannot spawn the
+      # runner, every submission comes back with an error verdict, and the
+      # suite fails for a reason that has nothing to do with the change.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: npm ci
+        working-directory: web
+      - run: npm run typecheck
+        working-directory: web
+      - run: npm test
+        working-directory: web
+
+  runner:
+    name: Runner tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements-dev.txt
+      - run: python -m pytest -q
