@@ -1,0 +1,28 @@
+# The judge Lambda. Verified against
+# https://docs.aws.amazon.com/lambda/latest/dg/python-image.html on 2026-09-14.
+#
+# This image has Bedrock permission and no code execution. It shares no layer
+# with the runner image on purpose: the two Lambdas never merge, and a shared
+# base is the first step towards someone importing one from the other.
+#
+# Build:  docker buildx build --platform linux/amd64 --provenance=false \
+#           -f Dockerfile.judge -t fdeprep-judge:dev .
+# Run:    docker run --platform linux/amd64 -p 9001:8080 \
+#           -e JUDGE_MODEL_ID=us.anthropic.claude-opus-5 fdeprep-judge:dev
+# Invoke: curl "http://localhost:9001/2015-03-31/functions/function/invocations" -d @event.json
+FROM public.ecr.aws/lambda/python:3.12
+
+COPY requirements-judge.txt ${LAMBDA_TASK_ROOT}/
+
+RUN --mount=type=secret,id=ca_bundle \
+    if [ -f /run/secrets/ca_bundle ]; then export PIP_CERT=/run/secrets/ca_bundle; fi; \
+    pip install --no-cache-dir -r ${LAMBDA_TASK_ROOT}/requirements-judge.txt
+
+COPY judge/ ${LAMBDA_TASK_ROOT}/judge/
+
+ENV PYTHONPATH="${LAMBDA_TASK_ROOT}"
+ENV PYTHONDONTWRITEBYTECODE=1
+
+# JUDGE_MODEL_ID is set by the deploy, never here: the model a cohort is graded
+# against is a deploy variable and baking it into the image hides it.
+CMD [ "judge.handler.lambda_handler" ]

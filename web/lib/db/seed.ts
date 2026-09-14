@@ -18,6 +18,7 @@ export async function seedRateLimitPolicies(client: Pool | PoolClient): Promise<
       ('submit_daily',     'hard',    5,    86400),
       ('submit_daily',     'extreme', 1,    86400),
       ('live_daily',       null,      10,   86400),
-      ('rehearsal_weekly', null,      2,    604800)
+      ('rehearsal_weekly', null,      2,    604800),
+      ('defence_daily',    null,      5,    86400)
     on conflict do nothing`);
 }

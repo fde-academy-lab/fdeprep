@@ -11,6 +11,9 @@ call_budget: 6
 time_limit_s: 10
 allowed_imports: [json, re]
 
+defence_question: |
+  Say why a retry that sends an identical prompt would not have recovered this, and what your code sends instead.
+
 brief_md: |
   A shipping-status tool in your pipeline answers with HTTP 200 even when it
   fails. The failure arrives as an `error` key inside the response body, so any

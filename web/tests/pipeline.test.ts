@@ -33,15 +33,19 @@ async function problemBySlug(slug: string) {
   return rows[0] as { id: string; difficulty: string; version_id: string };
 }
 
-describe("acceptance 1: eight problems import and appear in the catalogue", () => {
+// Eight code fixtures from Phase 2, plus the two prompt fixtures and the
+// design fixture Phase 4 needed.
+const FIXTURE_COUNT = 11;
+
+describe("acceptance 1: every fixture imports and appears in the catalogue", () => {
   it("imports every fixture and lists them", async () => {
     const imported = await importFixtures();
-    expect(imported).toBe(8);
+    expect(imported).toBe(FIXTURE_COUNT);
 
     const page = await listProblems({ enrolmentId: learner.enrolmentId });
-    expect(page.total).toBe(8);
-    expect(page.rows).toHaveLength(8);
-    expect(new Set(page.rows.map((r) => r.slug)).size).toBe(8);
+    expect(page.total).toBe(FIXTURE_COUNT);
+    expect(page.rows).toHaveLength(FIXTURE_COUNT);
+    expect(new Set(page.rows.map((r) => r.slug)).size).toBe(FIXTURE_COUNT);
   });
 
   it("writes a problem_version carrying the source verbatim", async () => {

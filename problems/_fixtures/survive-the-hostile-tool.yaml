@@ -12,6 +12,9 @@ competencies:
   - { slug: failure-mode-analysis, weight: 1.0 }
   - { slug: system-design, weight: 1.0 }
 
+defence_question: |
+  Your loop returned an answer. Say what the hostile tool did and why your handling of it does not depend on the tool being honest.
+
 brief_md: |
   A fixture problem used to exercise the catalogue and the workspace. It asks
   for an agent loop that calls the probe tool once and returns what the model

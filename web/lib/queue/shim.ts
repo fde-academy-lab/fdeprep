@@ -8,7 +8,7 @@
  */
 import { db } from "../db/pool.ts";
 
-export type QueueName = "submissions" | "results";
+export type QueueName = "submissions" | "judgements" | "results";
 
 export interface QueueMessage {
   id: number;

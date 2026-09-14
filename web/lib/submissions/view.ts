@@ -15,6 +15,42 @@ export interface GateView {
   cases: Array<{ name: string; status: string; message: string | null }>;
 }
 
+/** The prompt gate's checklist, which carries labels rather than case names. */
+export interface CheckView {
+  kind: string;
+  label: string;
+  status: "pass" | "fail";
+  message: string | null;
+}
+
+export interface ProbeView {
+  status: "pass" | "fail" | "skipped";
+  passed: number;
+  total: number;
+  cases: Array<{
+    name: string;
+    status: string;
+    detail: string | null;
+    assertionType: string;
+    /** docs/01 S5: null until the learner has passed the problem. */
+    userMessage: string | null;
+    response: string | null;
+  }>;
+}
+
+export interface RubricView {
+  status: "pass" | "fail" | "skipped";
+  percent: number | null;
+  threshold: number | null;
+  criteria: Array<{
+    label: string;
+    weight: number;
+    score: number;
+    evidenceQuote: string;
+    quoteGrounded: boolean;
+  }>;
+}
+
 export interface SubmissionView {
   id: number;
   status: "queued" | "running" | "evaluating" | "terminal";
@@ -24,6 +60,11 @@ export interface SubmissionView {
   queuedAt: string;
   finishedAt: string | null;
   gates: { static: GateView; public: GateView; hidden: GateView; adversarial: GateView };
+  /** Present on prompt and design submissions, empty on code. */
+  checks: CheckView[];
+  probes: ProbeView;
+  rubric: RubricView;
+  modelCalls: number | null;
   budget: Record<string, unknown> | null;
   message: string | null;
 }
@@ -61,8 +102,66 @@ export async function publicView(submissionId: number): Promise<SubmissionView> 
       hidden: trim(gates["hidden"], alreadyPassed),
       adversarial: trim(gates["adversarial"], alreadyPassed),
     },
+    checks: trimChecks(gates["static"]),
+    probes: trimProbes(gates["probes"], alreadyPassed),
+    rubric: trimRubric(gates["rubric"]),
+    modelCalls: row.result?.["model_calls"] === undefined
+      ? null : Number(row.result["model_calls"]),
     budget: (row.result?.["budget"] ?? null) as Record<string, unknown> | null,
     message: (row.result?.["message"] ?? null) as string | null,
+  };
+}
+
+function trimChecks(gate: Record<string, any> | undefined): CheckView[] {
+  const checks = (gate?.["checks"] ?? []) as Array<Record<string, unknown>>;
+  return checks.map((check) => ({
+    kind: String(check["kind"] ?? ""),
+    label: String(check["label"] ?? ""),
+    status: check["status"] === "pass" ? "pass" : "fail",
+    message: check["message"] === null || check["message"] === undefined
+      ? null : String(check["message"]),
+  }));
+}
+
+/**
+ * docs/01 S5: the probe's full input text is visible only after a pass, so
+ * learners cannot tune to the probe wording. The judge already withholds it;
+ * this is the second place it is withheld, because the cost of getting it
+ * wrong is that every cohort after the first knows the probes.
+ */
+function trimProbes(gate: Record<string, any> | undefined, reveal: boolean): ProbeView {
+  if (!gate) return { status: "skipped", passed: 0, total: 0, cases: [] };
+  const cases = (gate["cases"] ?? []) as Array<Record<string, any>>;
+  return {
+    status: (gate["status"] ?? "skipped") as ProbeView["status"],
+    passed: Number(gate["passed"] ?? 0),
+    total: Number(gate["total"] ?? 0),
+    cases: cases.map((probe) => ({
+      name: String(probe["name"]),
+      status: String(probe["status"]),
+      detail: probe["detail"] === undefined ? null : String(probe["detail"]),
+      assertionType: String(probe["assertion"]?.["type"] ?? ""),
+      userMessage: reveal && probe["user_message"] ? String(probe["user_message"]) : null,
+      response: reveal && probe["response"] ? String(probe["response"]) : null,
+    })),
+  };
+}
+
+function trimRubric(gate: Record<string, any> | undefined): RubricView {
+  if (!gate) return { status: "skipped", percent: null, threshold: null, criteria: [] };
+  const criteria = (gate["criteria"] ?? []) as Array<Record<string, any>>;
+  return {
+    status: (gate["status"] ?? "skipped") as RubricView["status"],
+    percent: gate["percent"] === undefined ? null : Number(gate["percent"]),
+    threshold: gate["threshold"] === undefined || gate["threshold"] === null
+      ? null : Number(gate["threshold"]),
+    criteria: criteria.map((criterion) => ({
+      label: String(criterion["label"] ?? criterion["criterion_id"]),
+      weight: Number(criterion["weight"] ?? 0),
+      score: Number(criterion["score"] ?? 0),
+      evidenceQuote: String(criterion["evidence_quote"] ?? ""),
+      quoteGrounded: criterion["quote_grounded"] !== false,
+    })),
   };
 }
 

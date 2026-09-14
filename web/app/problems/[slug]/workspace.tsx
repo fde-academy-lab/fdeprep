@@ -9,6 +9,7 @@ import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
 import type { SubmissionView } from "@/lib/submissions/view";
 import type { Decision } from "@/lib/policy";
+import Defence from "./defence";
 
 interface Props {
   problemId: number;
@@ -20,6 +21,7 @@ interface Props {
   referenceMd: string | null;
   callBudget: number | null;
   allowedImports: string[];
+  defenceQuestion: string | null;
 }
 
 type Tab = "problem" | "attempts" | "trace";
@@ -288,6 +290,11 @@ export default function Workspace(props: Props) {
                   <p className="mt-1 text-text-faint">{policy.hints.reason}</p>
                 )}
               </Section>
+            )}
+
+            {props.defenceQuestion && (
+              <Defence problemId={props.problemId} defence={policy.defence}
+                       question={props.defenceQuestion} onSettled={refreshPolicy} />
             )}
 
             {props.referenceMd && (

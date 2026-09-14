@@ -1,0 +1,53 @@
+# Throwaway fixture for Phase 4. Crude on purpose: real content lands in Phase 8.
+# It exists so the valid_json probe assertion has a fixture as well as a unit
+# test, which CLAUDE.md requires of every assertion type.
+slug: return-a-parsable-decision
+title: Return a decision the caller can parse
+artefact_type: prompt
+difficulty: medium
+track: prompt
+est_minutes: 20
+time_limit_s: 10
+model_id: us.anthropic.claude-opus-5
+competencies:
+  - { slug: prompt-construction, weight: 1.0 }
+
+brief_md: |
+  The triage agent below answers in prose, and the service calling it expects
+  JSON. Rewrite the prompt so every reply is one JSON object with an action and
+  a reason, without losing its judgement about what to escalate.
+
+original_prompt: |
+  You are a triage assistant. Read the customer message and decide what to do.
+  Explain your reasoning in a short paragraph, then say what you would do.
+  Feel free to add caveats where you are unsure.
+
+prompt_rules:
+  - { kind: must_remove, label: "the instruction to answer in prose", pattern: "(?i)short paragraph" }
+  - { kind: must_remove, label: "the invitation to add caveats", pattern: "(?i)add caveats" }
+  - { kind: must_keep,   label: "the escalation judgement", pattern: "(?i)escalat" }
+  - { kind: max_words,   label: "under 250 words", numeric_value: 250 }
+
+probes:
+  - name: returns_parsable_json
+    user_message: "My parcel is three weeks late and nobody has replied to me."
+    assertion:
+      type: valid_json
+      schema:
+        type: object
+        required: [action, reason]
+        properties:
+          action: { type: string }
+          reason: { type: string }
+  - name: escalates_an_angry_customer
+    user_message: "This is the fourth time I have written. I want a manager."
+    assertion: { type: present, pattern: "(?i)escalat" }
+
+rubric:
+  - { label: "Pins the output shape without listing every field twice", weight: 55 }
+  - { label: "Keeps the escalation judgement intact", weight: 45 }
+
+exemplars:
+  - { band: strong,   score: 88, body_md: "One schema, stated once, with the escalation rule in the same sentence." }
+  - { band: adequate, score: 64, body_md: "Asks for JSON. Leaves the escalation rule vague." }
+  - { band: weak,     score: 28, body_md: "Says be structured and nothing more." }

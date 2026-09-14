@@ -1,0 +1,32 @@
+# Throwaway fixture for Phase 4. Crude on purpose: real content lands in Phase 8.
+slug: argue-the-eval-plan
+title: Argue the evaluation plan
+artefact_type: design
+difficulty: extreme
+track: evals
+est_minutes: 40
+time_limit_s: 10
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: client-communication, weight: 0.5 }
+
+brief_md: |
+  A fixture problem used to exercise the design workspace and the rubric judge.
+  A client has 40 hand-written test conversations and a 95 percent pass rate on
+  them, and wants to launch a refunding support agent in two weeks. Write the
+  evaluation plan you would put in front of their head of support.
+
+word_range: [40, 400]
+required_headings:
+  - What I would measure
+  - What I would refuse to launch without
+
+rubric:
+  - { label: "Names what a hand-written set cannot cover", weight: 40 }
+  - { label: "Proposes measurable gates rather than adjectives", weight: 35 }
+  - { label: "Holds a position under commercial pressure", weight: 25 }
+
+exemplars:
+  - { band: strong,   score: 90, body_md: "Names selection bias and the cost of a wrong refund, then gives two numeric gates." }
+  - { band: adequate, score: 65, body_md: "Names one gap and one gate, and concedes the date." }
+  - { band: weak,     score: 30, body_md: "Says the agent needs more testing before launch." }

@@ -16,7 +16,7 @@ import { consume, resolvePolicy, tierFor, type Difficulty } from "../policy/inde
 
 export { RateLimitError } from "../policy/caps.ts";
 
-export type RunKind = "run" | "submit" | "live" | "rehearsal_submit";
+export type RunKind = "run" | "submit" | "live" | "rehearsal_submit" | "defence";
 
 export class DuplicateSubmissionError extends Error {
   readonly status = 409;
@@ -54,14 +54,20 @@ export interface CreatedSubmission {
 const SCOPE_FOR = {
   run: "run_hourly", submit: "submit_daily",
   live: "live_daily", rehearsal_submit: "rehearsal_weekly",
+  // The defence is asked only after a pass, so it never competes with the
+  // submit cap. It still spends a model call, so it has a cap of its own.
+  defence: "defence_daily",
 } as const;
 
 export async function createSubmission(input: CreateInput): Promise<CreatedSubmission> {
   const bodySha256 = createHash("sha256").update(input.body, "utf8").digest("hex");
 
   return inTransaction(async (client) => {
-    const { rows } = await client.query<{ difficulty: Difficulty; version_id: string }>(
-      `select p.difficulty::text as difficulty, v.id as version_id
+    const { rows } = await client.query<{
+      difficulty: Difficulty; version_id: string; artefact_type: string;
+    }>(
+      `select p.difficulty::text as difficulty, v.id as version_id,
+              p.artefact_type::text as artefact_type
          from problem p join problem_version v
            on v.problem_id = p.id and v.version = p.current_version
         where p.id = $1`, [input.problemId]);
@@ -93,6 +99,19 @@ export async function createSubmission(input: CreateInput): Promise<CreatedSubmi
       }
     }
 
+    if (input.kind === "defence") {
+      // docs/03 section 4.4: the defence is asked after a pass. Checking here
+      // rather than only in the UI keeps a hand-rolled request from scoring a
+      // defence for a problem the learner never solved.
+      const policy = await resolvePolicy({
+        enrolmentId: input.enrolmentId, problemId: input.problemId, client,
+      });
+      if (!policy.defence.open) {
+        throw new GateRefused(policy.defence.reason ??
+          "This problem has no defence step.");
+      }
+    }
+
     // Only now is the allowance spent. Everything above either throws, which
     // rolls the transaction back whole, or passes.
     await consume(client, {
@@ -119,6 +138,7 @@ export async function createSubmission(input: CreateInput): Promise<CreatedSubmi
         submission_id: submissionId,
         problem_version_id: Number(problem.version_id),
         kind: input.kind,
+        artefact_type: input.kind === "defence" ? "defence" : problem.artefact_type,
         body_sha256: bodySha256,
       })]);
 
