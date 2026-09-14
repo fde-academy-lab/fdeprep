@@ -12,6 +12,7 @@
  * instead, which is the deployed shape.
  */
 import { spawn } from "node:child_process";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { db } from "../db/pool.ts";
 import { deleteMessage, receive, send, type QueueMessage } from "./shim.ts";
@@ -101,7 +102,7 @@ async function invoke(
 function invokeLocally(
   event: Record<string, unknown>, python?: string,
 ): Promise<Record<string, unknown>> {
-  const interpreter = python ?? process.env.RUNNER_PYTHON ?? path.join(REPO_ROOT, ".venv/bin/python");
+  const interpreter = python ?? resolvePython();
   return new Promise((resolve, reject) => {
     const child = spawn(interpreter, ["-m", "runner.invoke"], {
       cwd: REPO_ROOT,
@@ -122,6 +123,18 @@ function invokeLocally(
     });
     child.stdin.end(JSON.stringify(event));
   });
+}
+
+/**
+ * Which Python runs the battery. The repo virtualenv when there is one, and
+ * python3 otherwise, because CI installs the runner's dependencies against the
+ * interpreter on PATH and has no virtualenv. RUNNER_PYTHON overrides both.
+ */
+function resolvePython(): string {
+  const explicit = process.env.RUNNER_PYTHON;
+  if (explicit) return explicit;
+  const venv = path.join(REPO_ROOT, ".venv/bin/python");
+  return existsSync(venv) ? venv : "python3";
 }
 
 /** Drain the results queue into the database. */

@@ -48,6 +48,14 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: web/package-lock.json
+      # The end-to-end tests drive real submissions through the Phase 1
+      # battery, which is Python. Without it the worker cannot spawn the
+      # runner, every submission comes back with an error verdict, and the
+      # suite fails for a reason that has nothing to do with the change.
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
       - run: npm ci
         working-directory: web
       - run: npm run typecheck
