@@ -8,6 +8,7 @@
  * This runs in CI over problems/ and again behind the admin import screen.
  */
 import { LineCounter, parseDocument, type Document } from "yaml";
+import { compilePattern, PatternError, type PromptRule } from "../gate/index.ts";
 import {
   ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, VISIBILITIES,
 } from "./vocabulary.ts";
@@ -16,6 +17,9 @@ export type Rule =
   | "yaml_syntax" | "schema" | "script_needs_fallback" | "unknown_competency"
   | "too_few_public_tests" | "too_few_hidden_tests" | "no_adversarial_fixture"
   | "hints_on_extreme" | "step_without_check" | "too_few_exemplars"
+  | "no_prompt_rules" | "no_probes" | "unknown_rule_kind" | "unknown_assertion_type"
+  | "bad_pattern" | "rule_pattern_absent" | "no_adequate_exemplar"
+  | "no_word_range" | "no_rubric" | "rubric_weights"
   | "probe_pattern_absent" | "missing_call_budget" | "matcher_shadows_input";
 
 export interface ValidationError {
@@ -31,6 +35,24 @@ export interface ProblemTest {
   spec: Record<string, unknown>;
   fixture?: string;
   annotation_md?: string;
+}
+
+export interface ProblemProbe {
+  name: string;
+  user_message: string;
+  assertion: { type: string; pattern?: string; schema?: Record<string, unknown> };
+}
+
+export interface RubricCriterion {
+  label: string;
+  weight: number;
+  descriptor_md?: string;
+}
+
+export interface Exemplar {
+  band: string;
+  score: number;
+  body_md: string;
 }
 
 export interface ParsedProblem {
@@ -53,6 +75,13 @@ export interface ParsedProblem {
   hints: string[];
   competencies: Array<{ slug: string; weight: number }>;
   tests: ProblemTest[];
+  original_prompt?: string;
+  prompt_rules: PromptRule[];
+  probes: ProblemProbe[];
+  rubric: RubricCriterion[];
+  exemplars: Exemplar[];
+  word_range?: [number, number];
+  required_headings: string[];
   raw: Record<string, unknown>;
 }
 
@@ -62,6 +91,13 @@ export interface ValidationReport {
   errors: ValidationError[];
   problem?: ParsedProblem;
 }
+
+// The judge's assertion registry, mirrored here so a problem that names a type
+// the judge does not evaluate is rejected in CI rather than at run time in
+// front of a learner. judge/probes.py ASSERTIONS is the other half.
+const PROBE_ASSERTIONS = new Set(["absent", "present", "complies", "refuses", "valid_json"]);
+const RULE_KINDS = new Set(["must_remove", "must_keep", "max_words", "min_words"]);
+const RUBRIC_WEIGHT_TOTAL = 100;
 
 const MEDIUM_AND_ABOVE = new Set(["medium", "hard", "extreme"]);
 const ADVERSARIAL_REQUIRED = new Set(["hard", "extreme"]);
@@ -119,7 +155,12 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
     ? (raw["step_checks"] as Array<{ step_id?: string }>) : [];
   const exemplars = Array.isArray(raw["exemplars"]) ? (raw["exemplars"] as unknown[]) : [];
   const probes = Array.isArray(raw["probes"])
-    ? (raw["probes"] as Array<{ name?: string; assertion?: { pattern?: string } }>) : [];
+    ? (raw["probes"] as Array<{ name?: string; user_message?: string;
+                               assertion?: { type?: string; pattern?: string } }>) : [];
+  const promptRules = Array.isArray(raw["prompt_rules"])
+    ? (raw["prompt_rules"] as PromptRule[]) : [];
+  const rubric = Array.isArray(raw["rubric"])
+    ? (raw["rubric"] as Array<{ label?: string; weight?: number }>) : [];
 
   // Rule: a competency tag outside the fixed vocabulary.
   competencies.forEach((entry, index) => {
@@ -168,17 +209,41 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
   }
 
   // Rule: a probe whose assertion references a pattern absent from the problem.
+  //
+  // The haystack is the problem without any probe, plus this probe's own
+  // user_message. An absent-assertion probe names its payload in its own
+  // message and nowhere else, which is where an injection payload belongs, so
+  // excluding every probe rejected the spec's own worked example. Including
+  // only this probe's message stops one probe borrowing another's wording.
   if (probes.length) {
-    const haystack = JSON.stringify({ ...raw, probes: undefined });
+    const base = JSON.stringify({ ...raw, probes: undefined });
     probes.forEach((probe, index) => {
       const pattern = probe?.assertion?.pattern;
+      const haystack = base + "\n" + String(probe?.user_message ?? "");
       if (pattern && !patternAppears(pattern, haystack)) {
         add("probe_pattern_absent",
             `probe ${probe.name ?? index} asserts on ${pattern}, which appears nowhere ` +
             "else in the problem, so the probe can never be satisfied by design",
             lineOf(["probes", index, "assertion"]));
       }
+      const type = probe?.assertion?.type;
+      if (type && !PROBE_ASSERTIONS.has(type)) {
+        add("unknown_assertion_type",
+            `probe ${probe.name ?? index} uses the assertion type ${type}, which the judge ` +
+            `does not evaluate. Known types: ${[...PROBE_ASSERTIONS].join(", ")}`,
+            lineOf(["probes", index, "assertion"]));
+      }
     });
+  }
+
+  if (artefact === "prompt") {
+    validatePrompt(raw, promptRules, probes, lineOf, add);
+  }
+  if (artefact === "design") {
+    validateDesign(raw, lineOf, add);
+  }
+  if (rubric.length) {
+    validateRubric(rubric, exemplars, lineOf, add);
   }
 
   if (errors.length) return { ok: false, file, errors };
@@ -260,13 +325,124 @@ export function matchesSeed(rule: unknown, seeded: string): string | null {
   return null;
 }
 
+function validatePrompt(
+  raw: Record<string, unknown>,
+  rules: PromptRule[],
+  probes: Array<{ name?: string }>,
+  lineOf: (path: Array<string | number>) => number,
+  add: (rule: Rule, message: string, line: number) => void,
+): void {
+  const original = String(raw["original_prompt"] ?? "");
+  if (!original.trim()) {
+    add("schema", "a prompt problem needs original_prompt, or there is nothing to edit", 1);
+  }
+  if (!rules.length) {
+    add("no_prompt_rules",
+        "a prompt problem needs prompt_rules, or Check has nothing to show and the " +
+        "checklist in S5 renders empty", 1);
+  }
+  if (!probes.length) {
+    add("no_probes",
+        "a prompt problem needs probes. Static rules say what changed, not whether the " +
+        "edited prompt behaves", 1);
+  }
+
+  rules.forEach((rule, index) => {
+    const at = lineOf(["prompt_rules", index]);
+    if (!RULE_KINDS.has(rule.kind)) {
+      add("unknown_rule_kind",
+          `${rule.kind} is not a rule kind this platform evaluates. Known kinds: ` +
+          `${[...RULE_KINDS].join(", ")}`, at);
+      return;
+    }
+
+    if (rule.kind === "max_words" || rule.kind === "min_words") {
+      if (typeof rule.numeric_value !== "number") {
+        add("schema", `${rule.label} needs a numeric_value`, at);
+      }
+      return;
+    }
+
+    if (typeof rule.pattern !== "string" || !rule.pattern) {
+      add("schema", `${rule.label} needs a pattern`, at);
+      return;
+    }
+    try {
+      const compiled = compilePattern(rule.pattern);
+      // Rule: a must_remove whose pattern is not in the original prompt is
+      // green before the learner opens the editor, so it teaches nothing.
+      if (rule.kind === "must_remove" && original && !compiled.test(original)) {
+        add("rule_pattern_absent",
+            `${rule.label} asks for the removal of ${rule.pattern}, which is not in ` +
+            "original_prompt, so the rule passes before the learner types anything", at);
+      }
+    } catch (error) {
+      add("bad_pattern",
+          error instanceof PatternError ? error.message : String(error), at);
+    }
+  });
+}
+
+function validateDesign(
+  raw: Record<string, unknown>,
+  lineOf: (path: Array<string | number>) => number,
+  add: (rule: Rule, message: string, line: number) => void,
+): void {
+  const range = raw["word_range"];
+  const ok = Array.isArray(range) && range.length === 2 &&
+    typeof range[0] === "number" && typeof range[1] === "number" && range[0] < range[1];
+  if (!ok) {
+    add("no_word_range",
+        "a design problem needs an ascending word_range, because S6 renders a live count " +
+        "against it and the structural gate checks it before any model call",
+        range === undefined ? 1 : lineOf(["word_range"]));
+  }
+  if (!Array.isArray(raw["rubric"]) || !(raw["rubric"] as unknown[]).length) {
+    add("no_rubric", "a design problem needs a rubric, or the judge has nothing to score", 1);
+  }
+}
+
+function validateRubric(
+  rubric: Array<{ label?: string; weight?: number }>,
+  exemplars: unknown[],
+  lineOf: (path: Array<string | number>) => number,
+  add: (rule: Rule, message: string, line: number) => void,
+): void {
+  const total = rubric.reduce((sum, c) => sum + Number(c.weight ?? 0), 0);
+  if (total !== RUBRIC_WEIGHT_TOTAL) {
+    add("rubric_weights",
+        `the rubric weights sum to ${total}, not ${RUBRIC_WEIGHT_TOTAL}, so the same ` +
+        "answer scores differently on two problems that look equally hard",
+        lineOf(["rubric", 0]));
+  }
+
+  // docs/04 section 1 states this rule for design problems. A prompt problem
+  // that declares a rubric runs the same judge against the same anchors, so it
+  // drifts the same way without them.
+  if (exemplars.length < 3) {
+    add("too_few_exemplars",
+        `a rubric needs three exemplars to anchor the judge, found ${exemplars.length}`,
+        exemplars.length ? lineOf(["exemplars", 0]) : 1);
+  }
+
+  const bands = new Set((exemplars as Array<{ band?: string }>).map((e) => e?.band));
+  if (exemplars.length && !bands.has("adequate")) {
+    add("no_adequate_exemplar",
+        "the adequate exemplar is the pass threshold, so a rubric without one has no " +
+        "threshold the author chose", lineOf(["exemplars", 0]));
+  }
+}
+
 function patternAppears(pattern: string, haystack: string): boolean {
   // A probe pattern is a regex. Try it as one, and fall back to a literal
   // search when it does not compile, so a bad regex is not silently accepted.
   try {
+    // Through the application's own engine, which translates the Python inline
+    // flag groups problem files are written with. new RegExp("(?i)x") throws.
+    if (compilePattern(pattern).test(haystack)) return true;
     if (new RegExp(pattern, "i").test(haystack)) return true;
   } catch {
-    // not a valid regex, fall through to the literal check
+    // not a usable regex, fall through to the literal check
   }
   const literal = pattern.replace(/[(){}[\]|?*+^$\\.]/g, "");
   return literal.length > 2 && haystack.toLowerCase().includes(literal.toLowerCase());
@@ -307,6 +483,18 @@ function toParsed(
     competencies: competencies.map((c) => ({
       slug: String(c.slug), weight: Number(c.weight ?? 1),
     })),
+    original_prompt: raw["original_prompt"] === undefined
+      ? undefined : String(raw["original_prompt"]),
+    prompt_rules: Array.isArray(raw["prompt_rules"]) ? (raw["prompt_rules"] as PromptRule[]) : [],
+    probes: Array.isArray(raw["probes"]) ? (raw["probes"] as ParsedProblem["probes"]) : [],
+    rubric: Array.isArray(raw["rubric"]) ? (raw["rubric"] as RubricCriterion[]) : [],
+    exemplars: Array.isArray(raw["exemplars"]) ? (raw["exemplars"] as Exemplar[]) : [],
+    word_range: Array.isArray(raw["word_range"])
+      ? ([Number((raw["word_range"] as number[])[0]),
+          Number((raw["word_range"] as number[])[1])] as [number, number])
+      : undefined,
+    required_headings: Array.isArray(raw["required_headings"])
+      ? (raw["required_headings"] as string[]).map(String) : [],
     tests: tests.map((t) => ({
       name: String(t["name"]),
       visibility: (t["visibility"] ?? "public") as ProblemTest["visibility"],

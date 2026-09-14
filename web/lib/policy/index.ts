@@ -55,7 +55,10 @@ interface AttemptState {
   hintTotal: number;
   attemptNoteChars: number;
   learnerTestBodies: string[];
+  artefactType: ArtefactType;
 }
+
+export type ArtefactType = "code" | "prompt" | "design";
 
 export async function resolvePolicy(options: {
   enrolmentId: number;
@@ -78,7 +81,12 @@ export async function resolvePolicy(options: {
     ...options, difficulty: state.difficulty, scope: "live_daily", client });
 
   const hints = resolveHints(tier.hints, state);
-  const learnerTests = resolveLearnerTests(tier.requiresLearnerTests, state.learnerTestBodies);
+  // The Extreme learner-test gate asks for a test before a submit, which only
+  // means anything when there is code to test. A prompt or design answer has
+  // no test surface, so the gate is a tier rule scoped to code artefacts
+  // rather than a tier rule the other two artefacts fail on forever.
+  const learnerTests = resolveLearnerTests(
+    tier.requiresLearnerTests && state.artefactType === "code", state.learnerTestBodies);
   const attemptNote = resolveAttemptNote(tier.hints, state.attemptNoteChars);
 
   const layers: Record<Layer, boolean> = Object.fromEntries(
@@ -223,8 +231,10 @@ async function loadState(
   const { rows } = await client.query<{
     difficulty: Difficulty; attempt_id: string | null; solved: boolean; gave_up: boolean;
     failed_runs: number; hints_used: number; hint_total: number; note_chars: number;
+    artefact_type: ArtefactType;
   }>(
     `select p.difficulty::text as difficulty,
+            p.artefact_type::text as artefact_type,
             a.id as attempt_id,
             a.solved_at is not null as solved,
             a.gave_up_at is not null as gave_up,
@@ -252,6 +262,7 @@ async function loadState(
 
   return {
     difficulty: row.difficulty,
+    artefactType: row.artefact_type,
     problemId,
     attemptId: row.attempt_id ? Number(row.attempt_id) : null,
     solved: row.solved,

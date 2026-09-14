@@ -141,12 +141,19 @@ async function insertVersion(
   const { rows } = await client.query<{ id: string }>(
     `insert into problem_version (problem_id, version, source_yaml, brief_md, contract_md,
                                   stub_code, steps, reference_md, model_id, call_budget,
-                                  time_limit_s, allowed_imports)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) returning id`,
+                                  time_limit_s, allowed_imports,
+                                  original_prompt, prompt_rules, word_range,
+                                  required_headings, rubric)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) returning id`,
     [problemId, version, sourceYaml, parsed.brief_md, parsed.contract_md ?? null,
      parsed.stub_code ?? null, JSON.stringify(parsed.steps), parsed.reference_md ?? null,
      parsed.model_id ?? null, parsed.call_budget ?? null, parsed.time_limit_s,
-     JSON.stringify(parsed.allowed_imports)]);
+     JSON.stringify(parsed.allowed_imports),
+     // Probes and exemplars are not here on purpose: they stay in source_yaml,
+     // which only the judge worker reads, so no view can leak probe wording.
+     parsed.original_prompt ?? null, JSON.stringify(parsed.prompt_rules),
+     parsed.word_range ? JSON.stringify(parsed.word_range) : null,
+     JSON.stringify(parsed.required_headings), JSON.stringify(parsed.rubric)]);
   return Number(rows[0]!.id);
 }
 

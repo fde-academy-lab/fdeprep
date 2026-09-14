@@ -57,7 +57,14 @@ async function publishOne(
     }
 
     await client.query("update outbox set sent_at = now() where id = $1", [outboxId]);
-    await send("submissions", {
+
+    // Code goes to the runner, everything else to the judge. The two Lambdas
+    // never merge, so they never share a queue either: a message on the wrong
+    // lane would be a message the wrong process could pick up.
+    const artefact = String(payload["artefact_type"] ?? "code");
+    const queue = artefact === "code" ? "submissions" : "judgements";
+
+    await send(queue, {
       ...payload,
       submission_id: submissionId,
       lease_token: leaseToken,

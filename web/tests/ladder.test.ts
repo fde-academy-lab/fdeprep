@@ -24,10 +24,20 @@ beforeEach(async () => {
 });
 afterAll(async () => { await closeDb(); });
 
-async function problemAt(difficulty: Difficulty): Promise<number> {
+/**
+ * The ladder rules these tests cover are code-problem rules: the learner-test
+ * gate and the attempt note both ask for something only a code problem has.
+ * Since Phase 4 the fixtures include a prompt and a design problem, so the
+ * artefact type is pinned rather than left to whichever row sorts first.
+ */
+async function problemAt(
+  difficulty: Difficulty, artefact: "code" | "prompt" | "design" = "code",
+): Promise<number> {
   const { rows } = await db().query<{ id: string }>(
-    `select id from problem where difficulty::text = $1 order by id limit 1`, [difficulty]);
-  if (!rows[0]) throw new Error(`no ${difficulty} fixture imported`);
+    `select id from problem
+      where difficulty::text = $1 and artefact_type::text = $2 order by id limit 1`,
+    [difficulty, artefact]);
+  if (!rows[0]) throw new Error(`no ${difficulty} ${artefact} fixture imported`);
   return Number(rows[0].id);
 }
 

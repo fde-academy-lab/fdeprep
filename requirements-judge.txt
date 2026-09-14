@@ -1,0 +1,3 @@
+# The judge needs a JSON schema validator for valid_json probe assertions and
+# nothing else. boto3 ships in the Lambda Python base image.
+jsonschema==4.23.0

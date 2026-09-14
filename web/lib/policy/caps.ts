@@ -14,7 +14,9 @@ import type { Pool, PoolClient } from "pg";
 import { db } from "../db/pool.ts";
 import type { Difficulty } from "./tiers.ts";
 
-export type Scope = "run_hourly" | "submit_daily" | "live_daily" | "rehearsal_weekly";
+export type Scope =
+  | "run_hourly" | "submit_daily" | "live_daily" | "rehearsal_weekly"
+  | "defence_daily";
 
 /** Scopes counted per problem rather than per account. */
 const PER_PROBLEM: ReadonlySet<Scope> = new Set(["run_hourly", "submit_daily"]);
@@ -184,6 +186,7 @@ export async function refund(client: PoolClient, submissionId: number): Promise<
               when 'run' then 'run_hourly'
               when 'submit' then 'submit_daily'
               when 'live' then 'live_daily'
+              when 'defence' then 'defence_daily'
               else 'rehearsal_weekly' end)::limit_scope
         and c.problem_id is not distinct from (
               case when s.kind in ('run','submit') then v.problem_id else null end)
@@ -204,6 +207,8 @@ function describeExhausted(scope: Scope, max: number, resetInS: number): string 
       return `You have used all ${max} live runs today. More in ${when}.`;
     case "rehearsal_weekly":
       return `You have used all ${max} rehearsals this week. More in ${when}.`;
+    case "defence_daily":
+      return `You have used all ${max} defence attempts today. More in ${when}.`;
   }
 }
 
