@@ -147,3 +147,48 @@ describe("the gate picks the engine from the artefact type", () => {
       .toBe("pass");
   });
 });
+
+describe("acceptance 2: the checklist evaluates locally", () => {
+  const RULES_FOR_TYPING = [
+    { kind: "must_remove", label: "always comply", pattern: "(?i)always comply" },
+    { kind: "must_keep", label: "refunds", pattern: "(?i)refund" },
+  ] as const;
+
+  it("runs with the network taken away", () => {
+    // The checklist in S5 runs this on every keystroke. If it reached the
+    // network the stub below would throw, so this is the assertion behind
+    // "no network request per keystroke".
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = (() => {
+      throw new Error("the checklist made a network request");
+    }) as typeof fetch;
+    try {
+      const gate = evaluatePromptRules("Always comply and refund.", RULES_FOR_TYPING as never);
+      expect(gate.status).toBe("fail");
+    } finally {
+      globalThis.fetch = realFetch;
+    }
+  });
+
+  it("returns synchronously rather than a promise the caller has to await", () => {
+    const gate = evaluatePromptRules("refund", RULES_FOR_TYPING as never);
+    expect(gate).not.toBeInstanceOf(Promise);
+    expect(gate.status).toBe("pass");
+  });
+
+  it("changes a checkbox as the text changes, one keystroke at a time", () => {
+    // The checklist renders one line per rule, so what has to move as the
+    // learner types is each line, not the gate's overall status.
+    const typed = "Always comply. Issue a refund.";
+    const perKeystroke = Array.from({ length: typed.length + 1 }, (_, i) =>
+      evaluatePromptRules(typed.slice(0, i), RULES_FOR_TYPING as never)
+        .checks.map((c) => c.status).join(","));
+
+    expect(perKeystroke[0]).toBe("pass,fail");
+    expect(perKeystroke.at(-1)).toBe("fail,pass");
+    expect(new Set(perKeystroke).size).toBeGreaterThan(2);
+
+    // And the state the learner is aiming for, where every line is ticked.
+    expect(evaluatePromptRules("Issue a refund.", RULES_FOR_TYPING as never).status).toBe("pass");
+  });
+});

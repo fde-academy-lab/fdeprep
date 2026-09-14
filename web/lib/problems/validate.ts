@@ -19,7 +19,7 @@ export type Rule =
   | "hints_on_extreme" | "step_without_check" | "too_few_exemplars"
   | "no_prompt_rules" | "no_probes" | "unknown_rule_kind" | "unknown_assertion_type"
   | "bad_pattern" | "rule_pattern_absent" | "no_adequate_exemplar"
-  | "no_word_range" | "no_rubric" | "rubric_weights"
+  | "no_word_range" | "no_rubric" | "rubric_weights" | "no_defence_question"
   | "probe_pattern_absent" | "missing_call_budget" | "matcher_shadows_input";
 
 export interface ValidationError {
@@ -76,6 +76,8 @@ export interface ParsedProblem {
   competencies: Array<{ slug: string; weight: number }>;
   tests: ProblemTest[];
   original_prompt?: string;
+  defence_question?: string;
+  defence_criterion?: RubricCriterion;
   prompt_rules: PromptRule[];
   probes: ProblemProbe[];
   rubric: RubricCriterion[];
@@ -101,6 +103,7 @@ const RUBRIC_WEIGHT_TOTAL = 100;
 
 const MEDIUM_AND_ABOVE = new Set(["medium", "hard", "extreme"]);
 const ADVERSARIAL_REQUIRED = new Set(["hard", "extreme"]);
+const DEFENCE_REQUIRED = new Set(["hard", "extreme"]);
 
 export function validateProblemYaml(source: string, file: string): ValidationReport {
   const counter = new LineCounter();
@@ -180,6 +183,14 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
 
   if (artefact === "code") {
     validateTests(tests, level, lineOf, add);
+    // docs/03 section 4.4: the defence runs on Hard and Extreme code problems
+    // and the attempt is not complete without it, so the question it asks is
+    // authored with the problem.
+    if (DEFENCE_REQUIRED.has(level) && !String(raw["defence_question"] ?? "").trim()) {
+      add("no_defence_question",
+          "a Hard or Extreme code problem needs defence_question, because the defence " +
+          "step runs after a pass and the attempt is not complete until it is answered", 1);
+    }
   }
 
   // Rule: hints present on an extreme problem.
@@ -485,6 +496,11 @@ function toParsed(
     })),
     original_prompt: raw["original_prompt"] === undefined
       ? undefined : String(raw["original_prompt"]),
+    defence_question: raw["defence_question"] === undefined
+      ? undefined : String(raw["defence_question"]),
+    defence_criterion: (raw["defence_criterion"] as RubricCriterion | undefined)
+      ?? (raw["defence_question"] === undefined ? undefined
+          : { label: String(raw["defence_question"]), weight: 100 }),
     prompt_rules: Array.isArray(raw["prompt_rules"]) ? (raw["prompt_rules"] as PromptRule[]) : [],
     probes: Array.isArray(raw["probes"]) ? (raw["probes"] as ParsedProblem["probes"]) : [],
     rubric: Array.isArray(raw["rubric"]) ? (raw["rubric"] as RubricCriterion[]) : [],

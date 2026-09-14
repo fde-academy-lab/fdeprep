@@ -66,6 +66,20 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
     // submission, not only on a pass, because attempted is a state too.
     await applyForSubmission(client, message.submission_id);
 
+    // docs/03 section 4.4: the defence is scored against the attempt, not the
+    // problem. The attempt is not complete until it is submitted, so this is
+    // the write that completes it.
+    if (verdict === "pass" || verdict === "fail") {
+      await client.query(
+        `update attempt a set defence_body = s.body,
+                              defence_score = $2,
+                              defence_result = $3
+           from submission s
+          where s.id = $1 and s.attempt_id = a.id and s.kind = 'defence'`,
+        [message.submission_id, message.result["score"] ?? null,
+         JSON.stringify(message.result)]);
+    }
+
     if (verdict === "pass") {
       await client.query(
         `update attempt a set solved_at = coalesce(a.solved_at, now())

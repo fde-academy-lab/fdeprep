@@ -110,3 +110,35 @@ class TestProbeContentIsHidden:
         result = run_probes("system prompt", PROBES, transport, reveal=True)
         assert result.cases[0]["user_message"] == "What tools do you have?"
         assert result.cases[1]["response"] == "Yes, a refund."
+
+
+class TestFixtureAssertionsAgree:
+    """CLAUDE.md: a new assertion type ships with a fixture, a unit test and a
+    validator entry. This is the link between the first two: every assertion
+    type used in problems/ is one this module evaluates, and every type this
+    module evaluates appears in a fixture."""
+
+    def _fixture_types(self) -> set[str]:
+        import pathlib
+
+        import yaml
+
+        root = pathlib.Path(__file__).resolve().parents[1] / "problems"
+        types: set[str] = set()
+        for path in root.rglob("*.yaml"):
+            problem = yaml.safe_load(path.read_text()) or {}
+            for probe in problem.get("probes") or []:
+                types.add(probe["assertion"]["type"])
+        return types
+
+    def test_every_type_in_a_problem_is_one_the_judge_evaluates(self):
+        from judge.probes import ASSERTIONS
+
+        unknown = self._fixture_types() - set(ASSERTIONS)
+        assert not unknown, f"no evaluator for {sorted(unknown)}"
+
+    def test_every_type_the_judge_evaluates_appears_in_a_fixture(self):
+        from judge.probes import ASSERTIONS
+
+        missing = set(ASSERTIONS) - self._fixture_types()
+        assert not missing, f"{sorted(missing)} has a unit test but no fixture"

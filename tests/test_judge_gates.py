@@ -231,3 +231,31 @@ def test_live_five_judgements_of_one_answer_vary_by_at_most_five_points():
     spread = max(scores) - min(scores)
     assert spread <= 5, f"scores {scores} spread {spread}, the exemplars are too weak"
     assert statistics.pstdev(scores) < 3
+
+
+class TestModelFailure:
+    """docs/03 section 8: a model call that fails after its retries is an error
+    verdict that does not consume the cap. A grading Lambda that raises instead
+    leaves the caller guessing whether the learner's allowance went with it."""
+
+    class Broken:
+        calls = 2
+
+        def complete(self, **_):
+            raise RuntimeError("Unable to locate credentials")
+
+    def test_a_failing_transport_returns_the_error_contract(self):
+        result = judge_event(_event(), self.Broken())
+
+        assert result["verdict"] == "error"
+        assert result["consumes_allowance"] is False
+        assert result["requeue"] is False
+        assert "not counted" in result["message"]
+        assert "Unable to locate credentials" in result["detail"]
+
+    def test_the_call_count_it_did_make_is_reported(self):
+        assert judge_event(_event(), self.Broken())["model_calls"] == 2
+
+    def test_a_broken_transport_on_a_failed_gate_still_costs_nothing(self):
+        result = judge_event(_event(gate=FAILING_GATE), self.Broken())
+        assert result["verdict"] == "fail"

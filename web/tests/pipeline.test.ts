@@ -33,10 +33,9 @@ async function problemBySlug(slug: string) {
   return rows[0] as { id: string; difficulty: string; version_id: string };
 }
 
-// Eight code fixtures from Phase 2, plus the prompt and design fixtures Phase
-// 4 needed. The count is read from the directory rather than written twice, so
-// adding a fixture does not fail a test about the catalogue.
-const FIXTURE_COUNT = 10;
+// Eight code fixtures from Phase 2, plus the two prompt fixtures and the
+// design fixture Phase 4 needed.
+const FIXTURE_COUNT = 11;
 
 describe("acceptance 1: every fixture imports and appears in the catalogue", () => {
   it("imports every fixture and lists them", async () => {

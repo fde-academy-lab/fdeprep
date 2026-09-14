@@ -38,6 +38,7 @@ export interface Decision {
   giveUp: Gate;
   /** Extreme only: Submit stays closed until a learner test with an assertion exists. */
   learnerTests: { required: boolean; present: boolean; withAssertion: boolean };
+  defence: { required: boolean; open: boolean; submitted: boolean; reason: string | null };
   attemptNote: { required: boolean; chars: number; needed: number };
   timed: boolean;
   confirmBeforeSubmit: boolean;
@@ -56,6 +57,8 @@ interface AttemptState {
   attemptNoteChars: number;
   learnerTestBodies: string[];
   artefactType: ArtefactType;
+  defenceSubmitted: boolean;
+  hasDefenceQuestion: boolean;
 }
 
 export type ArtefactType = "code" | "prompt" | "design";
@@ -107,6 +110,7 @@ export async function resolvePolicy(options: {
     live: { ...gateFromAllowance(live, "Live run"), ...span(live) },
     giveUp: resolveGiveUp(state),
     learnerTests,
+    defence: resolveDefence(tier.requiresDefence, state),
     attemptNote,
     timed: tier.timed,
     confirmBeforeSubmit: tier.confirmBeforeSubmit,
@@ -225,13 +229,39 @@ function exhaustedReason(allowance: Allowance): string {
   return `You have used all ${allowance.max} of these today. More in ${when}.`;
 }
 
+/**
+ * docs/03 section 4.4: the defence runs on Hard and Extreme code problems
+ * after a pass. It asks the learner to say why their solution works, which
+ * needs a solution, so it opens on a pass and not before.
+ */
+function resolveDefence(
+  required: boolean, state: AttemptState,
+): { required: boolean; open: boolean; submitted: boolean; reason: string | null } {
+  // The question is authored with the problem. Without one the step does not
+  // exist, and the validator rejects a Hard or Extreme code problem that
+  // omits it, so this branch only fires on a problem written before the rule.
+  const applies = required && state.artefactType === "code" && state.hasDefenceQuestion;
+  if (!applies) {
+    return { required: false, open: false, submitted: state.defenceSubmitted, reason: null };
+  }
+  if (!state.solved) {
+    return { required: true, open: false, submitted: false,
+             reason: "The defence opens once the battery passes." };
+  }
+  if (state.defenceSubmitted) {
+    return { required: true, open: false, submitted: true,
+             reason: "Your defence is recorded. The attempt is complete." };
+  }
+  return { required: true, open: true, submitted: false, reason: null };
+}
+
 async function loadState(
   client: Pool | PoolClient, enrolmentId: number, problemId: number,
 ): Promise<AttemptState> {
   const { rows } = await client.query<{
     difficulty: Difficulty; attempt_id: string | null; solved: boolean; gave_up: boolean;
     failed_runs: number; hints_used: number; hint_total: number; note_chars: number;
-    artefact_type: ArtefactType;
+    artefact_type: ArtefactType; defence_submitted: boolean; has_defence_question: boolean;
   }>(
     `select p.difficulty::text as difficulty,
             p.artefact_type::text as artefact_type,
@@ -245,7 +275,10 @@ async function loadState(
             (select count(*) from hint h
                join problem_version v on v.id = h.problem_version_id
               where v.problem_id = p.id and v.version = p.current_version)::int as hint_total,
-            coalesce(length(a.attempt_note), 0)::int as note_chars
+            coalesce(length(a.attempt_note), 0)::int as note_chars,
+            a.defence_score is not null as defence_submitted,
+            (select v.defence_question is not null from problem_version v
+              where v.problem_id = p.id and v.version = p.current_version) as has_defence_question
        from problem p
        left join attempt a on a.problem_id = p.id and a.enrolment_id = $2
       where p.id = $1`,
@@ -263,6 +296,8 @@ async function loadState(
   return {
     difficulty: row.difficulty,
     artefactType: row.artefact_type,
+    defenceSubmitted: row.defence_submitted,
+    hasDefenceQuestion: row.has_defence_question === true,
     problemId,
     attemptId: row.attempt_id ? Number(row.attempt_id) : null,
     solved: row.solved,

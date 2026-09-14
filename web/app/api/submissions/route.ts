@@ -5,6 +5,11 @@ import {
 import { dispatchOnce } from "@/lib/queue/dispatcher";
 import { currentLearner } from "@/lib/session/current";
 
+// An allowlist rather than a cast. The client names which kind it wants and
+// the server decides whether that kind is allowed right now: every gate behind
+// these is re-resolved in createSubmission. A kind not on this list is a run.
+const KINDS = new Set<RunKind>(["run", "submit", "defence"]);
+
 export async function POST(request: Request) {
   const learner = await currentLearner();
   const payload = (await request.json()) as { problemId?: number; kind?: RunKind; body?: string };
@@ -21,7 +26,7 @@ export async function POST(request: Request) {
       enrolmentId: learner.enrolmentId,
       cohortId: learner.cohortId,
       problemId: payload.problemId,
-      kind: payload.kind === "submit" ? "submit" : "run",
+      kind: payload.kind && KINDS.has(payload.kind) ? payload.kind : "run",
       body: payload.body,
     });
 

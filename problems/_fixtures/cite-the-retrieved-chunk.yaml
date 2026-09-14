@@ -12,6 +12,9 @@ competencies:
   - { slug: retrieval, weight: 1.0 }
   - { slug: context-assembly, weight: 1.0 }
 
+defence_question: |
+  Say what your code does when the retrieved chunk does not contain the answer, and why that is better than citing it anyway.
+
 brief_md: |
   A fixture problem used to exercise the catalogue and the workspace. It asks
   for an agent loop that calls the probe tool once and returns what the model

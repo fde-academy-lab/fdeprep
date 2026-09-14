@@ -99,6 +99,19 @@ export async function createSubmission(input: CreateInput): Promise<CreatedSubmi
       }
     }
 
+    if (input.kind === "defence") {
+      // docs/03 section 4.4: the defence is asked after a pass. Checking here
+      // rather than only in the UI keeps a hand-rolled request from scoring a
+      // defence for a problem the learner never solved.
+      const policy = await resolvePolicy({
+        enrolmentId: input.enrolmentId, problemId: input.problemId, client,
+      });
+      if (!policy.defence.open) {
+        throw new GateRefused(policy.defence.reason ??
+          "This problem has no defence step.");
+      }
+    }
+
     // Only now is the allowance spent. Everything above either throws, which
     // rolls the transaction back whole, or passes.
     await consume(client, {

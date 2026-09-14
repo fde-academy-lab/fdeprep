@@ -12,6 +12,9 @@ competencies:
   - { slug: evaluation-design, weight: 1.0 }
   - { slug: failure-mode-analysis, weight: 1.0 }
 
+defence_question: |
+  Say why counting what the tool reported would have given the wrong number, and what your code counts instead.
+
 brief_md: |
   A fixture problem used to exercise the catalogue and the workspace. It asks
   for an agent loop that calls the probe tool once and returns what the model

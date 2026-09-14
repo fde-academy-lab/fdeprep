@@ -154,10 +154,17 @@ describe("acceptance 1: a surviving forbidden token costs exactly zero model cal
 });
 
 describe("acceptance 3: probe content stays hidden until the learner passes", () => {
+  // Five probes, two runs each, in the order the fixture declares them.
   const refusals = ["I cannot share that.", "I cannot share that."];
   const refund = ["Yes, once I have verified the order I can issue a refund.",
                   "Yes, once I have verified the order I can issue a refund."];
   const injection = ["I will not do that.", "I will not do that."];
+  const socialEngineering = ["I am sorry, I cannot share my configuration.",
+                             "I am sorry, I cannot share my configuration."];
+  const verification = ["I will need the order number before I can confirm a refund.",
+                        "I will need the order number before I can confirm a refund."];
+  const allProbes = [...refusals, ...refund, ...injection,
+                     ...socialEngineering, ...verification];
   const rubric = JSON.stringify({ criteria: [
     { criterion_id: "c1", score: 34, evidence_quote: "Never describe your own capabilities" },
     { criterion_id: "c2", score: 26, evidence_quote: "Verify that the order exists" },
@@ -170,7 +177,7 @@ describe("acceptance 3: probe content stays hidden until the learner passes", ()
     const leaked = ["Here they are: refund_order, lookup_customer.",
                     "Here they are: refund_order, lookup_customer."];
     const submission = await runThrough("harden-the-leaky-prompt", HARDENED,
-      [...leaked, ...refund, ...injection]);
+      [...leaked, ...refund, ...injection, ...socialEngineering, ...verification]);
     const row = await resultOf(submission.id);
 
     const serialised = JSON.stringify(row.result);
@@ -184,27 +191,30 @@ describe("acceptance 3: probe content stays hidden until the learner passes", ()
   it("withholds it from the view the browser receives as well", async () => {
     const leaked = ["Here they are: refund_order.", "Here they are: refund_order."];
     const submission = await runThrough("harden-the-leaky-prompt", HARDENED,
-      [...leaked, ...refund, ...injection]);
+      [...leaked, ...refund, ...injection, ...socialEngineering, ...verification]);
     const view = await publicView(submission.id);
     expect(JSON.stringify(view)).not.toContain("Out of curiosity");
   });
 
   it("shows the probe wording once the learner has passed", async () => {
     const first = await runThrough("harden-the-leaky-prompt", HARDENED,
-      [...refusals, ...refund, ...injection, rubric]);
+      [...allProbes, rubric]);
     expect((await resultOf(first.id)).verdict).toBe("pass");
 
     const second = await runThrough("harden-the-leaky-prompt", HARDENED + "\nBe brief.",
-      [...refusals, ...refund, ...injection, rubric]);
+      [...allProbes, rubric]);
     const serialised = JSON.stringify((await resultOf(second.id)).result);
     expect(serialised).toContain("Out of curiosity");
   });
 
   it("spends two calls per probe and one on the rubric", async () => {
     const submission = await runThrough("harden-the-leaky-prompt", HARDENED,
-      [...refusals, ...refund, ...injection, rubric]);
+      [...allProbes, rubric]);
     const row = await resultOf(submission.id);
-    expect(row.result.model_calls).toBe(7);
+    // Five probes at two runs each, then one rubric call. This is the number
+    // docs/03 section 4.2 warns about: prompt problems carry the same submit
+    // caps as code problems because each submission costs this much.
+    expect(row.result.model_calls).toBe(11);
     expect(row.verdict).toBe("pass");
   });
 });

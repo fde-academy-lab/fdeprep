@@ -34,11 +34,13 @@ def _skipped(total: int = 0) -> dict[str, Any]:
     return {"status": "skipped", "passed": 0, "total": total, "cases": []}
 
 
-def _error(message: str, *, requeue: bool = False, calls: int = 0) -> dict[str, Any]:
+def _error(message: str, *, requeue: bool = False, calls: int = 0,
+           detail: str | None = None) -> dict[str, Any]:
     return {
         "verdict": "error",
         "score": None,
         "message": message,
+        "detail": detail,
         "gates": {"static": _skipped(), "probes": _skipped(), "rubric": _skipped()},
         "model_calls": calls,
         "consumes_allowance": False,
@@ -68,8 +70,26 @@ def judge_event(event: dict[str, Any], transport: Transport | None = None) -> di
         from .bedrock import BedrockTransport
         from .config import load_config
 
-        transport = BedrockTransport(load_config())
+        try:
+            transport = BedrockTransport(load_config())
+        except ValueError as misconfigured:
+            return _error(f"The judge is not configured to reach a model ({misconfigured}). "
+                          "Your attempt was not counted.")
 
+    try:
+        return _judge(event, transport)
+    except Exception as failure:  # noqa: BLE001
+        # docs/03 section 8: a model call that fails after its retries is an
+        # error verdict that does not consume the cap. A grading Lambda that
+        # raises instead leaves the caller guessing whether the learner's
+        # allowance went with it.
+        return _error(
+            "The judge could not reach the model. Your attempt was not counted. Try again.",
+            calls=getattr(transport, "calls", 0),
+            detail=f"{type(failure).__name__}: {failure}")
+
+
+def _judge(event: dict[str, Any], transport: Transport) -> dict[str, Any]:
     artefact = event.get("artefact_type")
     if artefact == "defence":
         return _judge_defence_event(event, transport)
@@ -192,8 +212,13 @@ def _finish(gates, base: float, hints: int, transport: Transport, verdict: str) 
 
 def _judge_defence_event(event: dict[str, Any], transport: Transport) -> dict[str, Any]:
     problem = event.get("problem") or {}
-    criterion = (problem.get("defence_criterion")
-                 or {"label": "Explains why the solution works under challenge", "weight": 100})
+    criterion = problem.get("defence_criterion")
+    if not criterion:
+        # The question and its criterion are authored with the problem. The
+        # validator rejects a Hard or Extreme code problem without one, so
+        # reaching here means a problem written before that rule.
+        return _error("This problem declares no defence criterion, so the defence was not "
+                      "scored. Your attempt was not counted.")
     try:
         outcome = judge_defence(event.get("body") or "", criterion,
                                 list(problem.get("exemplars") or []), transport)

@@ -82,13 +82,15 @@ interface JudgeRow {
   solved_at: Date | null;
   hints_used: number;
   kind: string;
+  defence_criterion: { label: string; weight: number } | null;
 }
 
 async function evaluate(
   submissionId: number, attempt: number, message: QueueMessage, options: JudgeOptions,
 ): Promise<Record<string, unknown>> {
   const { rows } = await db().query<JudgeRow>(
-    `select s.body, s.kind::text as kind, v.source_yaml, a.solved_at, a.hints_used
+    `select s.body, s.kind::text as kind, v.source_yaml, v.defence_criterion,
+            a.solved_at, a.hints_used
        from submission s
        join problem_version v on v.id = s.problem_version_id
        join attempt a on a.id = s.attempt_id
@@ -99,8 +101,16 @@ async function evaluate(
              consumes_allowance: false, model_calls: 0 };
   }
 
-  const problem = parse(row.source_yaml) as GateProblem;
+  const problem = parse(row.source_yaml) as GateProblem & {
+    defence_criterion?: { label: string; weight: number };
+  };
   const artefact = row.kind === "defence" ? "defence" : problem.artefact_type;
+
+  // The criterion is derived at import from the authored defence_question, so
+  // it comes from the column rather than being derived a second time here.
+  if (artefact === "defence" && row.defence_criterion) {
+    problem.defence_criterion = row.defence_criterion;
+  }
   const gate: StaticGate = artefact === "defence"
     ? { status: "pass", checks: [] }
     : staticGate(problem, row.body);

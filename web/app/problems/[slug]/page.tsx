@@ -1,9 +1,13 @@
 /**
- * Screen S4, the code workspace.
+ * Screens S4, S5 and S6, chosen by the problem's artefact type.
  *
  * This component asks the policy module what to render and renders that. It
  * takes no view of its own on what a tier does, which is what keeps the four
  * tiers from drifting apart as the ladder changes.
+ *
+ * The probes are not read here and never reach this file. They live in
+ * source_yaml, which only the judge worker reads, so the wording cannot leak
+ * through a prop.
  */
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -11,6 +15,8 @@ import { db } from "@/lib/db/pool";
 import { resolvePolicy } from "@/lib/policy";
 import { currentLearner } from "@/lib/session/current";
 import Workspace from "./workspace";
+import PromptWorkspace from "./prompt-workspace";
+import DesignWorkspace from "./design-workspace";
 
 export const dynamic = "force-dynamic";
 
@@ -19,14 +25,26 @@ export default async function WorkspacePage({ params }: { params: Promise<{ slug
   const learner = await currentLearner();
 
   const { rows } = await db().query<{
-    id: string; title: string; track: string; tier: string;
+    id: string; title: string; track: string; tier: string; artefact: string;
     brief_md: string; contract_md: string | null; stub_code: string | null;
     steps: Array<{ id: string; text: string }>; call_budget: number | null;
     allowed_imports: string[]; reference_md: string | null;
+    original_prompt: string | null;
+    prompt_rules: Array<{ kind: string; label: string; pattern?: string; numeric_value?: number }>;
+    word_range: [number, number] | null;
+    required_headings: string[];
+    rubric: Array<{ label: string; weight: number }>;
+    probe_count: number;
+    defence_question: string | null;
   }>(
     `select p.id, p.title, p.track, p.difficulty::text as tier,
+            p.artefact_type::text as artefact,
             v.brief_md, v.contract_md, v.stub_code, v.steps, v.call_budget,
-            v.allowed_imports, v.reference_md
+            v.allowed_imports, v.reference_md,
+            v.original_prompt, v.prompt_rules, v.word_range, v.required_headings, v.rubric,
+            -- A count, never the probes. They live in source_yaml, which only
+            -- the judge worker reads, so no prop can carry their wording.
+            v.probe_count, v.defence_question
        from problem p
        join problem_version v on v.problem_id = p.id and v.version = p.current_version
       where p.slug = $1`, [slug]);
@@ -54,6 +72,27 @@ export default async function WorkspacePage({ params }: { params: Promise<{ slug
         </span>
       </header>
 
+      {problem.artefact === "prompt" ? (
+        <PromptWorkspace
+          problemId={Number(problem.id)}
+          policy={policy}
+          briefMd={problem.brief_md}
+          originalPrompt={problem.original_prompt ?? ""}
+          promptRules={problem.prompt_rules as never}
+          probeCount={Number(problem.probe_count)}
+          referenceMd={policy.layers.reference ? problem.reference_md : null}
+        />
+      ) : problem.artefact === "design" ? (
+        <DesignWorkspace
+          problemId={Number(problem.id)}
+          policy={policy}
+          briefMd={problem.brief_md}
+          wordRange={problem.word_range}
+          requiredHeadings={problem.required_headings ?? []}
+          rubric={problem.rubric ?? []}
+          referenceMd={policy.layers.reference ? problem.reference_md : null}
+        />
+      ) : (
       <Workspace
         problemId={Number(problem.id)}
         policy={policy}
@@ -67,7 +106,11 @@ export default async function WorkspacePage({ params }: { params: Promise<{ slug
         referenceMd={policy.layers.reference ? problem.reference_md : null}
         callBudget={problem.call_budget}
         allowedImports={problem.allowed_imports ?? []}
+        // docs/03 section 4.4: the defence renders only once the battery
+        // passes, which the policy decides rather than this component.
+        defenceQuestion={problem.defence_question}
       />
+      )}
     </main>
   );
 }

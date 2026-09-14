@@ -47,6 +47,12 @@ export interface Tier {
   adversarialAlwaysRuns: boolean;
   /** Extreme rejects a byte-identical resubmission before spending the cap. */
   rejectsDuplicateSubmissions: boolean;
+  /**
+   * docs/03 section 4.4: the defence step runs on Hard and Extreme code
+   * problems after a pass, and the attempt is not complete until it is
+   * submitted.
+   */
+  requiresDefence: boolean;
 }
 
 export const TIERS: Readonly<Record<Difficulty, Tier>> = {
@@ -59,6 +65,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     confirmBeforeSubmit: false,
     adversarialAlwaysRuns: false,
     rejectsDuplicateSubmissions: false,
+    requiresDefence: false,
   },
   medium: {
     layers: ["brief", "contract", "stub", "hints"],
@@ -69,6 +76,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     confirmBeforeSubmit: false,
     adversarialAlwaysRuns: false,
     rejectsDuplicateSubmissions: false,
+    requiresDefence: false,
   },
   hard: {
     layers: ["brief", "contract", "hints"],
@@ -79,6 +87,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     confirmBeforeSubmit: false,
     adversarialAlwaysRuns: false,
     rejectsDuplicateSubmissions: false,
+    requiresDefence: true,
   },
   extreme: {
     // L0 only, blank editor, and nothing about the batteries.
@@ -90,6 +99,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     confirmBeforeSubmit: true,
     adversarialAlwaysRuns: true,
     rejectsDuplicateSubmissions: true,
+    requiresDefence: true,
   },
 };
 
