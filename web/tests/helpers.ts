@@ -18,7 +18,9 @@ export async function resetDatabase(): Promise<void> {
   await db().query(`
     truncate outbox, queue_message, runner_event, hint_reveal, submission, attempt,
              step_check, problem_test, hint, problem_competency, problem_version,
-             problem, rate_limit_counter, enrolment, cohort, app_user, audit_log
+             problem, rate_limit_counter, enrolment, cohort, app_user, audit_log,
+             voice_nudge, voice_beat_result, voice_session, voice_consent,
+             voice_beat, voice_question
     restart identity cascade`);
 
   // truncate cohort cascade takes rate_limit_policy with it, so put the seed

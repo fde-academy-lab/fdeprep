@@ -22,4 +22,7 @@ new FdePrepStack(app, "FdePrepStack", {
   alarmEmail: process.env.ALARM_EMAIL,
   runnerImageTag: process.env.RUNNER_IMAGE_TAG,
   judgeImageTag: process.env.JUDGE_IMAGE_TAG,
+  // The voice socket is created only once a human has made the signing secret
+  // and put its ARN here. Without it the rest of the stack still deploys.
+  voiceTokenSecretArn: process.env.VOICE_TOKEN_SECRET_ARN,
 });

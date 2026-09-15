@@ -254,3 +254,31 @@ Do not run the whole build in one session. The context runs out and the review s
 | A large build gets killed | 16 GB ceiling. Split it or move that piece local. |
 | Every session fails to authenticate | If your organisation uses IP allowlisting, Anthropic-hosted sessions fail. Support can exempt them. |
 | `/plugin` does nothing | Terminal only. Not available in cloud sessions. |
+| `next build` fails on `/_global-error` with `Cannot read properties of null (reading 'useContext')` | `NODE_ENV` is set to `development` in the session. Run `NODE_ENV=production npx next build`. Next.js warns about the non-standard value in the same output. |
+
+---
+
+## Running the Voice Screen locally
+
+The voice socket is API Gateway in the cloud and a plain `ws` server on a
+developer machine. Both run the same session code, so the local one is worth
+using.
+
+```
+# terminal 1
+cd voice
+VOICE_STT=scripted VOICE_TOKEN_SECRET=pick-anything npm run dev
+
+# terminal 2
+cd web
+VOICE_TOKEN_SECRET=pick-anything VOICE_SOCKET_URL=ws://localhost:8787 npm run dev
+```
+
+Then `/voice/consent` to accept, and `/voice/lab` to check the microphone and
+stream. Transcripts print to the browser console and appear nowhere on screen.
+
+`VOICE_STT=scripted` produces placeholder words driven by how loud you are, so
+the pipeline is visible without an AWS credential. `VOICE_STT=transcribe` uses
+Amazon Transcribe and needs one. The two `VOICE_TOKEN_SECRET` values have to
+match: one end signs the session token and the other verifies it. It is a
+secret, so it belongs in the environment and never in the repository.

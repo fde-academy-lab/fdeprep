@@ -1,0 +1,26 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "types": ["node"]
+  },
+  // Only the two modules both ends share. capture.ts and mic-check.browser.ts
+  // live next to them and are browser-only, so they are compiled by the web
+  // app against the DOM lib and never by this package.
+  "include": [
+    "src/**/*.ts",
+    "test/**/*.ts",
+    "../web/lib/voice/protocol.ts",
+    "../web/lib/voice/token.ts"
+  ],
+  "exclude": ["node_modules"]
+}
