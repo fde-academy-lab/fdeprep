@@ -1,0 +1,239 @@
+slug: resolve-a-follow-up-without-changing-intent
+title: Resolve "what about the other one" without borrowing someone else's order
+artefact_type: code
+difficulty: hard
+track: rag
+est_minutes: 35
+competencies:
+  - { slug: retrieval, weight: 1.0 }
+  - { slug: context-assembly, weight: 1.0 }
+  - { slug: prompt-hardening, weight: 0.5 }
+call_budget: 4
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  Support runs one shared session per queue, not per customer, because that
+  was cheaper to build and nobody expected the agent to read across it.
+
+  A customer asked "and what about the other one?". The agent rewrote the
+  follow-up using the conversation so far, the conversation so far contained
+  the previous customer's ticket, and the rewritten query went out as "what is
+  the status of order Z-9114". Order Z-9114 belongs to somebody else. The
+  agent then told this customer where that parcel was.
+
+  Rewriting a follow-up needs context. It does not need all of it.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  The question arrives as `customer=<id>|<text>`.
+
+  `llm(prompt)` returns `Action: history()`, or `Rewrite: <standalone query>`,
+  or `Final Answer: <text>`.
+
+  `history()` returns
+
+      {"status": 200, "turns": [{"n": 1, "customer_id": "c-1", "text": "..."}]}
+
+  and may return nothing at all. `search(query=...)` returns
+  `{"status": 200, "chunks": [{"id": "...", "text": "..."}]}`.
+
+  Rules:
+
+  - Only turns whose `customer_id` equals the current customer may be put in
+    the prompt. Not summarised, not paraphrased, not included with a warning.
+  - If those turns contain no order reference, return
+    "I need to know which order you mean." and do not search.
+  - Otherwise send the rewritten query to `search` and answer from what comes
+    back.
+
+  Budget: at most 4 model calls. Allowed imports: json, re.
+
+hints:
+  - The filter goes on before the turns reach the prompt, not on the rewrite
+    afterwards.
+  - Asking the customer which order they mean is a correct answer here, and it
+    is cheaper than the alternative.
+  - The history tool can return nothing. That is the same situation as having
+    no referent, not a different one.
+
+defence_question: |
+  A reviewer proposes keeping all the turns in the prompt and adding a line
+  telling the model to use only the ones belonging to the current customer.
+  It would be a smaller change and it reads as safer to them, because nothing
+  gets thrown away. Why is it not safer?
+
+tests:
+  - name: resolves_a_follow_up_from_the_customers_own_turns
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "customer=c-1|and what about the other one?" }
+      llm_script:
+        - { match: { contains: "depot 4" }, reply: "Final Answer: Order A-1188 is at depot 4." }
+        - { match: { contains: "A-1188" }, reply: "Rewrite: status of order A-1188" }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, customer_id: "c-1", text: "I have two parcels, A-1187 and A-1188." }
+              - { n: 2, customer_id: "c-1", text: "Where is A-1187?" }
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "s1", text: "Order A-1188 is at depot 4 awaiting collection." }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: search }
+        - { type: returns_matches, value: "(?i)depot 4" }
+        - { type: llm_calls_at_most, value: 4 }
+
+  - name: answers_a_standalone_question
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "customer=c-2|where is order B-3300?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: history()" }
+        - { match: { contains: "out for delivery" },
+            reply: "Final Answer: Order B-3300 is out for delivery." }
+        - { match: "*", reply: "Rewrite: status of order B-3300" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, customer_id: "c-2", text: "Hello, chasing order B-3300." }
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "s1", text: "Order B-3300 is out for delivery today." }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)out for delivery" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: another_customers_order_never_reaches_the_prompt
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "customer=c-4|and what about the other one?" }
+      llm_script:
+        - { match: { contains: "Z-9114" },
+            reply: "Final Answer: Order Z-9114 was delivered on Tuesday." }
+        - { match: { contains: "which order you mean" },
+            reply: "Final Answer: Ask the customer which order they mean." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, customer_id: "c-3", text: "Chasing order Z-9114 please." }
+              - { n: 2, customer_id: "c-3", text: "Thanks, that is sorted." }
+              - { n: 3, customer_id: "c-4", text: "Morning, I have a question." }
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "s1", text: "Order Z-9114 was delivered on Tuesday." }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)which order you mean" }
+        - { type: does_not_call_tool, name: search }
+        - { type: terminates }
+
+  - name: no_referent_means_ask_rather_than_search
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "customer=c-5|and the other one?" }
+      llm_script:
+        - { match: { contains: "C-2001" }, reply: "Final Answer: Order C-2001 is in transit." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, customer_id: "c-9", text: "My order C-2001 has not arrived." }
+              - { n: 2, customer_id: "c-5", text: "Hi there." }
+              - { n: 3, customer_id: "c-5", text: "Are you still there?" }
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "s1", text: "Order C-2001 is in transit." }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)which order you mean" }
+        - { type: does_not_call_tool, name: search }
+        - { type: no_exception }
+
+  - name: adversarial_the_history_tool_returns_nothing
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The history service was mid-deploy and answered with nothing at all. A
+      loop that reads `result["turns"]` raises here, and a loop that treats a
+      missing history as an empty one is correct.
+
+      What the loop must not do is treat "I have no context" as "I have no
+      constraint". Having nothing to resolve the follow-up against is exactly
+      the case where asking the customer is the answer, and it is the case
+      where a loop that guesses guesses from whatever is nearest.
+    spec:
+      kind: agent_run
+      input: { question: "customer=c-6|and what about the other one?" }
+      llm_script:
+        - { match: { contains: "D-4000" }, reply: "Final Answer: Order D-4000 is at the depot." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history: { fixture: empty_tool_result }
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "s1", text: "Order D-4000 is at the depot." }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)which order you mean" }
+        - { type: does_not_call_tool, name: search }
+
+reference_md: |
+  The filter goes on the turns, before the prompt exists. Everything else is
+  detail.
+
+  Filtering afterwards does not work, and the reason is worth being precise
+  about. Once another customer's order id is in the prompt, the model has a
+  concrete, plausible referent for "the other one", and "the other one" is
+  exactly the phrase that is looking for a referent. A check on the rewrite
+  can catch `Z-9114` if you know to look for it, and cannot catch a rewrite
+  that says "the second parcel the customer mentioned" and means somebody
+  else's.
+
+  Instructing the model to ignore the other customer's turns is the same
+  mistake with a politeness layer. It puts the data in the context and then
+  asks for a behaviour, and the whole reason this platform has a rule about
+  learner code and model endpoints is that behaviours asked for are not
+  controls. A turn that is not in the prompt cannot be used.
+
+  Asking the customer is the part learners leave out, because it feels like
+  failing. It is the cheapest correct answer available: one question, no
+  search, and no chance of telling somebody where a stranger's parcel is. The
+  version that guesses is right most of the time, and the times it is wrong
+  are a data protection incident rather than a bad answer.
+
+  A history service returning nothing lands in the same place as a history
+  with no referent, and that is not a coincidence. Both mean the loop does not
+  know which order is meant. A loop that has one branch for "no context" and
+  another for "no referent" has two chances to get this wrong.

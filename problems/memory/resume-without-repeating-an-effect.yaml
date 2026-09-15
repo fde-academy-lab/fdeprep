@@ -1,0 +1,219 @@
+slug: resume-without-repeating-an-effect
+title: Resume a crashed run without sending the email twice
+artefact_type: code
+difficulty: extreme
+track: memory
+est_minutes: 45
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  An onboarding agent runs eight steps per customer and checkpoints as it
+  goes. On Sunday the worker was restarted mid-run for a deploy.
+
+  It resumed from its checkpoint and sent the welcome email again. The email
+  carries a single-use discount code, so the customer received two, and the
+  second one was spent. The checkpoint was written after the step returned and
+  the process died between the two.
+
+  The engineer who investigated wrote: "the checkpoint says it did not
+  happen". The mail provider says it did. Only one of those two systems
+  actually sent an email.
+
+  You are writing `run_agent(question, llm, tools) -> str`.
+
+  `llm(prompt)` replies with `Action: checkpoint()` first, and a one-line
+  operator message when you ask for one.
+
+  `tools` holds:
+
+      checkpoint()      -> {"status": 200, "completed_steps": ["s1"],
+                            "plan": [{"id": "s1", "tool": "create_account",
+                                      "idempotent": true}]}
+      ledger(step=<id>) -> {"status": 200, "observed": true}
+      run(step=<id>)    -> {"status": 200, "ran": true}
+
+  `ledger` is the external record of what actually happened. It may return
+  something with no `observed` in it at all.
+
+  Return a JSON string with the keys `ran`, `skipped`, `reconciled`, `blocked`
+  and `note`.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your solution calls the ledger for every non-idempotent step that is not in
+  the checkpoint, which on a cold start is one extra call per step and the
+  ledger is the slowest service you depend on. A reviewer proposes trusting
+  the checkpoint and accepting the occasional duplicate, since duplicates are
+  rare and the ledger call is paid on every run. Make the argument for your
+  design in a way that does not rely on the word "correctness", and say what
+  you would measure to find out who is right.
+
+tests:
+  - name: resumes_the_steps_after_the_checkpoint
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "customer-1" }
+      llm_script:
+        - { match: "*", reply: "Action: checkpoint()" }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            completed_steps: ["s1"]
+            plan:
+              - { id: "s1", tool: "create_account", idempotent: true }
+              - { id: "s2", tool: "grant_trial", idempotent: true }
+        ledger: { returns: { status: 200, observed: false } }
+        run: { returns: { status: 200, ran: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [ran, skipped, reconciled, blocked, note] } }
+        - { type: returns_matches, value: "\"skipped\": \\[\\s*\"s1\"" }
+        - { type: returns_matches, value: "\"ran\": \\[\\s*\"s2\"" }
+
+  - name: a_finished_run_does_nothing
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "customer-2" }
+      llm_script:
+        - { match: "*", reply: "Action: checkpoint()" }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            completed_steps: ["s1", "s2"]
+            plan:
+              - { id: "s1", tool: "create_account", idempotent: true }
+              - { id: "s2", tool: "grant_trial", idempotent: true }
+        ledger: { returns: { status: 200, observed: false } }
+        run: { returns: { status: 200, ran: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "\"ran\": \\[\\]" }
+        - { type: does_not_call_tool, name: run }
+        - { type: terminates }
+
+  - name: the_email_the_checkpoint_never_recorded
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "customer-3" }
+      llm_script:
+        - { match: { contains: "reconciled" },
+            reply: "The welcome email had already gone, so it was not sent again." }
+        - { match: "*", reply: "Action: checkpoint()" }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            completed_steps: ["s1"]
+            plan:
+              - { id: "s1", tool: "create_account", idempotent: true }
+              - { id: "s2", tool: "send_welcome_email", idempotent: false }
+        ledger: { returns: { status: 200, observed: true } }
+        run: { returns: { status: 200, ran: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "\"reconciled\": \\[\\s*\"s2\"" }
+        - { type: does_not_call_tool, name: run }
+        - { type: returns_matches, value: "(?i)already gone" }
+
+  - name: an_idempotent_step_needs_no_ledger_call
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "customer-4" }
+      llm_script:
+        - { match: "*", reply: "Action: checkpoint()" }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            completed_steps: []
+            plan:
+              - { id: "s1", tool: "create_account", idempotent: true }
+              - { id: "s2", tool: "grant_trial", idempotent: true }
+        ledger: { returns: { status: 200, observed: true } }
+        run: { returns: { status: 200, ran: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: ledger }
+        - { type: returns_matches, value: "\"ran\": \\[\\s*\"s1\",\\s*\"s2\"" }
+        - { type: no_exception }
+
+  - name: adversarial_the_ledger_answers_with_nothing
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The ledger returned nothing, which is what a service looks like while it
+      is being deployed. There is no `observed` field to read.
+
+      A resume that reads a missing field as false will send the email. A
+      resume that reads it as true will skip a step that never ran. Neither is
+      a decision this code is entitled to make on its own, because one of them
+      costs a customer a second discount code and the other leaves onboarding
+      half done and silent.
+
+      Stopping, naming the step and saying why is the only answer here that
+      does not gamble with somebody else's inbox.
+    spec:
+      kind: agent_run
+      input: { question: "customer-5" }
+      llm_script:
+        - { match: { contains: "blocked" },
+            reply: "The ledger is unreadable, so the welcome email was not sent. Retry when it is back." }
+        - { match: "*", reply: "Action: checkpoint()" }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            completed_steps: []
+            plan:
+              - { id: "s1", tool: "send_welcome_email", idempotent: false }
+        ledger: { fixture: empty_tool_result }
+        run: { returns: { status: 200, ran: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: run }
+        - { type: returns_matches, value: "\"blocked\": \\[\\s*\"s1\"" }
+        - { type: no_exception }
+
+reference_md: |
+  A checkpoint records what this process believes. A ledger records what the
+  world observed. Resuming from the first without consulting the second is the
+  whole bug, and it is invisible in code review because the checkpoint logic
+  is correct.
+
+  The window is small and it is always there. A step completes, the process
+  dies, the checkpoint write never lands. No amount of care about write
+  ordering closes it: write the checkpoint first and a crash mid-step marks
+  work done that never happened, which is the same bug pointing the other way.
+  The only thing that closes it is asking the system that actually performed
+  the effect.
+
+  Idempotence is what decides whether the question is worth asking. Creating
+  an account that exists is free; sending a second single-use discount code is
+  not. Calling the ledger for every step would be correct and slow, and the
+  cost lands on the cold-start path where it is most visible. Calling it only
+  for steps that cannot be safely repeated puts the expense exactly where the
+  risk is.
+
+  An unreadable ledger is the case that separates the two kinds of engineer.
+  Reading a missing `observed` as false sends the email. Reading it as true
+  skips a step that never ran and leaves onboarding half finished with nothing
+  in the logs. Both are this code deciding, on its own, which customer harm it
+  prefers. Stopping and naming the step hands that decision to somebody who is
+  allowed to make it, and costs one operator message.
+
+  The note is the only model call, and it is skipped when there is nothing to
+  say. A resume path runs on every restart of every worker.
