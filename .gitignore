@@ -46,3 +46,12 @@ test-results/
 web/.next/
 web/out/
 *.tsbuildinfo
+
+# `next dev` writes these on every run: AGENTS.md carries Next.js's own agent
+# instructions and CLAUDE.md is a one-line include of it. Ignored rather than
+# committed, because a file that steers every future agent session in this
+# repository should arrive by a decision someone made, not as a side effect of
+# starting the dev server. The generated file argues for committing it; that is
+# the tool's opinion about its own output, not a review.
+web/AGENTS.md
+web/CLAUDE.md
