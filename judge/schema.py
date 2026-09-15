@@ -91,3 +91,66 @@ def parse_rubric_output(raw: str, criteria: list[dict[str, Any]]) -> list[Criter
 
     order = {c["id"]: i for i, c in enumerate(criteria)}
     return sorted(scores, key=lambda s: order[s.criterion_id])
+
+
+@dataclass(frozen=True)
+class BeatCoverage:
+    beat_key: str
+    covered: bool
+    evidence_quote: str
+
+
+def parse_beat_output(raw: str, beats: list[dict[str, Any]]) -> list[BeatCoverage]:
+    """The final beat coverage pass. docs/07 section 7.
+
+    Same discipline as parse_rubric_output and for the same reason: the only
+    thing between a transcript that argues for itself and a forged coverage
+    result is that the result has to arrive in a shape this function accepts.
+    Nothing is coerced, and a reply that does not conform makes the session an
+    error rather than a score nobody can defend.
+    """
+    declared = [str(beat["key"]) for beat in beats]
+    known = set(declared)
+
+    try:
+        payload = json.loads(_unwrap(raw))
+    except (json.JSONDecodeError, ValueError) as error:
+        raise JudgeOutputRejected(f"the judge did not return JSON: {error}") from error
+
+    if not isinstance(payload, dict) or not isinstance(payload.get("beats"), list):
+        raise JudgeOutputRejected("the judge returned no beats array")
+
+    results: list[BeatCoverage] = []
+    seen: set[str] = set()
+
+    for index, entry in enumerate(payload["beats"]):
+        if not isinstance(entry, dict):
+            raise JudgeOutputRejected(f"beats[{index}] is not an object")
+
+        key = entry.get("beat_key")
+        if not isinstance(key, str) or key not in known:
+            raise JudgeOutputRejected(
+                f"beats[{index}] names {key!r}, which is not a beat of this question")
+        if key in seen:
+            raise JudgeOutputRejected(f"{key} was judged twice")
+        seen.add(key)
+
+        covered = entry.get("covered")
+        # Anything other than a real boolean is a guess about what the judge
+        # meant, and "covered": "yes" guessed wrongly costs a learner marks.
+        if not isinstance(covered, bool):
+            raise JudgeOutputRejected(
+                f"{key} is marked {covered!r}, which is not true or false")
+
+        quote = entry.get("evidence_quote")
+        if not isinstance(quote, str) or not quote.strip():
+            raise JudgeOutputRejected(f"{key} carries no evidence quote")
+
+        results.append(BeatCoverage(key, covered, quote))
+
+    missing = sorted(known - seen)
+    if missing:
+        raise JudgeOutputRejected(f"the judge skipped {', '.join(missing)}")
+
+    order = {key: index for index, key in enumerate(declared)}
+    return sorted(results, key=lambda r: order[r.beat_key])

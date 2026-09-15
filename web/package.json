@@ -13,7 +13,8 @@
     "dispatch": "tsx scripts/dispatcher.ts",
     "resultwriter": "tsx scripts/result-writer.ts",
     "lint": "eslint .",
-    "burst": "tsx scripts/burst_test.ts"
+    "burst": "tsx scripts/burst_test.ts",
+    "scorevoice": "tsx scripts/score-voice.ts"
   },
   "dependencies": {
     "@aws-sdk/client-polly": "^3.1132.0",

@@ -274,8 +274,22 @@ cd web
 VOICE_TOKEN_SECRET=pick-anything VOICE_SOCKET_URL=ws://localhost:8787 npm run dev
 ```
 
-Then `/voice/consent` to accept, and `/voice/lab` to check the microphone and
-stream. Transcripts print to the browser console and appear nowhere on screen.
+Then `/voice/consent` to accept, and `/voice/session?mode=guided` to answer
+one. `/voice/lab` is the bare transport check from the first voice session,
+which prints transcripts to the browser console and shows them nowhere.
+
+Scoring runs in a third process, the way the dispatcher and the result writer
+do. It sends each finished session to the judge Lambda and writes the score
+back, so the debrief at `/voice/sessions` fills in:
+
+```
+# terminal 3
+cd web && npm run scorevoice
+```
+
+`VOICE_SCRIPT` on the socket makes the cockpit drivable with no microphone. It
+holds an answer the scripted adapter speaks in time with whatever noise it
+hears, so beats light and nudges fire; point it at a question's anchors.
 
 `VOICE_STT=scripted` produces placeholder words driven by how loud you are, so
 the pipeline is visible without an AWS credential. `VOICE_STT=transcribe` uses

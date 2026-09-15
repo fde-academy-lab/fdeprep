@@ -17,6 +17,7 @@ from .defence import judge_defence
 from .probes import ProbeDisagreement, run_probes
 from .rubric import judge_rubric, with_ids
 from .schema import JudgeOutputRejected
+from .voice import judge_voice_event
 
 # A prompt submission that clears every probe has met the objective bar. The
 # rubric decides how much of the remaining sixty it earns. docs/03 section 5
@@ -93,6 +94,12 @@ def _judge(event: dict[str, Any], transport: Transport) -> dict[str, Any]:
     artefact = event.get("artefact_type")
     if artefact == "defence":
         return _judge_defence_event(event, transport)
+    # docs/07 section 6. A spoken answer is scored by the same Lambda, on the
+    # same two-call budget, with the same schema rejection. It carries no
+    # submission and no allowance, so it returns its own shape rather than a
+    # verdict.
+    if artefact == "voice":
+        return judge_voice_event(event, transport)
 
     problem = event.get("problem") or {}
     body = event.get("body") or ""

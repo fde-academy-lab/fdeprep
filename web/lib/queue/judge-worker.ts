@@ -175,7 +175,15 @@ async function requeue(
   await send("judgements", { ...message.body, judge_attempt: nextAttempt });
 }
 
-async function invoke(
+/**
+ * The road to the judge Lambda: a subprocess locally, the runtime interface
+ * emulator or the deployed function when JUDGE_ENDPOINT is set.
+ *
+ * Exported so the voice scorer reaches the same function the same way rather
+ * than growing a second road to it. docs/07 section 6 scores a spoken answer
+ * with the same judge.
+ */
+export async function invoke(
   event: Record<string, unknown>, options: JudgeOptions,
 ): Promise<Record<string, unknown>> {
   if (options.invoke) return options.invoke(event);

@@ -24,6 +24,7 @@
  * colour, and the nudge slot is a live region.
  */
 import { PACE_WORD, type BeatProgress, type PaceState } from "@/lib/voice/cues";
+import { clock } from "@/lib/voice/clock";
 
 /** docs/07 section 3: colour carries state only, one meaning each. */
 const PACE_TONE: Record<PaceState, string> = {
@@ -32,11 +33,6 @@ const PACE_TONE: Record<PaceState, string> = {
   overrun: "border-fail text-fail",
   never_reached: "border-border text-text-faint",
 };
-
-export function clock(ms: number): string {
-  const total = Math.max(0, Math.round(ms / 1000));
-  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
-}
 
 /**
  * The primary instrument. Passed beats fill, the current beat is outlined in

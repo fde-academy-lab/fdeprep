@@ -19,6 +19,10 @@ export async function seedRateLimitPolicies(client: Pool | PoolClient): Promise<
       ('submit_daily',     'extreme', 1,    86400),
       ('live_daily',       null,      10,   86400),
       ('rehearsal_weekly', null,      2,    604800),
-      ('defence_daily',    null,      5,    86400)
+      ('defence_daily',    null,      5,    86400),
+      -- docs/07 section 10. Pressure is absent on purpose: it spends
+      -- rehearsal_weekly, which that section says it shares.
+      ('voice_guided_daily',   null,  6,    86400),
+      ('voice_unguided_daily', null,  6,    86400)
     on conflict do nothing`);
 }

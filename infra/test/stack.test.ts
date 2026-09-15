@@ -127,10 +127,14 @@ describe("queues and buckets", () => {
     }
   });
 
-  test("both buckets block public access and carry a lifecycle rule", () => {
+  test("every bucket blocks public access and carries a lifecycle rule", () => {
     const template = synth();
-    template.resourceCountIs("AWS::S3::Bucket", 2);
-    for (const bucket of Object.values(template.findResources("AWS::S3::Bucket"))) {
+    // Traces, problem bundles and learner audio. The count is asserted in the
+    // learner audio suite below; what matters here is that no bucket escapes
+    // the two rules, however many there are.
+    const buckets = Object.values(template.findResources("AWS::S3::Bucket"));
+    assert.ok(buckets.length >= 2);
+    for (const bucket of buckets) {
       const properties = (bucket as { Properties: Record<string, unknown> }).Properties;
       assert.ok(properties.LifecycleConfiguration, "every bucket needs a lifecycle rule");
       assert.deepEqual(properties.PublicAccessBlockConfiguration, {
@@ -338,5 +342,42 @@ describe("the voice socket", () => {
       [],
       "these functions execute no learner code and need public endpoints",
     );
+  });
+});
+
+/** docs/07 section 9: audio retention is a promise on the consent screen, so
+ *  it is enforced by the bucket rather than by anything that could forget. */
+describe("learner audio", () => {
+  test("the bucket deletes a recording after thirty days", () => {
+    const template = synth();
+    const buckets = Object.entries(template.findResources("AWS::S3::Bucket"))
+      .filter(([id]) => id.startsWith("VoiceAudioBucket"));
+    assert.equal(buckets.length, 1);
+
+    const rules = (buckets[0]![1] as {
+      Properties: { LifecycleConfiguration: { Rules: Array<Record<string, unknown>> } };
+    }).Properties.LifecycleConfiguration.Rules;
+    const expiry = rules.find((rule) => rule.ExpirationInDays !== undefined);
+    assert.ok(expiry, "the audio bucket expires its objects");
+    assert.equal(expiry.ExpirationInDays, 30);
+    assert.equal(expiry.Status, "Enabled");
+  });
+
+  test("nothing versions a recording, because a deleted one has to be gone", () => {
+    const template = synth();
+    const [, bucket] = Object.entries(template.findResources("AWS::S3::Bucket"))
+      .find(([id]) => id.startsWith("VoiceAudioBucket"))!;
+    const props = (bucket as { Properties: Record<string, unknown> }).Properties;
+    assert.equal(props.VersioningConfiguration, undefined);
+    assert.deepEqual(props.PublicAccessBlockConfiguration, {
+      BlockPublicAcls: true, BlockPublicPolicy: true,
+      IgnorePublicAcls: true, RestrictPublicBuckets: true,
+    });
+  });
+
+  test("the audio bucket is not the traces bucket", () => {
+    const template = synth();
+    const ids = Object.keys(template.findResources("AWS::S3::Bucket"));
+    assert.equal(ids.length, 3, "traces, problem bundles, and learner audio");
   });
 });
