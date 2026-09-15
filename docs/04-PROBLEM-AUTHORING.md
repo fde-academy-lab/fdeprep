@@ -42,7 +42,7 @@ competencies:
     weight: 0.5
 
 model_id: <pinned bedrock model id>        # used for live runs only on code problems
-call_budget: 6
+call_budget: 3
 time_limit_s: 10
 allowed_imports: [json, re]
 
@@ -101,7 +101,7 @@ est_minutes: 25
 competencies:
   - { slug: tool-error-handling, weight: 1.0 }
   - { slug: agent-loop, weight: 0.5 }
-call_budget: 6
+call_budget: 3
 time_limit_s: 10
 allowed_imports: [json, re]
 
@@ -124,7 +124,7 @@ contract_md: |
   `Final Answer: <text>`. Tools are callables in the `tools` dict and return
   JSON-serialisable objects.
 
-  Budget: at most 6 model calls. Allowed imports: json, re.
+  Budget: at most 3 model calls. Allowed imports: json, re.
   Return a non-empty string in every case, including total failure.
 
 stub_code: |
@@ -135,7 +135,7 @@ stub_code: |
   def run_agent(question: str, llm, tools: dict) -> str:
       scratchpad = f"Question: {question}\n"
 
-      for _ in range(6):
+      for _ in range(3):
           output = llm(scratchpad)
           # TODO 1: return the text when output is a Final Answer
           # TODO 2: parse the tool name and arguments from an Action
@@ -162,11 +162,11 @@ tests:
         - { match: "*", reply: "Final Answer: It is in transit." }
       tools:
         track: { returns: { status: 200, data: { state: "in_transit" } } }
-      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      budget: { max_llm_calls: 3, max_tool_calls: 8, wall_ms: 10000 }
       assertions:
         - { type: returns_nonempty }
         - { type: returns_matches, value: "(?i)transit" }
-        - { type: llm_calls_at_most, value: 6 }
+        - { type: llm_calls_at_most, value: 3 }
 
   - name: respects_call_budget
     visibility: public
@@ -177,10 +177,10 @@ tests:
         - { match: "*", reply: "Action: track(id=1)" }
       tools:
         track: { returns: { status: 200, data: {} } }
-      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      budget: { max_llm_calls: 3, max_tool_calls: 8, wall_ms: 10000 }
       assertions:
         - { type: terminates }
-        - { type: llm_calls_at_most, value: 6 }
+        - { type: llm_calls_at_most, value: 3 }
         - { type: returns_nonempty }
 
   - name: detects_error_in_success_body
@@ -194,7 +194,7 @@ tests:
         - { match: "*", reply: "Final Answer: I could not confirm the status." }
       tools:
         track: { fixture: tool_soft_error, params: { status: 200, body: { error: "not_found" } } }
-      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      budget: { max_llm_calls: 3, max_tool_calls: 8, wall_ms: 10000 }
       assertions:
         - { type: handles_error }
         - { type: no_repeated_identical_tool_call, max_repeats: 1 }
@@ -209,7 +209,7 @@ tests:
         - { match: "*", reply: "Action: track(id=11)" }
       tools:
         track: { fixture: tool_soft_error, params: { status: 200, body: { error: "upstream_down" } } }
-      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      budget: { max_llm_calls: 3, max_tool_calls: 8, wall_ms: 10000 }
       assertions:
         - { type: terminates }
         - { type: returns_nonempty }
@@ -231,7 +231,7 @@ tests:
         track:
           fixture: injected_instruction
           params: { canary: "CANARY_7731" }
-      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      budget: { max_llm_calls: 3, max_tool_calls: 8, wall_ms: 10000 }
       assertions:
         - { type: ignores_injection, canary: "CANARY_7731" }
         - { type: terminates }
@@ -378,6 +378,19 @@ Before opening a pull request on a new problem, confirm each of these.
 2. The naive solution fails at least one hidden test. If the obvious approach passes everything, the problem teaches nothing.
 3. Every adversarial fixture has an annotation that explains itself after the attempt.
 4. The hints do not contain the answer. Hint one narrows the search space, hint two names the mechanism, hint three describes the shape of the fix.
-5. The call budget is one above a clean solution and at least two below a naive one.
+5. The call budget is one above what a clean solution spends. Measure it by
+   running the reference with every ceiling lifted, and leave out any case
+   where it spends the whole allowance: a case that exists to prove the loop
+   stops at its ceiling measures the ceiling rather than the solution.
+
+   A budget that also sits two or more below what a naive solution spends
+   makes the budget itself a second discriminator, which is worth having and
+   is not always available. It needs two things to be true: the naive mistake
+   has to be wastefulness rather than crashing or answering wrongly, and the
+   stub's loop bound has to sit above the budget, because a stub that loops
+   `range(budget)` caps the naive at the budget and no overspend is possible.
+   Where those do not hold, the hidden test is the discriminator and the
+   budget is simply correct. Report all three numbers in the pull request
+   either way.
 6. You have solved your own problem from the stub, in the editor, under the time estimate.
 7. The reference walkthrough explains why, not what. The code is already visible by then.
