@@ -11,6 +11,14 @@
  *
  * Readiness counts `clean` only. A pass with four hints is progress and is not
  * evidence, so `clean` never degrades to `passed` on a later scruffy run.
+ *
+ * One deviation from the literal text of docs/02 section 7, which defines
+ * `attempted` as "at least one submission, no pass". Only a verdict the learner
+ * earned counts here: error, timeout, cancelled and rejected move nothing. An
+ * error verdict already never consumes an allowance, and for the same reason it
+ * should not mark someone as having attempted a competency. The heatmap is the
+ * readiness signal the placement side reads, and a runner that died is not
+ * evidence about a learner.
  */
 import type { PoolClient } from "pg";
 
@@ -23,13 +31,21 @@ export function isUpgrade(from: State, to: State): boolean {
   return RANK[to] > RANK[from];
 }
 
-/** What this submission earns, before it is merged with what was already there. */
+/** Verdicts that say something about the learner rather than about the platform. */
+const EARNED = new Set(["pass", "fail"]);
+
+/**
+ * What this submission earns, before it is merged with what was already there.
+ * Null when the verdict says nothing about the learner, which leaves the cell
+ * exactly as it was.
+ */
 export function stateForSubmission(input: {
   verdict: string | null;
   hintsUsed: number;
   llmCalls: number | null;
   callBudget: number | null;
-}): State {
+}): State | null {
+  if (!input.verdict || !EARNED.has(input.verdict)) return null;
   if (input.verdict !== "pass") return "attempted";
   const withinBudget =
     input.callBudget === null || input.llmCalls === null || input.llmCalls <= input.callBudget;
@@ -66,6 +82,7 @@ export async function applyForSubmission(
       llmCalls: row.llm_calls,
       callBudget: row.call_budget,
     });
+    if (earned === null) continue;
 
     const existing = await client.query<{ state: State }>(
       `select state from competency_score

@@ -10,8 +10,19 @@
 
 const TIERS = new Set(["easy", "medium", "hard", "extreme"]);
 
-/** Files allowed to decide on difficulty. */
-const ALLOWED = [/\/lib\/policy\//, /\/eslint-rules\//, /\/migrations\//];
+/**
+ * Files allowed to decide on difficulty.
+ *
+ * tests/fixtures is here because a hand-computed fixture names tiers as data: a
+ * heatmap expectation written out cell by cell is the thing a person checks by
+ * hand, and it cannot ask the policy module what it expects without asking the
+ * code under test. Test bodies stay covered by the rule, which is how the
+ * learner-test gate and the builder ladder ended up being read from policy
+ * rather than hard-coded.
+ */
+const ALLOWED = [
+  /\/lib\/policy\//, /\/eslint-rules\//, /\/migrations\//, /\/tests\/fixtures\//,
+];
 
 function isDifficultyExpression(node) {
   if (!node) return false;
