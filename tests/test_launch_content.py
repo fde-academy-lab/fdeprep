@@ -5,12 +5,16 @@ battery. The reference has to pass every gate and the naive has to pass public
 and fail a hidden test, because a naive solution that passes everything means
 the problem teaches nothing.
 
-The call budget is checked too. docs/04 item 5 says one above a clean solution
-and at least two below a naive one, and only the first half is enforceable:
-whether a naive solution is wasteful depends on what its characteristic mistake
-is, and several of these fail by crashing or by answering wrongly rather than
-by spending. The naive figure is reported by tools/budget_report.py rather than
-asserted.
+The call budget is checked too, against docs/04 item 5: one above what a clean
+solution spends, measured with every ceiling lifted and with the cases that
+spend the whole allowance left out, since those measure the ceiling rather than
+the solution.
+
+The item's second half, a budget two or more below what a naive solution
+spends, is a property a problem either has or does not, so it is reported by
+tools/budget_report.py rather than asserted. It needs the naive mistake to be
+wastefulness rather than crashing, and eleven of these seventeen fail the other
+way.
 """
 
 from __future__ import annotations
@@ -40,14 +44,6 @@ EXPECTED_MIX = {
 # Lifted ceiling for measuring what a solution wants rather than what it was
 # allowed. Well above any budget in the set.
 GENEROUS = 40
-
-# docs/04 section 3 reproduces this problem verbatim, so the file matches the
-# specification rather than the checklist the same document sets out four
-# sections later. Its clean path costs two calls against a budget of six.
-# Editing it would put problems/ in conflict with docs/04; the disagreement is
-# reported in the pull request instead.
-BUDGET_EXEMPT = {"recover-from-soft-tool-errors"}
-
 
 def launch_files() -> list[pathlib.Path]:
     return sorted(p for p in PROBLEMS.rglob("*.yaml") if "_fixtures" not in p.parts)
@@ -158,8 +154,6 @@ def test_the_naive_solution_passes_public_and_fails_a_hidden_test(path):
 @pytest.mark.parametrize("path", CODE, ids=IDS)
 def test_the_budget_is_one_above_a_clean_solution(path):
     problem = load_problem(path)
-    if problem.slug in BUDGET_EXEMPT:
-        pytest.skip("docs/04 section 3 reproduces this problem verbatim; see the module docstring")
     reference, _ = solutions(path)
     clean = clean_demand(problem, reference)
     assert problem.call_budget == clean + 1, (

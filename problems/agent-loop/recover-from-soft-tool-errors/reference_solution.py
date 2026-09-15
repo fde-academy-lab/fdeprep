@@ -57,7 +57,7 @@ def run_agent(question: str, llm, tools: dict) -> str:
     scratchpad = f"Question: {question}\n"
     retried = False
 
-    for _ in range(6):
+    for _ in range(3):
         output = llm(scratchpad)
 
         if "Final Answer:" in output:

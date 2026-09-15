@@ -12,7 +12,7 @@ import re
 def run_agent(question: str, llm, tools: dict) -> str:
     scratchpad = f"Question: {question}\n"
 
-    for _ in range(6):
+    for _ in range(3):
         output = llm(scratchpad)
 
         if output.startswith("Final Answer:"):
