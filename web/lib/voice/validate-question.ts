@@ -208,7 +208,7 @@ export function validateVoiceYaml(source: string, file: string): VoiceReport {
   });
   const ordered = BANDS.map((band) => exemplars.find((e) => e?.band === band)?.score);
   if (ordered.every((score) => typeof score === "number")) {
-    const [high, mid, low] = ordered as number[];
+    const [high, mid, low] = ordered as [number, number, number];
     if (!(high > mid && mid > low)) {
       add("exemplar_scores",
           `the exemplar scores are ${high}, ${mid}, ${low}, which do not descend from ` +

@@ -137,8 +137,9 @@ tests:
       budget: { max_llm_calls: 5, max_tool_calls: 8, wall_ms: 10000 }
       assertions:
         - { type: terminates }
-        - { type: returns_nonempty }
         - { type: llm_calls_at_most, value: 5 }
+        - { type: calls_tool, name: lookup }
+        - { type: returns_matches, value: "(?i)paragraph of contract text" }
 
   - name: a_late_summary_is_still_a_summary
     visibility: hidden
@@ -177,4 +178,7 @@ reference_md: |
 
   What comes back when the calls run out is part of the contract, not an
   afterthought. An empty string is indistinguishable from a bug to whatever
-  called this, and a cheerful summary of nothing is worse than both.
+  called this, and a cheerful summary of nothing is worse than both. Carrying
+  what the lookups actually returned is what makes the unfinished answer worth
+  reading: five calls of research with a sentence saying it did not finish is
+  something a person can use, and "I could not complete this" is not.
