@@ -1,0 +1,199 @@
+slug: repair-an-invalid-json-response
+title: Give the downstream system JSON it can actually parse
+artefact_type: code
+difficulty: easy
+track: tool-creation
+est_minutes: 20
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: prompt-construction, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A ticket triage service hands its output straight to the client's workflow
+  engine, which does `JSON.parse` and nothing else. Since Tuesday it has been
+  returning 500s on roughly one ticket in six.
+
+  The traces show why. The model is asked for JSON and mostly returns JSON,
+  but sometimes wraps it in a fenced code block, and sometimes leaves a
+  trailing comma after the last field. Both are still obviously the right
+  answer to a human reading the trace, which is why nobody spotted it for two
+  days.
+
+  The client's engine will not be changed. Your service has to send something
+  it can parse, every time.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns a string that should be a JSON object with the keys
+  `category`, `priority` and `order_id`. The ticket text arrives as
+  `question`. There are no tools.
+
+  Return the JSON as a string. You get one repair attempt: when the first
+  reply does not parse, say what was wrong with it and ask once more. Do not
+  fill in a field the model did not give you.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Ticket: {question}\n"
+
+      for _ in range(8):
+          reply = llm(scratchpad)
+
+          # TODO 1: strip a fenced code block if there is one
+          # TODO 2: try to parse what is left
+          # TODO 3: on success, return it as a JSON string
+          # TODO 4: on failure, append what went wrong and ask once more
+          pass
+
+      return json.dumps({"category": "unknown", "priority": "unknown", "order_id": None})
+
+steps:
+  - id: s1
+    text: Strip a fenced code block before parsing.
+    check_id: s1
+  - id: s2
+    text: Parse what is left and catch the failure.
+    check_id: s2
+  - id: s3
+    text: Append what was wrong with the reply so the retry differs.
+    check_id: s3
+  - id: s4
+    text: Return a JSON string in every case, including total failure.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: llm_calls_at_most, value: 3 }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: valid_json_return }
+
+hints:
+  - A fence is three backticks and an optional language name. It is not JSON
+    and it never was.
+  - json.loads raises. Something has to catch it, and the something is not the
+    client's workflow engine.
+  - Telling the model the reply did not parse is a different prompt from
+    asking the same question again.
+
+tests:
+  - name: parses_a_clean_reply
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Parcel never arrived, order 8812, customer is furious" }
+      llm_script:
+        - { match: "*", reply: '{"category": "delivery", "priority": "high", "order_id": "8812"}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object,
+                      required: [category, priority, order_id],
+                      properties: { category: { type: string }, priority: { type: string } } } }
+        - { type: returns_matches, value: "delivery" }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: answers_a_second_clean_ticket
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Item arrived damaged, order 2290, wants replacement" }
+      llm_script:
+        - { match: "*", reply: '{"category": "returns", "priority": "high", "order_id": "2290"}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [category, priority, order_id] } }
+        - { type: returns_matches, value: "2290" }
+        - { type: no_exception }
+
+  - name: strips_a_fenced_block
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Wrong size sent, order 4410" }
+      llm_script:
+        - { match: "*", reply: "```json\n{\"category\": \"returns\", \"priority\": \"normal\", \"order_id\": \"4410\"}\n```" }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [category, priority, order_id] } }
+        - { type: returns_matches, value: "returns" }
+        - { type: no_exception }
+
+  - name: repairs_a_trailing_comma_once
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Card declined at checkout twice" }
+      llm_script:
+        - { match: { contains: "did not parse" },
+            reply: '{"category": "billing", "priority": "normal", "order_id": null}' }
+        - { match: "*",
+            reply: '{"category": "billing", "priority": "normal", "order_id": null,}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [category, priority, order_id] } }
+        - { type: returns_matches, value: "billing" }
+        - { type: no_exception }
+
+  - name: a_fence_around_broken_json_is_still_broken
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Cannot log in since the update" }
+      llm_script:
+        - { match: { contains: "did not parse" },
+            reply: '{"category": "access", "priority": "high", "order_id": null}' }
+        - { match: "*",
+            reply: "```json\n{\"category\": \"access\", \"priority\": \"high\" \"order_id\": null}\n```" }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [category, priority, order_id] } }
+        - { type: returns_matches, value: "access" }
+        - { type: terminates }
+
+reference_md: |
+  Three lines of code and one decision about where the boundary is.
+
+  The decision is that this service owns the contract, not the model and not
+  the client. The model produces something JSON-shaped; turning that into
+  something parsable is this code's job, and shipping the model's raw string
+  onward is this code declining to do it. The client's workflow engine was
+  never going to grow a fence-stripper.
+
+  Repair has to be bounded and it has to change the prompt. One attempt,
+  carrying the parser's own complaint, is a different question from the one
+  that just failed. Asking the same question again gets the same reply, and a
+  loop that keeps asking turns a parse error into a spend.
+
+  The field that must not be filled in is `order_id`. A triage service that
+  invents an order id sends a real customer's complaint to a real stranger's
+  order, and the value looks exactly as plausible as a correct one. Returning
+  null is the honest answer when the model gave nothing, and the workflow
+  engine can route on null.
