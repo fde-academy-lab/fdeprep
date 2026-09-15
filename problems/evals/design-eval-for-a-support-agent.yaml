@@ -1,0 +1,186 @@
+slug: design-eval-for-a-support-agent
+title: Design the evaluation for a support agent going to production
+artefact_type: design
+difficulty: extreme
+track: evals
+est_minutes: 45
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: client-communication, weight: 0.5 }
+
+brief_md: |
+  A client is two weeks from launching a support agent that can issue refunds
+  up to 200 dollars. They have 40 hand-written test conversations and a
+  passing rate of 95 percent on them. They want to go live.
+
+  Write the evaluation plan you would put in front of their head of support.
+  Say what you would measure, what you would refuse to launch without, what
+  the 95 percent number is currently hiding, and what you would tell them if
+  they insist on the date anyway.
+
+  Between 300 and 600 words.
+
+word_range: [300, 600]
+required_headings: []
+
+rubric:
+  - label: Identifies what a hand-written set cannot cover
+    weight: 25
+    descriptor_md: |
+      Strong answers name at least two of: absence of adversarial cases,
+      selection bias toward cases the author already thought of, no
+      distribution match to real traffic, no measurement of the cost of a
+      wrong refund. Naming one and elaborating it is worth less than naming
+      two and saying which matters more here.
+  - label: Proposes measurable gates rather than adjectives
+    weight: 25
+    descriptor_md: |
+      Every gate names a number, a population and a consequence. "Robust
+      handling of edge cases" is not a gate. "Zero unauthorised refunds across
+      200 replayed real conversations, and the launch stops if one appears" is
+      one. Strong answers keep the list short enough that it will not be
+      waived on the day.
+  - label: Separates correctness from harm
+    weight: 20
+    descriptor_md: |
+      A wrong answer costs a follow-up message. A refund issued to the wrong
+      account costs money and a complaint. Strong answers gate these
+      separately and say that averaging them is what produces 95 percent.
+  - label: Gives an answer the client can act on this week
+    weight: 20
+    descriptor_md: |
+      Two weeks is the constraint, not an obstacle to argue with. Strong
+      answers say what can be built in it, usually replayed real traffic plus
+      a small adversarial set, and what a reduced launch looks like if the
+      numbers do not come back clean.
+  - label: Holds a position under commercial pressure
+    weight: 10
+    descriptor_md: |
+      The date is going to be pushed. Strong answers say in advance which
+      gates are negotiable and which are not, and name the smaller launch that
+      keeps the date, rather than either capitulating or refusing flatly.
+
+exemplars:
+  - band: strong
+    score: 91
+    body_md: |
+      The 95 percent is measuring the wrong population. Forty conversations
+      written by the team who built the agent are forty situations they
+      already thought of, which is why the number is high, and it says nothing
+      about the two cases that will hurt: a refund to the wrong account, and a
+      customer who asks for one in a way nobody anticipated.
+
+      What I would measure, in two populations.
+
+      Replayed real traffic. Take 200 conversations from the last quarter of
+      human support, run the agent against them, and compare. This is the only
+      thing that tells us what the agent meets rather than what we imagined.
+      It can be built this week from data you already have.
+
+      An adversarial set. Thirty cases, written by someone who did not build
+      the agent, aimed at the refund path: a customer asking for a refund on
+      an order they do not own, a message that contains an instruction, the
+      same request repeated four times, an order id that does not exist.
+
+      Two gates block the launch, and nothing else does.
+
+      Zero unauthorised refunds across both sets. Unauthorised means any refund
+      on an order not belonging to the authenticated customer, or above the
+      200 dollar ceiling. One occurrence stops the launch. This is not a rate
+      because the cost is not linear.
+
+      No more than two percent of replayed conversations worse than the human
+      handling, judged on whether the customer's problem was resolved.
+
+      Everything else is reported and none of it blocks, including tone,
+      latency and the 95 percent.
+
+      Separating those two is the point. The current number averages "said
+      something unhelpful" with "moved money" and the second one is the reason
+      anybody is nervous.
+
+      If they hold the date: launch with refunds requiring one-click human
+      approval and everything else automated. That keeps the two weeks, keeps
+      the launch, and removes the failure mode entirely. Refunds go automatic
+      once the replayed set is clean. I would say that up front rather than
+      after the argument.
+  - band: adequate
+    score: 64
+    body_md: |
+      Forty hand-written conversations is not enough evidence to launch on,
+      and 95 percent is not as reassuring as it sounds because we do not know
+      what the two failures were.
+
+      I would want to see a few things before launch. First, a larger test set
+      drawn from real conversations rather than written by the team, because
+      hand-written cases tend to cover what the author expected. Second, a set
+      of adversarial cases specifically targeting the refund path, since that
+      is where the money is. Third, a breakdown of the 95 percent by category
+      rather than one overall number, so we can see whether the failures
+      cluster.
+
+      For gates, I would say no unauthorised refunds at all, and a minimum
+      overall pass rate of 98 percent on the expanded set. I would also want
+      monitoring in place before launch so we can catch problems quickly, and
+      a way to turn the refund capability off without a deploy.
+
+      Two weeks is tight for all of this. If the date cannot move I would
+      prioritise the adversarial refund cases, because that is the highest
+      cost failure, and accept less coverage elsewhere.
+  - band: weak
+    score: 31
+    body_md: |
+      A 95 percent pass rate on 40 test cases is a reasonable start but not
+      sufficient for a production launch, particularly for a system that
+      handles financial transactions.
+
+      I would recommend expanding the test suite significantly, ideally to
+      several hundred cases covering a broad range of scenarios. The tests
+      should include edge cases and adversarial inputs to ensure the agent is
+      robust. We should also implement comprehensive monitoring and logging so
+      that any issues in production can be identified quickly.
+
+      Before launch I would want to see a higher pass rate, ideally 99 percent
+      or above, along with sign-off from stakeholders. A phased rollout would
+      also reduce risk, starting with a small percentage of traffic and
+      increasing gradually as confidence grows.
+
+      Two weeks is likely not enough time to do this properly and I would
+      recommend pushing the date to ensure quality.
+
+reference_md: |
+  This is where the FDE part of the programme shows up. An engineer who can
+  write the loop and cannot hold this conversation fails the screen.
+
+  The 95 percent is not wrong, it is a measurement of the wrong population.
+  Forty conversations written by the people who built the agent are forty
+  situations they had already imagined, and the score is high because
+  imagination and implementation came from the same place. Saying this without
+  saying the client did something stupid is most of the skill: they did the
+  reasonable thing, and the reasonable thing has a known bias.
+
+  Separating correctness from harm is the technical core. Averaging "gave a
+  vague answer" with "refunded a stranger's order" produces a number that goes
+  up when you fix the vague answers, which is the cheap half. Two gates, one
+  of them absolute, is what stops an average from deciding whether money
+  moves.
+
+  The reason the gate on unauthorised refunds is zero rather than a rate is
+  worth being able to defend. A rate implies a tolerable number of them and
+  invites the conversation about what that number is. There is no rate at
+  which a client wants to explain to a customer that the agent refunded
+  somebody else's order and that this is within tolerance.
+
+  The two week constraint is not an obstacle to argue with, and the answers
+  that treat it as one lose the room. Replayed traffic exists already and can
+  be run in days. Thirty adversarial cases is an afternoon for someone who did
+  not build the agent. What cannot be built in two weeks is confidence in the
+  refund path, which is exactly why the smaller launch is the answer: human
+  approval on refunds, everything else automated, the date kept, the failure
+  mode removed.
+
+  Naming that before the pressure arrives rather than after is the difference
+  between advice and a negotiation. A head of support who hears "here is the
+  version that ships on your date" is being helped. One who hears it only
+  after pushing back has learned that the first answer was a position.
