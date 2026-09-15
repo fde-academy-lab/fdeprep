@@ -49,12 +49,14 @@ describe("no transcript text reaches the screen", () => {
       if (!/message\.text|transcript\.current/.test(line)) return false;
       // Comments explaining the rule are not uses of it.
       if (/^\s*(\/\/|\*|\/\*)/.test(line)) return false;
-      // Allowed: assigning into the ref, and passing it to the cue engine or
-      // to the server at the end, neither of which renders.
+      // Allowed: writing into the ref, handing it to the cue engine, and
+      // sending it to the server once the answer is over. None of the three
+      // renders. Anything else is new and worth reading.
       const allowed =
         /transcript\.current\.\w+\s*(=|\.push\()/.test(line) ||
+        /text: message\.text, startMs:/.test(line) ||
         /partialTranscript:/.test(line) ||
-        /transcript:\s*transcript\.current/.test(line);
+        /(transcript|segments):\s*(spoken\()?transcript\.current/.test(line);
       if (allowed) return false;
       // Anything else is a use worth reading, unless it is plainly a ref
       // declaration.
@@ -64,6 +66,27 @@ describe("no transcript text reaches the screen", () => {
     expect(
       offenders,
       `transcript text is used outside a ref on these lines:\n${offenders.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  /**
+   * The stronger half of the same rule. The allowlist above catches a new
+   * use; this catches the one that matters, which is a use inside the markup.
+   */
+  test("no transcript text appears in any markup the cockpit renders", async () => {
+    const source = await read(path.join(APP, "cockpit.tsx"));
+    const offenders = source.split("\n").filter((line) => {
+      if (/^\s*(\/\/|\*|\/\*)/.test(line)) return false;
+      // A JSX element on the line, carrying transcript text.
+      if (/<[A-Za-z][^>]*(transcript\.current|message\.text|spoken\()/.test(line)) return true;
+      // A bare JSX interpolation of it. The lookbehind keeps "${...}" inside
+      // a template literal out: that is a string being built, not markup.
+      return /(?<!\$)\{\s*(transcript\.current|message\.text|spoken\()/.test(line);
+    });
+
+    expect(
+      offenders,
+      `transcript text reaches the markup on these lines:\n${offenders.join("\n")}`,
     ).toEqual([]);
   });
 

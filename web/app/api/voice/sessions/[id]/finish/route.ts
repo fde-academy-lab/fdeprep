@@ -18,7 +18,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const learner = await currentLearner();
     const { id } = await params;
-    const body = (await request.json()) as { transcript?: string; timeline?: TimelineIn };
+    const body = (await request.json()) as {
+      transcript?: string;
+      segments?: { text: string; startMs: number; endMs: number }[];
+      timeline?: TimelineIn;
+    };
 
     if (!body.timeline || !Array.isArray(body.timeline.beats)) {
       return NextResponse.json({ message: "Needs a timeline." }, { status: 400 });
@@ -28,6 +32,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       sessionId: Number(id),
       enrolmentId: learner.enrolmentId,
       transcript: body.transcript ?? "",
+      segments: Array.isArray(body.segments) ? body.segments : [],
       timeline: body.timeline,
     });
     return NextResponse.json({ finished: Number(id) });

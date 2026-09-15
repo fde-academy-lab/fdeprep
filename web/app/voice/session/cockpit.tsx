@@ -16,6 +16,7 @@
  * the answer window.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { encodePcm, startCapture, type Capture } from "@/lib/voice/capture";
 import { runMicCheck } from "@/lib/voice/mic-check.browser";
@@ -24,7 +25,8 @@ import type { ServerMessage } from "@/lib/voice/protocol";
 import { currentBeat, initialState, territory, type BeatState } from "@/lib/voice/cues";
 import { CockpitRun, type VoiceMode } from "@/lib/voice/run";
 import type { FollowUp, VoiceQuestion } from "@/lib/voice/question";
-import { Announcer, BeatTrack, clock, MicLevel, NudgeSlot, PaceBand, Territory } from "./instruments";
+import { Announcer, BeatTrack, MicLevel, NudgeSlot, PaceBand, Territory } from "./instruments";
+import { clock } from "@/lib/voice/clock";
 
 /** docs/07 section 5: a sixty second clock for the interruption. */
 const INTERRUPTION_SECONDS = 60;
@@ -55,6 +57,12 @@ type Phase = "idle" | "checking" | "ready" | "live" | "closing" | "done";
 
 type Interruption = { followUp: FollowUp; firedAtMs: number; endsAt: number };
 
+/** Joins segments into the running text the cue engine matches against and
+ *  the judge scores. Never rendered; see the rule this file is built around. */
+function spoken(segments: { text: string }[]): string {
+  return segments.map((segment) => segment.text).join(" ");
+}
+
 export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: VoiceMode }) {
   const router = useRouter();
 
@@ -69,6 +77,7 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
   const [announcement, setAnnouncement] = useState<string | null>(null);
   const [rms, setRms] = useState(0);
   const [interruption, setInterruption] = useState<Interruption | null>(null);
+  const [finishedId, setFinishedId] = useState<number | null>(null);
 
   /**
    * Transcript text lives here and only here.
@@ -78,7 +87,12 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
    * nudges; the transcript itself goes to the server at the end and to the
    * debrief in Phase 7c, where the learner is no longer speaking.
    */
-  const transcript = useRef({ partial: "", finals: [] as string[] });
+  const transcript = useRef({
+    partial: "",
+    // Segments rather than strings: the delivery metrics in docs/07 section 6
+    // need the gaps between them, and a joined string has no gaps in it.
+    finals: [] as { text: string; startMs: number; endMs: number }[],
+  });
 
   const socket = useRef<WebSocket | null>(null);
   const capture = useRef<Capture | null>(null);
@@ -116,7 +130,7 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
     socket.current?.send(JSON.stringify({ t: "stop" }));
     socket.current?.close();
     socket.current = null;
-    await capture.current?.stop();
+    const recording = await capture.current?.stop();
     capture.current = null;
 
     if (cockpit && sessionId.current !== null) {
@@ -125,10 +139,25 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
-          transcript: transcript.current.finals.join(" "),
+          transcript: spoken(transcript.current.finals),
+          segments: transcript.current.finals,
           timeline: { ...timeline, interruptions: interruptions.current },
         }),
       }).catch(() => setNote("The session ended but the debrief did not save. Tell an admin."));
+
+      // docs/07 section 7: the MediaRecorder copy is kept for playback and
+      // written to storage at the end. It is not the PCM the transcriber
+      // heard; the two copies exist for different jobs and only this one is
+      // stored. With no bucket configured the request answers that nothing
+      // was stored, and the debrief replays on its own clock instead.
+      if (recording && recording.size > 0) {
+        await fetch(`/api/voice/sessions/${sessionId.current}/audio`, {
+          method: "POST",
+          headers: { "content-type": recording.type || "audio/webm" },
+          body: recording,
+        }).catch(() => setNote("Your answer was saved but the recording was not."));
+      }
+      setFinishedId(sessionId.current);
     }
     setPhase("done");
     router.refresh();
@@ -187,7 +216,7 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
       const at = answerClock();
       const nudge = cockpit.advanceTo({
         elapsedMs: at,
-        partialTranscript: `${transcript.current.finals.join(" ")} ${transcript.current.partial}`,
+        partialTranscript: `${spoken(transcript.current.finals)} ${transcript.current.partial}`,
         voiced: Date.now() - voicedAt.current < 400,
       });
 
@@ -230,7 +259,8 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
       const cockpit = run.current;
       if (!cockpit || sessionId.current === null) return;
       const body = JSON.stringify({
-        transcript: transcript.current.finals.join(" "),
+        transcript: spoken(transcript.current.finals),
+        segments: transcript.current.finals,
         timeline: { ...cockpit.timeline(), interruptions: interruptions.current },
       });
       navigator.sendBeacon?.(
@@ -283,7 +313,9 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
       // screen can read a ref.
       if (message.t === "partial") transcript.current.partial = message.text;
       else if (message.t === "final") {
-        transcript.current.finals.push(message.text);
+        transcript.current.finals.push({
+          text: message.text, startMs: message.startMs, endMs: message.endMs,
+        });
         transcript.current.partial = "";
       } else if (message.t === "error") setNote(message.message);
     };
@@ -319,9 +351,18 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
       <div className="mt-8 border border-border bg-surface p-6">
         <h2 className="font-medium">Answer recorded.</h2>
         <p className="mt-2 text-text-dim">
-          The debrief with your score arrives in the next release. Your audio, your transcript
-          and every beat the cockpit lit are saved.
+          Scoring runs next and takes a moment. The debrief replays your answer with the
+          instruments turned on.
         </p>
+        {finishedId !== null && (
+          <Link
+            href={`/voice/sessions/${finishedId}`}
+            className="mt-4 inline-block rounded border border-accent px-3 py-1.5 text-accent
+                       hover:bg-surface-2"
+          >
+            Open the debrief
+          </Link>
+        )}
         {note && <p className="mt-3 text-warn">{note}</p>}
       </div>
     );

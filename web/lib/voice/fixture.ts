@@ -46,6 +46,20 @@ const BEATS = [
     anchors: ["alert", "p95", "step count", "dashboard", "log"] },
 ];
 
+/**
+ * Verbatim from docs/07 section 2. The three exemplars that section also names
+ * are not here: its own worked example writes them as "...", and an exemplar
+ * is assessment content, so inventing three would be inventing the calibration
+ * the judge anchors on. Phase 8 writes them. Until then judge/rubric.py renders
+ * "None supplied." and the judge scores against the criteria alone.
+ */
+const RUBRIC = [
+  { key: "c1", label: "Correct mechanism", weight: 30 },
+  { key: "c2", label: "Names a case the mechanism misses", weight: 30 },
+  { key: "c3", label: "Answer a non-engineer could act on", weight: 25 },
+  { key: "c4", label: "Holds position under the follow-up", weight: 15 },
+];
+
 const FOLLOW_UPS = [
   { after: "b3", text: "The client says a step budget just truncates good answers. Respond." },
   { after: "b4", text: "How would you set the budget number without guessing?" },
@@ -77,6 +91,18 @@ export async function fixtureQuestionId(): Promise<number> {
          do update set label = excluded.label, seconds = excluded.seconds,
                        anchors = excluded.anchors, ordinal = excluded.ordinal`,
       [id, beat.key, beat.label, beat.seconds, beat.anchors, index + 1],
+    );
+  }
+
+  for (const [index, criterion] of RUBRIC.entries()) {
+    await pool.query(
+      `insert into voice_rubric_criterion
+         (voice_question_id, criterion_key, label, weight, ordinal)
+       values ($1, $2, $3, $4, $5)
+       on conflict (voice_question_id, criterion_key)
+         do update set label = excluded.label, weight = excluded.weight,
+                       ordinal = excluded.ordinal`,
+      [id, criterion.key, criterion.label, criterion.weight, index + 1],
     );
   }
 

@@ -13,6 +13,7 @@
  */
 import { inTransaction } from "../db/pool.ts";
 import type { PaceState } from "./cues.ts";
+import type { Segment } from "./delivery.ts";
 
 export type TimelineIn = {
   beats: {
@@ -42,6 +43,9 @@ export async function finishSession(input: {
   sessionId: number;
   enrolmentId: number;
   transcript: string;
+  /** Per-segment timings, which the delivery metrics need and the joined
+   *  transcript cannot carry. */
+  segments?: Segment[];
   timeline: TimelineIn;
 }): Promise<void> {
   await inTransaction(async (client) => {
@@ -58,8 +62,10 @@ export async function finishSession(input: {
     }
 
     await client.query(
-      "update voice_session set finished_at = now(), transcript = $2 where id = $1",
-      [input.sessionId, input.transcript],
+      `update voice_session
+          set finished_at = now(), transcript = $2, transcript_segments = $3
+        where id = $1`,
+      [input.sessionId, input.transcript, JSON.stringify(input.segments ?? [])],
     );
 
     for (const beat of input.timeline.beats) {

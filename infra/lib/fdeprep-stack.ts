@@ -55,6 +55,12 @@ const QUEUE_AGE_ALARM_PERIODS = 5;
 const RUNNER_ERROR_RATE = 0.05;
 const RUNNER_ERROR_WINDOW_MINUTES = 15;
 
+/** docs/07 section 9: "Audio retention 30 days. S3 lifecycle rule, then the
+ *  object is deleted and audio_deleted_at is set." The same number appears in
+ *  web/lib/voice/audio.ts, where the consent copy quotes it, and a test holds
+ *  the two together. */
+const VOICE_AUDIO_RETENTION_DAYS = 30;
+
 /** docs/05 section 2: Lambda container image, Python 3.12, 1024MB, 60s timeout. */
 const RUNNER_MEMORY_MB = 1024;
 const RUNNER_TIMEOUT_SECONDS = 60;
@@ -72,6 +78,7 @@ export class FdePrepStack extends Stack {
   readonly bundlesBucket: s3.Bucket;
   readonly runnerRepository: ecr.Repository;
   readonly voice?: VoiceSocket;
+  readonly voiceAudioBucket: s3.Bucket;
 
   constructor(scope: Construct, id: string, props: FdePrepStackProps) {
     super(scope, id, props);
@@ -335,6 +342,35 @@ export class FdePrepStack extends Stack {
     new CfnOutput(this, "SubmissionsQueueUrl", { value: submissionsQueue.queueUrl });
     new CfnOutput(this, "JudgementsQueueUrl", { value: judgementsQueue.queueUrl });
     new CfnOutput(this, "ResultsQueueUrl", { value: resultsQueue.queueUrl });
+    /**
+     * Learner audio. docs/07 section 9.
+     *
+     * Thirty days and then the object is gone, which is a promise made to a
+     * learner on the consent screen and so is enforced by the bucket rather
+     * than by anything that could forget. Nothing transitions to a cheaper
+     * class first: an object with a month to live spends less than the
+     * minimum billing period of infrequent access, so the transition would
+     * cost more than it saved.
+     *
+     * Versioned is off on purpose. A deleted recording that a version kept is
+     * a recording that was not deleted, and section 9 promises immediate and
+     * irreversible.
+     */
+    this.voiceAudioBucket = new s3.Bucket(this, "VoiceAudioBucket", {
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      versioned: false,
+      removalPolicy: RemovalPolicy.RETAIN,
+      lifecycleRules: [{
+        id: "delete-learner-audio-after-30-days",
+        enabled: true,
+        expiration: Duration.days(VOICE_AUDIO_RETENTION_DAYS),
+        abortIncompleteMultipartUploadAfter: Duration.days(1),
+      }],
+    });
+
+    new CfnOutput(this, "VoiceAudioBucketName", { value: this.voiceAudioBucket.bucketName });
     new CfnOutput(this, "TracesBucketName", { value: this.tracesBucket.bucketName });
     new CfnOutput(this, "BundlesBucketName", { value: this.bundlesBucket.bucketName });
     new CfnOutput(this, "RunnerRepositoryUri", { value: this.runnerRepository.repositoryUri });
