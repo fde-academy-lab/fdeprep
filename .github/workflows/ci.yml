@@ -78,6 +78,26 @@ jobs:
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
 
+  voice:
+    name: Voice package tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: voice/package-lock.json
+      - run: npm ci
+        working-directory: voice
+      - run: npm run typecheck
+        working-directory: voice
+      # limits.test.ts asserts the session ceilings against the API Gateway
+      # quotas they have to stay under. A change to either fails here rather
+      # than as a socket closing for a reason a learner cannot be told.
+      - run: npm test
+        working-directory: voice
+
   infra:
     name: Infrastructure synth and assertions
     runs-on: ubuntu-latest
@@ -90,6 +110,11 @@ jobs:
           cache-dependency-path: infra/package-lock.json
       - run: npm ci
         working-directory: infra
+      # The voice handlers are bundled from voice/, so esbuild has to resolve
+      # there. Without this the synth of the voice socket fails on a missing
+      # bundler rather than on anything in the template.
+      - run: npm ci
+        working-directory: voice
       - run: npm run typecheck
         working-directory: infra
       # The template is asserted rather than eyeballed: the runner having no
@@ -99,5 +124,14 @@ jobs:
         working-directory: infra
       # Synth proves the stack renders. Nothing here deploys; a human runs
       # `cdk deploy`, which is why deploy.yml only moves image tags.
+      #
+      # Twice: the voice socket is optional, so the stack has to render both
+      # with it and without it. The ARN is a placeholder that is never read,
+      # since synth resolves no secret value.
       - run: npx cdk synth --quiet
         working-directory: infra
+      - run: npx cdk synth --quiet
+        working-directory: infra
+        env:
+          VOICE_TOKEN_SECRET_ARN: >-
+            arn:aws:secretsmanager:us-east-1:111122223333:secret:fdeprep/voice-token-AbCdEf

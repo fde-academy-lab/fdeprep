@@ -212,3 +212,131 @@ describe("the three alarms, at the numbers docs/05 section 6 gives", () => {
     }
   });
 });
+
+/**
+ * The voice socket. docs/07 section 7.
+ *
+ * The socket is optional in the stack, so the first test here is that the
+ * rest of the infrastructure still renders without it. Everything after that
+ * synthesises with a secret ARN supplied.
+ */
+const VOICE_SECRET_ARN =
+  "arn:aws:secretsmanager:us-east-1:111122223333:secret:fdeprep/voice-token-AbCdEf";
+
+function synthWithVoice(): Template {
+  const app = new App();
+  const stack = new FdePrepStack(app, "TestStack", {
+    env: { account: "111122223333", region: "us-east-1" },
+    judgeModelId: "us.anthropic.claude-opus-5",
+    voiceTokenSecretArn: VOICE_SECRET_ARN,
+  });
+  return Template.fromStack(stack);
+}
+
+describe("the voice socket", () => {
+  test("no socket is created until a signing secret is configured", () => {
+    synth().resourceCountIs("AWS::ApiGatewayV2::Api", 0);
+  });
+
+  test("the socket is a WebSocket API with three routes", () => {
+    const template = synthWithVoice();
+    template.hasResourceProperties("AWS::ApiGatewayV2::Api", {
+      ProtocolType: "WEBSOCKET",
+      RouteSelectionExpression: "$request.body.action",
+    });
+    const routes = Object.values(template.findResources("AWS::ApiGatewayV2::Route")).map(
+      (route) => (route as { Properties: { RouteKey: string } }).Properties.RouteKey,
+    );
+    assert.deepEqual(routes.sort(), ["$connect", "$default", "$disconnect"]);
+  });
+
+  test("only the handshake is authorized, which is all AWS allows", () => {
+    const template = synthWithVoice();
+    template.resourceCountIs("AWS::ApiGatewayV2::Authorizer", 1);
+    template.hasResourceProperties("AWS::ApiGatewayV2::Authorizer", {
+      AuthorizerType: "REQUEST",
+      IdentitySource: ["route.request.querystring.token"],
+    });
+
+    const authorized = Object.values(template.findResources("AWS::ApiGatewayV2::Route"))
+      .map((route) => (route as { Properties: { RouteKey: string; AuthorizationType?: string } }).Properties)
+      .filter((props) => props.AuthorizationType === "CUSTOM")
+      .map((props) => props.RouteKey);
+    assert.deepEqual(authorized, ["$connect"]);
+  });
+
+  test("frames travel on a FIFO queue with a dead letter queue", () => {
+    const template = synthWithVoice();
+    const queues = Object.values(template.findResources("AWS::SQS::Queue"))
+      .map((queue) => (queue as { Properties: Record<string, unknown> }).Properties)
+      .filter((props) => props.FifoQueue === true);
+    assert.equal(queues.length, 2, "one frame queue and its dead letter queue");
+
+    const withDlq = queues.find((props) => props.RedrivePolicy);
+    assert.ok(withDlq, "the frame queue redrives to the dead letter queue");
+    assert.equal(
+      (withDlq.RedrivePolicy as { maxReceiveCount: number }).maxReceiveCount,
+      3,
+    );
+  });
+
+  test("the speech grant names one action and sits on its own role", () => {
+    const actions = actionsFor(synthWithVoice(), "StreamRole");
+    assert.deepEqual(
+      actions.filter((a) => a.startsWith("transcribe:")),
+      ["transcribe:StartStreamTranscription"],
+    );
+    assert.deepEqual(actions.filter((a) => a.startsWith("bedrock")), [],
+      "the speech path calls no model endpoint");
+    assert.deepEqual(actions.filter((a) => a.startsWith("s3:")), [],
+      "the speech path writes no bucket in this phase");
+  });
+
+  /**
+   * The rule the whole security model rests on, pointed at the new service:
+   * the Lambda that executes learner code gains nothing from the Voice Screen
+   * existing.
+   */
+  test("the Lambda that executes learner code has no speech permission", () => {
+    const actions = actionsFor(synthWithVoice(), "RunnerRole");
+    assert.ok(actions.length > 0);
+    assert.deepEqual(actions.filter((a) => a.startsWith("transcribe:")), []);
+    assert.deepEqual(actions.filter((a) => a.startsWith("bedrock")), []);
+  });
+
+  test("the socket function relays frames and never transcribes them", () => {
+    const actions = actionsFor(synthWithVoice(), "SocketRole");
+    assert.ok(actions.includes("sqs:SendMessage"));
+    assert.deepEqual(actions.filter((a) => a.startsWith("transcribe:")), []);
+    assert.deepEqual(actions.filter((a) => a.startsWith("secretsmanager:")), [],
+      "the signing secret is the authorizer's alone");
+  });
+
+  test("the authorizer reads the signing secret and nothing else of note", () => {
+    const actions = actionsFor(synthWithVoice(), "AuthorizerRole");
+    assert.ok(actions.some((a) => a.startsWith("secretsmanager:GetSecretValue")));
+    assert.deepEqual(actions.filter((a) => a.startsWith("sqs:")), []);
+    assert.deepEqual(actions.filter((a) => a.startsWith("transcribe:")), []);
+  });
+
+  test("the signing secret's value never reaches the template", () => {
+    const rendered = JSON.stringify(synthWithVoice().toJSON());
+    assert.ok(rendered.includes(VOICE_SECRET_ARN), "the ARN is configuration and may appear");
+    assert.ok(
+      !rendered.includes("{{resolve:secretsmanager"),
+      "no dynamic reference, so no secret value is rendered into the Lambda's environment",
+    );
+  });
+
+  test("neither voice function is placed in the VPC", () => {
+    const template = synthWithVoice();
+    const inVpc = Object.entries(template.findResources("AWS::Lambda::Function"))
+      .filter(([, fn]) => (fn as { Properties: { VpcConfig?: unknown } }).Properties.VpcConfig)
+      .map(([id]) => id);
+    assert.deepEqual(
+      inVpc.filter((id) => id.startsWith("Voice")),
+      [],
+      "these functions execute no learner code and need public endpoints",
+    );
+  });
+});

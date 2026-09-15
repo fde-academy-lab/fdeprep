@@ -12,6 +12,7 @@
  * being reimplemented in an authorizer that would have to be kept in step.
  */
 import { readVoiceToken, TokenRejected } from "../../../web/lib/voice/token.ts";
+import { tokenSecret } from "../secret.ts";
 import type { AuthorizerEvent, AuthorizerResult } from "./events.ts";
 
 function policy(effect: "Allow" | "Deny", resource: string, principalId: string): AuthorizerResult {
@@ -25,11 +26,10 @@ function policy(effect: "Allow" | "Deny", resource: string, principalId: string)
 }
 
 export async function handler(event: AuthorizerEvent): Promise<AuthorizerResult> {
-  const secret = process.env.VOICE_TOKEN_SECRET ?? "";
   const token = event.queryStringParameters?.token ?? "";
 
   try {
-    const claims = readVoiceToken(token, secret);
+    const claims = readVoiceToken(token, await tokenSecret());
     return {
       ...policy("Allow", event.methodArn, `voice-session-${claims.sid}`),
       // Authorizer context takes strings, numbers and booleans only. These

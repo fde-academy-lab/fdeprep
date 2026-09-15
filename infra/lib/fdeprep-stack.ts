@@ -26,6 +26,7 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import * as cwactions from "aws-cdk-lib/aws-cloudwatch-actions";
 import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
+import { VoiceSocket } from "./voice-socket.js";
 
 export interface FdePrepStackProps extends StackProps {
   /**
@@ -40,6 +41,12 @@ export interface FdePrepStackProps extends StackProps {
   /** Tag on the runner image to deploy. The deploy workflow moves this. */
   readonly runnerImageTag?: string;
   readonly judgeImageTag?: string;
+  /**
+   * Secrets Manager ARN of the voice session token signing key. When it is
+   * absent the voice socket is not created at all, which is what keeps this
+   * stack deployable before the Voice Screen is configured.
+   */
+  readonly voiceTokenSecretArn?: string;
 }
 
 /** docs/05 section 6. Three, and no more, because an alarm nobody reads is worse than no alarm. */
@@ -64,6 +71,7 @@ export class FdePrepStack extends Stack {
   readonly tracesBucket: s3.Bucket;
   readonly bundlesBucket: s3.Bucket;
   readonly runnerRepository: ecr.Repository;
+  readonly voice?: VoiceSocket;
 
   constructor(scope: Construct, id: string, props: FdePrepStackProps) {
     super(scope, id, props);
@@ -334,6 +342,17 @@ export class FdePrepStack extends Stack {
     new CfnOutput(this, "JudgeFunctionName", { value: this.judge.functionName });
     new CfnOutput(this, "SubmissionsDlqUrl", { value: submissionsDlq.queueUrl });
     new CfnOutput(this, "JudgementsDlqUrl", { value: judgementsDlq.queueUrl });
+
+    /* -------------------------------------------------------- voice socket */
+
+    if (props.voiceTokenSecretArn) {
+      const voice = new VoiceSocket(this, "Voice", {
+        tokenSecretArn: props.voiceTokenSecretArn,
+      });
+      this.voice = voice;
+      new CfnOutput(this, "VoiceSocketUrl", { value: voice.socketUrl });
+      new CfnOutput(this, "VoiceFrameQueueUrl", { value: voice.frameQueue.queueUrl });
+    }
 
     Aspects.of(this).add({ visit: () => {} });
   }
