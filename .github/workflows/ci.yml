@@ -77,3 +77,27 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements-dev.txt
       - run: python -m pytest -q
+
+  infra:
+    name: Infrastructure synth and assertions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: infra/package-lock.json
+      - run: npm ci
+        working-directory: infra
+      - run: npm run typecheck
+        working-directory: infra
+      # The template is asserted rather than eyeballed: the runner having no
+      # Bedrock permission is an IAM fact, and a grant added in the wrong place
+      # fails here rather than in production.
+      - run: npm test
+        working-directory: infra
+      # Synth proves the stack renders. Nothing here deploys; a human runs
+      # `cdk deploy`, which is why deploy.yml only moves image tags.
+      - run: npx cdk synth --quiet
+        working-directory: infra

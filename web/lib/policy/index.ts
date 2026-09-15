@@ -12,8 +12,21 @@ import type { Pool, PoolClient } from "pg";
 import { db } from "../db/pool.ts";
 import { allowanceFor, humanise, type Allowance } from "./caps.ts";
 import { LAYERS, tierFor, type Difficulty, type Layer, type Visibility } from "./tiers.ts";
+import { degradedMessage, readDegradedMode, type DegradedMode } from "./settings.ts";
 
 export * from "./tiers.ts";
+export { readDegradedMode, setDegradedMode, degradedMessage, DEGRADED_MODE } from "./settings.ts";
+export type { DegradedMode } from "./settings.ts";
+
+/**
+ * The tier a rehearsal borrows its rules from.
+ *
+ * docs/00 section 7.4: "runs them under Extreme rules regardless of their
+ * native difficulty: no hints, no test names, no acceptance rates, one submit
+ * each". Named here so the rehearsal reads the same tier table as everything
+ * else rather than restating what Extreme means.
+ */
+const REHEARSAL_TIER: Difficulty = "extreme";
 export { RateLimitError, consume, refund, allowanceFor, humanise } from "./caps.ts";
 export type { Allowance, Scope } from "./caps.ts";
 
@@ -43,6 +56,10 @@ export interface Decision {
   timed: boolean;
   confirmBeforeSubmit: boolean;
   state: { solved: boolean; gaveUp: boolean; failedRuns: number; hintsUsed: number };
+  /** True when Extreme rules are being applied to a problem of another tier. */
+  rehearsal: boolean;
+  /** Set while the platform is degraded. Submit is closed; Run is not. */
+  degraded: DegradedMode;
 }
 
 interface AttemptState {
@@ -67,10 +84,19 @@ export async function resolvePolicy(options: {
   enrolmentId: number;
   problemId: number;
   client?: Pool | PoolClient;
+  /**
+   * docs/00 section 7.4: a rehearsal runs its problems "under Extreme rules
+   * regardless of their native difficulty". The override happens here rather
+   * than in the rehearsal screen, so a rehearsal cannot end up with a different
+   * idea of what Extreme means than the rest of the product has.
+   */
+  rehearsal?: boolean;
 }): Promise<Decision> {
   const client = options.client ?? db();
   const state = await loadState(client, options.enrolmentId, options.problemId);
-  const tier = tierFor(state.difficulty);
+  const rehearsal = options.rehearsal === true;
+  const tier = tierFor(rehearsal ? REHEARSAL_TIER : state.difficulty);
+  const degraded = await readDegradedMode(client);
 
   // Sequential on purpose. When a PoolClient is passed in, this runs inside
   // someone's transaction, and a single client cannot serve concurrent
@@ -88,8 +114,14 @@ export async function resolvePolicy(options: {
   // means anything when there is code to test. A prompt or design answer has
   // no test surface, so the gate is a tier rule scoped to code artefacts
   // rather than a tier rule the other two artefacts fail on forever.
+  //
+  // It is also off inside a rehearsal. docs/00 section 7.4 enumerates what
+  // Extreme rules mean there, "no hints, no test names, no acceptance rates,
+  // one submit each", and writing a test first is not among them. Asking for
+  // one per problem would spend a sixty-minute sitting on scaffolding.
   const learnerTests = resolveLearnerTests(
-    tier.requiresLearnerTests && state.artefactType === "code", state.learnerTestBodies);
+    tier.requiresLearnerTests && state.artefactType === "code" && !rehearsal,
+    state.learnerTestBodies);
   const attemptNote = resolveAttemptNote(tier.hints, state.attemptNoteChars);
 
   const layers: Record<Layer, boolean> = Object.fromEntries(
@@ -106,7 +138,13 @@ export async function resolvePolicy(options: {
     visibility: tier.visibility,
     hints,
     run: { ...gateFromAllowance(run, "Run"), ...span(run) },
-    submit: { ...resolveSubmit(submit, learnerTests), ...span(submit) },
+    // Degraded mode closes Submit and leaves Run alone, which is the whole
+    // point of having the switch: a learner can keep working against the
+    // public cases while nothing is being graded.
+    submit: degraded.on
+      ? { allowed: false, reason: degradedMessage(degraded), label: "Submit is closed",
+          ...span(submit) }
+      : { ...resolveSubmit(submit, learnerTests), ...span(submit) },
     live: { ...gateFromAllowance(live, "Live run"), ...span(live) },
     giveUp: resolveGiveUp(state),
     learnerTests,
@@ -114,6 +152,8 @@ export async function resolvePolicy(options: {
     attemptNote,
     timed: tier.timed,
     confirmBeforeSubmit: tier.confirmBeforeSubmit,
+    rehearsal,
+    degraded,
     state: {
       solved: state.solved, gaveUp: state.gaveUp,
       failedRuns: state.failedRuns, hintsUsed: state.hintsUsed,

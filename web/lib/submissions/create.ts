@@ -43,6 +43,8 @@ export interface CreateInput {
   problemId: number;
   kind: RunKind;
   body: string;
+  /** Set on a submit inside a rehearsal sitting. */
+  rehearsalId?: number;
 }
 
 export interface CreatedSubmission {
@@ -51,13 +53,21 @@ export interface CreatedSubmission {
   bodySha256: string;
 }
 
+/**
+ * Which rolling window each kind spends.
+ *
+ * rehearsal_submit is absent on purpose. The sitting consumed the weekly
+ * rehearsal allowance when it started, and charging it again on the first
+ * problem would end the sitting after one answer. What bounds a rehearsal
+ * submit instead is the one-per-problem rule below, from docs/00 section 7.4.
+ */
 const SCOPE_FOR = {
   run: "run_hourly", submit: "submit_daily",
-  live: "live_daily", rehearsal_submit: "rehearsal_weekly",
+  live: "live_daily",
   // The defence is asked only after a pass, so it never competes with the
   // submit cap. It still spends a model call, so it has a cap of its own.
   defence: "defence_daily",
-} as const;
+} as const satisfies Partial<Record<RunKind, string>>;
 
 export async function createSubmission(input: CreateInput): Promise<CreatedSubmission> {
   const bodySha256 = createHash("sha256").update(input.body, "utf8").digest("hex");
@@ -76,10 +86,47 @@ export async function createSubmission(input: CreateInput): Promise<CreatedSubmi
 
     const attemptId = await upsertAttempt(client, input);
 
-    if (input.kind === "submit") {
+    // A rehearsal submit spends no rolling-window allowance, because the
+    // sitting paid for it when it started. That makes the kind worth checking
+    // rather than trusting: named without a live sitting of the learner's own,
+    // it would be an uncapped submit.
+    if (input.kind === "rehearsal_submit") {
+      const { rows: sitting } = await client.query(
+        `select 1 from rehearsal
+          where id = $1 and enrolment_id = $2 and finished_at is null and ends_at > now()`,
+        [input.rehearsalId ?? 0, input.enrolmentId]);
+      if (!sitting.length) {
+        throw new GateRefused(
+          "That rehearsal is not running, so this cannot be submitted as part of one. " +
+          "Start a rehearsal from the rehearsal screen.");
+      }
+    }
+
+    if (input.kind === "submit" || input.kind === "rehearsal_submit") {
       const policy = await resolvePolicy({
         enrolmentId: input.enrolmentId, problemId: input.problemId, client,
+        rehearsal: input.kind === "rehearsal_submit",
       });
+
+      // Degraded mode closes Submit and leaves Run alone. Checked here as well
+      // as in the button, because the button is an affordance and this is the
+      // boundary.
+      if (policy.degraded.on) throw new GateRefused(policy.submit.reason!);
+
+      // docs/00 section 7.4: one submit each. A sitting where a learner can
+      // resubmit until something passes measures persistence, not judgement.
+      if (input.rehearsalId) {
+        const already = await client.query(
+          `select 1 from submission s
+             join problem_version v on v.id = s.problem_version_id
+            where s.rehearsal_id = $1 and v.problem_id = $2 limit 1`,
+          [input.rehearsalId, input.problemId]);
+        if (already.rows.length) {
+          throw new GateRefused(
+            "You have already submitted this problem in this rehearsal. A rehearsal allows " +
+            "one submit per problem.");
+        }
+      }
       // The learner-test gate is checked before the cap, so an Extreme learner
       // who has written no test is told that rather than losing their one
       // daily attempt to a message about caps.
@@ -114,17 +161,22 @@ export async function createSubmission(input: CreateInput): Promise<CreatedSubmi
 
     // Only now is the allowance spent. Everything above either throws, which
     // rolls the transaction back whole, or passes.
-    await consume(client, {
-      enrolmentId: input.enrolmentId,
-      problemId: input.problemId,
-      difficulty: problem.difficulty,
-      scope: SCOPE_FOR[input.kind],
-    });
+    const scope = SCOPE_FOR[input.kind as keyof typeof SCOPE_FOR];
+    if (scope) {
+      await consume(client, {
+        enrolmentId: input.enrolmentId,
+        problemId: input.problemId,
+        difficulty: problem.difficulty,
+        scope,
+      });
+    }
 
     const { rows: created } = await client.query<{ id: string }>(
-      `insert into submission (attempt_id, problem_version_id, kind, body, body_sha256)
-       values ($1, $2, $3::run_kind, $4, $5) returning id`,
-      [attemptId, problem.version_id, input.kind, input.body, bodySha256]);
+      `insert into submission (attempt_id, problem_version_id, kind, body, body_sha256,
+                               rehearsal_id)
+       values ($1, $2, $3::run_kind, $4, $5, $6) returning id`,
+      [attemptId, problem.version_id, input.kind, input.body, bodySha256,
+       input.rehearsalId ?? null]);
     const submissionId = Number(created[0]!.id);
 
     if (input.kind === "submit") {

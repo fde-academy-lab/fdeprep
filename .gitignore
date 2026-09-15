@@ -55,3 +55,7 @@ web/out/
 # the tool's opinion about its own output, not a review.
 web/AGENTS.md
 web/CLAUDE.md
+
+# CDK synth output. The template is generated from infra/lib and asserted in
+# infra/test, so a committed copy would just be a second thing to keep current.
+infra/cdk.out/

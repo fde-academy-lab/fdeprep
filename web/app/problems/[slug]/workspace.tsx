@@ -22,6 +22,8 @@ interface Props {
   callBudget: number | null;
   allowedImports: string[];
   defenceQuestion: string | null;
+  /** Set when this workspace was opened from a rehearsal sitting. */
+  rehearsalId: number | null;
 }
 
 type Tab = "problem" | "attempts" | "trace";
@@ -126,7 +128,9 @@ export default function Workspace(props: Props) {
 
   const submit = async (kind: "run" | "submit") => {
     if (kind === "submit" && policy.confirmBeforeSubmit &&
-        !confirm("This is your only attempt today on an Extreme problem. Submit it?")) return;
+        !confirm(props.rehearsalId
+          ? "One submit per problem in a rehearsal. Submit this one?"
+          : "This is your only attempt today on an Extreme problem. Submit it?")) return;
 
     setRunning(true);
     setNotice(null);
@@ -136,7 +140,12 @@ export default function Workspace(props: Props) {
     const response = await fetch("/api/submissions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ problemId: props.problemId, kind, body: code }),
+      body: JSON.stringify({
+        problemId: props.problemId,
+        kind: kind === "submit" && props.rehearsalId ? "rehearsal_submit" : kind,
+        body: code,
+        rehearsalId: props.rehearsalId,
+      }),
     });
 
     if (!response.ok) {
