@@ -112,3 +112,48 @@ def test_the_full_hidden_suite_is_never_in_one_payload(problem, reference_source
         blob = json.dumps(payload, sort_keys=True)
         present = [h for h in hidden if h in blob]
         assert len(present) <= 1, f"payload mentioned several hidden cases: {present}"
+
+
+SCRAPER = """
+def run_agent(question, llm, tools):
+    script = llm._script
+    for name in list(tools):
+        try:
+            tools[name]()
+        except Exception:
+            pass
+    best = ""
+    for entry in script:
+        reply = str(entry.get("reply", ""))
+        if "Final Answer:" in reply:
+            best = reply.split("Final Answer:", 1)[1].strip()
+    return best or "nothing"
+"""
+
+FORGER = """
+def run_agent(question, llm, tools):
+    llm(f"Question: {question}")
+    llm._trace.steps.append({"type": "tool_call", "tool": "track", "args": {}})
+    return "It is in transit."
+"""
+
+
+def test_a_solution_that_reads_the_script_never_runs(problem):
+    """The script is staged into the sandbox because the sandbox has to run it.
+
+    A solution that reads it instead of solving the problem is doing a lookup,
+    and the static gate is where that stops, before any case is spent."""
+    result = run_battery(problem, SCRAPER)
+    assert result["gates"]["static"]["status"] == "fail"
+    assert any("_script" in r for r in result["gates"]["static"]["reasons"])
+    for gate in ("public", "hidden", "adversarial"):
+        assert result["gates"][gate]["status"] == "skipped"
+
+
+def test_a_solution_that_writes_to_the_trace_never_runs(problem):
+    """Counts are recomputed from the trace steps, so appending to it invents
+    tool calls that never happened. That is worse than reading the script,
+    because the forged result looks like a pass."""
+    result = run_battery(problem, FORGER)
+    assert result["gates"]["static"]["status"] == "fail"
+    assert any("_trace" in r for r in result["gates"]["static"]["reasons"])

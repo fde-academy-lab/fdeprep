@@ -139,7 +139,8 @@ Every fixture carries `annotation_md` explaining the trap, shown to the learner 
 ```
 1. Static: AST parse. Reject on syntax error, on disallowed imports,
    on any of: __import__, eval, exec, open, socket, subprocess, os.system,
-   ctypes, importlib. Reject on source longer than 64KB.
+   ctypes, importlib. Reject a private attribute read on anything other
+   than self, cls or super(). Reject on source longer than 64KB.
 2. Public tests, ordered. Stop-on-first-failure is OFF; run all and report all.
 3. Hidden tests. Only run when all public tests pass.
 4. Adversarial battery. Only run when all hidden tests pass.
@@ -148,6 +149,23 @@ Every fixture carries `annotation_md` explaining the trap, shown to the learner 
 ```
 
 Import allowlist comes from `problem_version.contract_md` parsed at import time into a list, with `json`, `re`, `math`, `typing`, `dataclasses`, `collections` always allowed.
+
+The private attribute rule is the one that is not about the operating system.
+Section 9.1 says learner code can read anything staged into its own process,
+and the mock model and the tool table are staged into it. Assertions are not,
+so expected values stay out either way, but `llm._script` is the whole scripted
+model, and `llm._trace` is the trace every count in the result is recomputed
+from. The first turns a problem into a lookup and the second lets a solution
+write tool calls that never happened.
+
+`getattr` was already rejected and `obj._name` was not, which is the hole this
+closes. The rule is blunt on purpose: a leading underscore means the author of
+that object said it was not part of the interface, and a static gate cannot
+tell whose object it is holding. It subsumes every dunder, so `__class__` and
+`__mro__` need no entry of their own. `self`, `cls` and `super()` are exempt so
+a learner's own class still works, and namedtuple's `_asdict`, `_replace`,
+`_fields`, `_field_defaults` and `_make` are exempt because their underscores
+exist to avoid colliding with field names rather than to mark them private.
 
 ### 4.2 Prompt surgery
 

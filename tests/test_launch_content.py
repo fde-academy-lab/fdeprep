@@ -23,6 +23,7 @@ import pytest
 import yaml
 
 from runner.battery.execute import run_battery
+from runner.battery.static_gate import check as static_check
 from runner.problem import from_dict, load_problem
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -165,3 +166,16 @@ def test_the_budget_is_one_above_a_clean_solution(path):
         f"{problem.slug}: a clean solution wants {clean} calls and the budget is "
         f"{problem.call_budget}"
     )
+
+
+@pytest.mark.parametrize("path", CODE, ids=IDS)
+def test_neither_solution_trips_the_private_attribute_rule(path):
+    """A gate that rejects correct code is worse than the hole it closed.
+
+    Both solutions of every launch problem go through the static gate, so the
+    rule added for llm._script has to leave seventeen working loops alone.
+    """
+    problem = load_problem(path)
+    for label, source in zip(("reference", "naive"), solutions(path)):
+        outcome = static_check(source, problem.allowed_imports)
+        assert outcome.status == "pass", (path.stem, label, outcome.reasons)
