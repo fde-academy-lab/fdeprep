@@ -10,6 +10,7 @@
 import { inTransaction } from "../db/pool.ts";
 import { applyForSubmission } from "../competency/score.ts";
 import { refund } from "../policy/caps.ts";
+import { storeTrace } from "../trace/store.ts";
 
 export interface ResultMessage {
   submission_id: number;
@@ -22,9 +23,14 @@ export interface ResultMessage {
 /** True when the result was committed, false when it lost the compare-and-set. */
 export async function writeResult(message: ResultMessage): Promise<boolean> {
   return inTransaction(async (client) => {
-    const gates = (message.result["gates"] ?? {}) as Record<string, any>;
-    const budget = (message.result["budget"] ?? {}) as Record<string, any>;
-    const verdict = String(message.result["verdict"] ?? "error");
+    // The trace travels inline in the result because the runner has no S3 in
+    // this build. It is split off here so submission.result stays the contract
+    // docs/03 section 5 describes, which carries a reference and not a trace.
+    const { trace, ...contract } = message.result;
+
+    const gates = (contract["gates"] ?? {}) as Record<string, any>;
+    const budget = (contract["budget"] ?? {}) as Record<string, any>;
+    const verdict = String(contract["verdict"] ?? "error");
 
     const { rows } = await client.query<{ id: string }>(
       `update submission set
@@ -45,17 +51,22 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
          and verdict is null
        returning id`,
       [
-        message.submission_id, verdict, JSON.stringify(message.result),
-        message.result["score"] ?? null,
+        message.submission_id, verdict, JSON.stringify(contract),
+        contract["score"] ?? null,
         gates["public"]?.passed ?? null, gates["public"]?.total ?? null,
         gates["hidden"]?.passed ?? null, gates["hidden"]?.total ?? null,
         gates["adversarial"]?.passed ?? null, gates["adversarial"]?.total ?? null,
         budget["llm_calls"] ?? null, budget["tool_calls"] ?? null, budget["wall_ms"] ?? null,
-        message.result["trace_ref"] ?? null,
+        contract["trace_ref"] ?? null,
         message.lease_token, message.fencing_token, message.body_sha256,
       ]);
 
     if (!rows.length) return false;
+
+    // The trace travels inline in the result because the runner has no S3 in
+    // this build. It is lifted out here so submission.result stays the contract
+    // docs/03 section 5 describes, which carries a reference and not a trace.
+    await storeTrace(client, message.submission_id, trace);
 
     // docs/03 section 8: infrastructure failures are the platform's problem.
     if (verdict === "error" || verdict === "timeout") {
@@ -76,8 +87,8 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
                               defence_result = $3
            from submission s
           where s.id = $1 and s.attempt_id = a.id and s.kind = 'defence'`,
-        [message.submission_id, message.result["score"] ?? null,
-         JSON.stringify(message.result)]);
+        [message.submission_id, contract["score"] ?? null,
+         JSON.stringify(contract)]);
     }
 
     if (verdict === "pass") {

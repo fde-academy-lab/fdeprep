@@ -327,9 +327,23 @@ export default function Workspace(props: Props) {
           </p>
         )}
         {tab === "trace" && (
-          <p className="px-4 py-4 text-text-dim">
-            The trace appears after a run. Run your code to see what the loop did.
-          </p>
+          view && view.status === "terminal" ? (
+            <div className="px-4 py-4">
+              <p className="mb-2 text-text-dim">
+                {view.verdict === "pass"
+                  ? "Your loop passed. The replay shows what it did on the way."
+                  : "The replay shows every model call, tool call and observation in order."}
+              </p>
+              <a href={`/traces/${view.id}`}
+                 className="rounded border border-border px-2 py-1 hover:border-accent">
+                Open the replay
+              </a>
+            </div>
+          ) : (
+            <p className="px-4 py-4 text-text-dim">
+              The trace appears after a run. Run your code to see what the loop did.
+            </p>
+          )
         )}
       </aside>
 

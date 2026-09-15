@@ -8,6 +8,7 @@
 import type { PoolClient } from "pg";
 import { db, inTransaction } from "../db/pool.ts";
 import { validateProblemYaml, type ParsedProblem } from "./validate.ts";
+import { seedTracks } from "../policy/roadmap.ts";
 
 export interface FieldChange {
   field: string;
@@ -104,6 +105,11 @@ export async function publishImport(
     const problemId = await upsertProblem(client, parsed, preview.nextVersion, options.publish);
     const versionId = await insertVersion(client, problemId, parsed, sourceYaml, preview.nextVersion);
     await insertChildren(client, problemId, versionId, parsed);
+
+    // Every roadmap takes the new problem straight away. Leaving this to a
+    // separate step means a problem imported on a Tuesday sits off every
+    // roadmap until someone remembers to re-seed.
+    await seedTracks(client);
 
     if (options.actorId) {
       await client.query(

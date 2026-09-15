@@ -32,20 +32,36 @@ export async function resetDatabase(): Promise<void> {
   }
 }
 
-export async function seedLearner(): Promise<{ enrolmentId: number; cohortId: number; userId: number }> {
+export interface SeedLearnerOptions {
+  persona?: "builder" | "navigator" | "accelerator";
+  /** Distinct per learner, since app_user.github_id is unique. */
+  githubId?: number;
+  login?: string;
+  /** Reuse an existing cohort rather than making another one. */
+  cohortId?: number;
+}
+
+export async function seedLearner(
+  options: SeedLearnerOptions = {},
+): Promise<{ enrolmentId: number; cohortId: number; userId: number }> {
   const pool = db();
+  const githubId = options.githubId ?? 1;
+  const login = options.login ?? `learner${githubId}`;
   const user = await pool.query<{ id: string }>(
     `insert into app_user (github_id, github_login, display_name)
-     values (1, 'learner', 'A Learner') returning id`);
-  const cohort = await pool.query<{ id: string }>(
+     values ($1, $2, $3) returning id`,
+    [githubId, login, "A Learner"]);
+  const cohortId = options.cohortId ?? Number((await pool.query<{ id: string }>(
     `insert into cohort (slug, name, starts_on) values ('c3', 'Cohort 3', current_date)
-     returning id`);
+     on conflict (slug) do update set name = excluded.name
+     returning id`)).rows[0]!.id);
   const enrolment = await pool.query<{ id: string }>(
-    `insert into enrolment (user_id, cohort_id) values ($1, $2) returning id`,
-    [user.rows[0]!.id, cohort.rows[0]!.id]);
+    `insert into enrolment (user_id, cohort_id, persona)
+     values ($1, $2, $3::persona) returning id`,
+    [user.rows[0]!.id, cohortId, options.persona ?? "navigator"]);
   return {
     userId: Number(user.rows[0]!.id),
-    cohortId: Number(cohort.rows[0]!.id),
+    cohortId,
     enrolmentId: Number(enrolment.rows[0]!.id),
   };
 }

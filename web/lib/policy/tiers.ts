@@ -103,6 +103,19 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
   },
 };
 
+/**
+ * Build one value per tier, in ladder order.
+ *
+ * Anything shaped like a grid over the ladder, the heatmap above all, wants
+ * this rather than its own map keyed by difficulty. Keeping the keying here
+ * means the ladder gaining a fifth tier changes one file.
+ */
+export function byTier<T>(build: (difficulty: Difficulty) => T): Record<Difficulty, T> {
+  const out = {} as Record<Difficulty, T>;
+  for (const difficulty of DIFFICULTIES) out[difficulty] = build(difficulty);
+  return out;
+}
+
 export function tierFor(difficulty: Difficulty): Tier {
   const tier = TIERS[difficulty];
   if (!tier) throw new Error(`no tier defined for difficulty ${difficulty}`);
