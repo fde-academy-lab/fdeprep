@@ -1,0 +1,139 @@
+# Build and publish the two container images, then point the Lambdas at them.
+#
+# docs/05 section 4, deploy sequence: steps 2 and 3 run from GitHub Actions on a
+# tag push. Step 1, `cdk deploy`, and step 4, the migration, stay manual and
+# rare, and this workflow does neither. An infrastructure change is a thing a
+# person watches.
+#
+# Authentication is an OIDC role with no long-lived key in the repository. The
+# trust policy a human has to create for it is in the pull request that added
+# this file, and it pins the subject to this repository so another repository
+# cannot assume the role.
+name: Deploy
+
+on:
+  push:
+    tags: ["runner-v*", "judge-v*"]
+  workflow_dispatch:
+    inputs:
+      image:
+        description: Which image to build
+        required: true
+        type: choice
+        options: [runner, judge, both]
+
+permissions:
+  # The OIDC token this workflow trades for the role. Nothing else is granted:
+  # the deploy reads no issues and writes no comments.
+  id-token: write
+  contents: read
+
+concurrency:
+  # One deploy at a time. Two `update-function-code` calls racing leaves the
+  # Lambda on whichever finished last, which is not necessarily the newer tag.
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  ECR_REPOSITORY: fdeprep-runner
+
+jobs:
+  images:
+    name: Build and publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Decide which images this run builds
+        id: plan
+        run: |
+          case "${GITHUB_REF_NAME}" in
+            runner-v*) echo "runner=true"  >> "$GITHUB_OUTPUT"
+                       echo "judge=false"  >> "$GITHUB_OUTPUT" ;;
+            judge-v*)  echo "runner=false" >> "$GITHUB_OUTPUT"
+                       echo "judge=true"   >> "$GITHUB_OUTPUT" ;;
+            *)         case "${{ inputs.image }}" in
+                         runner) echo "runner=true"  >> "$GITHUB_OUTPUT"
+                                 echo "judge=false"  >> "$GITHUB_OUTPUT" ;;
+                         judge)  echo "runner=false" >> "$GITHUB_OUTPUT"
+                                 echo "judge=true"   >> "$GITHUB_OUTPUT" ;;
+                         *)      echo "runner=true"  >> "$GITHUB_OUTPUT"
+                                 echo "judge=true"   >> "$GITHUB_OUTPUT" ;;
+                       esac ;;
+          esac
+
+      # No access key anywhere. The role is assumed with the OIDC token this
+      # job was issued, and the trust policy on the role decides whether this
+      # repository and ref may have it.
+      - name: Assume the deploy role
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+          role-session-name: fdeprep-deploy-${{ github.run_id }}
+
+      - name: Log in to ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push the runner
+        if: steps.plan.outputs.runner == 'true'
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#runner-}"
+          IMAGE="${REGISTRY}/${ECR_REPOSITORY}:runner-${TAG}-${GITHUB_SHA::12}"
+          docker buildx build --platform linux/amd64 --provenance=false \
+            -f Dockerfile -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "RUNNER_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Build and push the judge
+        if: steps.plan.outputs.judge == 'true'
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#judge-}"
+          IMAGE="${REGISTRY}/${ECR_REPOSITORY}:judge-${TAG}-${GITHUB_SHA::12}"
+          docker buildx build --platform linux/amd64 --provenance=false \
+            -f Dockerfile.judge -t "$IMAGE" .
+          docker push "$IMAGE"
+          echo "JUDGE_IMAGE=$IMAGE" >> "$GITHUB_ENV"
+
+      - name: Point the runner Lambda at the new image
+        if: steps.plan.outputs.runner == 'true'
+        run: |
+          set -euo pipefail
+          aws lambda update-function-code \
+            --function-name "${{ vars.RUNNER_FUNCTION_NAME }}" \
+            --image-uri "$RUNNER_IMAGE"
+          aws lambda wait function-updated \
+            --function-name "${{ vars.RUNNER_FUNCTION_NAME }}"
+
+      - name: Point the judge Lambda at the new image
+        if: steps.plan.outputs.judge == 'true'
+        run: |
+          set -euo pipefail
+          aws lambda update-function-code \
+            --function-name "${{ vars.JUDGE_FUNCTION_NAME }}" \
+            --image-uri "$JUDGE_IMAGE"
+          aws lambda wait function-updated \
+            --function-name "${{ vars.JUDGE_FUNCTION_NAME }}"
+
+      # docs/05 section 7: rolling back means pointing the Lambda at the
+      # previous image tag. That needs the tag to be in the run's output where
+      # the next operator can find it without digging through ECR.
+      - name: Record what is now deployed
+        run: |
+          {
+            echo "## Deployed"
+            echo
+            [ -n "${RUNNER_IMAGE:-}" ] && echo "- runner: \`$RUNNER_IMAGE\`"
+            [ -n "${JUDGE_IMAGE:-}" ] && echo "- judge: \`$JUDGE_IMAGE\`"
+            echo
+            echo "Roll back by running \`aws lambda update-function-code\` against the"
+            echo "previous tag in the same repository."
+          } >> "$GITHUB_STEP_SUMMARY"

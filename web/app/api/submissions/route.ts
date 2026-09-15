@@ -8,11 +8,12 @@ import { currentLearner } from "@/lib/session/current";
 // An allowlist rather than a cast. The client names which kind it wants and
 // the server decides whether that kind is allowed right now: every gate behind
 // these is re-resolved in createSubmission. A kind not on this list is a run.
-const KINDS = new Set<RunKind>(["run", "submit", "defence"]);
+const KINDS = new Set<RunKind>(["run", "submit", "defence", "rehearsal_submit"]);
 
 export async function POST(request: Request) {
   const learner = await currentLearner();
-  const payload = (await request.json()) as { problemId?: number; kind?: RunKind; body?: string };
+  const payload = (await request.json()) as
+    { problemId?: number; kind?: RunKind; body?: string; rehearsalId?: number | null };
 
   if (!payload.problemId || typeof payload.body !== "string") {
     return NextResponse.json(
@@ -28,6 +29,9 @@ export async function POST(request: Request) {
       problemId: payload.problemId,
       kind: payload.kind && KINDS.has(payload.kind) ? payload.kind : "run",
       body: payload.body,
+      // Checked against the learner's own sittings in createSubmission's
+      // policy resolution, so a made-up id changes nothing.
+      rehearsalId: payload.rehearsalId ?? undefined,
     });
 
     // Nudge the dispatcher so a local run does not wait for the next tick. The

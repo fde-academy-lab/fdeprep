@@ -216,7 +216,7 @@ describe("the submissions route", () => {
     const response = await POST(new Request("http://local/api/submissions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ problemId, kind: "rehearsal_submit", body: "x" }),
+      body: JSON.stringify({ problemId, kind: "sudo_pass", body: "x" }),
     }));
     const { id } = (await response.json()) as { id: number };
     const { rows } = await db().query<{ kind: string }>(

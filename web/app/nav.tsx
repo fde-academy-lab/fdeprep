@@ -9,6 +9,7 @@ import Link from "next/link";
 const ITEMS = [
   { href: "/", label: "Roadmap", key: "roadmap" },
   { href: "/problems", label: "Problems", key: "problems" },
+  { href: "/rehearsal", label: "Rehearsal", key: "rehearsal" },
   { href: "/progress", label: "Progress", key: "progress" },
 ] as const;
 

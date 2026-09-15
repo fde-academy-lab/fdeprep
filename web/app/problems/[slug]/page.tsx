@@ -20,9 +20,18 @@ import DesignWorkspace from "./design-workspace";
 
 export const dynamic = "force-dynamic";
 
-export default async function WorkspacePage({ params }: { params: Promise<{ slug: string }> }) {
+export default async function WorkspacePage({ params, searchParams }: {
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { slug } = await params;
+  const query = await searchParams;
   const learner = await currentLearner();
+
+  // A workspace opened from a rehearsal shell runs under Extreme rules. The id
+  // is checked against the learner's own sittings rather than trusted, because
+  // otherwise anyone could add ?rehearsal=1 and change which rules apply.
+  const rehearsalId = await activeRehearsal(query["rehearsal"], learner.enrolmentId);
 
   const { rows } = await db().query<{
     id: string; title: string; track: string; tier: string; artefact: string;
@@ -54,6 +63,7 @@ export default async function WorkspacePage({ params }: { params: Promise<{ slug
 
   const policy = await resolvePolicy({
     enrolmentId: learner.enrolmentId, problemId: Number(problem.id),
+    rehearsal: rehearsalId !== null,
   });
 
   return (
@@ -109,8 +119,30 @@ export default async function WorkspacePage({ params }: { params: Promise<{ slug
         // docs/03 section 4.4: the defence renders only once the battery
         // passes, which the policy decides rather than this component.
         defenceQuestion={problem.defence_question}
+        rehearsalId={rehearsalId}
       />
       )}
     </main>
   );
+}
+
+/**
+ * The rehearsal this workspace is inside, or null.
+ *
+ * Trusted only after it is matched to a sitting that belongs to this learner
+ * and has not finished. The query string decides which screen the learner came
+ * from; it does not get to decide which rules they are graded under.
+ */
+async function activeRehearsal(
+  raw: string | string[] | undefined, enrolmentId: number,
+): Promise<number | null> {
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  const id = Number(value);
+  if (!value || !Number.isInteger(id)) return null;
+
+  const { rows } = await db().query<{ id: string }>(
+    `select id from rehearsal
+      where id = $1 and enrolment_id = $2 and finished_at is null and ends_at > now()`,
+    [id, enrolmentId]);
+  return rows[0] ? Number(rows[0].id) : null;
 }

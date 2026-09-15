@@ -49,15 +49,24 @@ export async function policyRow(
   return rows[0] ?? null;
 }
 
-/** What is left, without consuming anything. Safe to call on a render path. */
+/**
+ * What is left, without consuming anything. Safe to call on a render path.
+ *
+ * `problemId` is optional because only some scopes are counted per problem.
+ * Asking for a problem-scoped allowance without one is a mistake rather than a
+ * default, so it throws instead of quietly counting the whole account.
+ */
 export async function allowanceFor(options: {
   enrolmentId: number;
-  problemId: number;
+  problemId?: number;
   difficulty: Difficulty;
   scope: Scope;
   client?: Pool | PoolClient;
 }): Promise<Allowance> {
   const client = options.client ?? db();
+  if (problemScoped(options.scope) && options.problemId === undefined) {
+    throw new Error(`${options.scope} is counted per problem, so it needs a problemId.`);
+  }
   const policy = await policyRow(client, options.scope, options.difficulty);
   if (!policy) {
     return {
