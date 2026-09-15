@@ -6,10 +6,17 @@
  */
 import Link from "next/link";
 
+/**
+ * docs/01 S2 draws four items. Voice is a fifth, added because the Voice
+ * Screen is a screen a learner has to reach and a screen reachable only by
+ * typing a URL is a screen nobody uses. Worth saying out loud rather than
+ * changing the wireframe quietly.
+ */
 const ITEMS = [
   { href: "/", label: "Roadmap", key: "roadmap" },
   { href: "/problems", label: "Problems", key: "problems" },
   { href: "/rehearsal", label: "Rehearsal", key: "rehearsal" },
+  { href: "/voice/session", label: "Voice", key: "voice" },
   { href: "/progress", label: "Progress", key: "progress" },
 ] as const;
 
