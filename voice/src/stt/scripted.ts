@@ -19,6 +19,22 @@ const PLACEHOLDER_WORDS = [
   "india", "juliet", "kilo", "lima", "mike", "november", "oscar", "papa",
 ];
 
+/**
+ * A scripted answer, for driving the cockpit without a voice.
+ *
+ * VOICE_SCRIPT holds phrases separated by "|" and the adapter speaks one word
+ * of them per 400ms of voiced audio. Set it to phrases carrying a question's
+ * beat anchors and the beat track lights, the pace band moves and the nudges
+ * fire, which is the only way to see the cockpit work on a machine with no
+ * microphone and no credential. Unset, the placeholders above are used and
+ * nothing matches any anchor.
+ */
+function scriptedWords(env: NodeJS.ProcessEnv): string[] {
+  const script = env.VOICE_SCRIPT;
+  if (!script) return PLACEHOLDER_WORDS;
+  return script.split("|").join(" ").split(/\s+/).filter(Boolean);
+}
+
 /** Root mean square of a 16-bit frame, as a fraction of full scale. Speech at
  *  a normal level sits well above this; room noise with noiseSuppression on
  *  sits well below. */
@@ -31,12 +47,18 @@ const MS_PER_WORD = 400;
 const SILENCE_TO_FINAL_MS = 700;
 
 export class ScriptedAdapter extends BaseAdapter {
+  private readonly vocabulary: string[];
   private elapsedMs = 0;
   private voicedMs = 0;
   private silentMs = 0;
   private words: string[] = [];
   private utteranceStartMs = 0;
   private opened = false;
+
+  constructor(env: NodeJS.ProcessEnv = process.env) {
+    super();
+    this.vocabulary = scriptedWords(env);
+  }
 
   async open(_sessionId: string, _opts: { sampleRate: number; language: string }): Promise<void> {
     this.opened = true;
@@ -56,7 +78,7 @@ export class ScriptedAdapter extends BaseAdapter {
       this.voicedMs += FRAME_MS;
       const wanted = Math.floor(this.voicedMs / MS_PER_WORD) + 1;
       while (this.words.length < wanted) {
-        this.words.push(PLACEHOLDER_WORDS[this.words.length % PLACEHOLDER_WORDS.length]!);
+        this.words.push(this.vocabulary[this.words.length % this.vocabulary.length]!);
         this.partial(this.words.join(" "), this.utteranceStartMs);
       }
       return;
