@@ -26,6 +26,28 @@ FORBIDDEN_MODULES = (
 
 FORBIDDEN_ATTRS = ("system", "popen", "spawn", "fork", "__subclasses__", "__globals__")
 
+# docs/03 section 9.1 says learner code can read anything staged into its own
+# process, and the harness objects are staged into it. Assertions are not, so
+# expected values stay out either way, but two other things were one attribute
+# access away.
+#
+# `llm._script` is the whole scripted model, which turns a problem into a
+# lookup. `llm._trace` and `tools._trace` are the trace, and every count the
+# evaluator reports is recomputed from the steps in it, so appending to it
+# fabricates tool calls that never happened. getattr was already blocked;
+# `obj._name` was not.
+#
+# The rule is the blunt one on purpose: a leading underscore means the author
+# of that object said it was not part of the interface, and a static gate
+# cannot tell whose object it is holding. It also subsumes every dunder, which
+# is why __class__ and __mro__ need no entry of their own.
+PRIVATE_BASES = ("self", "cls")
+
+# namedtuple's public interface carries underscores so that the names cannot
+# collide with a field. Rejecting `_asdict()` would fail correct code for a
+# reason the learner could do nothing about.
+NAMEDTUPLE_API = ("_asdict", "_replace", "_fields", "_field_defaults", "_make")
+
 
 @dataclass
 class StaticResult:
@@ -63,8 +85,8 @@ def check(source: str, allowed_imports) -> StaticResult:
                 reasons += _check_module(node.module, allowed, node.lineno)
         elif isinstance(node, ast.Name) and node.id in FORBIDDEN_NAMES:
             reasons.append(f"line {node.lineno}: {node.id} is not available in the sandbox")
-        elif isinstance(node, ast.Attribute) and node.attr in FORBIDDEN_ATTRS:
-            reasons.append(f"line {node.lineno}: the {node.attr} attribute is not reachable")
+        elif isinstance(node, ast.Attribute):
+            reasons += _check_attribute(node)
 
     if not _defines_run_agent(tree):
         reasons.append("the solution defines no run_agent function at module level")
@@ -76,6 +98,36 @@ def check(source: str, allowed_imports) -> StaticResult:
             unique.append(reason)
 
     return StaticResult("fail" if unique else "pass", unique)
+
+
+def _check_attribute(node: ast.Attribute) -> list[str]:
+    """One attribute access, checked for a private name and then for a name on
+    the fixed list."""
+    if node.attr.startswith("_") and not _private_is_the_learners_own(node):
+        return [
+            f"line {node.lineno}: {node.attr} is a private attribute of another object, "
+            "and the sandbox does not allow reading one. Everything this problem gives you "
+            "is reachable without it: call llm(prompt) and the callables in tools"
+        ]
+    if node.attr in FORBIDDEN_ATTRS:
+        return [f"line {node.lineno}: the {node.attr} attribute is not reachable"]
+    return []
+
+
+def _private_is_the_learners_own(node: ast.Attribute) -> bool:
+    """True when the private name belongs to the learner rather than to
+    something the harness handed them."""
+    if node.attr in NAMEDTUPLE_API:
+        return True
+    base = node.value
+    if isinstance(base, ast.Name) and base.id in PRIVATE_BASES:
+        return True
+    # super().__init__() in a learner's own class hierarchy.
+    return (
+        isinstance(base, ast.Call)
+        and isinstance(base.func, ast.Name)
+        and base.func.id == "super"
+    )
 
 
 def _check_module(name: str, allowed: set[str], lineno: int) -> list[str]:

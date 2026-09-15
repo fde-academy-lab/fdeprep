@@ -18,6 +18,18 @@ Learner code can read anything staged into its own process. Stage one case, or
 a bounded batch, per invocation. Never stage an expected output next to an
 input. Comparison happens in the trusted evaluator, outside the sandbox.
 
+## The harness objects are staged, so their internals are closed
+
+Learner code holds the mock model and the tool table, because it has to call
+them. It may not read their private attributes. `llm._script` is the scripted
+model, which turns a problem into a lookup, and `llm._trace` is the trace every
+count in the result is recomputed from, which is how a solution would write
+tool calls that never happened.
+
+The static gate rejects a private attribute read on anything other than `self`,
+`cls` or `super()`. Assertions were never staged and still are not, so this is
+about the objects rather than about expected values.
+
 ## Never trust learner-reported anything
 
 Pass counts, timings and result summaries printed by learner code are strings,
