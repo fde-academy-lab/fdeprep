@@ -1,0 +1,145 @@
+slug: say-no-to-the-date
+title: Say no to a date somebody has already promised the board
+track: client-communication
+difficulty: hard
+total_seconds: 225
+competencies: [client-communication, evaluation-design, system-design]
+
+prompt_text: |
+  Their chief operating officer wants the claims queue fully automated in four
+  weeks. She has told the board it is happening. You have seen the queue and
+  four weeks is not the problem. Full is. Answer her.
+
+beats:
+  - id: b1
+    label: Say back what she has actually committed to
+    seconds: 30
+    anchors: ["told the board", "four weeks", "what you need"]
+  - id: b2
+    label: Separate the date from the scope
+    seconds: 50
+    anchors: ["the date is fine", "the word", "full", "every claim"]
+  - id: b3
+    label: Commit to something specific in the four weeks
+    seconds: 55
+    anchors: ["sixty per cent", "straight through", "the rest"]
+  - id: b4
+    label: Say what the last part costs, in her terms
+    seconds: 50
+    anchors: ["the hard ten per cent", "wrong", "a person"]
+  - id: b5
+    label: Give her the sentence for the board
+    seconds: 40
+    anchors: ["what you can say", "on the date", "measured"]
+
+follow_ups:
+  - trigger_after_beat: b3
+    text: The board heard full automation. Sixty per cent is going to look like failure.
+  - trigger_after_beat: b4
+    text: Our competitor says they do a hundred per cent. Are you telling me they are lying?
+
+rubric:
+  - criterion_key: c1
+    label: Takes the commitment seriously rather than treating it as naive
+    weight: 25
+    descriptor_md: |
+      She promised the board something and is now exposed. Strong answers
+      start from what she needs, which is a position she can hold, rather than
+      from why the request was unreasonable.
+  - criterion_key: c2
+    label: Moves the negotiation from the date to the scope
+    weight: 30
+    descriptor_md: |
+      The date is the thing she cannot move and the scope is the thing she
+      can. Strong answers say this explicitly and keep the date, which is what
+      turns a refusal into a plan.
+  - criterion_key: c3
+    label: Commits to a specific, checkable deliverable
+    weight: 25
+    descriptor_md: |
+      A number and a definition of what it covers. "A solid first version" is
+      not a commitment. Strong answers say what fraction of the queue, judged
+      how, and what happens to the remainder.
+  - criterion_key: c4
+    label: Gives her something to say to the board
+    weight: 20
+    descriptor_md: |
+      The real deliverable of this conversation is a sentence she can repeat.
+      Strong answers hand her one, in her language, that is true.
+
+exemplars:
+  - band: strong
+    score: 91
+    transcript: |
+      Right, so you have told the board this is happening in four weeks, which
+      means what you need from me is something you can stand behind in four
+      weeks, not a conversation about whether four weeks was realistic.
+
+      So let me be precise about where the problem is, because the date is
+      fine. I can build for four weeks. The word I am stuck on is full. Full
+      means every claim, including the ones where the customer has attached a
+      photograph of a handwritten note, and including the ones where the
+      policy changed mid-claim. Those are not a bit harder, they are a
+      different piece of work.
+
+      Here is what I will commit to on your date. Around sixty per cent of the
+      queue goes straight through with no human involved, and that is the
+      simple category, and we will agree what counts before we start so it is
+      not my judgement at the end. The rest routes to a person with the
+      extraction already done and the policy already pulled, so they are
+      checking rather than typing. Your handlers get faster on all of it and
+      they stop doing the boring part entirely.
+
+      What the last stretch costs is the thing I would want the board to hear.
+      The hard ten per cent is where being wrong is expensive, because those
+      are the claims where a mistake is a payment to the wrong person or a
+      refusal that should have been a payment. Getting those automated is
+      months, and it is months of evidence, not months of building. A person
+      staying in that loop is not a failure of the project, it is the design.
+
+      What you can say to the board is that on the date you will have the
+      majority of the queue running without a person, measured, with the
+      number in front of them, and a plan for the rest with dates on it. That
+      is more than they will hear from anybody who promises a hundred per
+      cent, and it is true in four weeks.
+  - band: adequate
+    score: 63
+    transcript: |
+      I understand the pressure with the board commitment. I do want to be
+      honest with you though, because I think full automation in four weeks is
+      not achievable and I would rather say that now than in week three.
+
+      The reason is that the claims queue is not uniform. A good proportion of
+      it is straightforward and we can automate that reasonably quickly. But
+      there is a tail of complex cases, unusual documents, disputes, edge
+      cases in the policy, and those take much longer to get right. Automating
+      them badly is worse than not automating them, because the errors cost
+      money.
+
+      What I would propose is that we target the straightforward cases in the
+      four weeks and get those working properly, and keep humans on the rest
+      with the agent assisting them. That gets you most of the efficiency
+      benefit on your timeline.
+
+      I would also want to agree up front how we measure success, so that at
+      the end we can show the board a real number rather than arguing about
+      whether it worked.
+  - band: weak
+    score: 30
+    transcript: |
+      Four weeks is quite aggressive for full automation. Realistically these
+      projects usually take longer, three to six months is more typical for
+      something like this depending on complexity.
+
+      The main risks are data quality, integration with the existing systems,
+      and the edge cases which always take longer than expected. There is also
+      testing and validation to consider, and change management with the team
+      who currently do this work.
+
+      I would suggest a phased approach. We could do a pilot first on a subset
+      of claims, see how it performs, and then expand from there. That
+      de-risks it considerably.
+
+      I appreciate the board has been told four weeks, so it might be worth
+      going back to them and resetting expectations early rather than
+      discovering the problem later.

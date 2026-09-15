@@ -1,0 +1,184 @@
+slug: stop-when-the-model-will-not
+title: Stop the loop yourself when the model never will
+artefact_type: code
+difficulty: easy
+track: agent-loop
+est_minutes: 20
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 5
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A research assistant looks things up and summarises what it found. It works.
+  Once or twice a week it does not: the model keeps asking for one more lookup
+  and never writes the summary, and the loop keeps going because the only way
+  out of it is a Final Answer that never arrives.
+
+  The bill for last Thursday was 340 dollars on one question.
+
+  Nothing about the model guarantees it will stop. The loop has to.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns either `Action: lookup(topic=<text>)` or
+  `Final Answer: <text>`. The `lookup` tool returns
+  `{"status": 200, "text": "..."}`.
+
+  You may make at most 5 model calls. Count them yourself. When the fifth one
+  comes back without a Final Answer, stop and return a sentence that says the
+  work is unfinished and what was found so far. Do not return an empty string
+  and do not let an exception out.
+
+  Budget: at most 5 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  MAX_CALLS = 5
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Question: {question}\n"
+
+      # TODO 1: loop at most MAX_CALLS times, counting model calls rather than
+      #         anything else
+      # TODO 2: return the text when the reply is a Final Answer
+      # TODO 3: call lookup and append what it returned
+      # TODO 4: after the last permitted call, return an unfinished answer
+      #         rather than nothing
+      return "I did not finish this."
+
+steps:
+  - id: s1
+    text: Bound the loop by the number of model calls you have made.
+    check_id: s1
+  - id: s2
+    text: Return the text when the reply is a Final Answer.
+    check_id: s2
+  - id: s3
+    text: Call lookup and append what it returned.
+    check_id: s3
+  - id: s4
+    text: Return an unfinished answer when the calls run out.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: llm_calls_at_most, value: 5 }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: calls_tool, name: lookup }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: terminates }
+
+hints:
+  - The exit condition that matters is yours, not the model's.
+  - A loop that breaks only on a Final Answer has one exit, and the model owns it.
+  - Running out of calls is a result. It has a sentence, and the sentence is
+    not an empty string.
+
+tests:
+  - name: summarises_after_one_lookup
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What changed in the carrier contract?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: lookup(topic=carrier contract)" }
+        - { match: "*", reply: "Final Answer: The weekend surcharge was removed." }
+      tools:
+        lookup: { returns: { status: 200, text: "Weekend surcharge removed in March." } }
+      budget: { max_llm_calls: 5, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: lookup }
+        - { type: returns_matches, value: "(?i)surcharge" }
+        - { type: llm_calls_at_most, value: 5 }
+
+  - name: answers_with_no_lookup_at_all
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Who owns the carrier relationship?" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Logistics owns it." }
+      tools:
+        lookup: { returns: { status: 200, text: "Logistics." } }
+      budget: { max_llm_calls: 5, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)logistics" }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: no_exception }
+
+  - name: a_model_that_never_finishes_does_not_run_forever
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Summarise every carrier contract we have ever signed" }
+      llm_script:
+        - { match: "*", reply: "Action: lookup(topic=one more thing)" }
+      tools:
+        lookup: { returns: { status: 200, text: "Another paragraph of contract text." } }
+      budget: { max_llm_calls: 5, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 5 }
+        - { type: calls_tool, name: lookup }
+        - { type: returns_matches, value: "(?i)paragraph of contract text" }
+
+  - name: a_late_summary_is_still_a_summary
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "What did the carrier change in March?" }
+      llm_script:
+        - { match: { call_index: 4 }, reply: "Final Answer: They removed the weekend surcharge." }
+        - { match: "*", reply: "Action: lookup(topic=march changes)" }
+      tools:
+        lookup: { returns: { status: 200, text: "March: surcharge removed." } }
+      budget: { max_llm_calls: 5, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)weekend surcharge" }
+        - { type: llm_calls_at_most, value: 5 }
+        - { type: terminates }
+
+reference_md: |
+  Two exits, and the problem is that most loops are written with one.
+
+  `while True` with a break on Final Answer hands the stopping decision to the
+  model. That is fine on the days the model stops. On the day it does not, the
+  only remaining limit is whatever the platform enforces, which on Thursday
+  was a spend alarm and 340 dollars.
+
+  Counting model calls rather than iterations is the detail that survives the
+  next edit. An iteration counter is correct right up until someone adds a
+  retry inside the body, at which point the loop runs five times and calls the
+  model eight, and the diff that broke it touched nothing that looks like a
+  budget.
+
+  The off-by-one is worth getting right in both directions. A loop that gives
+  up after two calls throws away an answer the model was three calls from
+  giving, and a learner who tests only the runaway case will not notice. The
+  allowance is a ceiling, not a target and not a trigger to stop early.
+
+  What comes back when the calls run out is part of the contract, not an
+  afterthought. An empty string is indistinguishable from a bug to whatever
+  called this, and a cheerful summary of nothing is worse than both. Carrying
+  what the lookups actually returned is what makes the unfinished answer worth
+  reading: five calls of research with a sentence saying it did not finish is
+  something a person can use, and "I could not complete this" is not.

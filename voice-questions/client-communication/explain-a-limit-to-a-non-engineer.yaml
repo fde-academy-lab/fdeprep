@@ -1,0 +1,147 @@
+slug: explain-a-limit-to-a-non-engineer
+title: Explain why the assistant goes quiet, to someone who does not build software
+track: client-communication
+difficulty: medium
+total_seconds: 210
+competencies: [client-communication, retrieval, evaluation-design]
+
+prompt_text: |
+  Their head of customer service has noticed the assistant sometimes says it
+  cannot find an answer, on questions where one of her team would have known.
+  She thinks it is broken. Explain it to her.
+
+beats:
+  - id: b1
+    label: Agree that what she saw is real
+    seconds: 30
+    anchors: ["you are right", "it does do that", "on purpose"]
+  - id: b2
+    label: Say where the assistant's answers come from
+    seconds: 45
+    anchors: ["written down", "help centre", "your team", "in their heads"]
+  - id: b3
+    label: Say what the alternative behaviour would be
+    seconds: 55
+    anchors: ["it was guessing", "the same confidence", "no way for the customer"]
+  - id: b4
+    label: Turn the gap into something she can act on
+    seconds: 45
+    anchors: ["a list", "cannot answer", "worth writing down"]
+  - id: b5
+    label: Say what you would change if she still wants it
+    seconds: 35
+    anchors: ["your call", "it is unsure", "widen"]
+
+follow_ups:
+  - trigger_after_beat: b3
+    text: My team answer these questions all day without getting them wrong. Why can it not?
+  - trigger_after_beat: b4
+    text: We do not have time to write help centre articles. Is there another way?
+
+rubric:
+  - criterion_key: c1
+    label: Validates the observation before explaining it
+    weight: 20
+    descriptor_md: |
+      She has seen a real thing. Strong answers confirm it in the first
+      sentence and say it is deliberate, which stops the conversation being
+      about whether she is right.
+  - criterion_key: c2
+    label: Explains the limit without technical vocabulary
+    weight: 30
+    descriptor_md: |
+      No retrieval, no grounding, no confidence threshold. Strong answers use
+      the distinction between what is written down and what is in someone's
+      head, which she already understands from managing the team.
+  - criterion_key: c3
+    label: Names what the alternative would cost
+    weight: 30
+    descriptor_md: |
+      The choice is not between silence and a right answer, it is between
+      silence and a confident invention that reads identically to a correct
+      one. Strong answers make that the centre of the explanation.
+  - criterion_key: c4
+    label: Leaves her with a decision rather than an explanation
+    weight: 20
+    descriptor_md: |
+      A list of what it could not answer is a backlog for her content team and
+      a measure of the gap. Strong answers hand her that, and say what she can
+      change if she wants a different trade.
+
+exemplars:
+  - band: strong
+    score: 89
+    transcript: |
+      You are right, it does do that, and it is on purpose. Let me explain
+      why, and then you can tell me whether you want it changed, because it is
+      genuinely your call.
+
+      The assistant answers from what is written down. The help centre
+      articles, the policy documents, the things somebody has typed out. Your
+      team answer from that plus everything they have picked up in three years
+      of doing the job, and most of that is in their heads and has never been
+      written anywhere. So when it goes quiet, nine times out of ten it is not
+      a question it failed to understand. It is a question nobody has written
+      the answer to.
+
+      Now, the reason I would not just let it answer anyway is what that
+      actually looks like. It would not say it was guessing. It would produce a
+      policy, in the same tone, the same length, the same confidence as a
+      correct answer, and there is no way for the customer or for your team to
+      tell which one they are reading. Silence is annoying. A confident wrong
+      policy is a complaint, and you only find out about the ones that
+      complain.
+
+      What I would do with this is turn it into a list. Every time it cannot
+      answer, we log the question. After a fortnight you have a ranked list of
+      what your customers ask that your help centre does not cover, which is
+      a content backlog somebody should have had years ago, and the top ten
+      are probably worth writing down this month.
+
+      And if after all that you still want it to have a go, we can do that. We
+      can let it answer and say clearly that it is unsure and that this is not
+      a policy statement. That is a different trade and it is a reasonable one
+      to want. I would want us to widen it deliberately rather than by
+      accident.
+  - band: adequate
+    score: 62
+    transcript: |
+      That is expected behaviour rather than a bug, although I can see why it
+      looks like one.
+
+      The assistant only answers from the documentation it has access to. If
+      the answer is not in there, it is designed to say so rather than guess,
+      because a made up answer about policy could cause real problems for a
+      customer.
+
+      Your team know a lot of things that are not documented anywhere, which
+      is why they can answer questions the assistant cannot. That is not the
+      assistant failing so much as a gap in the written material.
+
+      The good news is that this is fixable. We can track which questions it
+      is unable to answer and use that to identify what is missing from the
+      help centre. As those get documented, the coverage improves.
+
+      If you would prefer it to attempt an answer with a caveat rather than
+      declining, that is something we can configure, though I would want to
+      think carefully about which topics we allow that on.
+  - band: weak
+    score: 28
+    transcript: |
+      So the way it works is that we use retrieval augmented generation, which
+      means the model searches a knowledge base and then generates an answer
+      grounded in what it retrieves. If the retrieval does not return anything
+      above the relevance threshold, it abstains rather than hallucinating.
+
+      That is generally considered best practice because hallucination is a
+      known issue with large language models, and grounding the responses in
+      retrieved context reduces it significantly.
+
+      We could tune the threshold to be less conservative, which would mean it
+      answers more questions, though there is a trade-off with accuracy. Or we
+      could improve the retrieval itself, maybe with better chunking or a
+      reranker, which would get more of the relevant content in front of the
+      model.
+
+      I would need to look at the logs to see which of those is the issue
+      here.

@@ -1,0 +1,146 @@
+slug: stop-an-agent-that-never-finishes
+title: Stop an agent that never emits a final answer
+track: agent-loop
+difficulty: medium
+total_seconds: 225
+competencies: [agent-loop, cost-and-latency, failure-mode-analysis]
+
+prompt_text: |
+  One of their agents went round in circles for eleven minutes last night and
+  spent forty dollars on a single ticket. The engineer on call killed the pod.
+  They want to know what you would put in so that does not happen again.
+
+beats:
+  - id: b1
+    label: Say what the pod restart actually cost them
+    seconds: 30
+    anchors: ["killing the pod", "no answer", "nothing recorded"]
+  - id: b2
+    label: Name the limits and say where they live
+    seconds: 60
+    anchors: ["steps", "wall clock", "spend", "in the application", "not in the prompt"]
+  - id: b3
+    label: Say what happens when a limit fires
+    seconds: 55
+    anchors: ["terminal state", "what it found so far", "a human"]
+  - id: b4
+    label: Name the case the limits do not catch
+    seconds: 45
+    anchors: ["same call", "making progress", "no new information"]
+  - id: b5
+    label: Say what you would watch afterwards
+    seconds: 35
+    anchors: ["how many steps", "alert", "before the ceiling"]
+
+follow_ups:
+  - trigger_after_beat: b2
+    text: We already tell it in the prompt to stop after five steps. Why is that not enough?
+  - trigger_after_beat: b3
+    text: The last step it took returned something useful. Are you throwing that away?
+
+rubric:
+  - criterion_key: c1
+    label: Puts the limit outside the model
+    weight: 35
+    descriptor_md: |
+      The limit belongs in the code that runs the loop. An answer that relies
+      on telling the model to stop has put the control in the thing being
+      controlled, and the incident happened because the model did not stop.
+  - criterion_key: c2
+    label: Names more than one dimension
+    weight: 20
+    descriptor_md: |
+      Steps, time and spend fail differently. A step limit does nothing about
+      one slow tool call and a time limit does nothing about forty fast ones.
+      Strong answers name at least two and say why both.
+  - criterion_key: c3
+    label: Says what the terminal state contains
+    weight: 25
+    descriptor_md: |
+      Stopping is half of it. Strong answers say the run returns what it
+      established, marked unfinished, and goes somewhere a person can pick it
+      up. Killing the pod already stopped it.
+  - criterion_key: c4
+    label: Names the failure the ceiling does not catch
+    weight: 20
+    descriptor_md: |
+      An agent repeating the same call inside its budget is failing and
+      terminating. Strong answers name it and say how they would see it.
+
+exemplars:
+  - band: strong
+    score: 89
+    transcript: |
+      The first thing I would say is that killing the pod worked, in the sense
+      that it stopped, and it cost you everything else. The customer got no
+      answer, and there is nothing recorded about how far it got, so nobody
+      can pick it up this morning. Whatever we build should do the stopping
+      before that point.
+
+      So, three limits, and they all live in the application rather than in
+      the prompt. A ceiling on steps. A wall clock, because one tool call
+      hanging for nine minutes is a different failure from forty fast ones. And
+      a spend ceiling per run, because that is the one finance will ask about.
+      The reason they are not in the prompt is that the prompt is an
+      instruction to the thing that just ignored it. You can put it in the
+      prompt as well, and it will help most of the time, but the control is
+      the counter in your loop.
+
+      When one of them fires the run does not just stop. It writes a terminal
+      state: unfinished, here is what it found so far, here is the last thing
+      it was doing. Then it hands it to a human with that attached. Eleven
+      minutes of work is worth something even when it did not finish, and at
+      the moment you are throwing it away.
+
+      The case none of that catches is the one I would actually worry about.
+      An agent can sit inside every ceiling and still be failing, because it
+      is making the same call with the same arguments and getting the same
+      answer. It terminates, it stays in budget, and it is not making
+      progress. No new information is coming in. I would detect that
+      separately, by comparing consecutive calls.
+
+      Afterwards I would watch how many steps a normal run takes, and alert
+      when the distribution shifts, not when it hits the ceiling. By the time
+      you are hitting the ceiling you have already paid. The interesting signal
+      is runs creeping from three steps to seven before the ceiling ever
+      fires.
+  - band: adequate
+    score: 61
+    transcript: |
+      Right, so the main thing you need is a maximum number of steps. The loop
+      should count how many times it has called the model and stop when it
+      reaches the limit, rather than waiting for the model to decide it is
+      done.
+
+      I would also add a timeout on the whole run, because a step limit does
+      not help if one of the tool calls hangs. Between those two you have
+      bounded the worst case.
+
+      When it stops it should return something rather than nothing. An error
+      is fine, but ideally it says what it was doing so somebody can look at
+      it.
+
+      You would want monitoring on this as well so you can see how often runs
+      are hitting the limit. If a lot of them are, the limit is probably too
+      low or something else is wrong.
+
+      The other thing worth doing is setting a cost budget, since model calls
+      are the expensive part and forty dollars on one ticket is the number
+      that got everyone's attention.
+  - band: weak
+    score: 27
+    transcript: |
+      So the issue is the agent did not know when to stop. I would add an
+      instruction to the system prompt telling it that it has a maximum of
+      five steps and that it must give a final answer within those, and
+      usually that works quite well with the newer models.
+
+      You could also add a check in the code as a backstop, just in case, but
+      the prompt should handle it most of the time.
+
+      For the cost side, I would look at using a cheaper model for the simpler
+      steps, which would bring the forty dollars down quite a lot.
+
+      And then monitoring so you can see if it happens again. If you are
+      logging each step you can go back and look at what it was doing, and
+      that will usually tell you what went wrong.

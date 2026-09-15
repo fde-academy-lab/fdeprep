@@ -1,0 +1,228 @@
+slug: expire-context-without-abandoning-work
+title: Expire what you must without stranding the work in flight
+artefact_type: code
+difficulty: hard
+track: memory
+est_minutes: 40
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: client-communication, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  Records in the case store expire after thirty days. The sweeper runs nightly
+  and it has caused two incidents in a month, in opposite directions.
+
+  In the first, a record from a case opened in February was still the only
+  evidence for a task that was still open in April. The sweeper expired it on
+  age. The task carried on and produced a plan referencing a shipment nobody
+  could find.
+
+  In the second, a customer exercised their right to erasure. The record was
+  pinned by an operator months earlier. Pinned beat deleted, the record
+  survived, and that one goes to the regulator rather than to the incident
+  channel.
+
+  Both rules were reasonable. The order they were applied in was not.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns `Action: records()` first, and a one-line operator
+  message when you ask for one.
+
+  `records()` returns
+
+      {"status": 200,
+       "active_tasks": ["task-1"],
+       "records": [{"id": "r-1", "age_days": 12, "pinned": false,
+                    "deletion_requested": false, "needed_by": ["task-1"]}]}
+
+  and may return something else entirely.
+
+  Apply these in order. The first one that matches decides the record.
+
+  | Order | Condition | Outcome |
+  |---|---|---|
+  | 1 | `deletion_requested` is true | removed, whatever else is true |
+  | 2 | `needed_by` names an active task | kept, whatever its age |
+  | 3 | `pinned` is true | kept |
+  | 4 | `age_days` is over 30 | removed |
+  | 5 | otherwise | kept |
+
+  An active task whose records were all removed is blocked. When there is at
+  least one, ask the model for an operator message and put it in `note`. When
+  there is none, do not spend the call.
+
+  Return a JSON string with the keys `kept`, `removed`, `blocked_tasks` and
+  `note`.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+hints:
+  - Both incidents are the same bug. The rules did not change, their order did.
+  - A right to erasure is not a retention preference, and nothing in the table
+    outranks it.
+  - Not spending a model call is a feature of the nightly sweeper, which runs
+    over every case every night.
+
+defence_question: |
+  An operator asks you to add a sixth rule: a record under a deletion request
+  that an active task still needs should be kept until the task finishes, so
+  the task does not break. They point out that this is exactly the first
+  incident you were asked to fix. What do you tell them, and what do you
+  build instead?
+
+tests:
+  - name: a_fresh_record_survives
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "nightly-1" }
+      llm_script:
+        - { match: "*", reply: "Action: records()" }
+      tools:
+        records:
+          returns:
+            status: 200
+            active_tasks: ["task-1"]
+            records:
+              - { id: "r-1", age_days: 12, pinned: false, deletion_requested: false,
+                  needed_by: ["task-1"] }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [kept, removed, blocked_tasks, note] } }
+        - { type: returns_matches, value: "r-1" }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: an_old_unneeded_record_is_removed
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "nightly-2" }
+      llm_script:
+        - { match: "*", reply: "Action: records()" }
+      tools:
+        records:
+          returns:
+            status: 200
+            active_tasks: []
+            records:
+              - { id: "r-9", age_days: 45, pinned: false, deletion_requested: false,
+                  needed_by: [] }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [kept, removed, blocked_tasks, note] } }
+        - { type: returns_matches, value: "\"removed\": \\[\\s*\"r-9\"" }
+        - { type: terminates }
+
+  - name: an_active_task_outranks_the_age
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "nightly-3" }
+      llm_script:
+        - { match: "*", reply: "Action: records()" }
+      tools:
+        records:
+          returns:
+            status: 200
+            active_tasks: ["task-7"]
+            records:
+              - { id: "r-feb", age_days: 400, pinned: false, deletion_requested: false,
+                  needed_by: ["task-7"] }
+              - { id: "r-old", age_days: 400, pinned: false, deletion_requested: false,
+                  needed_by: [] }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "\"kept\": \\[\\s*\"r-feb\"" }
+        - { type: returns_matches, value: "\"removed\": \\[\\s*\"r-old\"" }
+        - { type: returns_matches, value: "\"blocked_tasks\": \\[\\]" }
+
+  - name: erasure_outranks_a_pin_and_blocks_the_task
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "nightly-4" }
+      llm_script:
+        - { match: { contains: "blocked" },
+            reply: "task-3 has no records left after an erasure request. Reassign it to a human." }
+        - { match: "*", reply: "Action: records()" }
+      tools:
+        records:
+          returns:
+            status: 200
+            active_tasks: ["task-3"]
+            records:
+              - { id: "r-erase", age_days: 5, pinned: true, deletion_requested: true,
+                  needed_by: ["task-3"] }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "\"removed\": \\[\\s*\"r-erase\"" }
+        - { type: returns_matches, value: "\"blocked_tasks\": \\[\\s*\"task-3\"" }
+        - { type: returns_matches, value: "(?i)reassign it to a human" }
+
+  - name: adversarial_the_case_store_changes_shape_mid_sweep
+    visibility: adversarial
+    fixture: schema_drift
+    annotation_md: |
+      The case store was mid-deploy and returned a payload with no `records`
+      key at all. A sweeper that reaches for `result["records"]` raises, the
+      nightly job dies, and nothing is swept, including the erasure requests.
+
+      A job that deletes things on a legal deadline has to fail in the
+      direction that deletes nothing rather than the direction that deletes
+      everything, and it has to say so out loud rather than exiting zero.
+    spec:
+      kind: agent_run
+      input: { question: "nightly-5" }
+      llm_script:
+        - { match: "*", reply: "Action: records()" }
+      tools:
+        records: { fixture: schema_drift }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - { type: valid_json_return,
+            schema: { type: object, required: [kept, removed, blocked_tasks, note] } }
+
+reference_md: |
+  Five rules that every engineer would have written, in an order only one of
+  which is defensible.
+
+  Erasure first, because it is the only rule in the table that is not ours.
+  Retention, pinning and dependency are all policies this team chose and can
+  change on a Tuesday. A right to erasure is a legal obligation with a clock
+  on it, and every rule that can outrank it is a rule that will, eventually,
+  on the record that matters.
+
+  Dependency above age, because age is a proxy. Thirty days is a guess about
+  when a record stops mattering, and an open task is direct evidence that this
+  one still does. Applying the proxy first means the evidence never gets
+  looked at, and the failure is silent: the task does not error, it produces a
+  plan about a shipment that no longer has a record.
+
+  The blocked-task list is the part that is easy to leave out because it does
+  not change what gets deleted. It changes what a person finds out. A sweep
+  that removes the last record a task depends on and says nothing has handed
+  the task a silent corruption; the same sweep with a line in it has handed an
+  operator a decision.
+
+  The operator message is the only place a model belongs here, and it is
+  skipped when there is nothing to say. This job runs nightly over every case,
+  so a call spent on "nothing was blocked" is a call spent every night
+  forever.
+
+  The adversarial case is about which way to fail. A sweeper that raises
+  deletes nothing, which is wrong but recoverable. A sweeper that treats an
+  unreadable payload as an empty record set deletes nothing either, and then
+  exits zero, and the erasure request that was due today is now overdue and
+  nobody knows.

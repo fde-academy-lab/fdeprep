@@ -1,0 +1,189 @@
+slug: retry-within-a-deadline
+title: Retry a carrier that is failing, without blowing the deadline
+artefact_type: code
+difficulty: hard
+track: tool-creation
+est_minutes: 35
+competencies:
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The carrier's booking API rate-limits under load and returns 503 when their
+  own upstream is down. Your agent retries with exponential backoff, which is
+  correct, and has no total deadline, which is not.
+
+  On Tuesday the carrier was down for four minutes. Requests that should have
+  given up after eight seconds took forty seven, the checkout service in front
+  of your agent timed out at thirty, and customers saw a spinner and then an
+  error while your agent was still politely waiting to try again.
+
+  The same loop also retried a 401 eleven times. The credentials were not
+  going to become valid.
+
+  Write the retry policy. It is not a prompt, it is arithmetic, and the
+  arithmetic is where this went wrong.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns `Action: ship(order=<id>)` once. Everything after that
+  is yours.
+
+  The `ship` tool returns one of
+
+      {"status": 200, "booking": "<ref>"}     success
+      {"status": 429}                          retryable
+      {"status": 503}                          retryable
+      {"status": 401}                          not retryable
+
+  Policy:
+
+  - Delays before attempts 2, 3, 4 and 5 are 1000, 2000, 4000 and 8000 ms.
+  - The total deadline is 8000 ms of waiting. Before each delay, check whether
+    it fits in what is left. If it does not, stop; do not wait a shorter time
+    and do not wait anyway.
+  - A 401 is not retried. At all.
+  - Five attempts is the ceiling even if the deadline would allow more.
+
+  Return a JSON string with the keys `outcome`, `attempts` and `waited_ms`,
+  where `outcome` is one of `booked`, `exhausted` or `not_retryable`.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+hints:
+  - The deadline is spent before the call, not after it.
+  - A delay that does not fit is a reason to stop, not a reason to wait less.
+  - One of the four status codes is not a temporary condition, and trying it
+    again is a way of not reading it.
+
+defence_question: |
+  Your policy stops after 7000 ms of waiting rather than using the full 8000.
+  A reviewer says that wastes 1000 ms of the deadline on every exhausted
+  request and asks you to wait the remaining 1000 and try once more. What do
+  you say?
+
+tests:
+  - name: books_on_the_first_attempt
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Book order A-1 with the carrier" }
+      llm_script:
+        - { match: "*", reply: "Action: ship(order=A-1)" }
+      tools:
+        ship: { returns: { status: 200, booking: "CB-1" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, attempts, waited_ms],
+                      properties: { outcome: { enum: [booked, exhausted, not_retryable] },
+                                    attempts: { type: integer },
+                                    waited_ms: { type: integer } } } }
+        - { type: returns_matches, value: "\"outcome\": \"booked\"" }
+        - { type: returns_matches, value: "\"waited_ms\": 0" }
+
+  - name: a_carrier_that_stays_down_still_returns_json
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Book order A-2 with the carrier" }
+      llm_script:
+        - { match: "*", reply: "Action: ship(order=A-2)" }
+      tools:
+        ship: { returns: { status: 503 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, attempts, waited_ms] } }
+        - { type: returns_matches, value: "\"outcome\": \"exhausted\"" }
+        - { type: terminates }
+
+  - name: a_carrier_that_stays_down_stops_at_the_deadline
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Book order A-3 with the carrier" }
+      llm_script:
+        - { match: "*", reply: "Action: ship(order=A-3)" }
+      tools:
+        ship: { returns: { status: 503 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "\"outcome\": \"exhausted\"" }
+        - { type: returns_matches, value: "\"waited_ms\": 7000" }
+        - { type: returns_matches, value: "\"attempts\": 4" }
+
+  - name: a_401_is_not_a_temporary_condition
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Book order A-4 with the carrier" }
+      llm_script:
+        - { match: "*", reply: "Action: ship(order=A-4)" }
+      tools:
+        ship: { returns: { status: 401 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "\"outcome\": \"not_retryable\"" }
+        - { type: returns_matches, value: "\"attempts\": 1" }
+        - { type: returns_matches, value: "\"waited_ms\": 0" }
+
+  - name: adversarial_the_carrier_stops_responding
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      The carrier answered twice and then stopped responding, which arrives as
+      an exception rather than a status code. A retry policy written around
+      status codes has no branch for it, and the exception travels straight up
+      through the loop into whatever called the agent.
+
+      A deadline that only counts planned delays does not count this at all.
+    spec:
+      kind: agent_run
+      input: { question: "Book order A-5 with the carrier" }
+      llm_script:
+        - { match: "*", reply: "Action: ship(order=A-5)" }
+      tools:
+        ship: { fixture: slow_then_timeout, params: { succeeds: 0 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, attempts, waited_ms] } }
+
+reference_md: |
+  The bug is one comparison in the wrong place, and the reason it survived
+  review is that the code it appears in is textbook.
+
+  Exponential backoff with a cap is the right shape. What was missing is that
+  a deadline is a budget you spend before you commit, not a total you check
+  afterwards. `if waited + delay > DEADLINE: stop` asked before the wait is a
+  loop that never exceeds its deadline. The same line after the wait is a loop
+  that waits 15000 ms against an 8000 ms deadline and then notices, because
+  the delay that broke it is the biggest one and it has already been spent.
+
+  Stopping at 7000 rather than waiting the last 1000 is deliberate. A shortened
+  delay is not a retry, it is a request sent at exactly the moment the policy
+  said not to send one, and it turns a predictable eight second worst case
+  into an unpredictable one. Predictability is what the service in front of
+  you is buying.
+
+  The 401 is the cheap half and the one that cost the most. Retrying it eleven
+  times is eleven requests to an endpoint that has already told you who you
+  are, and the carrier's abuse detection reads that as exactly what it looks
+  like. Status codes are a vocabulary; treating them all as "not 200" is
+  declining to read it.
+
+  The timeout case is where a status-code policy runs out. A carrier that
+  stops answering raises rather than returns, and a policy written as a match
+  over statuses has nowhere to put it. Catching it and counting it as a
+  retryable attempt keeps one contract for the caller: this function returns
+  JSON, always, within a bounded time.

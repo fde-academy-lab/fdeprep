@@ -1,0 +1,140 @@
+slug: retry-a-tool-that-may-have-acted
+title: Decide whether to retry a tool that may already have done the thing
+track: tool-schema-design
+difficulty: hard
+total_seconds: 195
+competencies: [tool-schema-design, tool-error-handling, failure-mode-analysis]
+
+prompt_text: |
+  Their ticketing tool timed out after eleven seconds. It may have created the
+  ticket and it may not. The agent has to decide what to do next, right now.
+  Talk me through it.
+
+beats:
+  - id: b1
+    label: Separate the two kinds of failure
+    seconds: 35
+    anchors: ["did not happen", "do not know", "uncertain"]
+  - id: b2
+    label: Say why a blind retry is the wrong default here
+    seconds: 40
+    anchors: ["two tickets", "duplicate", "cheap to repeat"]
+  - id: b3
+    label: Give the mechanism you would ask for
+    seconds: 45
+    anchors: ["idempotency key", "same key", "returns the same"]
+  - id: b4
+    label: Say what you do when the provider will not give you one
+    seconds: 45
+    anchors: ["read back", "search", "reconcile"]
+  - id: b5
+    label: Say what you do when neither is available
+    seconds: 30
+    anchors: ["would not retry", "a person", "say what happened"]
+
+follow_ups:
+  - trigger_after_beat: b3
+    text: Their API has no idempotency support and no plans to add it. Now what?
+  - trigger_after_beat: b4
+    text: The search endpoint is eventually consistent. Your read back might miss it.
+
+rubric:
+  - criterion_key: c1
+    label: Names the difference between failed and unknown
+    weight: 30
+    descriptor_md: |
+      A connection refused means it did not happen. A timeout means you do not
+      know. Strong answers say this first, because every later decision
+      depends on which one you are in.
+  - criterion_key: c2
+    label: Ties the retry decision to the cost of repeating
+    weight: 25
+    descriptor_md: |
+      Reading twice is free. Creating a ticket twice is a duplicate somebody
+      closes. Strong answers make the cost of repetition the thing that
+      decides, rather than a general rule about retries.
+  - criterion_key: c3
+    label: Gives a mechanism, not a principle
+    weight: 25
+    descriptor_md: |
+      An idempotency key, a read back against a client reference, a
+      reconciliation pass. Strong answers name one and say what it needs from
+      the provider.
+  - criterion_key: c4
+    label: Has an answer when the mechanisms are unavailable
+    weight: 20
+    descriptor_md: |
+      Providers without idempotency and with eventually consistent search
+      exist. Strong answers stop, escalate and say what is uncertain, rather
+      than picking a side and hoping.
+
+exemplars:
+  - band: strong
+    score: 90
+    transcript: |
+      The first thing is that a timeout is not a failure. Connection refused
+      is a failure, and it means it did not happen, and you can retry that all
+      day. A timeout means you do not know, and those two want opposite
+      behaviour. Most retry code treats them the same because they arrive as
+      the same exception.
+
+      So the reason I would not just retry is the cost of being wrong. If this
+      were a read I would retry without thinking, it is cheap to repeat. This
+      creates a ticket, so retrying gives you two tickets, and somebody in
+      support closes one of them and wonders which. That cost is what decides
+      it, not a general policy about retries.
+
+      What I would ask them for is an idempotency key. We generate a reference
+      for this attempt, we send it with the request, and if we send the same
+      key twice their side returns the same ticket instead of making a second
+      one. That turns an uncertain retry into a safe one and it is a small
+      change on their end.
+
+      If they will not add it, the fallback is a read back. Put our own
+      reference on the ticket when we create it, then after a timeout search
+      for that reference before deciding. If it is there, it worked. That is
+      a reconcile rather than a retry, and it needs their search to be honest
+      about recent writes, so I would ask about consistency before relying on
+      it.
+
+      And if we have neither, I would not retry. I would leave the run in an
+      uncertain state, say what happened, and put it in front of a person with
+      the timestamp and our reference. That is slower and it is the only
+      option that does not quietly create a duplicate.
+  - band: adequate
+    score: 62
+    transcript: |
+      This is the classic at-least-once versus at-most-once problem. The
+      timeout means we do not know whether the ticket was created, so a retry
+      risks a duplicate and not retrying risks losing it.
+
+      The standard solution is idempotency. If the provider supports an
+      idempotency key we send one, and then retrying is safe because their
+      side deduplicates. That is what I would look for first.
+
+      If they do not support it, the next option is to check before retrying.
+      Query the ticketing system for something that identifies this request
+      and see whether it exists. If it does, we are done. If it does not, we
+      create it.
+
+      Failing both of those, I would probably lean towards retrying, on the
+      basis that a duplicate ticket is annoying but a missing ticket means the
+      customer gets no response at all. I would log it clearly so someone can
+      clean up if needed.
+  - band: weak
+    score: 28
+    transcript: |
+      I would retry it. Timeouts are usually transient, so retrying with a bit
+      of backoff will normally succeed, and you can cap the number of attempts
+      so it does not go on forever.
+
+      Eleven seconds is quite a long timeout, so I would also look at whether
+      that is the right value, since a shorter one would fail faster and let
+      you retry sooner.
+
+      To avoid duplicates you could check afterwards whether there are two
+      tickets and merge them, or have a cleanup job that deduplicates. That is
+      probably simpler than changing the integration.
+
+      Logging is important too so you can see how often this is happening and
+      whether it is getting worse.

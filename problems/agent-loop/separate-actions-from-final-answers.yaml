@@ -1,0 +1,191 @@
+slug: separate-actions-from-final-answers
+title: Tell an action apart from an answer
+artefact_type: code
+difficulty: easy
+track: agent-loop
+est_minutes: 15
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A restaurant booking agent has been telling customers their table is
+  confirmed when nothing was booked. The support team pulled the traces and
+  found the cause: about one reply in twenty carries an answer and an action
+  at the same time.
+
+      Final Answer: Your table is booked for 8pm.
+      Action: book(table=4, time=20:00)
+
+  The loop reads the first line, returns it, and stops. The booking call never
+  happens and the customer is told it did.
+
+  Write the loop that does not make that mistake.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns a string. A well-formed reply is either
+  `Action: <tool>(<key>=<value>, ...)` or `Final Answer: <text>`, and nothing
+  else. Tools are callables in the `tools` dict.
+
+  A reply that carries both, or neither, is not an answer. Say so in the
+  scratchpad and ask again rather than guessing which half the model meant.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+  Return a non-empty string in every case.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Question: {question}\n"
+
+      for _ in range(8):
+          output = llm(scratchpad)
+
+          # TODO 1: decide whether this reply is an action, an answer, both or
+          #         neither, before acting on any of it
+          # TODO 2: return the text only when the reply is an answer and
+          #         nothing else
+          # TODO 3: when the reply is an action, call the tool and append what
+          #         it returned
+          # TODO 4: when the reply is neither or both, append
+          #         "That was not a valid action." and go round again
+          pass
+
+      return "I could not finish this booking."
+
+steps:
+  - id: s1
+    text: Detect both markers in one reply before you act on either.
+    check_id: s1
+  - id: s2
+    text: Return the text only when the reply is an answer and nothing else.
+    check_id: s2
+  - id: s3
+    text: Parse the tool name and arguments out of an action and call it.
+    check_id: s3
+  - id: s4
+    text: Append a line saying the reply was not valid, so the next prompt differs.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: does_not_call_tool, name: book }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: calls_tool, name: book }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: terminates }
+
+hints:
+  - Two markers can appear in one string. Count them before you branch on one.
+  - A reply the loop cannot use is not a failure to report to the customer, it
+    is a reply to send back.
+  - Appending nothing to the scratchpad means the next call sees the same
+    prompt and returns the same reply.
+
+tests:
+  - name: books_then_answers
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Table for four at eight tonight" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: book(table=4, time=20:00)" }
+        - { match: "*", reply: "Final Answer: Booked, table 4 at 8pm." }
+      tools:
+        book: { returns: { status: 200, reference: "BK-4471" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_nonempty }
+        - { type: calls_tool, name: book }
+        - { type: returns_matches, value: "(?i)booked" }
+
+  - name: answers_without_a_tool
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Are you open on Mondays?" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: We are closed on Mondays." }
+      tools:
+        book: { returns: { status: 200, reference: "BK-0000" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)closed on mondays" }
+        - { type: does_not_call_tool, name: book }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: an_ambiguous_reply_is_not_an_answer
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Table for two at seven" }
+      llm_script:
+        - { match: { contains: "not a valid action" },
+            reply: "Final Answer: I have not booked anything. Confirm the date and I will." }
+        - { match: "*",
+            reply: "Final Answer: Your table is booked for 7pm.\nAction: book(table=2, time=19:00)" }
+      tools:
+        book: { returns: { status: 200, reference: "BK-9902" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)not booked anything" }
+        - { type: does_not_call_tool, name: book }
+        - { type: terminates }
+
+  - name: an_unusable_reply_does_not_burn_the_budget
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Something for Friday" }
+      llm_script:
+        - { match: { contains: "not a valid action" },
+            reply: "Final Answer: I need a time before I can book." }
+        - { match: "*", reply: "Sure! Happy to help with that." }
+      tools:
+        book: { returns: { status: 200, reference: "BK-1200" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: returns_matches, value: "(?i)need a time" }
+        - { type: llm_calls_at_most, value: 3 }
+
+reference_md: |
+  The whole problem is the order of two `if` statements, which is why it is
+  the first problem in the track rather than a footnote in a later one.
+
+  A loop that asks "is there a Final Answer?" and returns on the first yes has
+  already decided that a reply carrying both is an answer. Nothing about the
+  reply says that. The model emitted two moves and the loop picked the one it
+  happened to check first, so the behaviour of the booking agent depends on
+  the order two branches were typed in.
+
+  Counting both markers first turns that accident into a decision. Once the
+  loop knows a reply is ambiguous it has somewhere to put it: back to the
+  model, with a line saying the reply was not usable. That line is doing more
+  work than it looks. It changes the prompt, so the next call is a different
+  question rather than the same one asked again, which is the difference
+  between two calls and a spent budget.
+
+  Returning the customer-facing sentence from an ambiguous reply is the
+  expensive version of this bug. A table that was never booked is a customer
+  standing in a doorway, and the trace says the agent succeeded.

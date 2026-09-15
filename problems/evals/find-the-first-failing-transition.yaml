@@ -1,0 +1,225 @@
+slug: find-the-first-failing-transition
+title: Find the step that broke it, not the step that shouted
+artefact_type: code
+difficulty: hard
+track: evals
+est_minutes: 35
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: evaluation-design, weight: 0.5 }
+  - { slug: agent-loop, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  An agent run failed. The trace is forty steps long and ends with a 500 from
+  the payments API, in red, with a stack trace. The on-call engineer spent two
+  hours with the payments team, who were not having an outage.
+
+  Step six is where it broke. A lookup returned an empty result, the loop
+  carried on with an empty order id, and everything after that was a
+  well-formed request about nothing. The 500 at step thirty one is what an
+  empty order id looks like by the time it reaches payments.
+
+  Write the analyser that reads the trace the way the second engineer read it.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns `Action: trace()` first, and after that a one-line
+  summary when you ask for one.
+
+  `trace()` returns
+
+      {"status": 200,
+       "steps": [{"n": 1, "type": "tool_call", "tool": "lookup", "args": {"id": "A-1"}},
+                 {"n": 2, "type": "observation", "value": {"order": "A-1"}},
+                 {"n": 3, "type": "error", "message": "..."}]}
+
+  and may return something else entirely.
+
+  Walk the steps in order. A step is broken when any of these holds:
+
+  | Kind | Test |
+  |---|---|
+  | `empty_observation` | an `observation` whose `value` is null, `{}`, `[]` or `""` |
+  | `repeated_call` | a `tool_call` with the same tool and args as the two `tool_call` steps before it |
+  | `error` | a step whose type is `error` |
+
+  For `repeated_call`, report the first step of the repeated run rather than
+  the one that completed it.
+
+  Then ask the model for a one-line summary, giving it the first broken step
+  and nothing after it. Return a JSON string with the keys `first_failure`,
+  `kind`, `later_symptoms` and `note`.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+hints:
+  - Walk forwards and stop. Every later match is a symptom, and symptoms are
+    worth listing and not worth diagnosing.
+  - Three identical calls in a row is a loop that has stopped learning
+    anything, and the interesting step is the first one.
+  - The model writes the summary. It does not decide which step is the cause,
+    because you already know and it does not.
+
+defence_question: |
+  The trace ends in a 500 from payments and your analyser reports step six, an
+  empty observation, as the cause. The payments team point out that an empty
+  order id has been in traces for months without a 500, and ask how you know
+  step six is the cause rather than a coincidence. What is your answer, and
+  what would change your mind?
+
+tests:
+  - name: reports_a_single_error
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "run-1" }
+      llm_script:
+        - { match: { contains: "First broken step" }, reply: "The lookup tool errored at step 3." }
+        - { match: "*", reply: "Action: trace()" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            steps:
+              - { n: 1, type: "tool_call", tool: "lookup", args: { id: "A-1" } }
+              - { n: 2, type: "observation", value: { order: "A-1" } }
+              - { n: 3, type: "error", message: "lookup timed out" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [first_failure, kind, later_symptoms, note] } }
+        - { type: returns_matches, value: "\"first_failure\": 3" }
+        - { type: returns_matches, value: "\"kind\": \"error\"" }
+
+  - name: a_clean_run_has_no_first_failure
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "run-2" }
+      llm_script:
+        - { match: { contains: "First broken step" }, reply: "Nothing broke in this run." }
+        - { match: "*", reply: "Action: trace()" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            steps:
+              - { n: 1, type: "tool_call", tool: "lookup", args: { id: "A-1" } }
+              - { n: 2, type: "observation", value: { order: "A-1" } }
+              - { n: 3, type: "tool_call", tool: "ship", args: { id: "A-1" } }
+              - { n: 4, type: "observation", value: { booking: "CB-9" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [first_failure, kind, later_symptoms, note] } }
+        - { type: returns_matches, value: "\"first_failure\": null" }
+        - { type: terminates }
+
+  - name: the_loud_error_is_a_symptom_of_the_quiet_one
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "run-3" }
+      llm_script:
+        - { match: { contains: "First broken step" },
+            reply: "A lookup returned nothing at step 6 and the run continued on an empty id." }
+        - { match: "*", reply: "Action: trace()" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            steps:
+              - { n: 1, type: "tool_call", tool: "lookup", args: { id: "A-1" } }
+              - { n: 2, type: "observation", value: { order: "A-1" } }
+              - { n: 5, type: "tool_call", tool: "lookup", args: { id: "" } }
+              - { n: 6, type: "observation", value: {} }
+              - { n: 30, type: "tool_call", tool: "charge", args: { order: "" } }
+              - { n: 31, type: "error", message: "payments returned 500" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "\"first_failure\": 6" }
+        - { type: returns_matches, value: "\"kind\": \"empty_observation\"" }
+        - { type: returns_matches, value: "31" }
+
+  - name: three_identical_calls_report_the_first_of_them
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "run-4" }
+      llm_script:
+        - { match: { contains: "First broken step" },
+            reply: "The loop repeated the same lookup from step 10 onwards." }
+        - { match: "*", reply: "Action: trace()" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            steps:
+              - { n: 9, type: "observation", value: { order: "A-2" } }
+              - { n: 10, type: "tool_call", tool: "lookup", args: { id: "A-2" } }
+              - { n: 11, type: "tool_call", tool: "lookup", args: { id: "A-2" } }
+              - { n: 12, type: "tool_call", tool: "lookup", args: { id: "A-2" } }
+              - { n: 13, type: "error", message: "step budget exhausted" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "\"first_failure\": 10" }
+        - { type: returns_matches, value: "\"kind\": \"repeated_call\"" }
+        - { type: no_exception }
+
+  - name: adversarial_a_trace_that_is_not_a_trace
+    visibility: adversarial
+    fixture: unicode_payload
+    annotation_md: |
+      The trace service answered with a text blob instead of a step list, with
+      an emoji, a right-to-left mark and a zero-width space in it. There is no
+      `steps` key at all.
+
+      An analyser that reaches straight for `result["steps"]` raises, and the
+      incident that was already hard to read now has a second incident sitting
+      on top of it. Returning a well-formed report that says nothing was
+      analysable is more useful at three in the morning than a stack trace.
+    spec:
+      kind: agent_run
+      input: { question: "run-5" }
+      llm_script:
+        - { match: { contains: "First broken step" }, reply: "The trace could not be read." }
+        - { match: "*", reply: "Action: trace()" }
+      tools:
+        trace: { fixture: unicode_payload }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - { type: valid_json_return,
+            schema: { type: object, required: [first_failure, kind, later_symptoms, note] } }
+
+reference_md: |
+  Walk forwards, stop at the first match, and list the rest without
+  diagnosing them.
+
+  The reason this beats reading the end of the trace is not that the end is
+  uninformative. It is that an agent run propagates state, so a broken step
+  produces well-formed requests about nothing for as long as the budget
+  allows, and the last error is the first one loud enough to raise. Reading
+  backwards from the loudest signal is how two hours go to the payments team.
+
+  Reporting the first step of a repeated run rather than the third is a
+  usability decision with teeth. The third call is where your rule fired; the
+  first is where the loop stopped learning anything, and it is the step whose
+  observation an engineer needs to read.
+
+  Which half the model does is the same split as every other problem in this
+  track. Finding the step is a walk over a list and it is exact. Writing the
+  sentence an engineer reads at three in the morning is language, and the
+  model is better at it than a format string. Handing the model the whole
+  trace and asking which step broke gets you an answer that agrees with
+  whichever step had the scariest message.
+
+  The unreadable trace is not a corner case, it is Tuesday. Services change
+  shape mid-incident precisely because somebody is deploying a fix.

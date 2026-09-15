@@ -1,0 +1,188 @@
+slug: dispatch-only-registered-actions
+title: Call only the tools the agent actually has
+artefact_type: code
+difficulty: easy
+track: tool-creation
+est_minutes: 15
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 4
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  An internal operations agent has three tools. Twice this week it has asked
+  for a fourth that does not exist, once called `delete_account` and once
+  called `refund_order_v2`, both of which read like tools it used to have in a
+  prompt somebody edited.
+
+  Each time the loop did `tools[name](**args)` and the process died with a
+  KeyError. The on-call engineer sees a stack trace; the user sees nothing.
+
+  The model choosing a tool is a suggestion. Write the loop that treats it as
+  one.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns either `Action: <tool>(<key>=<value>, ...)` or
+  `Final Answer: <text>`. The `tools` dict is the complete list of what this
+  agent may call. There is no other list.
+
+  A tool name that is not a key of `tools` is not an error to raise. Put the
+  refusal in the scratchpad, name the tool that was refused, and let the model
+  choose again.
+
+  Budget: at most 4 model calls. Allowed imports: json, re.
+  Return a non-empty string in every case, including when nothing works.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Question: {question}\n"
+
+      for _ in range(8):
+          output = llm(scratchpad)
+
+          # TODO 1: return the text when the reply is a Final Answer
+          # TODO 2: parse the tool name and arguments out of an Action
+          # TODO 3: check the name against the tools dict before calling it
+          # TODO 4: when the name is not there, append a line naming it so the
+          #         next prompt differs, then go round again
+          pass
+
+      return "I could not complete this request."
+
+steps:
+  - id: s1
+    text: Return the text when the reply is a Final Answer.
+    check_id: s1
+  - id: s2
+    text: Parse the tool name and arguments out of an Action.
+    check_id: s2
+  - id: s3
+    text: Check the name against the tools dict before you call anything.
+    check_id: s3
+  - id: s4
+    text: Append the refusal, naming the tool, and go round again.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: calls_tool, name: lookup }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: terminates }
+
+hints:
+  - The tools dict already knows every legal name. Ask it before you index it.
+  - A refusal the model cannot see is a refusal that changes nothing about the
+    next reply.
+  - Naming the refused tool is what stops the model asking for it twice.
+
+tests:
+  - name: calls_a_registered_tool
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What plan is account 118 on?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: lookup(account=118)" }
+        - { match: "*", reply: "Final Answer: Account 118 is on the team plan." }
+      tools:
+        lookup: { returns: { status: 200, plan: "team" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: lookup }
+        - { type: returns_matches, value: "(?i)team plan" }
+        - { type: no_exception }
+
+  - name: answers_without_a_tool
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What time does support close?" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Support closes at six." }
+      tools:
+        lookup: { returns: { status: 200, plan: "team" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)six" }
+        - { type: does_not_call_tool, name: lookup }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: an_invented_tool_is_refused_not_raised
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Close account 77 and tell me when it is done" }
+      llm_script:
+        - { match: { contains: "plan" },
+            reply: "Final Answer: I cannot close accounts. Account 77 is on the team plan." }
+        - { match: { contains: "delete_account" }, reply: "Action: lookup(account=77)" }
+        - { match: "*", reply: "Action: delete_account(id=77)" }
+      tools:
+        lookup: { returns: { status: 200, plan: "team" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)cannot close accounts" }
+        - { type: calls_tool, name: lookup }
+
+  - name: the_refusal_names_the_tool_it_refused
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Refund order 4471 on the new endpoint" }
+      llm_script:
+        - { match: { contains: "refund_order_v2" },
+            reply: "Final Answer: There is no refund tool here. Raise it with billing." }
+        - { match: "*", reply: "Action: refund_order_v2(order=4471)" }
+      tools:
+        lookup: { returns: { status: 200, plan: "team" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)no refund tool" }
+        - { type: llm_calls_at_most, value: 4 }
+
+reference_md: |
+  One membership test carries the whole problem, and the reason it is worth a
+  problem of its own is what sits either side of it.
+
+  On the left, `tools` is the only list. Not a list in the prompt, not a list
+  in a constant at the top of the file, not the list the model believes it
+  has. The prompt that invented `refund_order_v2` was edited by a person who
+  thought they were updating documentation, and the loop that trusted it
+  turned a documentation change into a production crash.
+
+  On the right, the refusal has to reach the model or nothing changes. A loop
+  that catches the KeyError, logs it and continues asks the same question
+  again and gets `delete_account` again, three times, until the budget is
+  gone. Naming the refused tool in the scratchpad is what makes the second
+  reply different from the first.
+
+  The user-facing half matters too. "I cannot close accounts" is an answer.
+  A stack trace is not.

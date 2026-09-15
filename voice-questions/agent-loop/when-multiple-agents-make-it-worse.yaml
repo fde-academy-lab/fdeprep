@@ -1,0 +1,142 @@
+slug: when-multiple-agents-make-it-worse
+title: Say when splitting one agent into several makes it worse
+track: agent-loop
+difficulty: hard
+total_seconds: 210
+competencies: [agent-loop, system-design, cost-and-latency]
+
+prompt_text: |
+  Their team wants to split the one agent into four specialists: a retrieval
+  agent, a planning agent, a writing agent and a reviewer. They have read that
+  this is how you get better results. Tell them what you think.
+
+beats:
+  - id: b1
+    label: Ask what the current one is getting wrong
+    seconds: 30
+    anchors: ["what is it getting wrong", "which cases", "baseline"]
+  - id: b2
+    label: Name what splitting actually costs
+    seconds: 55
+    anchors: ["hand the context over", "leave out", "four times", "latency"]
+  - id: b3
+    label: Say what the split does not fix
+    seconds: 45
+    anchors: ["wrong documents", "disagree", "confidently"]
+  - id: b4
+    label: Give the case where a split does earn its place
+    seconds: 45
+    anchors: ["different permissions", "different tools", "isolate"]
+  - id: b5
+    label: Say what you would do first
+    seconds: 35
+    anchors: ["one thing at a time", "measure", "the reviewer"]
+
+follow_ups:
+  - trigger_after_beat: b2
+    text: Latency is not a concern for us, this runs overnight. Does that change your answer?
+  - trigger_after_beat: b4
+    text: So you are saying never split? That is not what the research says.
+
+rubric:
+  - criterion_key: c1
+    label: Asks for the baseline before designing
+    weight: 30
+    descriptor_md: |
+      Four agents is a solution and nobody has stated the problem. Strong
+      answers ask which cases are failing now and say that the answer depends
+      on it, without using the question as a way of avoiding an opinion.
+  - criterion_key: c2
+    label: Names the concrete costs of the split
+    weight: 25
+    descriptor_md: |
+      Context handover loss, multiplied token spend, latency, and a failure in
+      one specialist propagating into the next. Strong answers name at least
+      two specifically rather than saying it adds complexity.
+  - criterion_key: c3
+    label: Says what the split leaves untouched
+    weight: 20
+    descriptor_md: |
+      If the single agent is wrong because the retrieval is wrong, four agents
+      are wrong four times. Strong answers separate the failures a split
+      addresses from the ones it inherits.
+  - criterion_key: c4
+    label: Gives the case where a split is right
+    weight: 25
+    descriptor_md: |
+      Different permissions or different tool access is a real reason to
+      separate, and so is isolating something you do not trust. An answer that
+      only argues against the split has not held a position, it has taken a
+      side.
+
+exemplars:
+  - band: strong
+    score: 91
+    transcript: |
+      Before I answer that, what is it getting wrong at the moment? Which
+      cases is it failing on? Because four agents is an answer and I do not
+      know the question yet, and if there is no baseline then whatever we
+      build next is unfalsifiable.
+
+      Let me say what the split costs, because it is not free. Every time you
+      hand the context over from one agent to the next you have to decide what
+      to pass, and whatever you leave out is gone. That is the bit people
+      underestimate. The retrieval agent knows why it chose those documents
+      and the writing agent gets the documents. You also pay roughly four
+      times the tokens, because each one re-reads the situation, and the
+      latency stacks because they are sequential.
+
+      And here is the thing it does not fix. If the answers are wrong because
+      the retrieval is picking the wrong documents, then splitting it up gives
+      you a specialist that picks the wrong documents and three more that
+      build on them confidently. Sometimes they disagree with each other and
+      you have to write code to decide who wins, which is a new problem you
+      did not have.
+
+      Where I would split is when two parts need different permissions or
+      different tools. If one of them can issue a refund and the other only
+      reads, separating them lets you give the reading one no write access at
+      all. That is worth doing whatever the quality argument says. Same if you
+      want to isolate something you do not trust with a broad context.
+
+      What I would do first is one thing at a time and measure it. Add the
+      reviewer, on its own, keep everything else, and see whether the failures
+      you actually have go down. If they do, you have learned something real.
+      If they do not, you have saved yourself three agents.
+  - band: adequate
+    score: 63
+    transcript: |
+      I would be cautious about that. Multi-agent systems sound appealing but
+      they add a lot of moving parts, and often a single well-designed agent
+      does as well.
+
+      The main issues are cost and complexity. Each agent needs its own
+      context, so you end up paying for the same information several times,
+      and the handoffs between them are where things go wrong. Debugging also
+      gets harder because a failure could be in any of the four.
+
+      That said, there are cases where it makes sense. If the tasks are really
+      quite different from each other, or if you want to give different parts
+      different access, splitting can be reasonable.
+
+      What I would suggest is starting from the failures you are actually
+      seeing rather than the architecture. Work out what is going wrong with
+      the current agent and then see whether splitting addresses it. Often the
+      fix is better prompting or better retrieval rather than more agents.
+  - band: weak
+    score: 29
+    transcript: |
+      Multi-agent architectures are definitely a strong pattern and there is a
+      lot of good research on them. Having specialists means each one can be
+      optimised for its task, so you generally get better results than one
+      agent trying to do everything.
+
+      The reviewer agent in particular is a good idea because having a second
+      model check the output catches a lot of mistakes.
+
+      The main thing to watch is cost, since you are making more model calls,
+      and you would want to make sure the handoffs between agents are clean.
+      Orchestration frameworks handle most of that for you these days.
+
+      So overall I think it is a reasonable direction. I would probably start
+      with two agents and expand from there once it is working.

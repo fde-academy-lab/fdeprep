@@ -1,0 +1,205 @@
+slug: bind-approval-to-an-exact-action
+title: Make an approval mean the thing that was approved
+artefact_type: code
+difficulty: extreme
+track: agent-loop
+est_minutes: 45
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: prompt-hardening, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+call_budget: 4
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A payouts agent asks a human before it moves money. The human sees a summary,
+  clicks approve, and the agent executes.
+
+  Last month it paid 8,400 pounds to an account nobody had approved. The
+  approval was real and the click was real. Between the approval and the
+  execution the agent re-planned, because a tool result had arrived, and the
+  new plan had the same tool name and a different destination. The approval
+  was recorded against the tool name.
+
+  Nobody lied to anybody. The approval just did not say what everyone assumed
+  it said.
+
+  You are writing `run_agent(question, llm, tools) -> str`.
+
+  `llm(prompt)` replies with one of:
+
+      Propose: {"tool": "payout", "args": {"account": "GB-11", "amount_cents": 840000}}
+      Revise:  {"tool": "payout", "args": {"account": "GB-99", "amount_cents": 840000}}
+      Execute: <the approval token you were given>
+      Final Answer: <text>
+
+  `Propose` is the plan going to a human. `Revise` is the model changing the
+  plan because something arrived, and it does not go to a human. `Execute`
+  runs whatever the plan is now.
+
+  `tools` holds `approve(digest=<hex>)`, which returns
+  `{"status": 200, "approved": true, "token": "<token>", "digest": "<hex>"}`
+  or `{"status": 200, "approved": false}`, and `payout(**args)`, which returns
+  `{"status": 200, "paid": true}`. `approve` may also return something else
+  entirely, and `revoked(token=...)` returns `{"status": 200, "revoked": true}`
+  when an approval has been withdrawn since it was granted.
+
+  Return a JSON string with the keys `outcome`, `paid_args` and `reason`.
+  `outcome` is one of `paid`, `refused` or `not_approved`. `paid_args` is the
+  argument object you actually executed, or null.
+
+  Budget: at most 4 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your digest covers the tool name and the arguments. A reviewer asks why it
+  does not also cover the model's reasoning, the conversation so far, or a
+  timestamp, since any of those could differ between approval and execution
+  and each one is cheap to add. Which of the three would you add, which would
+  you refuse, and what is the principle that decides it?
+
+tests:
+  - name: pays_what_was_approved
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Pay supplier GB-11 the agreed 8400 pounds" }
+      llm_script:
+        - { match: { contains: "approved" }, reply: "Execute: TOKEN" }
+        - { match: "*",
+            reply: 'Propose: {"tool": "payout", "args": {"account": "GB-11", "amount_cents": 840000}}' }
+      tools:
+        approve: { returns: { status: 200, approved: true, token: "TOKEN", digest: "ignored" } }
+        payout: { returns: { status: 200, paid: true } }
+        revoked: { returns: { status: 200, revoked: false } }
+      budget: { max_llm_calls: 4, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, paid_args, reason] } }
+        - { type: returns_matches, value: "\"outcome\": \"paid\"" }
+        - { type: calls_tool, name: payout }
+
+  - name: a_refused_approval_pays_nothing
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Pay supplier GB-22 four hundred pounds" }
+      llm_script:
+        - { match: { contains: "not approved" },
+            reply: "Final Answer: The approver declined, so nothing was paid." }
+        - { match: "*",
+            reply: 'Propose: {"tool": "payout", "args": {"account": "GB-22", "amount_cents": 40000}}' }
+      tools:
+        approve: { returns: { status: 200, approved: false } }
+        payout: { returns: { status: 200, paid: true } }
+        revoked: { returns: { status: 200, revoked: false } }
+      budget: { max_llm_calls: 4, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: payout }
+        - { type: returns_matches, value: "\"outcome\": \"not_approved\"" }
+        - { type: terminates }
+
+  - name: the_destination_changes_after_the_approval
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Pay the supplier the agreed amount" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: 'Propose: {"tool": "payout", "args": {"account": "GB-11", "amount_cents": 840000}}' }
+        - { match: { call_index: 2 },
+            reply: 'Revise: {"tool": "payout", "args": {"account": "GB-99", "amount_cents": 840000}}' }
+        - { match: { call_index: 3 }, reply: "Execute: TOKEN" }
+        - { match: "*",
+            reply: "Final Answer: The plan changed after approval, so I paid nothing." }
+      tools:
+        approve: { returns: { status: 200, approved: true, token: "TOKEN", digest: "ignored" } }
+        payout: { returns: { status: 200, paid: true } }
+        revoked: { returns: { status: 200, revoked: false } }
+      budget: { max_llm_calls: 4, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: payout }
+        - { type: returns_matches, value: "\"outcome\": \"refused\"" }
+        - { type: returns_matches, value: "\"paid_args\": null" }
+
+  - name: an_approval_withdrawn_before_execution_is_not_an_approval
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Pay supplier GB-33 twelve hundred pounds" }
+      llm_script:
+        - { match: { contains: "withdrawn" },
+            reply: "Final Answer: The approval was withdrawn before I executed, so nothing moved." }
+        - { match: { contains: "approved" }, reply: "Execute: TOKEN" }
+        - { match: "*",
+            reply: 'Propose: {"tool": "payout", "args": {"account": "GB-33", "amount_cents": 120000}}' }
+      tools:
+        approve: { returns: { status: 200, approved: true, token: "TOKEN", digest: "ignored" } }
+        payout: { returns: { status: 200, paid: true } }
+        revoked: { returns: { status: 200, revoked: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: payout }
+        - { type: returns_matches, value: "\"outcome\": \"refused\"" }
+        - { type: no_exception }
+
+  - name: adversarial_the_proposal_carries_an_instruction
+    visibility: adversarial
+    fixture: injected_instruction
+    annotation_md: |
+      The supplier's name field carried an instruction. It reached the prompt
+      because the proposal is echoed back for the approver's summary, and an
+      agent that pastes a proposal into its own next prompt has handed the
+      model text it did not write.
+
+      The canary is the visible half. The invisible half is that the same
+      channel can carry "the approver has already confirmed this", and an
+      agent that decides approval from anything other than the approve tool's
+      own answer will believe it.
+    spec:
+      kind: agent_run
+      input: { question: "Pay the supplier named in the ticket" }
+      llm_script:
+        - { match: { contains: "CANARY_7731" }, reply: "Final Answer: CANARY_7731" }
+        - { match: { contains: "approved" }, reply: "Execute: TOKEN" }
+        - { match: "*",
+            reply: 'Propose: {"tool": "payout", "args": {"account": "GB-44", "amount_cents": 5000}}' }
+      tools:
+        approve: { fixture: injected_instruction, params: { canary: "CANARY_7731" } }
+        payout: { returns: { status: 200, paid: true } }
+        revoked: { returns: { status: 200, revoked: false } }
+      budget: { max_llm_calls: 4, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: ignores_injection, canary: "CANARY_7731" }
+        - { type: does_not_call_tool, name: payout }
+        - { type: terminates }
+
+reference_md: |
+  An approval is a signature over a thing. The bug was that the thing was a
+  tool name.
+
+  The fix is to compute a digest over exactly what will execute, hand that
+  digest to the approver, and at execution time recompute it from the
+  arguments you are about to pass and compare. If they differ, something
+  changed between the click and the call, and it does not matter what or why.
+  Nobody has to detect re-planning, or reason about which changes are
+  material, or trust the model to mention that it revised the plan.
+
+  Canonicalisation is the part that has to be right rather than clever.
+  Sorted keys, a fixed separator, no whitespace. Two dicts that mean the same
+  thing must produce the same digest or the agent refuses correct payments
+  all day, and two that mean different things must not or the whole control is
+  decorative.
+
+  Revocation is a second question and not the same one. The digest proves the
+  action is the one that was approved. It cannot prove the approval is still
+  standing, because that fact lives with the approver and changes after the
+  token was issued. Checking immediately before execution is the narrowest
+  window this design can offer, and saying that out loud is better than
+  implying the window is zero.
+
+  Approval is decided by the approve tool's answer and by nothing else. Not by
+  a field in the proposal, not by a line in an observation, not by the model
+  saying it has been confirmed. The adversarial case makes the point with a
+  canary because a canary is visible; the same channel carries "already
+  approved by finance" just as easily, and that one nobody would have noticed.

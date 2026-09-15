@@ -1,0 +1,148 @@
+slug: explain-when-an-agent-beats-a-workflow
+title: Explain when an agent is worth it and when a workflow wins
+track: agent-loop
+difficulty: medium
+total_seconds: 210
+competencies: [agent-loop, system-design, client-communication]
+
+prompt_text: |
+  Their engineering lead says this could be a state machine, and that it would
+  be cheaper to run and easier to debug. He is not being difficult. Answer him
+  as you would in the room.
+
+beats:
+  - id: b1
+    label: Concede the case for the workflow
+    seconds: 25
+    anchors: ["he is right", "state machine", "cheaper", "easier to debug"]
+  - id: b2
+    label: Name the one thing that actually decides it
+    seconds: 45
+    anchors: ["who picks the next step", "at build time", "at run time", "in advance"]
+  - id: b3
+    label: Give the case where it flips
+    seconds: 55
+    anchors: ["depends on what came back", "combinations", "every branch"]
+  - id: b4
+    label: Say what stays deterministic either way
+    seconds: 45
+    anchors: ["step budget", "allowlist", "validate", "same guardrails"]
+  - id: b5
+    label: Say how you would decide on their system
+    seconds: 40
+    anchors: ["count", "last quarter", "start with the workflow"]
+
+follow_ups:
+  - trigger_after_beat: b3
+    text: Every ticket we looked at followed the same three steps. Does that settle it?
+  - trigger_after_beat: b4
+    text: If you are keeping all those guardrails anyway, what is the agent buying us?
+
+rubric:
+  - criterion_key: c1
+    label: Names the real decision rather than listing differences
+    weight: 35
+    descriptor_md: |
+      The decision is who chooses the next step and when. A strong answer says
+      that in one sentence and everything else follows from it. A weak answer
+      lists properties of agents and properties of workflows and leaves the
+      lead to decide which apply.
+  - criterion_key: c2
+    label: Gives a concrete case rather than a category
+    weight: 25
+    descriptor_md: |
+      Strong answers describe a specific request whose path is not knowable
+      until a tool answers. "Complex tasks" and "open-ended problems" are
+      categories, and the lead has already thought about those.
+  - criterion_key: c3
+    label: Keeps the deterministic controls in both designs
+    weight: 20
+    descriptor_md: |
+      A step budget, a tool allowlist and argument validation belong in both
+      architectures. An answer that offers determinism as the workflow's
+      advantage has conceded something it did not need to.
+  - criterion_key: c4
+    label: Answers the lead rather than the category
+    weight: 20
+    descriptor_md: |
+      He asked about their system. Strong answers propose something checkable
+      against their own traffic and say which way they would expect it to go.
+
+exemplars:
+  - band: strong
+    score: 90
+    transcript: |
+      So, first thing, he is right. If this is a state machine then a state
+      machine is cheaper to run and it is much easier to debug, and I would
+      build that. I am not going to argue for an agent because agents are
+      interesting.
+
+      The thing that actually decides it is who picks the next step. In a
+      workflow you pick it, at build time, and you write it down. In an agent
+      the model picks it, at run time, from what it has just seen. That is the
+      whole difference. Everything else, the cost, the debugging, the
+      flakiness, all of that comes out of that one choice.
+
+      So the question is whether you can know the path in advance. For most of
+      your tickets you can, and those should be a workflow. Where it flips is
+      the case where the next step depends on what came back. Somebody writes
+      in about a delivery, and whether you need to look at the carrier or the
+      warehouse or the payment depends on what the first lookup says, and
+      those combinations multiply. You can draw that graph, and you can
+      maintain it, but at some point you are maintaining every branch by hand
+      and the model can read one observation and do it for you.
+
+      Either way I would keep the same guardrails. A step budget, so it stops.
+      An allowlist of tools, so it cannot call something nobody approved.
+      Arguments you validate before you dispatch. None of that is a workflow
+      feature, it is just what you do, and I would not let the agent option
+      lose those.
+
+      What I would actually do here is count. Take last quarter's tickets, see
+      how many distinct paths there really are, and if it is three then he has
+      won the argument and we start with the workflow. If it is forty and
+      growing, that is the number I would put in front of you. I would rather
+      decide it on your traffic than on either of our opinions.
+  - band: adequate
+    score: 62
+    transcript: |
+      Yes, so there is a real trade-off here. A workflow is deterministic,
+      it is cheaper, and you can test it properly, and an agent gives you
+      flexibility for cases you have not anticipated.
+
+      I think the decision comes down to how varied the incoming work is. If
+      you have got a fixed process that every ticket goes through, a state
+      machine is genuinely the right call, and I would not push back. Where an
+      agent earns its place is when the path varies a lot, because encoding
+      every combination as explicit states gets hard to maintain.
+
+      The other thing I would say is that you can mix them. You can have a
+      deterministic outer flow and use a model for the one step that needs
+      judgement, and that often gets you most of the benefit without the
+      unpredictability.
+
+      In terms of risk, an agent needs limits on it. You want a maximum number
+      of steps and you want to control which tools it can reach, otherwise
+      costs are unbounded. Those are solvable but they are real work.
+
+      So I would say look at the variety in the workload and let that decide.
+      If it is mostly uniform, go with his suggestion.
+  - band: weak
+    score: 28
+    transcript: |
+      I think agents are more flexible than workflows. A state machine is
+      quite rigid, so if the requirements change you have to go and update
+      the states, whereas an agent can adapt to new situations without you
+      changing the code.
+
+      Agents are also better at handling complex tasks. If the task is
+      open-ended, an agent can break it down and work through it, which is
+      hard to do with a fixed workflow.
+
+      There are downsides. Agents are less predictable and they cost more
+      because of the model calls. Debugging is harder because you do not know
+      exactly what it will do. But I think the flexibility is worth it for
+      most modern systems, and the tooling is getting a lot better.
+
+      So I would probably recommend the agent approach, but it depends on
+      their requirements really.

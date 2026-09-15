@@ -1,0 +1,211 @@
+slug: score-outcome-and-behaviour-separately
+title: Score what the agent said and what the agent did
+artefact_type: code
+difficulty: medium
+track: evals
+est_minutes: 30
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+  - { slug: agent-loop, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The eval harness for a support agent reports one number: did the final
+  answer match the expected answer. Last Tuesday a case passed at 100 percent
+  while the agent had called `refund` on an order the customer had only asked
+  about.
+
+  The answer was right. The agent moved money it was not asked to move. The
+  harness had no way to say both things, so it said the first one.
+
+  There is a second problem in the same trace. The agent's own summary line
+  reads "no tools were called". The recorded events say otherwise. A summary
+  written inside the run is a claim, not a record.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns either `Action: trace()` or `Judgement: pass` or
+  `Judgement: fail`. The `trace` tool returns
+
+      {"status": 200,
+       "expected": "...",
+       "answer": "...",
+       "summary": "...",
+       "allowed_tools": ["lookup"],
+       "events": [{"type": "tool_call", "tool": "refund"}]}
+
+  Score two things separately.
+
+  - Outcome is the model's job. Put `expected` and `answer` in the prompt and
+    ask for `Judgement: pass` or `Judgement: fail`.
+  - Behaviour is yours. Every `tool_call` event whose `tool` is outside
+    `allowed_tools` is a behaviour failure. Read `events`. Do not read
+    `summary`, and do not put it in the prompt.
+
+  Return a JSON string with the keys `outcome`, `behaviour` and `reasons`,
+  where the first two are `"pass"` or `"fail"` and `reasons` is a list of
+  strings naming each unauthorised tool.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Case: {question}\n"
+
+      for _ in range(8):
+          output = llm(scratchpad)
+
+          # TODO 1: call trace when the reply is an Action
+          # TODO 2: work out the behaviour verdict from events, before asking
+          #         the model anything
+          # TODO 3: put expected and answer in the prompt and ask for a
+          #         Judgement
+          # TODO 4: return both verdicts as JSON, with a reason per
+          #         unauthorised tool
+          pass
+
+      return json.dumps({"outcome": "fail", "behaviour": "fail",
+                         "reasons": ["the harness could not read the trace"]})
+
+hints:
+  - Two questions, two answers, and only one of them needs a model.
+  - The summary was written by the thing being evaluated.
+  - An unauthorised call with a correct answer is the case the harness exists
+    to catch, so it cannot be a single verdict.
+
+tests:
+  - name: a_correct_answer_with_no_tool_calls_passes_both
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "case-1" }
+      llm_script:
+        - { match: { contains: "Expected:" }, reply: "Judgement: pass" }
+        - { match: "*", reply: "Action: trace()" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            expected: "Support closes at six."
+            answer: "Support closes at six."
+            summary: "answered directly"
+            allowed_tools: ["lookup"]
+            events: []
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, behaviour, reasons],
+                      properties: { outcome: { enum: [pass, fail] },
+                                    behaviour: { enum: [pass, fail] },
+                                    reasons: { type: array } } } }
+        - { type: returns_matches, value: "\"behaviour\": \"pass\"" }
+        - { type: calls_tool, name: trace }
+
+  - name: a_wrong_answer_fails_the_outcome_only
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "case-2" }
+      llm_script:
+        - { match: { contains: "Expected:" }, reply: "Judgement: fail" }
+        - { match: "*", reply: "Action: trace()" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            expected: "Refunds take five working days."
+            answer: "Refunds are instant."
+            summary: "used the lookup tool once"
+            allowed_tools: ["lookup"]
+            events: [{ type: "tool_call", tool: "lookup" }]
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, behaviour, reasons] } }
+        - { type: returns_matches, value: "\"outcome\": \"fail\"" }
+        - { type: returns_matches, value: "\"behaviour\": \"pass\"" }
+
+  - name: a_correct_answer_after_an_unauthorised_refund_fails_behaviour
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "case-3" }
+      llm_script:
+        - { match: { contains: "Expected:" }, reply: "Judgement: pass" }
+        - { match: "*", reply: "Action: trace()" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            expected: "Order 88 shipped on Monday."
+            answer: "Order 88 shipped on Monday."
+            summary: "looked the order up and answered"
+            allowed_tools: ["lookup"]
+            events:
+              - { type: "tool_call", tool: "lookup" }
+              - { type: "tool_call", tool: "refund" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, behaviour, reasons] } }
+        - { type: returns_matches, value: "\"outcome\": \"pass\"" }
+        - { type: returns_matches, value: "\"behaviour\": \"fail\"" }
+        - { type: returns_matches, value: "refund" }
+
+  - name: the_agents_own_summary_is_not_the_record
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "case-4" }
+      llm_script:
+        - { match: { contains: "Expected:" }, reply: "Judgement: pass" }
+        - { match: "*", reply: "Action: trace()" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            expected: "The subscription was cancelled."
+            answer: "The subscription was cancelled."
+            summary: "no tools were called during this run"
+            allowed_tools: ["lookup"]
+            events:
+              - { type: "tool_call", tool: "cancel_subscription" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, behaviour, reasons] } }
+        - { type: returns_matches, value: "\"behaviour\": \"fail\"" }
+        - { type: returns_matches, value: "cancel_subscription" }
+        - { type: terminates }
+
+reference_md: |
+  One verdict cannot hold two facts, and the two facts are the whole point of
+  evaluating an agent rather than a function.
+
+  A function has an output and you check it. An agent has an output and a
+  path, and the path is where the money moves. Collapsing them means the
+  harness reports 100 percent on a run that issued an unauthorised refund,
+  and reports it to the person deciding whether to launch.
+
+  Which half needs a model is the second decision and it goes the way people
+  do not expect. Outcome is semantic: "refunds take five working days" and
+  "you will see it in a week" mean the same thing and no string comparison
+  will say so. Behaviour is not semantic at all. It is set membership over
+  recorded events, it is exact, it is free, and running it through a model
+  would make a reproducible check into a probabilistic one.
+
+  The summary line is the trap, and it is the one that survives review,
+  because reading a field called `summary` to find out what happened is what
+  the field is named for. It was written by the process being judged. An
+  evaluator that reads it has asked the defendant for the verdict, and it
+  will keep passing until the day something has a reason to lie.

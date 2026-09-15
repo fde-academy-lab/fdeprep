@@ -8,7 +8,7 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 PROBLEM = ROOT / "problems/agent-loop/recover-from-soft-tool-errors.yaml"
-SOLUTIONS = ROOT / "problems/agent-loop/solutions"
+SOLUTIONS = ROOT / "problems/agent-loop/recover-from-soft-tool-errors"
 
 
 @pytest.fixture(scope="session")

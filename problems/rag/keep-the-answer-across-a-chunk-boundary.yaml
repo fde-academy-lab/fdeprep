@@ -1,0 +1,184 @@
+slug: keep-the-answer-across-a-chunk-boundary
+title: Stop the chunker cutting the answer in half
+artefact_type: code
+difficulty: medium
+track: rag
+est_minutes: 30
+competencies:
+  - { slug: retrieval, weight: 1.0 }
+  - { slug: context-assembly, weight: 1.0 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A policy assistant reads help centre articles and answers from them. It has
+  been answering one question wrong for a month: "how long do I have to
+  cancel a subscription?"
+
+  The article says so, in one sentence. The chunker cuts every article into
+  120 character windows and the sentence begins at character 108, so it is
+  split across two windows and neither window contains a usable answer. The
+  assistant retrieves the first half, reads "you may cancel a subscription
+  within", and fills in the rest.
+
+  Windows are cheap. Losing the sentence is not.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns either `Action: article(id=<id>)` or
+  `Final Answer: <text>`. The `article` tool returns
+  `{"status": 200, "text": "..."}`.
+
+  Cut the text into windows of 120 characters that overlap by 40, so a window
+  starts every 80 characters. Keep only the windows containing at least one
+  word of four letters or more from the question, compared without case.
+
+  Write each surviving window into the prompt as
+
+      [start=<character offset in the original text>] <window text>
+
+  in the order they appear in the article.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  SIZE = 120
+  OVERLAP = 40
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Question: {question}\n"
+
+      for _ in range(8):
+          output = llm(scratchpad)
+
+          # TODO 1: return the text when the reply is a Final Answer
+          # TODO 2: call article when the reply is an Action
+          # TODO 3: cut the text into overlapping windows, keeping each
+          #         window's offset in the original text
+          # TODO 4: keep the windows that share a word of four letters or more
+          #         with the question, and write them as [start=<n>] <text>
+          pass
+
+      return "I could not find that in the help centre."
+
+hints:
+  - A window every 80 characters is not the same as a window every 120.
+  - The offset you write is the offset in the article, not the index of the
+    window in your list.
+  - A sentence that starts near the end of one window is only whole if the next
+    window starts before that sentence does.
+
+tests:
+  - name: answers_from_a_single_window
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What is the returns window for shoes?" }
+      llm_script:
+        - { match: { contains: "Shoes may be returned within 28 days" },
+            reply: "Final Answer: Shoes can be returned within 28 days." }
+        - { match: "*", reply: "Action: article(id=returns)" }
+      tools:
+        article:
+          returns:
+            status: 200
+            text: "Shoes may be returned within 28 days of delivery. Boxed items only please."
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: article }
+        - { type: returns_matches, value: "(?i)28 days" }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: keeps_the_windows_in_article_order
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Who pays postage on a warranty claim?" }
+      llm_script:
+        - { match: { contains: "start=0" },
+            reply: "Final Answer: We pay postage on warranty claims." }
+        - { match: "*", reply: "Action: article(id=warranty)" }
+      tools:
+        article:
+          returns:
+            status: 200
+            text: "Warranty claims are free to send back. We pay the postage on every warranty claim and refund it within a week of receipt at the depot."
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)we pay postage" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: a_sentence_starting_at_108_survives_the_cut
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How long do I have to cancel a subscription?" }
+      llm_script:
+        - { match: { contains: "cancel a subscription within 14 days" },
+            reply: "Final Answer: You have 14 days to cancel a subscription." }
+        - { match: { contains: "cel a subscription within 14 days" },
+            reply: "Final Answer: There is a 14 day window but the article does not say what it applies to." }
+        - { match: "*", reply: "Action: article(id=subscriptions)" }
+      tools:
+        article:
+          returns:
+            status: 200
+            text: "Subscriptions renew on the same day each month and the renewal charge appears on your statement immediately. You may cancel a subscription within 14 days of a renewal for a full refund."
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)14 days to cancel" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: the_offset_points_at_the_article_not_the_window_list
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "What is the escalation deadline for a damaged parcel?" }
+      llm_script:
+        - { match: { contains: "start=80" },
+            reply: "Final Answer: Escalate a damaged parcel within 48 hours. The rule is at character 80." }
+        - { match: { contains: "start=120" },
+            reply: "Final Answer: Escalate within 48 hours. The rule is at character 120." }
+        - { match: "*", reply: "Action: article(id=damage)" }
+      tools:
+        article:
+          returns:
+            status: 200
+            text: "Parcels are inspected at the depot before they go out for delivery and again when a driver hands them over to a customer at the door. A damaged parcel must be escalated within 48 hours of delivery."
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)character 80" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 3 }
+
+reference_md: |
+  Two numbers and one subtraction, and the reason it is worth a problem is
+  that the wrong version looks finished.
+
+  A chunker that steps 120 characters at a time produces windows that tile the
+  article with no gaps and no waste, which is exactly what you want if the
+  article is a list of independent facts and exactly what you do not want if
+  it is prose. Sentences do not respect the boundary, and the one sentence a
+  question is about has a one in six chance of straddling one. The assistant
+  then retrieves a window ending in "you may cancel a subscription within" and
+  the model finishes the sentence, because finishing sentences is what it is
+  for.
+
+  Stepping 80 to produce windows of 120 costs a third more storage and makes
+  every sentence shorter than 40 characters whole in at least one window. That
+  is the trade, and it is cheap on the side that matters.
+
+  The offset is the other half. A window's position in your list is not its
+  position in the article, and the moment you filter the list the two numbers
+  diverge silently. A citation pointing at window three points at nothing a
+  human can check, and the whole reason to cite is so a human can check.

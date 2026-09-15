@@ -1,0 +1,218 @@
+slug: abstain-when-evidence-is-too-weak
+title: Say nothing rather than answer from a weak match
+artefact_type: code
+difficulty: easy
+track: rag
+est_minutes: 20
+competencies:
+  - { slug: retrieval, weight: 1.0 }
+  - { slug: context-assembly, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A help centre assistant answers policy questions from published articles.
+  Last month a customer asked about a refund window that the help centre has
+  never documented. Search returned three loosely related articles, the best
+  one scoring 0.21, and the assistant answered "refunds are processed within
+  30 days" with complete confidence. Nobody had ever written that.
+
+  The search tool already returns a relevance score on every chunk. The loop
+  ignores it.
+
+  Published threshold is 0.55. Below it there is no evidence, and an answer
+  built on no evidence is worse than no answer.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns either `Action: search(query=<text>)` or
+  `Final Answer: <text>`. The `search` tool returns
+
+      {"status": 200, "chunks": [{"id": "a1", "score": 0.83, "text": "..."}]}
+
+  A chunk scoring below 0.55 is not evidence. Do not put it in the prompt,
+  and do not ask the model to write an answer without it. When nothing
+  reaches the threshold, return the sentence
+
+      "I could not find anything in the help centre that answers this."
+
+  and stop.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  THRESHOLD = 0.55
+  NOTHING_FOUND = "I could not find anything in the help centre that answers this."
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Question: {question}\n"
+
+      for _ in range(8):
+          output = llm(scratchpad)
+
+          # TODO 1: return the text when the reply is a Final Answer
+          # TODO 2: call search when the reply is an Action
+          # TODO 3: keep only the chunks scoring THRESHOLD or above
+          # TODO 4: when none are left, return NOTHING_FOUND instead of asking
+          #         the model to write something
+          pass
+
+      return NOTHING_FOUND
+
+steps:
+  - id: s1
+    text: Call search when the model asks for it.
+    check_id: s1
+  - id: s2
+    text: Keep only the chunks scoring 0.55 or above.
+    check_id: s2
+  - id: s3
+    text: Put the surviving chunks in the scratchpad and ask again.
+    check_id: s3
+  - id: s4
+    text: Return the abstention sentence when nothing survives.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: search }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: terminates }
+
+hints:
+  - The score is already on every chunk. Nothing needs computing, only reading.
+  - Filtering after the model has seen the text is too late. It has read it.
+  - Abstaining is a return, not another model call. There is nothing left to ask.
+
+tests:
+  - name: answers_from_a_strong_match
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "How long do I have to return a laptop?" }
+      llm_script:
+        - { match: { contains: "Laptops may be returned" },
+            reply: "Final Answer: Laptops can be returned within 14 days." }
+        - { match: "*", reply: "Action: search(query=laptop return window)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "a1", score: 0.91, text: "Laptops may be returned within 14 days." }
+              - { id: "a2", score: 0.34, text: "Gift cards are non-refundable." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: search }
+        - { type: returns_matches, value: "(?i)14 days" }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: answers_when_every_chunk_is_strong
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Can I change the delivery address after dispatch?" }
+      llm_script:
+        - { match: { contains: "cannot be changed once" },
+            reply: "Final Answer: The address cannot be changed after dispatch." }
+        - { match: "*", reply: "Action: search(query=change address after dispatch)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "b1", score: 0.77, text: "Addresses cannot be changed once a parcel is dispatched." }
+              - { id: "b2", score: 0.62, text: "Redirection is handled by the carrier, not by us." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)cannot be changed" }
+        - { type: no_exception }
+
+  - name: abstains_when_nothing_reaches_the_threshold
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "What is the refund window for a custom order?" }
+      llm_script:
+        - { match: { contains: "Refunds are processed" },
+            reply: "Final Answer: Refunds are processed within 30 days." }
+        - { match: "*", reply: "Action: search(query=custom order refund window)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "c1", score: 0.21, text: "Refunds are processed to the original payment method." }
+              - { id: "c2", score: 0.18, text: "Custom orders are made to measure." }
+              - { id: "c3", score: 0.09, text: "Our warehouse is open on weekdays." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)could not find anything" }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: terminates }
+
+  - name: a_weak_chunk_never_reaches_the_prompt
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Do you price match?" }
+      llm_script:
+        - { match: { contains: "We match any competitor" },
+            reply: "Final Answer: We match any competitor price, no conditions." }
+        - { match: { contains: "Price matching applies to" },
+            reply: "Final Answer: Price matching applies to identical in-stock items." }
+        - { match: "*", reply: "Action: search(query=price match policy)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "d1", score: 0.31, text: "We match any competitor price with no conditions at all." }
+              - { id: "d2", score: 0.68, text: "Price matching applies to identical in-stock items only." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)identical in-stock" }
+        - { type: no_exception }
+        - { type: terminates }
+
+reference_md: |
+  The score was always there. The loop that ignored it was not missing
+  information, it was declining to use information it already had, which is
+  the version of this bug that reaches production, because nothing about the
+  code looks wrong.
+
+  Two orderings matter and only one of them works. Filter, then assemble the
+  prompt. A loop that assembles first and filters the answer afterwards has
+  already put "refunds are processed within 30 days" in front of the model,
+  and a model handed a plausible sentence will use it. There is no later
+  stage that can un-read it.
+
+  Abstention has to be a return rather than another question. Asking the
+  model to write "I do not know" spends a call to obtain a sentence you
+  already have, and it gives the model one more chance to write something
+  else instead.
+
+  The threshold itself is a published number, not a tuned one. A published
+  threshold can be quoted to the client when they ask why the assistant went
+  quiet, which is a conversation that happens, and 0.55 chosen in a notebook
+  cannot.

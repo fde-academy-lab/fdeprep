@@ -1,0 +1,212 @@
+slug: match-results-to-their-requests
+title: Keep each result attached to the thing it was asked about
+artefact_type: code
+difficulty: easy
+track: memory
+est_minutes: 20
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A fulfilment agent checks several orders at once through a batch endpoint.
+  A customer chasing order 9 was told it had been delivered. It had not.
+  Order 12 had been delivered, and 12 was the first result in the response.
+
+  The batch endpoint fans requests out to three carriers and returns each
+  result as it lands, so the order of the list is the order the carriers
+  replied in. It has never promised anything else. The loop paired the first
+  result with the first id it asked for.
+
+  Every result carries the id it belongs to. Use it.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns either `Action: batch(ids=<comma separated>)` or
+  `Final Answer: <text>`. The `batch` tool returns
+
+      {"status": 200, "results": [{"ref": "12", "state": "delivered"}, ...]}
+
+  in no particular order, and may leave out an id it could not reach.
+
+  Write one line per id you asked for, in the order you asked for them, as
+
+      <ref>=<state>
+
+  and use `unknown` as the state for an id the response left out. Then ask
+  the model again and return what it says.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Question: {question}\n"
+
+      for _ in range(8):
+          output = llm(scratchpad)
+
+          # TODO 1: return the text when the reply is a Final Answer
+          # TODO 2: parse the ids out of the Action, keeping their order
+          # TODO 3: call batch and build a lookup from ref to state
+          # TODO 4: write one <ref>=<state> line per id you asked for, using
+          #         unknown for an id the response left out
+          pass
+
+      return "I could not check those orders."
+
+steps:
+  - id: s1
+    text: Parse the ids out of the Action and keep the order you asked in.
+    check_id: s1
+  - id: s2
+    text: Build a lookup from ref to state out of the results list.
+    check_id: s2
+  - id: s3
+    text: Write one line per requested id, not one per returned result.
+    check_id: s3
+  - id: s4
+    text: Use unknown for an id the response left out.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: batch }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: terminates }
+
+hints:
+  - The response tells you which id each result belongs to. The list position
+    does not.
+  - A dict keyed by ref is the whole fix. Build it before you write anything.
+  - Asking for three ids and getting two back is normal here, and the line for
+    the missing one still has to exist.
+
+tests:
+  - name: reports_a_status_the_carrier_returned
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Where is order 9?" }
+      llm_script:
+        - { match: { contains: "9=in_transit" }, reply: "Final Answer: Order 9 is in transit." }
+        - { match: { contains: "9=delivered" }, reply: "Final Answer: Order 9 was delivered." }
+        - { match: "*", reply: "Action: batch(ids=9,12,15)" }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "9", state: "in_transit" }
+              - { ref: "12", state: "delivered" }
+              - { ref: "15", state: "delayed" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: batch }
+        - { type: returns_matches, value: "(?i)in transit" }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: answers_without_the_batch_endpoint
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "How do I contact the carrier?" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: The carrier's number is on the dispatch email." }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "9", state: "in_transit" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)dispatch email" }
+        - { type: does_not_call_tool, name: batch }
+        - { type: no_exception }
+
+  - name: results_arriving_out_of_order_stay_with_their_ids
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Where is order 9?" }
+      llm_script:
+        - { match: { contains: "9=in_transit" }, reply: "Final Answer: Order 9 is in transit." }
+        - { match: { contains: "9=delivered" }, reply: "Final Answer: Order 9 was delivered." }
+        - { match: "*", reply: "Action: batch(ids=9,12,15)" }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "12", state: "delivered" }
+              - { ref: "15", state: "delayed" }
+              - { ref: "9", state: "in_transit" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)in transit" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: an_id_the_carrier_skipped_is_unknown_not_shifted
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Where is order 9?" }
+      llm_script:
+        - { match: { contains: "9=unknown" }, reply: "Final Answer: I could not reach the carrier for order 9." }
+        - { match: { contains: "9=delayed" }, reply: "Final Answer: Order 9 is delayed." }
+        - { match: "*", reply: "Action: batch(ids=9,12,15)" }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "12", state: "delivered" }
+              - { ref: "15", state: "delayed" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)could not reach the carrier" }
+        - { type: no_exception }
+        - { type: terminates }
+
+reference_md: |
+  A dict is the fix and the dict is not the lesson.
+
+  The lesson is that the batch endpoint never promised an order and the loop
+  believed it anyway. Read the endpoint's documentation and it says results
+  come back as carriers reply. Read the loop and it says `zip(ids, results)`.
+  Both were written by people who were sure, and only one of them was looking
+  at the contract.
+
+  This bug is quiet in exactly the way that costs the most. Three orders, one
+  wrong pairing, and every field in the answer is a real value from a real
+  order. There is nothing malformed to catch, no exception to log, and the
+  customer is the only person in the system who knows the answer is wrong.
+
+  The missing-id case is the same mistake wearing a different coat. Two
+  results for three ids and a loop that walks positions will hand order 15's
+  state to 12 and 12's to 9, so one carrier being slow silently renumbers the
+  entire answer. A line that says `9=unknown` is worth more than a line that
+  says something confident and wrong.
