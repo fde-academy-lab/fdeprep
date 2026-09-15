@@ -7,7 +7,7 @@ on:
 
 jobs:
   problems:
-    name: Validate problems
+    name: Validate content
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -21,6 +21,11 @@ jobs:
       # docs/04: a broken problem should never reach the import screen, so this
       # gate runs on every push rather than at import time.
       - run: npm run validate:problems
+        working-directory: web
+      # Same reason on the voice side, with one thing worse: a broken question
+      # fails while the learner is already speaking, and a spoken answer
+      # cannot be recovered.
+      - run: npm run validate:voice
         working-directory: web
 
   web:

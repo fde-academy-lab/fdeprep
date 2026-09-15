@@ -1,0 +1,130 @@
+slug: why-validate-what-the-model-chose
+title: Say why tool arguments are validated after the model picks the tool
+track: tool-schema-design
+difficulty: easy
+total_seconds: 180
+competencies: [tool-schema-design, prompt-hardening, agent-loop]
+
+prompt_text: |
+  Their engineer asks why you have put a validation layer between the model
+  and the tools. The model already knows the schema, it is in the tool
+  definition, and he thinks the layer is duplicated work.
+
+beats:
+  - id: b1
+    label: Say what the schema in the tool definition actually is
+    seconds: 30
+    anchors: ["a description", "not a contract", "usually gets it right"]
+  - id: b2
+    label: Name the three things you are checking
+    seconds: 50
+    anchors: ["shape", "meaning", "allowed to"]
+  - id: b3
+    label: Give the example that is not obvious
+    seconds: 50
+    anchors: ["true", "is an integer", "one penny"]
+  - id: b4
+    label: Say what happens when validation fails
+    seconds: 50
+    anchors: ["name the field", "next model call", "do not raise"]
+
+follow_ups:
+  - trigger_after_beat: b2
+    text: Two of those the model gets right every time. Is the layer worth it for the third?
+  - trigger_after_beat: b3
+    text: We could just use a typed library and let it coerce. What is wrong with that?
+
+rubric:
+  - criterion_key: c1
+    label: Places the model's output on the untrusted side
+    weight: 35
+    descriptor_md: |
+      The tool definition tells the model what to produce; it does not make
+      the model produce it. Strong answers say that in a sentence and treat
+      everything after it as following from it.
+  - criterion_key: c2
+    label: Separates shape from meaning from permission
+    weight: 30
+    descriptor_md: |
+      A payload can be schema-valid, semantically absurd and unauthorised all
+      at once, and only the first is caught by a type check. Strong answers
+      name all three and give one example of each or of the last two.
+  - criterion_key: c3
+    label: Gives a concrete failure rather than a principle
+    weight: 20
+    descriptor_md: |
+      Something specific. A boolean that passes an integer check, an amount
+      outside the ceiling, a field the tool does not take. An answer made
+      entirely of principles is not an answer an engineer can act on.
+  - criterion_key: c4
+    label: Says what the rejection does next
+    weight: 15
+    descriptor_md: |
+      A rejection that names the field and goes back to the model produces a
+      corrected call. One that raises produces a stack trace and one that logs
+      silently produces the same bad payload again.
+
+exemplars:
+  - band: strong
+    score: 88
+    transcript: |
+      So the schema in the tool definition is a description of what you would
+      like. It is not a contract, and nothing enforces it on the way out. The
+      model usually gets it right, which is the problem, because that means
+      you find out on the day it does not.
+
+      There are three different things I am checking there and they are not
+      the same. The shape, which is types and required fields, and that is the
+      one people mean when they say validation. The meaning, which is whether
+      the values make sense together and sit inside the ranges we allow. And
+      whether this caller is allowed to do this thing at all, which the model
+      has no way of knowing because it cannot see who is asking.
+
+      The example I would give is a refunds tool. The model sends amount in
+      pence as true, the boolean. And in Python, if you check that with
+      isinstance, true is an integer, because bool subclasses int. So it
+      passes, and you refund one penny, and the tool returns success. Nothing
+      raises, nothing logs, and the only person who knows is a customer who is
+      still angry.
+
+      When validation fails I do not raise. I put it back in the scratchpad
+      and name the field, saying which one and why. That way the next model
+      call sees the complaint and usually sends a correct payload, and you
+      have spent one extra call instead of an incident. If you raise instead,
+      the caller gets a stack trace, and if you log it silently the model
+      sends the same thing again.
+  - band: adequate
+    score: 61
+    transcript: |
+      The main reason is that the model's output is not guaranteed. The tool
+      definition describes the schema, but the model generates text and there
+      is nothing stopping it producing something that does not match, so you
+      need to check before you act on it.
+
+      I would validate the types and the required fields, and also any
+      business constraints, like an amount being within a limit. The type
+      check catches most malformed output and the constraints catch the cases
+      where the payload is well formed but wrong.
+
+      It also protects you against changes. If the model is updated or the
+      prompt is edited, the validation layer keeps behaving the same way,
+      whereas relying on the model means your correctness depends on something
+      you do not control.
+
+      On the duplication point, it is not really duplication, because the tool
+      definition is guidance and the validation is enforcement. They look
+      similar but they are doing different jobs.
+  - band: weak
+    score: 26
+    transcript: |
+      It is basically defensive programming. You should always validate inputs
+      before using them, and the model's output is an input, so you validate
+      it.
+
+      Models can hallucinate, so they might make up a tool name or pass the
+      wrong arguments, and if you do not check you could get an error at
+      runtime. Validation gives you a clear error message instead.
+
+      Most frameworks have this built in now, so you often get it for free
+      with a schema library. I would use one of those rather than writing the
+      checks by hand, since they handle the edge cases.

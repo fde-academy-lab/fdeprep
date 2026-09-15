@@ -1,0 +1,148 @@
+slug: make-a-model-judge-defensible
+title: Make a model judge good enough to decide a release
+track: evaluation-design
+difficulty: extreme
+total_seconds: 240
+competencies: [evaluation-design, failure-mode-analysis, system-design]
+
+prompt_text: |
+  They want to use a model to grade the agent's answers, and they want that
+  grade to be what decides whether a change ships. Tell them what has to be
+  true before you would let that gate a release.
+
+beats:
+  - id: b1
+    label: Say what the judge is being asked to be
+    seconds: 35
+    anchors: ["a measurement", "an opinion", "know its error"]
+  - id: b2
+    label: Name the calibration against humans
+    seconds: 55
+    anchors: ["human labels", "agree", "disagreements"]
+  - id: b3
+    label: Name the biases you would test for
+    seconds: 55
+    anchors: ["longer answers", "verbose", "does the order matter", "same answer twice"]
+  - id: b4
+    label: Say what the judge must never decide
+    seconds: 55
+    anchors: ["checked deterministically", "authorisation", "advisory", "hard gate"]
+  - id: b5
+    label: Say how you would keep it honest over time
+    seconds: 40
+    anchors: ["re-check", "drifts", "held out"]
+
+follow_ups:
+  - trigger_after_beat: b2
+    text: Our two human labellers disagree with each other about a fifth of the time.
+  - trigger_after_beat: b4
+    text: That leaves the judge deciding almost nothing. Why bother with it at all?
+
+rubric:
+  - criterion_key: c1
+    label: Treats the judge as an instrument to be calibrated
+    weight: 25
+    descriptor_md: |
+      A judge that has never been compared to a human label is an opinion with
+      a number attached. Strong answers say what agreement they would want and
+      against what, and treat the labelled set as the thing being trusted.
+  - criterion_key: c2
+    label: Names specific biases and how to detect them
+    weight: 25
+    descriptor_md: |
+      Length preference, position effects, and instability across repeated
+      runs of the same input. Strong answers name at least two and say the
+      experiment, not just the risk.
+  - criterion_key: c3
+    label: Keeps invariants off the judge entirely
+    weight: 30
+    descriptor_md: |
+      Whether an unauthorised tool was called is a set membership question over
+      recorded events. Strong answers say that hard gates stay deterministic
+      and the judge is advisory on the things that are genuinely semantic.
+  - criterion_key: c4
+    label: Has a plan for drift
+    weight: 20
+    descriptor_md: |
+      The judge is a model behind an endpoint that changes. Strong answers
+      keep a held-out labelled set and re-check on a stated cadence, rather
+      than calibrating once at the start.
+
+exemplars:
+  - band: strong
+    score: 92
+    transcript: |
+      The thing to be clear about first is what we are asking it to be. At the
+      moment it is an opinion. To gate a release it has to be a measurement,
+      and the difference is whether we know its error and can say what it is.
+
+      So, calibration. I want a set of a couple of hundred cases with human
+      labels on them, and I want to know how often the judge and the humans
+      agree. Then I want to read the disagreements, because the rate is less
+      interesting than the pattern. If the judge is wrong randomly that is
+      noise and we can live with it. If it is wrong in one direction, always
+      generous about a particular kind of answer, that is a systematic error
+      and it will move the release decision every time.
+
+      Then the biases, and these you test rather than worry about. Does it
+      prefer longer answers? Take a set of correct answers, produce a verbose
+      wrong version of each, and see which scores higher. Does the order
+      matter, if you are comparing two? Swap them and see. And run the same
+      answer twice and see whether you get the same score, because if you do
+      not then a release decision is a coin flip and no amount of calibration
+      fixes that.
+
+      Here is the part I would hold hardest. The judge does not decide
+      anything that can be checked deterministically. Whether the agent called
+      a tool it was not authorised to call is not a judgement, it is set
+      membership over recorded events, and putting it through a model turns an
+      exact check into a probabilistic one. Authorisation, budget, schema
+      validity, all of that stays in code as a hard gate. The judge is
+      advisory on the genuinely semantic question, which is whether the answer
+      was any good.
+
+      And it is not calibrated once. It sits behind an endpoint we do not
+      control, so I would hold out fifty labelled cases, re-check monthly and
+      after every model change, and watch whether agreement drifts. The day it
+      drops we find out from the held-out set rather than from a release that
+      should not have shipped.
+  - band: adequate
+    score: 64
+    transcript: |
+      The main thing is calibration against human judgement. You need a set of
+      examples that humans have scored, run the judge over them, and measure
+      how closely it agrees. Without that you have no idea whether the scores
+      mean anything.
+
+      I would also want to check it for bias. Models tend to prefer longer and
+      more confident answers, so I would construct some cases to test that
+      specifically. And I would run the same input more than once to check the
+      scores are stable, because if they move around then any threshold you
+      set is unreliable.
+
+      On the release gate itself, I would be careful about what it decides. It
+      is reasonable for it to judge answer quality, but things like whether
+      the agent exceeded its budget or called the wrong tool should be checked
+      in code rather than by a model, because those are objective.
+
+      I would also keep it under review. The underlying model changes over
+      time, so periodic re-validation against the labelled set would be part
+      of the process rather than a one-off.
+  - band: weak
+    score: 30
+    transcript: |
+      LLM as a judge is a well established pattern and it works quite well for
+      this sort of thing. The main things are having a clear rubric and
+      making sure the prompt is specific about what you are scoring.
+
+      I would use a strong model for the judging, since the better models are
+      more reliable graders, and I would set the temperature to zero so the
+      scores are consistent.
+
+      Having a few examples in the judge prompt helps a lot with consistency,
+      so I would include some scored examples showing what a good and bad
+      answer look like.
+
+      For the release gate I would pick a threshold, maybe eighty percent, and
+      require that before shipping. You could also have a human spot-check a
+      sample of the judgements to make sure it is behaving sensibly.

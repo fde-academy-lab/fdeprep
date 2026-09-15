@@ -1,0 +1,144 @@
+slug: turn-a-notebook-into-a-service
+title: Turn a working notebook into something that can take traffic
+track: system-design
+difficulty: medium
+total_seconds: 210
+competencies: [system-design, cost-and-latency, client-communication]
+
+prompt_text: |
+  Their data scientist has a notebook that does the extraction, and it works.
+  They want it behind an endpoint by the end of the month. Walk me through
+  what that actually involves.
+
+beats:
+  - id: b1
+    label: Say what the notebook is and is not evidence of
+    seconds: 30
+    anchors: ["the notebook works", "one request at a time", "in order"]
+  - id: b2
+    label: Name the contract first
+    seconds: 50
+    anchors: ["what goes in", "what comes back", "errors", "a version"]
+  - id: b3
+    label: Say what breaks on the second request
+    seconds: 55
+    anchors: ["state", "between cells", "global", "leaks"]
+  - id: b4
+    label: Name what you need to see once it is live
+    seconds: 45
+    anchors: ["per request", "how long", "what it cost"]
+  - id: b5
+    label: Say what you would do in the first week
+    seconds: 30
+    anchors: ["same outputs", "golden", "before anything else"]
+
+follow_ups:
+  - trigger_after_beat: b3
+    text: The data scientist says there is no global state, it is all in functions.
+  - trigger_after_beat: b4
+    text: We have logging already. Why is that not enough?
+
+rubric:
+  - criterion_key: c1
+    label: Puts the contract before the code
+    weight: 30
+    descriptor_md: |
+      Inputs, outputs, error shapes and a version. Strong answers do this
+      first and say why: everything downstream is written against it, and the
+      notebook has never had to promise anything.
+  - criterion_key: c2
+    label: Names request isolation concretely
+    weight: 25
+    descriptor_md: |
+      A notebook runs top to bottom once. Strong answers name where state
+      hides, module-level variables, cached clients, an accumulating list, and
+      say what the second request sees.
+  - criterion_key: c3
+    label: Names observability in terms of what a question needs
+    weight: 20
+    descriptor_md: |
+      Per-request timing, token spend and a correlation id, because the first
+      question anyone asks is why one request was slow or expensive. Strong
+      answers tie the signal to the question rather than listing tools.
+  - criterion_key: c4
+    label: Protects the behaviour that already works
+    weight: 25
+    descriptor_md: |
+      The notebook is the only specification of correct behaviour anyone has.
+      Strong answers capture its outputs on real inputs before refactoring, so
+      the rewrite can be checked against something.
+
+exemplars:
+  - band: strong
+    score: 88
+    transcript: |
+      So the notebook works, and that is worth something. What it is evidence
+      of is that the approach is sound on the inputs she has tried. What it is
+      not evidence of is anything about concurrency, because it has only ever
+      run one request at a time, in order, with her watching.
+
+      The first thing I would write is the contract, before touching the code.
+      What goes in, what comes back, what the errors look like, and a version
+      on it. That matters because the moment anyone integrates, that shape is
+      a promise, and the notebook has never had to promise anything. If we get
+      it wrong we find out when changing it breaks somebody.
+
+      The thing that will actually bite is state. A notebook holds state
+      between cells and that is the whole point of it, so there is usually a
+      client created at the top, a variable that accumulates, a cached
+      dataframe. Under one request nothing shows. On the second request that
+      global is still there, and either it leaks something from the first
+      customer into the second or it grows until the process dies. That is the
+      bug I would go looking for first, and it is not usually obvious from
+      reading.
+
+      Once it is live, per request, I want how long it took, what it cost in
+      tokens, and an id that ties the model calls to the request. Because the
+      first question anyone asks is why was this one slow or why did this one
+      cost four dollars, and without those three you cannot answer it.
+
+      In the first week, before anything else, I would take fifty real inputs
+      and record what the notebook produces for them. That is the only
+      specification of correct behaviour anyone has. Then when we refactor we
+      can check we still get the same outputs, and those golden cases become
+      the regression suite.
+  - band: adequate
+    score: 62
+    transcript: |
+      There is a fair bit between a working notebook and a service. The code
+      itself is usually the easy part.
+
+      I would start by defining the API contract, so the request and response
+      formats and the error cases. Then wrap the logic in a function that
+      takes the input and returns the output, with no dependencies on notebook
+      state.
+
+      Statelessness is important. Notebooks rely on things being defined in
+      earlier cells, so you need to make sure each request is independent and
+      does not depend on anything left over from a previous one.
+
+      Then the usual service concerns: error handling so a failure returns a
+      proper response rather than a stack trace, logging and metrics,
+      dependency pinning so it does not break when a library updates, and
+      tests.
+
+      On timing, end of the month is probably feasible for a first version,
+      though I would want to understand how much traffic it needs to handle,
+      because that changes the answer quite a lot.
+  - band: weak
+    score: 28
+    transcript: |
+      The main work is wrapping it in an API. I would use FastAPI, put the
+      notebook logic into a function, and expose it as a POST endpoint. That
+      part is usually quite quick.
+
+      Then you containerise it with Docker and deploy it, and you would want
+      some environment configuration for the API keys rather than having them
+      in the code.
+
+      You should add error handling and logging, and some tests to make sure
+      it behaves the same as the notebook did.
+
+      After that it is mostly operational: monitoring, scaling if the traffic
+      grows, and a CI pipeline so deploys are repeatable. End of the month
+      sounds achievable for that scope.

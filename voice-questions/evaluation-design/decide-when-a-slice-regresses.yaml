@@ -1,0 +1,142 @@
+slug: decide-when-a-slice-regresses
+title: Decide between a better average and a worse critical slice
+track: evaluation-design
+difficulty: hard
+total_seconds: 195
+competencies: [evaluation-design, failure-mode-analysis, client-communication]
+
+prompt_text: |
+  Prompt B is two points better overall than prompt A. On the slice where the
+  agent handles a customer asking for a refund it is four points worse, and
+  that slice has five cases in it. The team wants to ship B today. What do you
+  say?
+
+beats:
+  - id: b1
+    label: Say what the two point gain is made of
+    seconds: 35
+    anchors: ["where did it come from", "which cases", "moved"]
+  - id: b2
+    label: Say why the slice cannot be averaged away
+    seconds: 45
+    anchors: ["not the same kind", "costs", "refund"]
+  - id: b3
+    label: Be honest about five cases
+    seconds: 45
+    anchors: ["five cases", "one case", "cannot tell"]
+  - id: b4
+    label: Say what you would do today
+    seconds: 40
+    anchors: ["paired", "same cases", "look at the four"]
+  - id: b5
+    label: Give the decision and who makes it
+    seconds: 30
+    anchors: ["would not ship", "not my call", "what it costs"]
+
+follow_ups:
+  - trigger_after_beat: b3
+    text: So the slice is too small to trust. Does that not mean we should ignore it?
+  - trigger_after_beat: b4
+    text: We do not have time to expand the slice. The launch is Thursday.
+
+rubric:
+  - criterion_key: c1
+    label: Asks what moved rather than accepting the aggregate
+    weight: 25
+    descriptor_md: |
+      Two points overall is a net of cases that got better and worse. Strong
+      answers want the paired comparison, case by case, and say why the net
+      is the least informative view of it.
+  - criterion_key: c2
+    label: Separates the slice by cost rather than by size
+    weight: 30
+    descriptor_md: |
+      The refund slice matters because of what a failure there does, not
+      because of how many cases it has. Strong answers say this plainly and do
+      not reach for a weighted average, which is averaging again.
+  - criterion_key: c3
+    label: Is honest about the statistics of five cases
+    weight: 25
+    descriptor_md: |
+      Four points on five cases is one case moving. Strong answers say the
+      slice cannot support the conclusion and refuse to use that as a reason
+      to ignore it, which is the trap the follow-up sets.
+  - criterion_key: c4
+    label: Ends with a decision and names who owns it
+    weight: 20
+    descriptor_md: |
+      An answer that lays out considerations and stops has handed the problem
+      back. Strong answers say what they would do, say it is not theirs to
+      decide alone, and say what the person deciding needs to know.
+
+exemplars:
+  - band: strong
+    score: 89
+    transcript: |
+      First question, where did it come from? Two points overall is a net
+      number, and I want to know which cases moved and in which direction. If
+      thirty cases got slightly better and five got a lot worse, that is a
+      completely different picture from a uniform lift, and the aggregate
+      hides both.
+
+      The reason I would not average the refund slice into it is that the
+      failures are not the same kind of thing. A worse answer on a general
+      question costs a follow-up message. A worse answer on the refund path
+      costs money and a complaint, and possibly a refund to the wrong person.
+      You cannot add those up and divide by the number of cases and get
+      something meaningful out.
+
+      Now, I have to be honest about the five cases. Four points on five cases
+      is one case moving, maybe two. That is not evidence of a regression, it
+      is evidence that we cannot tell. And I want to say clearly that this is
+      not an argument for ignoring it. Not being able to measure the slice
+      that matters most is the finding, and it is worse than a regression,
+      because a regression at least you can see.
+
+      What I would do today is the paired comparison over the same cases, look
+      at the four or five that got worse, and read them. If the refund
+      failures are the same underlying thing, that is a bug in B and we fix
+      it. That is a couple of hours, not a week.
+
+      Where I land is that I would not ship B today. That is not my call on my
+      own, and whoever makes it should know exactly what it costs, which is
+      that we would be shipping a change that may or may not make the
+      money-moving path worse and we would not find out from this eval set.
+  - band: adequate
+    score: 63
+    transcript: |
+      I would not ship it on that evidence. An overall improvement that comes
+      with a regression on a critical path is not really an improvement,
+      because the slice that got worse is the one where mistakes are
+      expensive.
+
+      The thing I would want to see is a paired comparison, so we are
+      comparing the same cases under both prompts rather than two aggregate
+      numbers. That tells you which cases actually changed and lets you look
+      at them individually.
+
+      The five cases is a concern as well. That is a small sample and four
+      points could easily be one case, so I would not be confident the
+      regression is real. But equally I would not be confident it is not, and
+      given what the slice covers I would want more cases before deciding.
+
+      My recommendation would be to hold B, expand the refund slice, and
+      re-run. If the regression disappears then we ship with more confidence
+      than we would have had today.
+  - band: weak
+    score: 29
+    transcript: |
+      Two points overall is a decent improvement, so B is probably better
+      generally. The refund slice being worse is a concern though.
+
+      I think it depends on how important that slice is. If refunds are a core
+      part of the product then I would want to fix it first. If it is a minor
+      path then shipping the overall improvement is probably the right trade.
+
+      One option would be to use B for most traffic and keep A for the refund
+      cases, so you get the improvement without the regression. That would be
+      a bit more complexity but it might be worth it.
+
+      I would also suggest adding more test cases to the refund slice so we
+      have better data next time. Five is not very many to draw conclusions
+      from.

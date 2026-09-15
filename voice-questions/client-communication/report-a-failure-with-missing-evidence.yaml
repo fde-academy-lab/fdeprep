@@ -1,0 +1,150 @@
+slug: report-a-failure-with-missing-evidence
+title: Report a production failure when half the evidence is missing
+track: client-communication
+difficulty: extreme
+total_seconds: 225
+competencies: [client-communication, failure-mode-analysis, system-design]
+
+prompt_text: |
+  Something failed at two in the morning and roughly four hundred customers
+  got a wrong answer. Half the traces are missing because the logging sampler
+  was turned up last week. Their chief technology officer is on the call and
+  wants the root cause. Go.
+
+beats:
+  - id: b1
+    label: State what is known, as facts
+    seconds: 45
+    anchors: ["what we know", "four hundred", "between", "confirmed"]
+  - id: b2
+    label: Mark clearly where the evidence stops
+    seconds: 45
+    anchors: ["we do not have", "sampler", "cannot see"]
+  - id: b3
+    label: Give the hypotheses and say which you favour
+    seconds: 55
+    anchors: ["two explanations", "more likely", "not a finding"]
+  - id: b4
+    label: Say what is already contained
+    seconds: 40
+    anchors: ["stopped", "since", "not still happening"]
+  - id: b5
+    label: Say what would settle it and by when
+    seconds: 40
+    anchors: ["would settle it", "by midday", "come back"]
+
+follow_ups:
+  - trigger_after_beat: b3
+    text: I need a root cause for the board this morning, not two hypotheses.
+  - trigger_after_beat: b5
+    text: Can you guarantee this is not still affecting customers right now?
+
+rubric:
+  - criterion_key: c1
+    label: Separates observation from inference out loud
+    weight: 30
+    descriptor_md: |
+      Strong answers say which sentences are things they saw and which are
+      things they believe, and never let the second borrow the authority of
+      the first. This is the whole competency.
+  - criterion_key: c2
+    label: Names the gap in the evidence rather than working around it
+    weight: 25
+    descriptor_md: |
+      The missing traces are a fact about the investigation and they change
+      what can be concluded. Strong answers say so early and say what it
+      costs, rather than hoping nobody asks.
+  - criterion_key: c3
+    label: Leads with containment
+    weight: 20
+    descriptor_md: |
+      The first thing the chief technology officer needs is whether it is
+      still happening. Strong answers say what has stopped and how they know,
+      before any discussion of cause.
+  - criterion_key: c4
+    label: Holds the line under pressure for certainty
+    weight: 25
+    descriptor_md: |
+      The follow-up asks for a root cause now. Strong answers give the most
+      likely explanation, labelled as likely, with the check that would
+      confirm it and a time, and do not convert a hypothesis into a finding
+      because a senior person asked twice.
+
+exemplars:
+  - band: strong
+    score: 92
+    transcript: |
+      Let me split this into what we know and what we think, because they are
+      different and I do not want to blur them.
+
+      What we know. Between one fifty and two twenty this morning, roughly
+      four hundred responses went out with the wrong policy attached. That
+      number is confirmed from the response log, which is separate from the
+      traces and was not sampled. Every one of them was on the returns path.
+      Nothing else was affected.
+
+      What we do not have is the traces for about half of those, because the
+      sampler was turned up last week and it is now keeping one in two. So for
+      half of the affected requests I cannot see what the agent did, and that
+      is not something I can work around this morning. It changes what I can
+      conclude, and I would rather say that now than have it come out later.
+
+      There are two explanations that fit what we can see. One is a cache that
+      was serving a policy version from before the update. The other is the
+      retrieval picking up a superseded document. I think the cache is more
+      likely, because the wrong answers cluster tightly in time and they are
+      all the same wrong answer, and the retrieval story would give us more
+      variety. I want to be clear that is a judgement from partial evidence
+      and not a finding.
+
+      On containment. It stopped at two twenty when the deploy went out, and
+      we have had four hours of normal traffic since with nothing matching
+      the pattern. So it is not still happening, and that is from the response
+      log rather than from the traces, so I am confident in it.
+
+      What would settle it is the cache keys from the affected window, which
+      we do have, and comparing them against the policy version. That is a
+      couple of hours. I will come back to you by midday with either a
+      confirmed cause or a clear statement that the evidence cannot support
+      one, and if it is the second then the next thing we talk about is the
+      sampler.
+  - band: adequate
+    score: 64
+    transcript: |
+      Here is where we are. Around four hundred customers received an
+      incorrect response between roughly two and two twenty this morning. It
+      appears to have been limited to the returns flow.
+
+      We are still investigating the cause. Unfortunately we do not have full
+      traces for the period because the sampling rate was reduced last week,
+      so we are working with partial data, which is slowing us down.
+
+      The leading theory is a stale cache serving an old version of the
+      policy. That would explain why the responses were consistent with each
+      other and why it resolved when the deploy went out. We are checking the
+      cache keys to confirm.
+
+      The issue stopped after the deploy at twenty past two and we have not
+      seen any recurrence since, so we believe it is contained.
+
+      I will update you once we have confirmed the cause, and separately I
+      think we need to revisit the sampling decision, because this is exactly
+      the situation where we needed those traces.
+  - band: weak
+    score: 31
+    transcript: |
+      So it looks like the root cause was a caching issue. The cache was
+      holding an old version of the policy document, so when requests came in
+      during that window they got the outdated response. Once the deploy went
+      out the cache was invalidated and it resolved itself.
+
+      We think about four hundred customers were affected. It was limited to
+      the returns path so the blast radius was contained.
+
+      To prevent it happening again I would add cache invalidation on policy
+      updates, and better alerting so we catch it faster next time rather than
+      finding out in the morning.
+
+      The missing traces made it harder to investigate but we had enough to
+      piece it together. I would also suggest we turn the sampling back down
+      so we have better visibility going forward.

@@ -1,0 +1,149 @@
+slug: improve-a-service-you-cannot-rewrite
+title: Improve a fragile service you are not allowed to rewrite
+track: system-design
+difficulty: hard
+total_seconds: 225
+competencies: [system-design, failure-mode-analysis, client-communication]
+
+prompt_text: |
+  The extraction service is eight years old, nobody who wrote it is still
+  there, and it has no tests. It is also wrong about eleven percent of the
+  time and it is costing them real money. You cannot rewrite it. What do you
+  do?
+
+beats:
+  - id: b1
+    label: Say what you would establish before touching anything
+    seconds: 40
+    anchors: ["what it does now", "record", "current behaviour"]
+  - id: b2
+    label: Find where the eleven percent lives
+    seconds: 50
+    anchors: ["spread evenly", "one kind of document", "one field"]
+  - id: b3
+    label: Choose the smallest change that reaches it
+    seconds: 50
+    anchors: ["one place", "around it", "leave the rest"]
+  - id: b4
+    label: Say how you prove you did not break anything else
+    seconds: 50
+    anchors: ["same inputs", "differences", "shadow"]
+  - id: b5
+    label: Say what you would tell them about the rewrite
+    seconds: 35
+    anchors: ["not saying never", "earn", "in pieces"]
+
+follow_ups:
+  - trigger_after_beat: b3
+    text: The defect turns out to be inside an undocumented integration we cannot see into.
+  - trigger_after_beat: b4
+    text: We do not have a staging environment with real documents in it.
+
+rubric:
+  - criterion_key: c1
+    label: Captures current behaviour before changing it
+    weight: 30
+    descriptor_md: |
+      With no tests, the running service is the specification. Strong answers
+      record its outputs on real inputs first and say that this is what makes
+      any later change checkable.
+  - criterion_key: c2
+    label: Locates the failure rather than treating it as a rate
+    weight: 25
+    descriptor_md: |
+      Eleven percent is never spread evenly. Strong answers say they would
+      find which kind of document or which field carries it, because that
+      decides whether the fix is small.
+  - criterion_key: c3
+    label: Scopes the change to the smallest surface that works
+    weight: 25
+    descriptor_md: |
+      A wrapper, one function, one validation pass at the boundary. Strong
+      answers explicitly leave the rest alone and say why touching more is
+      where brownfield work goes wrong.
+  - criterion_key: c4
+    label: Has a way to detect collateral damage
+    weight: 20
+    descriptor_md: |
+      Running old and new over the same inputs and reading the differences.
+      Strong answers say what they would do without a staging environment,
+      because that is the usual case.
+
+exemplars:
+  - band: strong
+    score: 90
+    transcript: |
+      Before I touch anything I want to know what it does now. There are no
+      tests, so the running service is the specification, and if I change it
+      without recording current behaviour first I have no way of telling a fix
+      from a regression. So, capture. Take a few thousand real documents
+      through it, record the inputs and the outputs, and that is the baseline.
+      That is a day's work and everything else depends on it.
+
+      Then I want to know where the eleven percent lives, because it will not
+      be spread evenly. It never is. It is usually one kind of document, or
+      one field, or one upstream format that changed and nobody noticed. If it
+      turns out that eight of the eleven points are scanned invoices from one
+      supplier, the fix is small and specific, and we have gone from a scary
+      number to a task.
+
+      Then the smallest change that reaches it. Ideally one place, or a
+      wrapper around it that corrects the case we have identified, and I leave
+      the rest alone deliberately. The temptation in a codebase like this is
+      to clean things up while you are in there, and that is where brownfield
+      work goes wrong, because you cannot tell afterwards which change caused
+      what.
+
+      Proving I have not broken anything is the baseline again. Run the old
+      and the new over the same inputs and read the differences. Not just
+      count them, read them. And if there is no staging environment with real
+      documents, which is normal, then run the new one in shadow next to the
+      old one in production, do nothing with its output, and compare. That
+      costs some compute and no risk.
+
+      On the rewrite, I am not saying never. I am saying not first. If this
+      works we have bought credibility and a test suite, and a rewrite after
+      that is a different proposition, done in pieces, each one checked
+      against the same baseline. A rewrite now is eight years of undocumented
+      behaviour against a deadline, and it will earn its place or it will not.
+  - band: adequate
+    score: 63
+    transcript: |
+      With a legacy service like this the first priority is getting some
+      safety net in place. There are no tests, so I would start by writing
+      characterisation tests that capture what it currently does, even where
+      that is wrong. That gives you something to check against.
+
+      Then I would try to narrow down where the errors are coming from. Eleven
+      percent overall does not tell you much, so I would look at the failures
+      and see whether they cluster around particular document types or fields.
+
+      Once I know that, I would make a targeted fix rather than a broad
+      refactor. Smaller changes are easier to verify and easier to roll back
+      if something goes wrong.
+
+      I would also want a way to deploy it safely, so a canary or a gradual
+      rollout with the ability to revert quickly, since we do not fully
+      understand the system.
+
+      On the rewrite question, I would push back on doing it now. Rewriting
+      something you do not understand tends to reproduce the bugs you knew
+      about and add new ones.
+  - band: weak
+    score: 29
+    transcript: |
+      Legacy code is always difficult. I would start by reading through it and
+      trying to understand what it does, and documenting that as I go so the
+      next person has something.
+
+      Then I would add tests around the parts I am going to change, and
+      refactor gradually using the strangler pattern, replacing pieces one at
+      a time with new implementations until eventually the old code is gone.
+
+      For the eleven percent error rate I would look at whether a modern
+      model would do better at the extraction, since these things have moved
+      on a lot in eight years, and that might be a bigger win than fixing the
+      existing logic.
+
+      I would also make sure there is good monitoring so we can see whether
+      the changes are helping.
