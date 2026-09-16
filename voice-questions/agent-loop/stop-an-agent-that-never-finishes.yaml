@@ -2,7 +2,7 @@ slug: stop-an-agent-that-never-finishes
 title: Stop an agent that never emits a final answer
 track: agent-loop
 difficulty: medium
-total_seconds: 225
+total_seconds: 150
 competencies: [agent-loop, cost-and-latency, failure-mode-analysis]
 
 prompt_text: |
@@ -13,23 +13,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Say what the pod restart actually cost them
-    seconds: 30
+    seconds: 20
     anchors: ["killing the pod", "no answer", "nothing recorded"]
   - id: b2
     label: Name the limits and say where they live
-    seconds: 60
+    seconds: 40
     anchors: ["steps", "wall clock", "spend", "in the application", "not in the prompt"]
   - id: b3
     label: Say what happens when a limit fires
-    seconds: 55
+    seconds: 35
     anchors: ["terminal state", "what it found so far", "a human"]
   - id: b4
     label: Name the case the limits do not catch
-    seconds: 45
+    seconds: 30
     anchors: ["same call", "making progress", "no new information"]
   - id: b5
     label: Say what you would watch afterwards
-    seconds: 35
+    seconds: 25
     anchors: ["how many steps", "alert", "before the ceiling"]
 
 follow_ups:

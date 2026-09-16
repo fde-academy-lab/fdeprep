@@ -2,7 +2,7 @@ slug: report-a-failure-with-missing-evidence
 title: Report a production failure when half the evidence is missing
 track: client-communication
 difficulty: extreme
-total_seconds: 225
+total_seconds: 145
 competencies: [client-communication, failure-mode-analysis, system-design]
 
 prompt_text: |
@@ -14,23 +14,23 @@ prompt_text: |
 beats:
   - id: b1
     label: State what is known, as facts
-    seconds: 45
+    seconds: 30
     anchors: ["what we know", "four hundred", "between", "confirmed"]
   - id: b2
     label: Mark clearly where the evidence stops
-    seconds: 45
+    seconds: 30
     anchors: ["we do not have", "sampler", "cannot see"]
   - id: b3
     label: Give the hypotheses and say which you favour
-    seconds: 55
+    seconds: 35
     anchors: ["two explanations", "more likely", "not a finding"]
   - id: b4
     label: Say what is already contained
-    seconds: 40
+    seconds: 25
     anchors: ["stopped", "since", "not still happening"]
   - id: b5
     label: Say what would settle it and by when
-    seconds: 40
+    seconds: 25
     anchors: ["would settle it", "by midday", "come back"]
 
 follow_ups:

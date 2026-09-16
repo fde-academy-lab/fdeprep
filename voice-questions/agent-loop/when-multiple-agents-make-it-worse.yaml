@@ -2,7 +2,7 @@ slug: when-multiple-agents-make-it-worse
 title: Say when splitting one agent into several makes it worse
 track: agent-loop
 difficulty: hard
-total_seconds: 210
+total_seconds: 140
 competencies: [agent-loop, system-design, cost-and-latency]
 
 prompt_text: |
@@ -13,23 +13,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Ask what the current one is getting wrong
-    seconds: 30
+    seconds: 20
     anchors: ["what is it getting wrong", "which cases", "baseline"]
   - id: b2
     label: Name what splitting actually costs
-    seconds: 55
+    seconds: 35
     anchors: ["hand the context over", "leave out", "four times", "latency"]
   - id: b3
     label: Say what the split does not fix
-    seconds: 45
+    seconds: 30
     anchors: ["wrong documents", "disagree", "confidently"]
   - id: b4
     label: Give the case where a split does earn its place
-    seconds: 45
+    seconds: 30
     anchors: ["different permissions", "different tools", "isolate"]
   - id: b5
     label: Say what you would do first
-    seconds: 35
+    seconds: 25
     anchors: ["one thing at a time", "measure", "the reviewer"]
 
 follow_ups:

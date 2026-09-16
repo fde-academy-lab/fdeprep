@@ -2,7 +2,7 @@ slug: why-validate-what-the-model-chose
 title: Say why tool arguments are validated after the model picks the tool
 track: tool-schema-design
 difficulty: easy
-total_seconds: 180
+total_seconds: 125
 competencies: [tool-schema-design, prompt-hardening, agent-loop]
 
 prompt_text: |
@@ -13,19 +13,19 @@ prompt_text: |
 beats:
   - id: b1
     label: Say what the schema in the tool definition actually is
-    seconds: 30
+    seconds: 20
     anchors: ["a description", "not a contract", "usually gets it right"]
   - id: b2
     label: Name the three things you are checking
-    seconds: 50
+    seconds: 35
     anchors: ["shape", "meaning", "allowed to"]
   - id: b3
     label: Give the example that is not obvious
-    seconds: 50
+    seconds: 35
     anchors: ["true", "is an integer", "one penny"]
   - id: b4
     label: Say what happens when validation fails
-    seconds: 50
+    seconds: 35
     anchors: ["name the field", "next model call", "do not raise"]
 
 follow_ups:

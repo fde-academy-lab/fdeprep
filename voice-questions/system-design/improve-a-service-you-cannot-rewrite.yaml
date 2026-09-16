@@ -2,7 +2,7 @@ slug: improve-a-service-you-cannot-rewrite
 title: Improve a fragile service you are not allowed to rewrite
 track: system-design
 difficulty: hard
-total_seconds: 225
+total_seconds: 155
 competencies: [system-design, failure-mode-analysis, client-communication]
 
 prompt_text: |
@@ -14,23 +14,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Say what you would establish before touching anything
-    seconds: 40
+    seconds: 25
     anchors: ["what it does now", "record", "current behaviour"]
   - id: b2
     label: Find where the eleven percent lives
-    seconds: 50
+    seconds: 35
     anchors: ["spread evenly", "one kind of document", "one field"]
   - id: b3
     label: Choose the smallest change that reaches it
-    seconds: 50
+    seconds: 35
     anchors: ["one place", "around it", "leave the rest"]
   - id: b4
     label: Say how you prove you did not break anything else
-    seconds: 50
+    seconds: 35
     anchors: ["same inputs", "differences", "shadow"]
   - id: b5
     label: Say what you would tell them about the rewrite
-    seconds: 35
+    seconds: 25
     anchors: ["not saying never", "earn", "in pieces"]
 
 follow_ups:

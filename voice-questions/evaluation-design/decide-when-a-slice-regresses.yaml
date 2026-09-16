@@ -2,7 +2,7 @@ slug: decide-when-a-slice-regresses
 title: Decide between a better average and a worse critical slice
 track: evaluation-design
 difficulty: hard
-total_seconds: 195
+total_seconds: 130
 competencies: [evaluation-design, failure-mode-analysis, client-communication]
 
 prompt_text: |
@@ -14,23 +14,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Say what the two point gain is made of
-    seconds: 35
+    seconds: 25
     anchors: ["where did it come from", "which cases", "moved"]
   - id: b2
     label: Say why the slice cannot be averaged away
-    seconds: 45
+    seconds: 30
     anchors: ["not the same kind", "costs", "refund"]
   - id: b3
     label: Be honest about five cases
-    seconds: 45
+    seconds: 30
     anchors: ["five cases", "one case", "cannot tell"]
   - id: b4
     label: Say what you would do today
-    seconds: 40
+    seconds: 25
     anchors: ["paired", "same cases", "look at the four"]
   - id: b5
     label: Give the decision and who makes it
-    seconds: 30
+    seconds: 20
     anchors: ["would not ship", "not my call", "what it costs"]
 
 follow_ups:

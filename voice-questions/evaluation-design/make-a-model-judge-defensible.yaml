@@ -2,7 +2,7 @@ slug: make-a-model-judge-defensible
 title: Make a model judge good enough to decide a release
 track: evaluation-design
 difficulty: extreme
-total_seconds: 240
+total_seconds: 155
 competencies: [evaluation-design, failure-mode-analysis, system-design]
 
 prompt_text: |
@@ -13,23 +13,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Say what the judge is being asked to be
-    seconds: 35
+    seconds: 25
     anchors: ["a measurement", "an opinion", "know its error"]
   - id: b2
     label: Name the calibration against humans
-    seconds: 55
+    seconds: 35
     anchors: ["human labels", "agree", "disagreements"]
   - id: b3
     label: Name the biases you would test for
-    seconds: 55
+    seconds: 35
     anchors: ["longer answers", "verbose", "does the order matter", "same answer twice"]
   - id: b4
     label: Say what the judge must never decide
-    seconds: 55
+    seconds: 35
     anchors: ["checked deterministically", "authorisation", "advisory", "hard gate"]
   - id: b5
     label: Say how you would keep it honest over time
-    seconds: 40
+    seconds: 25
     anchors: ["re-check", "drifts", "held out"]
 
 follow_ups:

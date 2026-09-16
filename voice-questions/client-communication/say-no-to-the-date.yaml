@@ -2,7 +2,7 @@ slug: say-no-to-the-date
 title: Say no to a date somebody has already promised the board
 track: client-communication
 difficulty: hard
-total_seconds: 225
+total_seconds: 150
 competencies: [client-communication, evaluation-design, system-design]
 
 prompt_text: |
@@ -13,23 +13,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Say back what she has actually committed to
-    seconds: 30
+    seconds: 20
     anchors: ["told the board", "four weeks", "what you need"]
   - id: b2
     label: Separate the date from the scope
-    seconds: 50
+    seconds: 35
     anchors: ["the date is fine", "the word", "full", "every claim"]
   - id: b3
     label: Commit to something specific in the four weeks
-    seconds: 55
+    seconds: 35
     anchors: ["sixty per cent", "straight through", "the rest"]
   - id: b4
     label: Say what the last part costs, in her terms
-    seconds: 50
+    seconds: 35
     anchors: ["the hard ten per cent", "wrong", "a person"]
   - id: b5
     label: Give her the sentence for the board
-    seconds: 40
+    seconds: 25
     anchors: ["what you can say", "on the date", "measured"]
 
 follow_ups:

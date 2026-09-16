@@ -2,7 +2,7 @@ slug: explain-a-limit-to-a-non-engineer
 title: Explain why the assistant goes quiet, to someone who does not build software
 track: client-communication
 difficulty: medium
-total_seconds: 210
+total_seconds: 140
 competencies: [client-communication, retrieval, evaluation-design]
 
 prompt_text: |
@@ -13,23 +13,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Agree that what she saw is real
-    seconds: 30
+    seconds: 20
     anchors: ["you are right", "it does do that", "on purpose"]
   - id: b2
     label: Say where the assistant's answers come from
-    seconds: 45
+    seconds: 30
     anchors: ["written down", "help centre", "your team", "in their heads"]
   - id: b3
     label: Say what the alternative behaviour would be
-    seconds: 55
+    seconds: 35
     anchors: ["it was guessing", "the same confidence", "no way for the customer"]
   - id: b4
     label: Turn the gap into something she can act on
-    seconds: 45
+    seconds: 30
     anchors: ["a list", "cannot answer", "worth writing down"]
   - id: b5
     label: Say what you would change if she still wants it
-    seconds: 35
+    seconds: 25
     anchors: ["your call", "it is unsure", "widen"]
 
 follow_ups:
