@@ -2,7 +2,7 @@ slug: turn-a-notebook-into-a-service
 title: Turn a working notebook into something that can take traffic
 track: system-design
 difficulty: medium
-total_seconds: 210
+total_seconds: 140
 competencies: [system-design, cost-and-latency, client-communication]
 
 prompt_text: |
@@ -13,23 +13,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Say what the notebook is and is not evidence of
-    seconds: 30
+    seconds: 20
     anchors: ["the notebook works", "one request at a time", "in order"]
   - id: b2
     label: Name the contract first
-    seconds: 50
+    seconds: 35
     anchors: ["what goes in", "what comes back", "errors", "a version"]
   - id: b3
     label: Say what breaks on the second request
-    seconds: 55
+    seconds: 35
     anchors: ["state", "between cells", "global", "leaks"]
   - id: b4
     label: Name what you need to see once it is live
-    seconds: 45
+    seconds: 30
     anchors: ["per request", "how long", "what it cost"]
   - id: b5
     label: Say what you would do in the first week
-    seconds: 30
+    seconds: 20
     anchors: ["same outputs", "golden", "before anything else"]
 
 follow_ups:

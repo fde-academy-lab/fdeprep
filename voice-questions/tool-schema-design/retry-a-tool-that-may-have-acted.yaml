@@ -2,7 +2,7 @@ slug: retry-a-tool-that-may-have-acted
 title: Decide whether to retry a tool that may already have done the thing
 track: tool-schema-design
 difficulty: hard
-total_seconds: 195
+total_seconds: 130
 competencies: [tool-schema-design, tool-error-handling, failure-mode-analysis]
 
 prompt_text: |
@@ -13,23 +13,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Separate the two kinds of failure
-    seconds: 35
+    seconds: 25
     anchors: ["did not happen", "do not know", "uncertain"]
   - id: b2
     label: Say why a blind retry is the wrong default here
-    seconds: 40
+    seconds: 25
     anchors: ["two tickets", "duplicate", "cheap to repeat"]
   - id: b3
     label: Give the mechanism you would ask for
-    seconds: 45
+    seconds: 30
     anchors: ["idempotency key", "same key", "returns the same"]
   - id: b4
     label: Say what you do when the provider will not give you one
-    seconds: 45
+    seconds: 30
     anchors: ["read back", "search", "reconcile"]
   - id: b5
     label: Say what you do when neither is available
-    seconds: 30
+    seconds: 20
     anchors: ["would not retry", "a person", "say what happened"]
 
 follow_ups:

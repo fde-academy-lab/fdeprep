@@ -2,7 +2,7 @@ slug: explain-when-an-agent-beats-a-workflow
 title: Explain when an agent is worth it and when a workflow wins
 track: agent-loop
 difficulty: medium
-total_seconds: 210
+total_seconds: 135
 competencies: [agent-loop, system-design, client-communication]
 
 prompt_text: |
@@ -13,23 +13,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Concede the case for the workflow
-    seconds: 25
+    seconds: 15
     anchors: ["he is right", "state machine", "cheaper", "easier to debug"]
   - id: b2
     label: Name the one thing that actually decides it
-    seconds: 45
+    seconds: 30
     anchors: ["who picks the next step", "at build time", "at run time", "in advance"]
   - id: b3
     label: Give the case where it flips
-    seconds: 55
+    seconds: 35
     anchors: ["depends on what came back", "combinations", "every branch"]
   - id: b4
     label: Say what stays deterministic either way
-    seconds: 45
+    seconds: 30
     anchors: ["step budget", "allowlist", "validate", "same guardrails"]
   - id: b5
     label: Say how you would decide on their system
-    seconds: 40
+    seconds: 25
     anchors: ["count", "last quarter", "start with the workflow"]
 
 follow_ups:
