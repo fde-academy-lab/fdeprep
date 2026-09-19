@@ -19,6 +19,8 @@ The platform exists to produce one signal the placement side can trust: is this 
 1. [The system](#1-the-system)
 2. [Run it on your machine](#2-run-it-on-your-machine)
 3. [Deploy it for a beta cohort](#3-deploy-it-for-a-beta-cohort)
+   - [Route A: Vercel and managed Postgres](#3a-route-a-vercel-and-managed-postgres)
+   - [Route B: one AWS box](#3b-route-b-one-aws-box-no-subscriptions)
 4. [Maintain it](#4-maintain-it)
 5. [Fix it when it breaks](#5-fix-it-when-it-breaks)
 6. [What to use in code](#6-what-to-use-in-code)
@@ -377,9 +379,27 @@ cd infra && npm test        # 30 tests
 
 # 3. Deploy it for a beta cohort
 
-Read this whole section before starting. Steps 1 to 5 put a working product in front of students. Steps 6 and 7 are the ones people skip and then regret.
-
 **Nothing in this repository deploys itself.** No agent, no script and no CI job runs `cdk deploy`, `aws lambda update-function-code` or `vercel deploy`. A human runs every deploy, and that is a standing rule in `CLAUDE.md` rather than an accident.
+
+## Two routes, and how to pick
+
+There is no Vercel lock-in anywhere in this codebase: no `@vercel/*` package, no `VERCEL_*` variable, no platform-specific API. A production build serves fine under plain `next start`, so any box that runs Node can host it.
+
+| | Route A: Vercel and managed Postgres | Route B: one AWS box |
+|---|---|---|
+| What you sign up for | Vercel Pro and a Neon or Supabase project. | Nothing. It all sits in an AWS account you already have. |
+| Time to first screen | About thirty minutes. | About an hour. |
+| Who patches the server | Nobody, since there is no server. | You do. |
+| Rollback | One click in the Vercel dashboard. | `git checkout` the previous commit and rebuild. |
+| Suits | A beta with students, and anything you want to stop thinking about. | Your own testing, a demo to a company, a pilot with people you know by name. |
+
+Route B has a security limit that decides it for a real cohort. The last part of this section says exactly what that limit is, and skipping it would be the expensive kind of mistake.
+
+---
+
+# 3A. Route A: Vercel and managed Postgres
+
+Steps 1 to 5 put a working product in front of students. Steps 6 and 7 are the ones people skip and then regret.
 
 ## Read this before you pick a free tier
 
@@ -490,6 +510,112 @@ The infrastructure is written as CDK in `infra/` and the image build is `.github
 | An AWS Budgets alarm on the Bedrock line at 50 and 80 percent. | Ten minutes. | A prompt-injection attempt or an authoring mistake quietly costing real money. |
 
 Also worth doing once: restore the database to a new branch and verify against a known submission id. A restore that has never been run is not a restore.
+
+---
+
+# 3B. Route B: one AWS box, no subscriptions
+
+Everything on a single EC2 instance: the web application, the database, the worker and the grader. Nothing outside your own AWS account.
+
+```
+        ssh -L 3000:localhost:3000
+your laptop  ─────────────────────────►  one EC2 instance
+                                          ├── next start        the web application
+                                          ├── npm run worker    grading
+                                          ├── postgresql-16     or RDS, if you prefer
+                                          └── python3.12        runs the test battery
+                                                    │
+                                                    ▼  IAM instance role
+                                               Bedrock, for the rubric judge
+```
+
+## B1: launch the instance
+
+| Setting | Value | Why |
+|---|---|---|
+| AMI | Ubuntu 24.04 LTS | It ships Python 3.12 and PostgreSQL 16, which is what this needs and saves you two repositories. |
+| Type | t3.medium | `next build` is the memory-hungry step. This is a judgement rather than a measurement: 2 GB is where Next builds start failing, so if you want t3.small, add 2 GB of swap before you build. |
+| Disk | 20 GB gp3 | Dependencies, the build and Postgres. |
+| Security group | **SSH from your own address, and nothing else open.** | You reach the application through an SSH tunnel, which means no public port, no DNS record and no certificate to manage. |
+
+## B2: install the toolchain
+
+```bash
+sudo apt update
+sudo apt install -y python3.12-venv postgresql-16 git
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+```
+
+Node comes from NodeSource, documented at <https://github.com/nodesource/distributions>.
+
+## B3: clone, build and load
+
+```bash
+git clone https://github.com/fde-academy-lab/fdeprep.git && cd fdeprep
+python3.12 -m venv .venv && ./.venv/bin/pip install -r requirements-dev.txt
+
+sudo -u postgres createuser -s ubuntu && createdb fdeprep
+export DATABASE_URL="postgres:///fdeprep"
+
+cd web && npm ci
+npm run migrate
+npm run import:content
+NODE_ENV=production npx next build
+```
+
+## B4: sign in, and the trap that costs an hour
+
+`AUTH_DEV_LEARNER=1` behaves differently depending on how you start the server, and the difference is deliberate:
+
+| How you start it | The switch | What happens |
+|---|---|---|
+| `npm run dev` | Honoured | One development learner with the admin role, so every screen opens. |
+| `next start` with `NODE_ENV=production` | **Refused** | `/problems` answers 307 to `/signin?next=%2Fproblems`. |
+
+The guard is working. On a box, use real GitHub OAuth.
+
+**The tunnel makes this simple.** Your browser reaches the application at `http://localhost:3000`, so the OAuth callback is `http://localhost:3000/api/auth/callback` and GitHub accepts it with no DNS and no certificate. Register the application at <https://github.com/settings/developers>, then on the instance:
+
+```bash
+export NODE_ENV=production
+export AUTH_SECRET="$(openssl rand -base64 32)"
+export GITHUB_CLIENT_ID=...  GITHUB_CLIENT_SECRET=...  GITHUB_ORG=your-org
+
+npx next start        # terminal one
+npm run worker        # terminal two, or nothing ever grades
+```
+
+From your laptop, `ssh -L 3000:localhost:3000 ubuntu@<instance-ip>`, then open <http://localhost:3000>.
+
+Once it works, put both processes under `systemd` so they survive a reboot.
+
+## B5: the judge, when you want prompt and design problems graded
+
+Attach an instance role carrying `bedrock:InvokeModel`, then set `JUDGE_MODEL_ID` to an inference profile id such as `us.anthropic.claude-opus-5`, and `JUDGE_REGION` to your region. A bare model id is refused at start-up with a message naming the fix.
+
+Three prerequisites catch people out, all from the [Bedrock model access documentation](https://docs.aws.amazon.com/bedrock/latest/userguide/model-access.html) read on 19 September 2026:
+
+1. Anthropic models need a **First Time Use form** submitted once per account, or once at the organisation's management account. It asks for your intended use and a website URL, and a GitHub profile is acceptable if you have no company site.
+2. The account needs a **valid payment method** configured for AWS Marketplace. A spare account with no card attached fails here.
+3. The role needs `aws-marketplace:Subscribe` on the first invocation. Bedrock starts the subscription in the background and it can take up to fifteen minutes, during which calls return `AccessDeniedException`, so a first failure is not automatically a bug.
+
+**Skip all of that for a first look.** The 17 code problems grade with no AWS service at all, because the worker runs the battery as a local Python subprocess whenever `RUNNER_ENDPOINT` is unset. You get the whole loop of write, run, submit, verdict and trace without a single Bedrock call.
+
+## Where one box stops being acceptable
+
+The runner executes Python written by learners. The design puts that in a Lambda inside a VPC with no internet route, no Bedrock permission and no database write permission, and `infra/` already builds exactly that.
+
+On one box, learner code runs as a subprocess on the same machine as your database credentials and your Bedrock role. Two layers of defence sit in the Python itself: a static AST gate, and a runtime import blocker covering `subprocess`, `socket`, `os`, `ctypes`, `pickle` and about fifteen others. Those stop the obvious attacks. **Neither is a kernel boundary**, and somebody who can submit arbitrary Python is a real adversary rather than a hypothetical one.
+
+| Who is using it | One box | The Lambda split |
+|---|---|---|
+| You, testing it yourself | Fine. | Unnecessary. |
+| A demo to your own company | Fine. | Unnecessary. |
+| A pilot with people you know by name | Acceptable. | Better. |
+| A beta with students | **No.** | Yes. |
+
+Moving up is additive rather than a rebuild. Run `npx cdk deploy` from `infra/`, which creates the VPC, both Lambdas with separate roles, three queues with dead-letter queues and the S3 buckets, then set `RUNNER_ENDPOINT` and `JUDGE_ENDPOINT` on the box. Same instance, same commands, one boundary added.
 
 ---
 
