@@ -1,74 +1,799 @@
 # FDE Prep
 
-A practice and assessment platform for FDE Academy cohorts. Learners solve agent-engineering problems, edit system prompts, write design answers, and answer interview questions out loud. The platform produces a readiness signal the placement side can trust.
+A practice and assessment platform for FDE Academy cohorts. A learner opens a problem, writes code or edits a system prompt or writes a design answer or speaks an interview answer under a clock, submits it against tests they cannot see, and gets back a verdict plus a replayable trace of what their agent actually did.
 
-Built with Claude Code on the web against this repository.
+The platform exists to produce one signal the placement side can trust: is this learner ready for an agentic AI tech screen, and where specifically are they weak.
 
----
-
-## Start here
-
-1. Create the `fdeprep` cloud environment at <https://claude.ai/code>, pasting `scripts/cloud-setup.sh` into the setup script field.
-2. Start a session on this repository and run Session B from `PROMPTS.md`. It creates `.claude/` and `.gitignore`, which GitHub's web uploader cannot upload because their names start with a dot.
-3. Run Session 0 from `PROMPTS.md`, then the rest in order.
-
-`SETUP.md` has every field value and every link.
+| | |
+|---|---|
+| **Built** | 14 to 19 September 2026, twenty merged pull requests |
+| **Size** | 21,103 lines of TypeScript in the web application, 5,248 lines of Python in the runner and judge, 1,083 lines of CDK |
+| **Tests** | 685 across four suites, all green: 396 web, 233 Python, 30 infrastructure, 26 voice |
+| **Content** | 25 problems and 12 voice questions, each solved by its author before it shipped |
+| **State** | Runs end to end on a laptop. Not yet deployed anywhere. Section 3 is the deploy. |
 
 ---
 
-## What is in here
+## Contents
+
+1. [The system](#1-the-system)
+2. [Run it on your machine](#2-run-it-on-your-machine)
+3. [Deploy it for a beta cohort](#3-deploy-it-for-a-beta-cohort)
+4. [Maintain it](#4-maintain-it)
+5. [Fix it when it breaks](#5-fix-it-when-it-breaks)
+6. [What to use in code](#6-what-to-use-in-code)
+7. [How it was built: the PDLC log](#7-how-it-was-built-the-pdlc-log)
+8. [Roadmap](#8-roadmap)
+
+---
+
+# 1. The system
+
+## 1.1 The problem it solves
+
+An FDE tech screen asks a candidate to build an agent under time pressure and then defend the design out loud. Cohort training prepares people for the first half and almost nobody for the second. Worse, a training programme that grades its own learners on effort produces a readiness claim that placement teams learn to discount.
+
+FDE Prep separates practice from measurement. Practice is unlimited and free. Measurement is capped, deterministic and recorded, so a learner's readiness number means the same thing in week one and week nine.
+
+## 1.2 The one decision everything else follows from
+
+**Agent problems are graded against a scripted mock model, never a live one.**
+
+A learner writes `run_agent(question, llm, tools)`. At grading time `llm` is not a model. It is a lookup table that matches the prompt against authored rules and returns a pre-written response, recording every call in a trace.
+
+Four consequences, and they shape every other decision in this repository:
+
+| Consequence | What it buys |
+|---|---|
+| The same submission always produces the same verdict. | There are no appeals about randomness, and a learner who re-submits identical code cannot get a different mark. |
+| Grading costs no model tokens. | Two hundred learners can practise all night without anybody watching a bill. |
+| Learner code never reaches a model endpoint. | Token spend is bounded by construction rather than by a quota that someone has to monitor. |
+| A problem author writes the model's failures. | You can author a tool that returns HTTP 200 with an error in the body, and every learner meets that exact failure. |
+
+Live model runs exist as a separate, capped privilege at ten per learner per day. A live run produces a trace and never produces a pass or a fail, so nobody can farm the model for a verdict.
+
+## 1.3 Architecture in one diagram
+
+```mermaid
+graph TD
+  L[Learner browser] --> V[Next.js web application]
+  V --> G[GitHub OAuth plus org membership check]
+  V --> P[(PostgreSQL 16)]
+  V -->|outbox, one transaction| Q[Submissions queue]
+  Q --> R[Runner Lambda: executes learner code]
+  R --> T[S3 traces]
+  R --> RQ[Results queue]
+  RQ --> W[Result writer]
+  W --> P
+  V --> J[Judge Lambda: calls models]
+  J --> B[Amazon Bedrock]
+  V --> S[Voice socket: API Gateway WebSocket]
+  S --> TR[Amazon Transcribe]
+```
+
+**The two Lambdas never merge, and that is the security model.** The runner executes learner code and holds no Bedrock permission, no database write permission, and no internet route out of its VPC. The judge calls models and never executes learner code. Results travel between them through a queue, so neither one can be talked into doing the other's job.
+
+Everything the browser sends is treated as a claim rather than a fact. A sandbox id, an execution role, a model identifier, a storage path, a difficulty and a cap allowance are all resolved on the server from the enrolment and the problem version. The read-only styling on a prompt-surgery editor is an affordance for the learner, and the real edit-region check runs server-side.
+
+## 1.4 Where it came from
+
+Three lineages, and one thing deliberately not copied.
+
+| Source | What was taken |
+|---|---|
+| The judge-and-verdict loop familiar from competitive programming sites | The shape of the interaction, which is write, run against visible tests, submit against hidden ones, get a verdict. The grading philosophy is inverted: hidden tests here assert against a scripted model's trace rather than against program output alone. |
+| Aircraft instrument panels | The Voice Screen cockpit. A panel is readable because the pilot knows which instrument to look at first, so the cockpit allows exactly five live instruments with one primary, and colour carries state rather than decoration. |
+| Instructional scaffolding, the idea that support should fade as competence grows | The six-layer scaffold ladder in section 1.5, where difficulty decides which layers are switched on rather than which problems are visible. |
+
+**Not copied:** no code, markup, stylesheet or problem text comes from any existing interview-practice product. The visual identity is original, and every problem and question in `problems/` and `voice-questions/` was written for this repository.
+
+There is also an earlier build pack in `docs/source-pack/`, prepared by a different model on 14 September 2026. It chose DynamoDB, Cognito and a session-priced sandbox, and all three were replaced. `docs/09-SOURCE-PACK-RECONCILIATION.md` records what it got right (the outbox, the lease, the step protocol, and the observation that hidden does not mean unreadable), what was corrected, and why. Read that file before trusting anything in the source pack.
+
+## 1.5 The four artefact types
+
+Grading always runs cheapest and most deterministic first. A submission that fails a static check never reaches a model call.
+
+| Type | Learner produces | Gate 1 | Gate 2 | Gate 3 |
+|---|---|---|---|---|
+| `code` | A Python module against a stub. | Deterministic tests against the scripted mock model. | Hidden tests. | Adversarial battery. |
+| `prompt` | An edited system prompt with required deletions and additions. | Static checks on forbidden tokens, required clauses and length. | Probe battery at temperature 0, each probe with a programmatic assertion. | Rubric judge. |
+| `design` | A written architecture answer of 200 to 600 words. | Structural checks on length and required headings. | Rubric judge anchored on three graded exemplars. | Faculty override (not yet built, see section 8). |
+| `voice` | A spoken answer into a microphone under a clock. | Deterministic structure and pace from the transcript timeline. | Rubric judge over the final transcript. | Interviewer follow-up in Pressure mode. |
+
+### The scaffold ladder
+
+Six layers of support. Difficulty decides which are on, and never which problems are visible.
+
+| Layer | Content |
+|---|---|
+| L0 Brief | The scenario, the acceptance condition and the constraints. Always present. |
+| L1 Contract | The function signature, the input and output schema, the allowed imports and the call budget. |
+| L2 Stub | A skeleton file with ordered `# TODO` markers that map one to one onto the L3 steps. |
+| L3 Step checklist | Sub-tasks, each with a micro-check that turns green on its own, so progress shows before the whole battery passes. |
+| L4 Hints | Revealed one at a time. Every reveal is written to the attempt record and shown to faculty. |
+| L5 Reference walkthrough | The worked solution with commentary, unlocked on a pass or on a recorded give-up. |
+
+| Difficulty | Layers on | Hints | Test visibility | Extra rules |
+|---|---|---|---|---|
+| Easy | L0 to L3 | Free and unlimited. | Public test names and assertions are visible. | The acceptance rate is shown. |
+| Medium | L0 to L2 | Unlock after one failed run. | Public test names are visible and the hidden count is shown. | The acceptance rate is shown. |
+| Hard | L0, L1 | Unlock after two failed runs and a written attempt note of at least 200 characters. | Only the hidden count is shown. | The acceptance rate is hidden. |
+| Extreme | L0 only, blank editor | None, at any point. | Nothing. The learner writes their own tests first and those tests are stored. | Timed, one submit per 24 hours, adversarial battery always runs. |
+
+The attempt note on Hard is deliberate friction. It produces text a faculty member can read to see whether a learner is stuck on the concept or stuck on Python.
+
+## 1.6 What a learner sees
+
+Ten screens, specified as region maps in `docs/01-WIREFRAMES.md`. Three of them carry the product's identity, so they are reproduced here.
+
+### The code workspace, which is the primary screen
+
+```
++------------------------------------------------------------------+
+| < Problems | Recover from tool errors | Medium | Agent Loop       |
+|                                    Submits left today: 8          |
++---------------------------+--------------------------------------+
+| [Problem][Attempts][Trace]| solution.py            python 3.12    |
+|                           | +----------------------------------+  |
+| BRIEF                     | | 1  from harness import Harness   |  |
+| A tool in your pipeline   | | 2                                |  |
+| returns HTTP 200 with an  | | 3  def run_agent(question, llm,  |  |
+| error object in the body. | | 4                tools):        |  |
+| Your loop must detect it, | | 5      # TODO 1: call the model  |  |
+| retry once, then degrade  | | 6      pass                      |  |
+| gracefully.               | | 7                                |  |
+|                           | +----------------------------------+  |
+| CONTRACT                  |                                       |
+| run_agent(question: str,  | [ Reset ] [ Run ] [ Live run (7) ]    |
+|   llm, tools: dict) -> str|                    [ Submit ]         |
+| Budget: 6 model calls     +--------------------------------------+
+| Allowed imports: json, re | OUTPUT                                |
+|                           | Run complete, 3 of 4 public tests     |
+| STEPS                     | pass.                                 |
+| [x] 1 Call the model      |                                       |
+| [ ] 2 Parse the action    | v terminates_on_final     pass        |
+| [ ] 3 Detect soft errors  | v respects_call_budget    pass        |
+| [ ] 4 Degrade gracefully  | x detects_soft_error      fail        |
+|                           |   expected a retry, saw none          |
+| HINTS         [ reveal 1 ]|                                       |
++---------------------------+--------------------------------------+
+```
+
+Difficulty changes what renders in the left pane rather than which components exist. On Extreme the left pane holds the brief, a countdown and a panel demanding the learner's own tests before Submit will enable.
+
+### The Voice Screen cockpit
+
+```
++--------------------------------------------------------------+
+|  Explain how you guarantee an agent loop terminates    4:45   |
++--------------------------------------------------------------+
+|                                                              |
+|   [====|====|====|====|====]                                 |
+|    b1   b2   b3   b4   b5                                    |
+|    ok   ok   NOW  --   --                                    |
+|                                                              |
+|            +-------------------------+                       |
+|            |   ON BUDGET    0:38     |                       |
+|            +-------------------------+                       |
+|                                                              |
+|   territory   step budget · degrade · fallback · escalate    |
+|                                                              |
+|   ................ [ mic level ] ................            |
+|                                                              |
+|   > Say what happens when the budget runs out.               |
+|                                                              |
+|                                    [ Stop and debrief ]      |
++--------------------------------------------------------------+
+```
+
+Five live instruments and nothing else. The beat track is primary and everything else is peripheral. The pace band reads `ON BUDGET`, then `STRETCHING` past 130 percent of the beat's seconds, then `OVERRUN` past 175 percent. Territory terms brighten when the learner says them, which makes them landmarks rather than answers. The nudge slot carries one line at a time, at most nine words, with a twenty-second floor between nudges.
+
+**No transcript renders while a learner is speaking.** This is the strictest rule in the module and the one most likely to get built wrong by default, because a learner who can see their words reads them instead of thinking. Filler words get no live nudge either, since counting "um" at someone mid-sentence makes the rest of the answer worse. Both go in the debrief.
+
+### Progress, which is the readiness signal
+
+```
++------------------------------------------------------------------+
+| COMPETENCY HEATMAP                                                |
+|                     Easy   Medium   Hard   Extreme                |
+| agent-loop          [##]   [##]     [# ]   [  ]                   |
+| tool-schema-design  [##]   [# ]     [  ]   [  ]                   |
+| tool-error-handling [# ]   [  ]     [  ]   [  ]                   |
++------------------------------------------------------------------+
+| ATTEMPT HISTORY                                     [ export csv ]|
+| date | problem | verdict | submits | hints | budget | defence      |
++------------------------------------------------------------------+
+```
+
+Every cell holds one of four states: not attempted, attempted without a pass, passed, and passed with no hints and within budget. **Only the fourth state counts toward readiness.** A learner who passed a Hard problem after revealing three hints and burning double the call budget has learned something real and has not yet demonstrated readiness, and the heatmap says so without anybody having to write it down.
+
+## 1.7 What it can do today
+
+Everything below runs on a laptop with PostgreSQL and no cloud account.
+
+| Capability | Where |
+|---|---|
+| Sign in with GitHub, checked against organisation membership and an active enrolment. | `/signin` |
+| Browse 25 problems filtered by track, difficulty, type and status. | `/problems` |
+| Solve code problems in CodeMirror with the scaffold ladder applied by difficulty. | `/problems/[slug]` |
+| Run against public tests, submit against the full battery, watch the verdict arrive over SSE. | Same screen |
+| Edit a system prompt against static checks, a probe battery and a rubric judge. | Same screen, prompt problems |
+| Write a design argument graded against three exemplars. | Same screen, design problems |
+| Replay the trace of what the agent actually called, step by step. | `/traces/[id]` |
+| Answer a spoken interview question in guided, unguided or pressure mode. | `/voice/session` |
+| Read a voice debrief with beat timings, pace, filler counts and a rubric score. | `/voice/sessions/[id]` |
+| Sit a timed rehearsal under Extreme rules and get a report. | `/rehearsal` |
+| See the competency heatmap and export attempt history as CSV. | `/progress` |
+| Administer the roster, bulk-change personas from a CSV, read submissions, requeue a stuck one, and flip degraded mode. | `/admin/*` |
+
+Content authored and validated in CI:
+
+| | Count | Breakdown |
+|---|---|---|
+| Problems | 25 | 17 code, 5 prompt, 3 design. By difficulty: 8 Easy, 8 Medium, 6 Hard, 3 Extreme. |
+| Voice questions | 12 | Across five tracks: agent loop (3), client communication (3), evaluation design (2), system design (2), tool schema design (2). Budgets run 125 to 155 seconds. |
+
+Every code problem ships with a reference solution that passes and a naive solution that provably fails a hidden test. CI runs both, so a problem that a lazy answer would pass cannot merge.
+
+## 1.8 What it cannot do
+
+Read this section before promising anything to a cohort.
+
+### Never run against the real service
+
+Four integrations are written, unit-tested against recorded fixtures, and have never made a live call. Each one is a first-call risk.
+
+| Integration | State | What could go wrong on first contact |
+|---|---|---|
+| Bedrock rubric judge | Code complete, 233 Python tests green, `JUDGE_LIVE=1` never run. | A model id, a region, an inference profile prefix or the thinking-mode combination is wrong, and every design and prompt submission errors. |
+| Amazon Transcribe streaming | Adapter written against the documented API, exercised only through the scripted adapter. | The live stream shape differs and the cockpit shows a dead microphone. |
+| Amazon Polly | Pressure-mode follow-up audio. Never synthesised. | Follow-ups arrive as silence. |
+| S3 audio storage | Written, never exercised against a real bucket. | Voice sessions finish and the audio is unreachable. |
+
+**Spend one attempt on each before a learner does.** Section 3, step 7 says how.
+
+### Built to the specification and not yet beyond it
+
+| Gap | Effect |
+|---|---|
+| The baseline diagnostic that sets a learner's persona does not exist. An admin sets the persona by hand or by CSV. | Personas work. Nothing assigns them automatically. |
+| The faculty override on a design verdict is specified in `docs/00` section 3.1 and not implemented. | A rubric judge's score on a design answer is final. |
+| The Voice Screen has no question picker. A learner gets the first published question, or the one named in `?q=<slug>`. | Twelve questions are reachable by URL and one is reachable by clicking. |
+| `/admin/import` reads `problems/` from disk at request time, so it works locally and cannot work on Vercel. | Publishing content on a deployment is `npm run import:content`, run by an operator. Section 4 covers it. |
+| There is no mobile layout. | Explicitly a non-goal for v1 in `docs/00`. The three-pane workspace is usable and unpleasant on a phone. |
+
+### Operationally unproven
+
+| Drill | Why it matters |
+|---|---|
+| The database restore has never been run. | A restore procedure that has never been run is not a restore procedure. |
+| The 200-concurrent-submission burst test has never run against a deployment. `npm run burst` exists and has only run locally. | Peak load is roughly 30 concurrent submissions in the hour after a session ends, and that number is a projection rather than a measurement. |
+| There is one operator, and that operator also writes the curriculum. | The failure mode is a Tuesday evening where grading stops, 180 learners are blocked, and the one person who understands the queue is teaching. Section 4 names the two cheap controls. |
+
+---
+
+# 2. Run it on your machine
+
+Twenty minutes from clone to a working product, with no cloud account and no credit card.
+
+## 2.1 What you need
+
+| Requirement | Version | Check with |
+|---|---|---|
+| Node.js | 22 or newer | `node --version` |
+| Python | 3.12 | `python3 --version` |
+| PostgreSQL | 16 | `psql --version` |
+| Git | Any recent version | `git --version` |
+
+## 2.2 Six commands
+
+```bash
+git clone https://github.com/fde-academy-lab/fdeprep.git
+cd fdeprep
+
+# 1. Python, for the runner and the judge
+python3.12 -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+
+# 2. Node, for the web application
+cd web && npm ci
+
+# 3. A database
+createdb fdeprep
+export DATABASE_URL="postgres://localhost/fdeprep"
+
+# 4. Schema
+npm run migrate
+
+# 5. Content: 25 problems and 12 voice questions
+npm run import:content
+
+# 6. The application
+AUTH_DEV_LEARNER=1 npm run dev
+```
+
+Open <http://localhost:3000>.
+
+`AUTH_DEV_LEARNER=1` creates one development learner with the admin role, so every screen opens without a GitHub application. The switch refuses to work whenever `GITHUB_CLIENT_ID` is set and refuses outright when `NODE_ENV` is production, so it cannot follow you into a deployment.
+
+## 2.3 The second terminal, which is not optional
+
+Nothing grades until a worker drains the queue. A submission with no worker sits in `queued` forever, and the learner watches a spinner.
+
+```bash
+cd web && DATABASE_URL="postgres://localhost/fdeprep" npm run worker
+```
+
+One process runs the whole pipeline: it dispatches queued submissions, runs the battery as a Python subprocess, calls the judge, writes results, and reaps expired leases. Pass `--once` for a single pass, which is what CI uses.
+
+## 2.4 The Voice Screen, which needs a third and a fourth
+
+The voice socket is API Gateway in the cloud and a plain `ws` server on a developer machine. Both run the same session code.
+
+```bash
+# terminal 3: the socket
+cd voice && VOICE_STT=scripted VOICE_TOKEN_SECRET=pick-anything npm run dev
+
+# terminal 4: scoring, which fills in the debrief
+cd web && npm run scorevoice
+```
+
+Then restart the web application with the socket wired in:
+
+```bash
+cd web
+VOICE_TOKEN_SECRET=pick-anything VOICE_SOCKET_URL=ws://localhost:8787 \
+  AUTH_DEV_LEARNER=1 npm run dev
+```
+
+Accept at `/voice/consent`, then answer one at `/voice/session?mode=guided`.
+
+`VOICE_STT=scripted` produces placeholder words driven by how loud you are, which makes the whole pipeline visible with no AWS credential. The two `VOICE_TOKEN_SECRET` values have to match, because one end signs the session token and the other verifies it.
+
+## 2.5 Demonstrating it to a room
+
+A five-minute path that shows the product's actual argument rather than its screens.
+
+| Step | Screen | The point to make out loud |
+|---|---|---|
+| 1 | `/problems`, open an Easy code problem | The ladder is visible: brief, contract, stub, step checklist, free hints. |
+| 2 | Write a deliberately wrong loop and press **Run** | Three of four public tests pass, and the failing one names what it expected. |
+| 3 | Press **Submit** | Hidden and adversarial tests run. The adversarial fixture is reported by name with the assertion that failed and never with its script. |
+| 4 | Open the **Trace** tab | Here is what the agent actually called, in order, with the call budget. This is the thing a tech screen asks about and a pass or fail cannot show. |
+| 5 | Open an Extreme problem | Blank editor, a countdown, one submit per day, and a panel demanding the learner's own tests before Submit enables. |
+| 6 | `/voice/session?mode=guided` | Answer for thirty seconds and stop. The beat track moved, no transcript appeared, and the debrief has beat timings, pace and filler counts. |
+| 7 | `/progress` | Four cell states, and only the fourth counts. This is the number placement gets. |
+
+## 2.6 Run the tests
+
+```bash
+cd web   && npm test        # 396 tests
+cd ../   && python -m pytest -q   # 233 tests
+cd voice && npm test        # 26 tests
+cd infra && npm test        # 30 tests
+```
+
+---
+
+# 3. Deploy it for a beta cohort
+
+Read this whole section before starting. Steps 1 to 5 put a working product in front of students. Steps 6 and 7 are the ones people skip and then regret.
+
+**Nothing in this repository deploys itself.** No agent, no script and no CI job runs `cdk deploy`, `aws lambda update-function-code` or `vercel deploy`. A human runs every deploy, and that is a standing rule in `CLAUDE.md` rather than an accident.
+
+## Read this before you pick a free tier
+
+**Vercel's Hobby plan cannot host this.** Its fair use guidelines say Hobby teams are "restricted to non-commercial personal use only", and it defines commercial usage as any deployment "used for the purpose of financial gain of anyone involved in any part of the production of the project, including a paid employee or consultant writing the code". A practice platform for a paid academy's students is commercial under that definition, whether or not the platform itself charges anybody. Deploying on Hobby risks the account being paused mid-cohort.
+
+**Vercel Pro is the plan this needs.** Listed at $20 per month for the team, with additional developer seats at $20 each and unlimited viewer seats. Verified against <https://vercel.com/pricing> and <https://vercel.com/docs/limits/fair-use-guidelines> on 19 September 2026. Re-check both before committing budget, since these change.
+
+## What a beta costs and what it needs
+
+| Piece | Service | Beta cost | Needed for |
+|---|---|---|---|
+| Web application | Vercel Pro | $20 per month for the team. Hobby is not an option, for the reason above. | Everything. |
+| Database | Neon or Supabase, managed PostgreSQL 16 | Neon's Free plan gives 0.5 GB of storage and 100 compute-unit hours per project per month, and Neon positions it for prototypes and small teams rather than production. Nothing in its terms forbids commercial use. Start there and watch storage. | Everything. |
+| Worker | Any box that can run Node, including a small VM or your own laptop for a first beta. | Cents, or nothing. | Grading. Without it no submission ever resolves. |
+| Runner and judge Lambdas | AWS | Near zero at this volume, since Lambda has no idle cost. | Deterministic grading at scale, and the rubric judge. |
+| Bedrock | AWS | Token spend on prompt, design and voice grading only. Code problems cost nothing. | The rubric judge. |
+| Voice socket, Transcribe, Polly, S3 | AWS | Per-minute on Transcribe, per-character on Polly. | The Voice Screen with a real microphone. |
+
+Neon's free computes scale to zero after five minutes of inactivity, so the first learner of the morning waits through a cold start. That is an acceptable beta trade and a bad cohort-day trade.
+
+**A first beta can skip AWS entirely.** Deploy the web application, the database and the worker, and run code problems only. The worker executes the battery as a local Python subprocess when `RUNNER_ENDPOINT` is unset, so 17 of the 25 problems grade with no AWS account at all. Add AWS when you want the rubric judge and the Voice Screen.
+
+## Step 1: the database
+
+1. Create a project at <https://neon.com> or <https://supabase.com>. Either works. Pick the region closest to your learners.
+2. Copy the connection string. It looks like `postgres://user:password@host/dbname?sslmode=require`.
+3. Keep it somewhere safe. It is a credential, so it never goes in the repository.
+
+## Step 2: the GitHub OAuth application
+
+1. Go to <https://github.com/settings/developers>, then **New OAuth App**.
+2. Fill it in:
+
+   | Field | Value |
+   |---|---|
+   | Application name | FDE Prep |
+   | Homepage URL | Your Vercel URL, which you will get in step 3. Put a placeholder now and correct it after. |
+   | Authorization callback URL | `https://your-app.vercel.app/api/auth/callback` |
+
+3. The callback URL must match exactly, including the scheme and any port. A mismatch is the single most common sign-in failure.
+4. Generate a client secret and copy both values.
+
+## Step 3: Vercel
+
+1. Put the team on the **Pro** plan first, for the licensing reason above. Doing this before the first deploy avoids moving a live project later.
+2. Go to <https://vercel.com/new> and import `fde-academy-lab/fdeprep`.
+3. **Set the root directory to `web`.** The repository root is not a Next.js project, so a deploy without this fails at build.
+4. Add these environment variables:
+
+   | Variable | Value | Notes |
+   |---|---|---|
+   | `DATABASE_URL` | From step 1. | |
+   | `AUTH_SECRET` | `openssl rand -base64 32` | Signs the session cookie. Changing it signs everybody out. |
+   | `GITHUB_CLIENT_ID` | From step 2. | |
+   | `GITHUB_CLIENT_SECRET` | From step 2. | A secret. Environment only, never the repository. |
+   | `GITHUB_ORG` | Your organisation login. | Optional. Defaults to `FDE-Academy-Hub`. |
+
+5. Deploy. Copy the URL Vercel gives you back into the OAuth application's Homepage and callback fields from step 2.
+
+**Do not set `AUTH_DEV_LEARNER` here.** It is refused when `NODE_ENV` is production and refused when `GITHUB_CLIENT_ID` is set, so it cannot do damage, and setting it means somebody misread this document.
+
+## Step 4: schema and content
+
+Both commands run from your machine against the production database. Nothing in the deployed application can do this, by design.
+
+```bash
+cd web
+export DATABASE_URL="<the production connection string>"
+npm run migrate
+npm run import:content
+```
+
+Expect `published 25 problems and 12 voice questions`. Re-run it after every content change; it updates in place and duplicates nothing.
+
+## Step 5: the worker
+
+Nothing grades without it. One process, one environment variable.
+
+```bash
+cd web
+DATABASE_URL="<production>" npm run worker
+```
+
+For a first beta, a `systemd` service or a `tmux` session on a small VM is enough. Anything that restarts it on exit will do. Confirm it is alive by submitting once and watching the verdict arrive.
+
+## Step 6: the roster, before students arrive
+
+1. Invite every learner to the GitHub organisation. Sign-in failures on day one are almost always somebody who never accepted the invitation.
+2. Create the cohort row and an active enrolment per learner.
+3. Set each enrolment's persona. Use the CSV upload on `/admin/roster`, which takes a login column and a persona column and writes every change to the audit log.
+4. Sign in as a learner yourself and open one problem at each difficulty. Four minutes, and it catches everything.
+
+## Step 7: AWS, when you want the judge and the Voice Screen
+
+The infrastructure is written as CDK in `infra/` and the image build is `.github/workflows/deploy.yml`. **A human runs the deploy.**
+
+1. Bootstrap CDK in your account and region, then `npx cdk deploy` from `infra/`. Read `docs/05-DEPLOY-AND-OPS.md` section 4 first.
+2. Set `JUDGE_MODEL_ID` to a Bedrock inference profile id, for example `us.anthropic.claude-opus-5`. A bare model id is refused at start-up with an error that says why, because on-demand throughput on `bedrock-runtime` needs a geo or global profile prefix. Verified against AWS documentation on 14 September 2026.
+3. Point the web application at the deployed functions with `JUDGE_ENDPOINT` and `RUNNER_ENDPOINT`.
+4. For voice, set `VOICE_SOCKET_URL` to the API Gateway WebSocket URL and `VOICE_TOKEN_SECRET` to the same value on both ends.
+5. **Spend one attempt on each live integration yourself.** Submit one design problem to prove the judge, and answer one voice question with a real microphone to prove Transcribe. These four integrations have never made a live call, so the first learner to touch them is otherwise your first test.
+
+## Step 8: the two things people skip
+
+| Control | Effort | What it prevents |
+|---|---|---|
+| A second person with console access, the runbook in `docs/05` section 7, and one practice drill. | An afternoon. | A Tuesday evening with 180 blocked learners and the only operator teaching. |
+| An AWS Budgets alarm on the Bedrock line at 50 and 80 percent. | Ten minutes. | A prompt-injection attempt or an authoring mistake quietly costing real money. |
+
+Also worth doing once: restore the database to a new branch and verify against a known submission id. A restore that has never been run is not a restore.
+
+---
+
+# 4. Maintain it
+
+## 4.1 The weekly rhythm
+
+| Cadence | Task | How |
+|---|---|---|
+| Daily during a cohort | Glance at `/admin/ops` for queue depth, runner error rate and live-run token spend. | One screen, ten seconds. |
+| After every content change | Republish. | `npm run import:content` against the production database. |
+| Weekly | Read the attempt notes on Hard problems. | They are the cheapest signal you have about whether a cohort is stuck on the concept or on Python. |
+| Per cohort | Run the roster checklist in section 3 step 6. | |
+
+## 4.2 Changing content
+
+A problem or a voice question is a YAML file. Nothing about content lives in the database except a published copy.
+
+```bash
+# edit problems/agent-loop/recover-from-soft-tool-errors.yaml
+cd web
+npm run validate:problems      # the same gate CI runs
+npm run import:content         # publish
+```
+
+CI validates every problem and every voice question on every pull request, so a broken file cannot reach the import step. That is deliberate: a problem should never fail at run time in front of a learner who is already solving it.
+
+To author a new one, use the `problem-authoring` or `voice-question-authoring` skill in `.claude/skills/`. Both enforce the rules that matter, including the requirement that a naive solution provably fails a hidden test.
+
+## 4.3 Changing the schema
+
+```bash
+# add web/migrations/014_whatever.sql
+cd web && npm run migrate
+```
+
+**Every migration stays backward compatible for one release.** Add a column before anything writes to it, and drop it a release later. Rollback has to remain possible, and the web application rolls back from the Vercel dashboard in one click while the database does not.
+
+## 4.4 Changing grading
+
+Judge prompts are files in `judge/prompts/`, versioned as `rubric.v1.md` and so on. They are never in the database, so changing how a cohort is graded is a code review rather than a form submission. There is currently no mechanism for re-grading past submissions against a new prompt version, which matters if you change one mid-cohort.
+
+## 4.5 What degraded mode is for
+
+`/admin/ops` has a toggle that disables Submit and leaves Run working. Learners keep practising against public tests while grading is down, and nobody loses an attempt. Flip it the moment grading looks unhealthy rather than after you have diagnosed why. It turns an outage into an inconvenience.
+
+---
+
+# 5. Fix it when it breaks
+
+## 5.1 The three questions, in order
+
+1. **Is the worker running?** Most reported faults are a dead worker. Check the process, then check `/admin/ops` for queue depth.
+2. **Is it one learner or all of them?** One learner is usually enrolment or organisation membership. All learners is the queue, the database or a deploy.
+3. **Did anything deploy in the last hour?** Vercel rolls back in one click from its dashboard.
+
+## 5.2 Symptoms and causes
+
+| Symptom | Likely cause | Fix |
+|---|---|---|
+| A submission sits in `queued` forever. | No worker is draining the queue, or the message was lost. | Start the worker. If the queue depth is zero and the row is over five minutes old, use the requeue action on `/admin/submissions`. It writes a fresh message and does not consume the learner's cap. |
+| Every page redirects to `/signin`. | No session cookie, or `AUTH_SECRET` changed and signed everybody out. | Sign in again. If it loops, the callback URL does not match the OAuth application exactly. |
+| "Your GitHub account is not in the FDE Academy organisation yet." | They were invited and never accepted. | The programme manager re-invites. |
+| "Your account is not enrolled in an active cohort." | Organisation membership is fine and there is no enrolment row. | The cohort lead adds one. |
+| A learner lost an Extreme attempt to a platform fault. | This should be impossible, since an `error` verdict does not consume an allowance and that is tested rather than assumed. | If it happened anyway, clear the counter row for that learner, scope and window on `/admin/ops`, and log the reason. The audit trail is the point. |
+| Every design or prompt submission returns `error`. | The judge cannot reach Bedrock, or `JUDGE_MODEL_ID` is a bare model id. | Check the Lambda logs. A bare id fails at start-up with a message that names the fix. |
+| The voice cockpit shows a dead microphone. | The socket is unreachable, or the two `VOICE_TOKEN_SECRET` values differ. | Check both ends. `/voice/lab` is a bare transport check that prints transcripts to the browser console and shows them nowhere. |
+| The Voice Screen serves the wrong question. | Content was never imported, so it fell back to the `docs/07` fixture. | `npm run import:content`. The fixture's prompt mentions spinning forever in production, which is how you recognise it. |
+| `next build` fails on `/_global-error` with a null `useContext`. | `NODE_ENV` is set to `development` in the shell. | `NODE_ENV=production npx next build`. |
+| A local run cannot find Python. | The runner subprocess resolves `.venv` then `python3`. | Set `RUNNER_PYTHON` to an explicit interpreter path. |
+
+## 5.3 Reading a failure properly
+
+The trace is the diagnostic, not the verdict. Open `/traces/[id]` and read what the agent actually called. A submission that failed `respects_call_budget` and a submission that failed `detects_soft_error` look identical in the verdict column and nothing alike in the trace.
+
+For a runner fault, the result contract in `docs/03-RUNNER-AND-GRADING.md` is the only thing the front end renders from. If a verdict looks wrong on screen, check the contract before checking the component: presentation logic is deliberately kept out of grading, so a rendering bug and a grading bug live in different files.
+
+## 5.4 When it is the platform's fault
+
+An `error` verdict never consumes a learner's allowance. This is the rule that keeps the whole readiness signal trustworthy, because a learner who loses their one daily Extreme attempt to an infrastructure fault stops believing every score they are given afterwards. It is enforced in code and covered by tests. If you ever find a path that consumes an allowance on an error, that is a release-blocking bug rather than a nuisance.
+
+---
+
+# 6. What to use in code
+
+## 6.1 The stack, and why each piece
+
+| Layer | Choice | Why |
+|---|---|---|
+| Web | Next.js 16.3.5 App Router, React 19, TypeScript strict with `noUncheckedIndexedAccess` | Preview deployment per branch, no server to patch, one-click rollback. |
+| Styling | Tailwind 4 | No component library, so the visual identity stays original. |
+| Editor | CodeMirror 6 with Python mode | No model-backed autocomplete and no inline assistant, because the learner is the one being assessed. |
+| Database | PostgreSQL 16 through `pg` | The workload is joins and aggregates: heatmaps, rollups, stuck lists, CSV exports. |
+| Runner and judge | Python 3.12 on Lambda container images | Zero idle cost, a hard kill on hang, one invocation per submission with no shared state. |
+| Voice socket | TypeScript on API Gateway WebSocket, plain `ws` locally | The same session code runs in both, so local development exercises the real thing. |
+| Tests | vitest for TypeScript, pytest for Python | 685 tests total. |
+
+**Do not introduce a third language.** TypeScript for the web, Python for the runner and judge, and that is the whole list.
+
+**Do not add a dependency that duplicates one already present.** Say what you would add and why before adding it. The current dependency list is short on purpose.
+
+## 6.2 The rules that are enforced rather than remembered
+
+| Rule | How it is enforced |
+|---|---|
+| No component reads `difficulty` directly. Everything asks the policy module. | A custom ESLint rule, `fdeprep/no-direct-difficulty`, set to error in `web/eslint.config.js`. |
+| Problem YAML is validated in CI, not at import. | `npm run validate:problems` and `npm run validate:voice` run on every pull request. |
+| Every new assertion type ships with a fixture, a unit test and a validator entry. | Review, plus the validator failing on an unknown type. |
+| A terminal verdict is committed with a compare-and-set on the runner's lease. | Tested. It stops a late or duplicated runner overwriting a fresh result. |
+| The submission row, the cap decrement and the queue message are written in one transaction through an outbox. | Tested. Without it a submission exists with no message and hangs forever. |
+
+## 6.3 The boundaries that are not negotiable
+
+These live in `.claude/rules/01-trust-boundaries.md`. Weakening one is a change to the security model and needs saying out loud in the pull request.
+
+- **The two Lambdas never merge.** If a task seems to need learner code to call a model, use the step protocol in `docs/03` section 9.4 instead.
+- **Hidden means unpublished, not unreadable.** Learner code can read anything staged into its own process, so stage one case or a bounded batch per invocation and never stage an expected output next to an input. Comparison happens in the trusted evaluator, outside the sandbox.
+- **The harness objects are staged, so their internals are closed.** The static gate rejects a private attribute read on anything other than `self`, `cls` or `super()`. `llm._script` would turn a problem into a lookup and `llm._trace` would let a solution write tool calls that never happened.
+- **Never trust learner-reported anything.** Pass counts, timings and result summaries printed by learner code are strings rather than facts.
+- **Client input is never authoritative.** A sandbox id, an execution role, a model identifier, a storage path, a difficulty and a cap allowance are all resolved server-side.
+- **Prompt injection reaches the judge as data.** Learner text is wrapped in delimiters and labelled as data, and judge output is parsed as JSON against a schema and rejected when it does not conform. A design answer asking for full marks scores on content.
+
+## 6.4 Writing style, for anything a person reads
+
+From `.claude/rules/02-writing.md`, and it applies to learner copy, error messages, empty states and pull request bodies.
+
+- **Error messages name the next action.** "Submission failed" is not a message. "The runner timed out after 10 seconds. Your attempt was not counted. Try again." is a message.
+- **Never use "beginner".** Never call the baseline diagnostic a test. Difficulty labels are Easy, Medium, Hard and Extreme, and nothing else.
+- **Pick one noun and repeat it.** Repetition reads as rigour and variation reads as uncertainty.
+- Avoid the AI register: delve, leverage as a verb, robust, seamless, holistic, unlock, elevate, crucial, pivotal, myriad, plethora.
+
+## 6.5 Verify before you assert
+
+Library APIs, AWS service surfaces and model identifiers change. Check current documentation before writing against one and say in the pull request which version you verified against. This bites hardest on the Amazon Transcribe streaming API, API Gateway WebSocket limits, the Bedrock model identifiers and the Lambda container image contract.
+
+If documentation and memory disagree, documentation wins. `judge/config.py` carries its verification date and the two documentation URLs it was checked against, which is the pattern to copy.
+
+## 6.6 The working style that produced this
+
+Write the acceptance tests first, before the implementation. Tests written after the code test the code that exists rather than the behaviour required. Every phase in section 7 started that way, and it is the single practice most responsible for the suite being green rather than green-ish.
+
+---
+
+# 7. How it was built: the PDLC log
+
+Six days, twenty pull requests, one agent pair-building against a specification written before any code. What follows is the honest version, including the parts that went wrong.
+
+## 7.1 The shape
+
+```
+Specification (10 documents, 2,843 lines)
+        |
+        v
+Phase 0  Foundations: rules, skills, CI, environment
+        |
+        v
+Phase 1  The runner, alone           PR #1
+Phase 2  Problems and the workspace  PR #2
+Phase 3  The ladder, caps, steps     PR #3
+Phase 4  Prompt surgery and judge    PR #4
+Phase 5  Tracks, progress, traces    PR #6
+Phase 6  Rehearsal, admin, ops, CDK  PR #7
+Phase 7  Voice Screen (a, b, c)      PR #8, #9, #10
+Phase 8  Content: 25 + 12            PR #11
+        |
+        v
+Corrections found by reading         PR #5, #12, #13
+Corrections found by measuring       PR #14, #15, #16
+Corrections found by RUNNING IT      PR #17, #18, #19, #20
+```
+
+The last row is the interesting one and section 7.4 is about it.
+
+## 7.2 Specification first, and what that cost
+
+Ten numbered documents were written before any code: the product contract, the wireframes, the data model, the runner and grading contract, the problem authoring schema, deploy and ops, the build plan, the Voice Screen, the design system, and a reconciliation of an earlier build pack from a different model.
+
+The rule was that the specification is authoritative and a disagreement gets raised rather than silently resolved. That produced three pull requests whose entire content was correcting a specification:
+
+| PR | What was wrong |
+|---|---|
+| #5 | `docs/03` specified a seed and a `top_p` that the judge's own thinking mode makes illegal to send together. |
+| #12 | The static gate let learner code read a private attribute on a staged harness object, which turns a problem into a lookup. |
+| #13 | `docs/04` item 5 disagreed with the worked example in the same document. |
+
+**The cost of specification-first is that you write 2,843 lines before you learn anything from running code.** The benefit showed up in phase 7, where the Voice Screen's hardest rule (no transcript while speaking) was written down before anybody built a cockpit, so it never had to be undone.
+
+## 7.3 Tests before implementation, every phase
+
+Every phase in `docs/06-BUILD-PLAN.md` opens with "write the acceptance tests first". That held for all nine.
+
+It caught things that would have been invisible otherwise. The burst test in phase 3 exists because the acceptance criteria demanded 200 concurrent submissions before the submit path was written, so the outbox and the lease were designed against that number rather than retrofitted to it.
+
+It also produced one honest failure worth recording. In PR #20 a test asserting that a removed beat is dropped from the database failed, because removing a beat takes a question to three and the validator refuses fewer than four. The test was wrong and the validator was right, so the test now renames a beat instead. A test that fails because the system is correct is a good day.
+
+## 7.4 The four things only running it could find
+
+Phases 1 to 8 produced a system that passed 685 tests and had never been used. Then someone asked to see it running, and four faults surfaced in a single afternoon. Each one would have broken the beta on day one.
+
+| # | What was wrong | How it was found | Fixed in |
+|---|---|---|---|
+| 1 | **There was no authentication at all.** Every visitor resolved to the first enrolment row, which had been created with the admin role. Two learners were one person, and every learner was an administrator. | Opening the application in a browser and noticing nobody was asked who they were. | PR #17 |
+| 2 | **Two documented npm scripts pointed at files that never existed.** `dispatch` and `resultwriter` were in `package.json` and in the setup document. Nothing drained the queue. | Trying to grade a submission. | PR #18 |
+| 3 | **`/admin/import` cannot work on a deployment.** It reads `problems/` from disk at request time. A production build traced 176 files for that route and zero problem YAML, and the documented fix is refused: Next rejects an `outputFileTracingIncludes` glob with a `../` prefix, and `problems/` sits above `web/`. | Building for production and reading the route's own trace manifest. | PR #20 |
+| 4 | **The twelve voice questions were loaded nowhere.** They were authored in phase 8, validated in CI, and had no importer. `/voice/session` was hardcoded to the `docs/07` worked example. | Trying to demonstrate the Voice Screen. | PR #20 |
+
+**The lesson, stated plainly: a green test suite is evidence that the code does what the tests say, and no evidence at all that the product works.** Fault 1 had 396 passing tests around it. Fault 4 had a validator, a CI job and twelve carefully authored files, and not one line of code that read them.
+
+## 7.5 Measuring instead of assuming
+
+Three pull requests came from measurement, and the method is worth keeping.
+
+**PR #14: the voice budgets were a third too generous.** Every voice question's seconds-per-beat had been written from an assumed speaking rate. Reading exemplars aloud and timing them put the real rate near 138 words per minute, so every budget dropped by a third.
+
+**PR #15: a validator rule to stop it recurring.** A beat's share of the clock should be near its share of the words. The rule allows a 2.5-times band in either direction, which is loose on purpose: it catches an authoring mistake and does not argue with a deliberate pause.
+
+**PR #16: rebalancing what the rule caught.** Six questions had beats whose seconds and words disagreed badly, including one where a 15-second beat carried the argument.
+
+One mistake in that sequence is worth recording, because it nearly shipped. The first method for splitting a transcript across beats cut at anchor positions, which structurally over-credits the first beat and starves the last. It manufactured a clean "beat one is always too tight" pattern that was an artefact of the measurement rather than a fact about the content. **Re-measuring with a different method and reporting only what both methods agreed on** is what caught it. A measurement that confirms your hypothesis suspiciously neatly deserves a second method before it deserves a pull request.
+
+## 7.6 One process failure
+
+During PR #17 a `git checkout -B` against `origin/main` discarded an unpushed commit holding the queue worker. The recovery was a force-push, which was blocked, so the worker went out as a separate pull request (#18) and #17 was retitled.
+
+Recorded here because the fix is procedural rather than clever: check whether a branch holds unmerged commits before resetting it, which is one `git log origin/main..branch` away.
+
+A second one, from the same day: PR #17 shipped a proxy that blocked `AUTH_DEV_LEARNER=1`, breaking the documented local workflow. The verification for #17 covered signed-out and signed-in and skipped the path in between. It was found by trying to run the import on a machine with no GitHub application, and fixed in PR #19 with a regression test.
+
+## 7.7 What the specification got right
+
+Worth naming, because six days of building tested it hard.
+
+| Decision | Held up because |
+|---|---|
+| Deterministic grading against a scripted mock model. | It removed an entire category of problem: no appeals about randomness, no token bill that scales with practice, no flaky verdicts. |
+| The outbox between the database write and the queue publish. | It is the reason a submission cannot exist without a message, which is the failure the source pack warned about. |
+| Hidden means unpublished rather than unreadable. | It is a subtle point that is easy to get wrong and expensive to discover late, and it was written down before any fixture was staged. |
+| One policy module, with an ESLint rule enforcing it. | Difficulty behaviour changed four times during the build and every change was one file. |
+| Judge prompts as files rather than database rows. | Changing how a cohort is graded stayed a code review throughout. |
+
+---
+
+# 8. Roadmap
+
+Three horizons. Everything in short term is a known gap with a known fix, and nothing in it is speculative.
+
+## 8.1 Short term: before a beta cohort touches it
+
+| Item | Effort | Why it is first |
+|---|---|---|
+| Prove the Bedrock judge with one live submission. | An hour. | Four integrations have never made a live call. The first learner to touch one is otherwise your first test. |
+| Prove Transcribe, Polly and S3 audio with one real voice session. | An hour. | Same reason. A dead microphone in a timed interview is the worst possible place to discover an adapter bug. |
+| Run the database restore drill once. | A morning. | A restore that has never been run is not a restore. |
+| Brief a second operator and run one practice drill. | An afternoon. | One operator who also writes the curriculum is the single largest operational risk in this build. |
+| Set the AWS Budgets alarm on the Bedrock line at 50 and 80 percent. | Ten minutes. | It is the only thing standing between an authoring mistake and a real bill. |
+| Run the 200-concurrent burst test against staging. | An hour. | Peak load is a projection. `npm run burst` exists and has only run locally. |
+| Add a question picker to the Voice Screen. | Half a day. | Twelve questions are reachable by URL and one by clicking, which is not a product. |
+
+## 8.2 Mid term: during the first cohort
+
+| Item | What it fixes |
+|---|---|
+| A baseline diagnostic that sets a learner's persona. | Personas work today and nothing assigns them. An admin sets them by hand or by CSV, which does not scale past one cohort. |
+| The faculty override on a design verdict. | Specified in `docs/00` section 3.1 and never built. A rubric judge's score on a written answer is currently final, which is the wrong default for a human-judgement artefact. |
+| Re-grading past submissions against a new judge prompt version. | There is no mechanism today, which means changing a prompt mid-cohort leaves two populations graded differently with nothing recording that. |
+| A replacement for `/admin/import` that works on a deployment. | Content publishing is an operator command today. That is correct and it is also a person who has to be awake. |
+| Cohort-level analytics beyond the per-learner heatmap. | The heatmap answers "is this learner ready". Nobody can currently answer "which topic did this cohort fail" without SQL. |
+| More content, driven by what the cohort actually fails. | 25 problems is a launch set rather than a catalogue. `docs/source-pack/05-problem-catalog.json` holds topic material. Do not treat a count as a goal. |
+
+## 8.3 Long term: what a second version would be
+
+| Item | The argument for it |
+|---|---|
+| The browser problem family, where a learner's agent drives a real browser to fill a form or extract data. | This is the one case where a richer sandbox earns its cost, and `docs/09` names AgentCore Browser as the tool. The `RunnerAdapter` seam already exists to make this reversible. |
+| A placement-facing export rather than a CSV. | The platform's whole purpose is a signal the placement side trusts. Today that signal leaves as a CSV, which means somebody re-interprets it every time. |
+| Multi-cohort and multi-track at once. | The schema supports cohorts and tracks. Nothing in the interface assumes more than one of either, and the first time two cohorts run concurrently that will show. |
+| Peer review on design answers. | A rubric judge scores a design argument against exemplars. A second learner reading it is a different signal and a cheaper one. |
+| A mobile reading view, without the workspace. | The three-pane workspace stays desktop. Reading a brief, checking progress and reviewing a debrief on a phone are all reasonable and none of them need an editor. |
+
+## 8.4 What should stay deliberately unbuilt
+
+Named because a roadmap that only grows is a roadmap nobody trusts.
+
+- **Free and paid tiers.** Every problem is visible to every enrolled learner, and adding a tier adds a reason to argue about access instead of about answers.
+- **A discussion forum.** GitHub is already the delivery platform and already has one.
+- **Live model grading as the default path.** It produces non-deterministic verdicts, appeals nobody can answer, and a bill that scales with practice. The capped live run exists for exploration and produces no verdict, which is the right shape.
+- **A mobile workspace.** A three-pane editor on a phone is a worse version of a thing that already works on a laptop.
+
+---
+
+## Where everything lives
 
 | Path | What it is |
 |---|---|
-| `CLAUDE.md` | Loads into every Claude Code session. Standing rules, stack, what not to do. |
-| `SETUP.md` | Step by step: repository, GitHub App, cloud environment, credentials, skills, build order. |
-| `PROMPTS.md` | One prompt per build session, eleven of them. |
-| `.claude/rules/` | Trust boundaries and writing rules. Load automatically. |
-| `.claude/skills/` | Three skills this build uses: problem authoring, voice question authoring, spec check. |
-| `scripts/cloud-setup.sh` | Paste into the cloud environment dialog. Toolchain, databases, fonts, Playwright. |
-| `scripts/install_pkgs.sh` | SessionStart hook. Starts services and installs dependencies each session. |
-| `scripts/sync-skills.sh` | Run locally to vendor third-party skills, pinned to reviewed commits. |
-| `docs/` | The specification. Ten numbered documents plus the earlier source pack. |
+| `web/` | The Next.js application, 17 pages and 24 API routes. |
+| `runner/` | The Python battery, harness and static gate. Executes learner code and reaches nothing else. |
+| `judge/` | The Bedrock judge, with its prompts as versioned files. |
+| `voice/` | The voice session socket, its STT adapters and the session protocol. |
+| `infra/` | CDK for the Lambdas, the queues, the buckets and the WebSocket. |
+| `problems/` | 25 problems as YAML, plus fixtures under `_fixtures/` that never publish. |
+| `voice-questions/` | 12 questions as YAML across five tracks. |
+| `docs/` | The specification, which is authoritative. Ten numbered documents. |
+| `.claude/rules/` | Trust boundaries and writing rules, loaded into every session. |
+| `SETUP.md` | Every field value and every link for the build environment. |
+| `CLAUDE.md` | The standing rules, the stack, and what not to do. |
 
----
-
-## The specification
-
-Read in this order when starting a phase.
-
-| Document | Covers |
-|---|---|
-| `docs/00-PRD.md` | Product contract, personas, artefact types, the scaffold ladder, rate caps, acceptance |
-| `docs/01-WIREFRAMES.md` | Ten screens as region maps plus behaviour |
-| `docs/02-DATA-MODEL.md` | Postgres schema, rate limit policy, competency scoring, retention |
-| `docs/03-RUNNER-AND-GRADING.md` | Mock LLM contract, adversarial fixtures, grading pipeline, result contract, security, and four corrections in section 9 |
-| `docs/04-PROBLEM-AUTHORING.md` | Problem YAML schema, validator rules, three worked problems, authoring checklist |
-| `docs/05-DEPLOY-AND-OPS.md` | Architecture, environments, cost shape, alarms, runbook |
-| `docs/06-BUILD-PLAN.md` | Nine phases with acceptance criteria and what to cut if the runway compresses |
-| `docs/07-VOICE-SCREEN.md` | The voice interview simulator: guided cockpit, unguided, pressure mode, scoring, privacy |
-| `docs/08-DESIGN-SYSTEM.md` | Type, colour, icons, motion, density, accessibility floor, licensing |
-| `docs/09-SOURCE-PACK-RECONCILIATION.md` | What the earlier pack got right, what was corrected, what to reuse |
-
-`docs/source-pack/` is an earlier build pack from a different model. It is kept for its interview bank, its topic catalogue and its worked exercises. Read `docs/09` before trusting its architecture.
-
----
-
-## The decisions that shape everything else
-
-**Grading is deterministic by default.** Agent problems run against a scripted mock LLM that returns pre-written responses by matching rule and never touches a network. The same submission always produces the same verdict, grading costs no tokens, and there are no appeals about randomness. Live model runs are a separate capped privilege where correctness is not judged.
-
-**Learner code never reaches a model.** Two Lambdas with separate IAM roles: one executes learner code in a VPC with no internet route and no Bedrock permission, the other calls models and never executes learner code. Live runs go through a step protocol where the trusted worker makes the call.
-
-**Guidance decreases with difficulty.** Six scaffold layers. Easy gets all of them and free hints. Extreme gets a brief, a blank editor, one attempt a day, and nothing else. Enforced by one policy module, not by hiding buttons.
-
-**Every problem is open to everyone.** Personas change the recommended roadmap and nothing else. No tiers, no locked content.
-
-**An error verdict never costs an allowance.** A learner who loses their one daily Extreme attempt to a cold start stops trusting every score on the platform.
-
-**Spoken delivery is reported, never scored.** Words per minute, filler count and pause length appear in the voice debrief and are barred from the score, the heatmap and the placement export. Most learners here speak English as a second or third language, and scoring fluency measures the wrong thing.
-
----
-
-## Stack
-
-Next.js App Router with TypeScript for the web application. Python 3.12 for the runner and the judge. PostgreSQL 16. AWS Lambda, SQS and S3 for execution and storage. Amazon Bedrock for probes, judging and live runs. Two languages, no third.
+When `CLAUDE.md` and a specification document disagree, the specification wins, and the disagreement gets said out loud rather than resolved silently.
