@@ -13,7 +13,7 @@ prompt_text: |
 beats:
   - id: b1
     label: Say what the schema in the tool definition actually is
-    seconds: 20
+    seconds: 30
     anchors: ["a description", "not a contract", "usually gets it right"]
   - id: b2
     label: Name the three things you are checking
@@ -21,7 +21,7 @@ beats:
     anchors: ["shape", "meaning", "allowed to"]
   - id: b3
     label: Give the example that is not obvious
-    seconds: 35
+    seconds: 25
     anchors: ["true", "is an integer", "one penny"]
   - id: b4
     label: Say what happens when validation fails

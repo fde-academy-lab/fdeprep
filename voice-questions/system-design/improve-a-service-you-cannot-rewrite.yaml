@@ -14,7 +14,7 @@ prompt_text: |
 beats:
   - id: b1
     label: Say what you would establish before touching anything
-    seconds: 25
+    seconds: 35
     anchors: ["what it does now", "record", "current behaviour"]
   - id: b2
     label: Find where the eleven percent lives
@@ -22,15 +22,15 @@ beats:
     anchors: ["spread evenly", "one kind of document", "one field"]
   - id: b3
     label: Choose the smallest change that reaches it
-    seconds: 35
+    seconds: 30
     anchors: ["one place", "around it", "leave the rest"]
   - id: b4
     label: Say how you prove you did not break anything else
-    seconds: 35
+    seconds: 25
     anchors: ["same inputs", "differences", "shadow"]
   - id: b5
     label: Say what you would tell them about the rewrite
-    seconds: 25
+    seconds: 30
     anchors: ["not saying never", "earn", "in pieces"]
 
 follow_ups:
