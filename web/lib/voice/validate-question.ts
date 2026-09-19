@@ -21,6 +21,14 @@
  * criterion that says "speaks fluently" routes a delivery metric into the
  * score through the judge, which is the same leak tests/fairness.test.ts
  * closes on the code path.
+ *
+ * A beat's seconds must roughly match the words spent on it. Checking that the
+ * beats sum to total_seconds says only that the question is the right length,
+ * never that the length is on the right beats, and four of the twelve launch
+ * questions hold the right total with a third of it on a beat the strong
+ * exemplar covers in a sentence. The cockpit then shows STRETCHING through a
+ * good answer. The band is a share against a share, so it holds at any speaking
+ * rate, which matters because nobody has measured the real one yet.
  */
 import { LineCounter, parseDocument } from "yaml";
 import { COMPETENCIES, DIFFICULTIES } from "../problems/vocabulary.ts";
@@ -30,7 +38,7 @@ export type VoiceRule =
   | "beat_count" | "duplicate_beat" | "beat_seconds" | "no_anchors"
   | "anchor_not_in_exemplar" | "total_seconds" | "rubric_weights"
   | "exemplar_bands" | "exemplar_scores" | "follow_up_beat"
-  | "delivery_in_rubric";
+  | "delivery_in_rubric" | "beat_allocation";
 
 export interface VoiceError {
   rule: VoiceRule;
@@ -54,6 +62,17 @@ const MAX_BEATS = 6;
  *  exactly. A tenth either way is drift; more than that is a question whose
  *  clock and whose pathway disagree about how long the answer is. */
 const SECONDS_TOLERANCE = 0.1;
+
+/** How far a beat's share of the spoken words may diverge from its share of the
+ *  clock, either way. Deliberately loose: the widest beat in the launch set sits
+ *  at 1.53 and the narrowest at 0.48, both inside questions whose totals are
+ *  fine, so 2.5 passes today with room to spare.
+ *
+ *  It still catches what it exists for, which is a beat holding a handful of
+ *  words against a third of the clock, or half the answer against a fifth of it.
+ *  Tighten it once somebody has read the set aloud against a stopwatch and the
+ *  real speaking rate is known, rather than inferred from a published one. */
+const ALLOCATION_BAND = 2.5;
 
 const RUBRIC_WEIGHT_TOTAL = 100;
 const BANDS = ["strong", "adequate", "weak"] as const;
@@ -176,6 +195,33 @@ export function validateVoiceYaml(source: string, file: string): VoiceReport {
     });
   }
 
+  // The beats summing to total_seconds says nothing about where the seconds
+  // went. A question can hold the right amount of time and hand a third of it
+  // to a beat the strong exemplar covers in one sentence, and the cockpit then
+  // shows STRETCHING through a good answer on one beat and OVERRUN on the next.
+  if (strong && total > 0 && beats.length) {
+    const spend = wordsPerBeat(strong, beats);
+    const spoken = [...spend.values()].reduce((sum, n) => sum + n, 0);
+    if (spoken > 0) {
+      beats.forEach((beat, index) => {
+        const seconds = Number(beat?.seconds ?? 0);
+        if (!beat?.id || seconds <= 0) return;
+        const words = spend.get(beat.id) ?? 0;
+        const ratio = (words / spoken) / (seconds / total);
+        if (ratio >= ALLOCATION_BAND || ratio <= 1 / ALLOCATION_BAND) {
+          const verb = ratio >= ALLOCATION_BAND ? "far more" : "far less";
+          add("beat_allocation",
+              `beat ${beat.id} is budgeted ${seconds}s of ${total}s but the strong exemplar ` +
+              `spends ${verb} of the answer there (${words} of ${spoken} words). ` +
+              "The beats sum to the clock and the time is on the wrong ones, so the pace band " +
+              "fires on a good answer. Move seconds between beats until each beat's share of " +
+              "the clock is near its share of the words, keeping the total the same",
+              lineOf(["beats", index]));
+        }
+      });
+    }
+  }
+
   const weights = rubric.reduce((sum, c) => sum + Number(c?.weight ?? 0), 0);
   if (weights !== RUBRIC_WEIGHT_TOTAL) {
     add("rubric_weights",
@@ -228,6 +274,36 @@ export function validateVoiceYaml(source: string, file: string): VoiceReport {
 
   if (errors.length) return { ok: false, file, errors };
   return { ok: true, file, errors, slug: String(raw["slug"]) };
+}
+
+/** Words the strong exemplar spends on each beat.
+ *
+ * A pathway is ordered, so the pointer advances one beat at a time and never
+ * rewinds or skips. That matters: in one launch question the second sentence
+ * says "it is genuinely your call", which is an anchor of the fifth beat, and a
+ * splitter that jumped to whichever beat a sentence mentions credited beat one
+ * with twelve words and beat five with the opening. Advancing only into the
+ * next beat leaves that sentence where it belongs.
+ *
+ * The split is approximate either way, since a sentence carrying no anchor stays
+ * with the beat before it. The band this feeds is wide enough to absorb that. */
+function wordsPerBeat(
+  transcript: string,
+  beats: Array<{ id?: string; anchors?: string[] }>,
+): Map<string, number> {
+  const spend = new Map<string, number>(beats.map((b) => [String(b.id), 0]));
+  const sentences = transcript.replace(/\s+/g, " ").split(/(?<=[.?!])\s+/).filter(Boolean);
+  let at = 0;
+  for (const sentence of sentences) {
+    const said = normalise(sentence);
+    for (let next = beats[at + 1]; next !== undefined; next = beats[at + 1]) {
+      if (!(next.anchors ?? []).some((a) => said.includes(normalise(String(a))))) break;
+      at += 1;
+    }
+    const id = String(beats[at]?.id);
+    spend.set(id, (spend.get(id) ?? 0) + sentence.split(/\s+/).filter(Boolean).length);
+  }
+  return spend;
 }
 
 /** The same shape of comparison the live cue engine uses: lowercase,

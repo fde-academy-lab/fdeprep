@@ -55,8 +55,10 @@ exemplars:
   - band: strong
     score: 90
     transcript: |
-      There is a step budget, and when it fires we degrade rather than stop
-      dead. I would monitor for a repeated call with the same arguments.
+      There is a step budget, and the loop stops when it runs out.
+      When it fires we degrade to a partial answer rather than stop dead.
+      I would monitor the number of steps each run actually takes.
+      The signal I care about most is a repeated call with identical arguments.
   - band: adequate
     score: 60
     transcript: |
@@ -189,6 +191,39 @@ describe("the validator", () => {
   it("rejects two beats sharing an id", () => {
     expect(rulesFrom(GOOD.replace("id: b2, label: Two", "id: b1, label: Two")))
       .toContain("duplicate_beat");
+  });
+
+  // docs/07 section 2 fixes the beats and section 6 the pace band. Nothing
+  // connected them: a question could sum to its clock and still hand a third of
+  // it to a beat the strong exemplar covers in three words.
+  it("rejects a beat the exemplar barely covers against a quarter of the clock", () => {
+    const thin = GOOD.replace(
+      "I would monitor the number of steps each run actually takes.", "I would monitor.");
+    expect(rulesFrom(thin)).toContain("beat_allocation");
+  });
+
+  it("rejects a beat holding most of the answer against a quarter of the clock", () => {
+    const fat = GOOD.replace(
+      "When it fires we degrade to a partial answer rather than stop dead.",
+      "When it fires we degrade to a partial answer rather than stop dead, and " +
+      "the reason that matters is that a caller who gets nothing has to decide " +
+      "what to do with nothing, whereas a caller who gets the part we were sure " +
+      "of can act on that part today and come back for the rest, which is the " +
+      "difference between a system that degrades and a system that simply fails " +
+      "in a way somebody downstream has to handle for you.");
+    expect(rulesFrom(fat)).toContain("beat_allocation");
+  });
+
+  // The real bug this splitter was written around. One launch question opens
+  // with a sentence saying "it is genuinely your call", an anchor of its fifth
+  // beat, and a splitter that sends a sentence to whichever beat it mentions
+  // credits the opening to beat five and leaves beat one with twelve words.
+  it("does not send an opening sentence to a later beat whose anchor it mentions", () => {
+    const early = GOOD.replace(
+      "There is a step budget, and the loop stops when it runs out.",
+      "There is a step budget, and the loop stops when it runs out.\n" +
+      "      That is the kind of repeated call I mean.");
+    expect(rulesFrom(early)).not.toContain("beat_allocation");
   });
 
   it("reports the line a failure happened on", () => {
