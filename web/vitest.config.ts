@@ -27,5 +27,13 @@ export default defineConfig({
      * outright.
      */
     fileParallelism: false,
+    /**
+     * The suite predates sign-in and calls route handlers directly, with no
+     * request scope and so no cookie. This is the same switch a developer sets
+     * to run the platform on a laptop without a GitHub OAuth application, and
+     * lib/auth/config.ts refuses it whenever one is configured or NODE_ENV is
+     * production, so it cannot follow the code into a deployment.
+     */
+    env: { AUTH_DEV_LEARNER: "1" },
   },
 });
