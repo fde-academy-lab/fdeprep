@@ -13,6 +13,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { SESSION_COOKIE } from "./lib/auth/session.ts";
+import { devLearnerEnabled } from "./lib/auth/config.ts";
 
 /** Reachable with no session: the sign-in screen and the OAuth round trip
  *  itself, or signing in would require being signed in. */
@@ -24,6 +25,13 @@ export function proxy(request: NextRequest): NextResponse {
     return NextResponse.next();
   }
   if (request.cookies.has(SESSION_COOKIE)) return NextResponse.next();
+
+  // A laptop running without a GitHub application has no cookie to present and
+  // never will, so turning it away here would leave every screen shut with no
+  // way to open one. lib/auth/config.ts refuses this whenever a GitHub
+  // application is configured or NODE_ENV is production, and it reads only the
+  // environment, which the proxy may do.
+  if (devLearnerEnabled()) return NextResponse.next();
 
   // A fetch cannot do anything with a redirect to an HTML page, so the two
   // answer differently. Both refuse.
