@@ -258,6 +258,62 @@ Do not run the whole build in one session. The context runs out and the review s
 
 ---
 
+## Signing in
+
+Sign-in is GitHub OAuth plus an organisation membership check, and it is the
+gate on everything: with no session, every page redirects to `/signin` and every
+API route answers 401.
+
+### On your own machine, without a GitHub application
+
+```
+cd web
+AUTH_DEV_LEARNER=1 npm run dev
+```
+
+One development learner is resolved and created on first use, with the admin
+role, so every screen opens. The switch is refused whenever `GITHUB_CLIENT_ID`
+is set and refused outright when `NODE_ENV` is production, so it cannot follow
+you into a deployment.
+
+### For anything other people reach
+
+Register an OAuth application at
+<https://github.com/settings/developers>, New OAuth App. The callback URL must
+match exactly, including scheme and port:
+
+```
+http://localhost:3000/api/auth/callback        for local testing
+https://your-app.example.com/api/auth/callback for a deployment
+```
+
+Then four variables:
+
+| Variable | What it is |
+|---|---|
+| `AUTH_SECRET` | Signs the session cookie. Any long random string: `openssl rand -base64 32`. Changing it signs everybody out. |
+| `GITHUB_CLIENT_ID` | From the OAuth application. |
+| `GITHUB_CLIENT_SECRET` | From the OAuth application. A secret: environment only, never the repository. |
+| `GITHUB_ORG` | Optional, defaults to `FDE-Academy-Hub`. |
+
+`AUTH_CALLBACK_URL` overrides the callback the application sends to GitHub, for
+the case where it sits behind a proxy that rewrites the host.
+
+A learner gets in when they are an active member of the organisation and have
+an active enrolment row. Offboarding is removing them from the organisation and
+nothing else, which takes effect at their next sign-in and within twelve hours
+either way, since that is how long a session cookie lasts.
+
+Three refusals, each with a different owner:
+
+| The learner sees | Who fixes it |
+|---|---|
+| Your GitHub account is not in the FDE Academy organisation yet. | Programme manager, by inviting them |
+| Your account is not enrolled in an active cohort. | Cohort lead, by adding an enrolment row |
+| Your enrolment has ended. Past submissions stay readable for thirty days. | Nobody. It is true. |
+
+---
+
 ## Running the Voice Screen locally
 
 The voice socket is API Gateway in the cloud and a plain `ws` server on a
