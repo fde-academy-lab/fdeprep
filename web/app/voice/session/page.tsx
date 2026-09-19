@@ -11,7 +11,7 @@ import Link from "next/link";
 import { consentState } from "@/lib/voice/consent";
 import { currentLearner } from "@/lib/session/current";
 import { fixtureQuestionId } from "@/lib/voice/fixture";
-import { beatsAreAPathway, loadQuestion } from "@/lib/voice/question";
+import { beatsAreAPathway, loadQuestion, publishedQuestionId } from "@/lib/voice/question";
 import type { VoiceMode } from "@/lib/voice/start";
 import { Cockpit } from "./cockpit";
 
@@ -35,10 +35,15 @@ export default async function VoiceSessionPage({
   const params = await searchParams;
   const asked = Array.isArray(params.mode) ? params.mode[0] : params.mode;
   const mode = MODES.find((candidate) => candidate === asked) ?? "guided";
+  const slug = Array.isArray(params.q) ? params.q[0] : params.q;
 
   const learner = await currentLearner();
   const { granted } = await consentState(learner.enrolmentId);
-  const question = await loadQuestion(await fixtureQuestionId());
+  // An authored question when the content has been imported, and the docs/07
+  // fixture only when it has not, which is every fresh checkout before
+  // `npm run import:content` has run.
+  const chosen = await publishedQuestionId(slug);
+  const question = await loadQuestion(chosen ?? await fixtureQuestionId());
 
   if (!granted) {
     return (

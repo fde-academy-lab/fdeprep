@@ -97,3 +97,30 @@ export async function loadQuestion(id: number): Promise<VoiceQuestion> {
 export function beatsAreAPathway(beats: Beat[]): boolean {
   return beats.length >= 4 && beats.length <= 6;
 }
+
+/**
+ * The question a learner gets, by slug when they asked for one.
+ *
+ * Published questions only. The development fixture is unpublished and is the
+ * last resort, for a database that has not had `npm run import:content` run
+ * against it yet, which is every fresh checkout.
+ *
+ * Ordered by slug rather than by id so the same learner opening the screen
+ * twice gets the same question, and an import that renumbers rows does not
+ * silently change what everybody is answering.
+ */
+export async function publishedQuestionId(slug?: string): Promise<number | null> {
+  const { rows } = await db().query<{ id: string }>(
+    `select id from voice_question
+      where is_published and ($1::text is null or slug = $1)
+      order by slug limit 1`,
+    [slug ?? null]);
+  return rows[0] ? Number(rows[0].id) : null;
+}
+
+/** Every published question, for the picker. */
+export async function publishedQuestions(): Promise<Array<{ id: number; slug: string; title: string }>> {
+  const { rows } = await db().query<{ id: string; slug: string; title: string }>(
+    "select id, slug, title from voice_question where is_published order by slug");
+  return rows.map((r) => ({ id: Number(r.id), slug: r.slug, title: r.title }));
+}

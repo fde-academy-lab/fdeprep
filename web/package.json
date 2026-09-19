@@ -11,6 +11,7 @@
     "validate:problems": "tsx scripts/validate-problems.ts",
     "validate:voice": "tsx scripts/validate-voice-questions.ts",
     "migrate": "tsx scripts/migrate.ts",
+    "import:content": "tsx scripts/import-content.ts",
     "worker": "tsx scripts/worker.ts",
     "lint": "eslint .",
     "burst": "tsx scripts/burst_test.ts",
