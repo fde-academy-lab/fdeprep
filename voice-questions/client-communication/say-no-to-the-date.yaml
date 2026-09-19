@@ -13,7 +13,7 @@ prompt_text: |
 beats:
   - id: b1
     label: Say back what she has actually committed to
-    seconds: 20
+    seconds: 15
     anchors: ["told the board", "four weeks", "what you need"]
   - id: b2
     label: Separate the date from the scope
@@ -21,15 +21,15 @@ beats:
     anchors: ["the date is fine", "the word", "full", "every claim"]
   - id: b3
     label: Commit to something specific in the four weeks
-    seconds: 35
+    seconds: 15
     anchors: ["sixty per cent", "straight through", "the rest"]
   - id: b4
     label: Say what the last part costs, in her terms
-    seconds: 35
+    seconds: 55
     anchors: ["the hard ten per cent", "wrong", "a person"]
   - id: b5
     label: Give her the sentence for the board
-    seconds: 25
+    seconds: 30
     anchors: ["what you can say", "on the date", "measured"]
 
 follow_ups:

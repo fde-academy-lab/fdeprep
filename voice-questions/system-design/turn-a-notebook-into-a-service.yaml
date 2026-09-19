@@ -13,23 +13,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Say what the notebook is and is not evidence of
-    seconds: 20
+    seconds: 30
     anchors: ["the notebook works", "one request at a time", "in order"]
   - id: b2
     label: Name the contract first
-    seconds: 35
+    seconds: 20
     anchors: ["what goes in", "what comes back", "errors", "a version"]
   - id: b3
     label: Say what breaks on the second request
-    seconds: 35
+    seconds: 40
     anchors: ["state", "between cells", "global", "leaks"]
   - id: b4
     label: Name what you need to see once it is live
-    seconds: 30
+    seconds: 25
     anchors: ["per request", "how long", "what it cost"]
   - id: b5
     label: Say what you would do in the first week
-    seconds: 20
+    seconds: 25
     anchors: ["same outputs", "golden", "before anything else"]
 
 follow_ups:

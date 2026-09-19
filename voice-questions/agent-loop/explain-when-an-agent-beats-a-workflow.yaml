@@ -13,23 +13,23 @@ prompt_text: |
 beats:
   - id: b1
     label: Concede the case for the workflow
-    seconds: 15
+    seconds: 20
     anchors: ["he is right", "state machine", "cheaper", "easier to debug"]
   - id: b2
     label: Name the one thing that actually decides it
-    seconds: 30
+    seconds: 35
     anchors: ["who picks the next step", "at build time", "at run time", "in advance"]
   - id: b3
     label: Give the case where it flips
-    seconds: 35
+    seconds: 30
     anchors: ["depends on what came back", "combinations", "every branch"]
   - id: b4
     label: Say what stays deterministic either way
-    seconds: 30
+    seconds: 20
     anchors: ["step budget", "allowlist", "validate", "same guardrails"]
   - id: b5
     label: Say how you would decide on their system
-    seconds: 25
+    seconds: 30
     anchors: ["count", "last quarter", "start with the workflow"]
 
 follow_ups:
