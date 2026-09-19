@@ -1,9 +1,10 @@
 "use server";
 
-import { readFile, readdir } from "node:fs/promises";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { revalidatePath } from "next/cache";
 import { previewImport, publishImport, type ImportPreview } from "@/lib/problems/import";
+import { publishableYamlFiles } from "@/lib/problems/source";
 import { validateProblemYaml, type ValidationError } from "@/lib/problems/validate";
 import { currentLearner } from "@/lib/session/current";
 
@@ -15,20 +16,10 @@ export interface FileReport {
   preview: ImportPreview | null;
 }
 
-async function yamlFiles(dir: string): Promise<string[]> {
-  const found: string[] = [];
-  for (const entry of await readdir(dir, { withFileTypes: true })) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) found.push(...(await yamlFiles(full)));
-    else if (entry.name.endsWith(".yaml")) found.push(full);
-  }
-  return found.sort();
-}
-
 /** What publishing would change, computed without writing anything. */
 export async function previewAll(): Promise<FileReport[]> {
   const reports: FileReport[] = [];
-  for (const file of await yamlFiles(ROOT)) {
+  for (const file of await publishableYamlFiles(ROOT)) {
     const relative = path.relative(path.join(ROOT, ".."), file);
     const source = await readFile(file, "utf8");
     const report = validateProblemYaml(source, relative);
@@ -49,7 +40,7 @@ export async function publishAll(): Promise<{ published: number; skipped: number
 
   let published = 0;
   let skipped = 0;
-  for (const file of await yamlFiles(ROOT)) {
+  for (const file of await publishableYamlFiles(ROOT)) {
     const relative = path.relative(path.join(ROOT, ".."), file);
     const source = await readFile(file, "utf8");
     const report = validateProblemYaml(source, relative);

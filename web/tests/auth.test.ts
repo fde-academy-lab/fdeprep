@@ -296,6 +296,18 @@ describe("the development learner", () => {
 });
 
 describe("the proxy", () => {
+  // vitest.config.ts sets AUTH_DEV_LEARNER for the whole suite, because the
+  // older tests call route handlers with no request scope and so no cookie.
+  // The proxy's job is refusing people, so these tests turn it off and the one
+  // test about the development learner turns it back on.
+  const saved = process.env.AUTH_DEV_LEARNER;
+  beforeEach(() => {
+    delete process.env.AUTH_DEV_LEARNER;
+  });
+  afterAll(() => {
+    if (saved !== undefined) process.env.AUTH_DEV_LEARNER = saved;
+  });
+
   const ask = (path: string, cookie?: string) => {
     const request = new Request(`https://app.example${path}`, {
       headers: cookie ? { cookie } : undefined,
@@ -330,6 +342,15 @@ describe("the proxy", () => {
 
   it("lets a request carrying a session cookie through", () => {
     expect(ask("/problems", `${SESSION_COOKIE}=anything`).status).toBe(200);
+  });
+
+  // The bug this test exists for: with the development learner on there is no
+  // cookie and never will be, so a proxy that only checks for one shuts every
+  // screen on a laptop and leaves no way to open one. SETUP.md documents that
+  // workflow, so it has to work.
+  it("lets a request through when the development learner is on", () => {
+    process.env.AUTH_DEV_LEARNER = "1";
+    expect(ask("/problems").status).toBe(200);
   });
 
   it("does not put a full URL in the next parameter", () => {
