@@ -157,6 +157,8 @@ Three evaluators run in a fixed order and their findings are consolidated into o
 
 **Panelist 2 trains nothing.** The repository holds 86 labelled examples, all written by the author and none by a learner, which is far too few to train a grader and exactly enough to produce one that is confidently wrong. P2 instead uses pretrained embeddings and AST-shape features against the graded exemplars that already exist, and its nearest-neighbour index fills with real learner answers as the cohort works. It learns from your learners without anybody running a training job.
 
+Measured and settled: `all-MiniLM-L6-v2` int8, chunked to avoid truncation, at 67ms p95 for a 700-word answer on one core, running in the worker rather than the judge Lambda. `docs/10` section 5 carries the numbers and the reasoning, and `scripts/bench_embeddings.py` re-runs the measurement.
+
 ### Complexity is not difficulty
 
 Two axes that answer different questions, kept separate on purpose.
@@ -955,7 +957,7 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | Run the 200-concurrent burst test against staging. | An hour. | Peak load is a projection. `npm run burst` exists and has only run locally. |
 | Add a question picker to the Voice Screen. | Half a day. | Twelve questions are reachable by URL and one by clicking, which is not a product. |
 | Build `eval/`: the three-panelist engine, the consolidator and the validator rules. | A week. | Specified in `docs/10`. It is what turns three separate gates into one panel that degrades instead of failing. |
-| Verify the ONNX embedding model for panelist 2: licence, CPU latency at p95, image size. | A day. | The one unresolved question in `docs/10` section 5. If the latency is wrong, P2 moves to the result writer and that decision should be made on a measurement. |
+| Build panelist 2 on MiniLM int8, chunked, running in the worker. | Three days. | Measured and decided: `docs/10` section 5 carries the numbers, and `scripts/bench_embeddings.py` re-runs them when a model or a price changes. |
 | Add `complexity` and `interview_evidence` to all 25 problems. | Two days. | Both are validator-required once `eval/` lands, and `interview_evidence` is what makes the North Star checkable rather than aspirational. |
 
 ## 8.2 Mid term: during the first cohort
