@@ -1,0 +1,44 @@
+# The local development image, used only by docker-compose.yml.
+#
+# This is not the runner or the judge. Those are Lambda container images built
+# from Dockerfile and Dockerfile.judge, and they deliberately never share a base
+# with this one, because this image holds a Node toolchain the runner must never
+# have.
+#
+# Ubuntu 24.04 for Python 3.12, which it ships. Node 22 is copied from the
+# official Node image rather than installed from a third-party apt repository:
+# one fewer network dependency at build time, a pinned version, and no setup
+# script whose failure a pipe could swallow. The EC2 route in the README uses
+# NodeSource instead, because there you are installing onto a machine rather
+# than composing an image.
+FROM node:22-bookworm-slim AS node
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl git python3.12 python3.12-venv python3-pip \
+      postgresql-client \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s /usr/local/lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -s /usr/local/lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+
+# Assert rather than hope. The first version of this file installed Ubuntu's own
+# Node 18 with no npm at all, because a piped setup script failed silently and
+# --no-install-recommends dropped the npm that Ubuntu's nodejs package only
+# recommends. Both were invisible until a container tried to run. A build that
+# produces the wrong toolchain now fails here instead of three services later.
+RUN node --version | grep -q '^v22\.' \
+ && npm --version > /dev/null \
+ && python3.12 --version | grep -q '^Python 3\.12\.'
+
+WORKDIR /app
+
+# No COPY of the source. docker-compose bind-mounts the repository, so an edit
+# on the host is live in the container and the image never goes stale against
+# the working tree.
+CMD ["bash"]
