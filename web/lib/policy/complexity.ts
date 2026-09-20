@@ -76,6 +76,10 @@ export function defaultComplexity(artefactType: string): Complexity {
       return "C4";
     case "voice":
       return "C4";
+    // A defence is a written argument for a choice the learner already made,
+    // judged rather than executed, so it sits where design does.
+    case "defence":
+      return "C4";
     default:
       return "C3";
   }

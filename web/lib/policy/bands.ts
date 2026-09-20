@@ -20,15 +20,43 @@ export const BAND_MEANING: Readonly<Record<Band, string>> = {
   off_question: "The answer addresses something else.",
 };
 
+/**
+ * What each band is worth, anchored to the scores the content actually carries
+ * rather than to numbers somebody liked.
+ *
+ * Measured across the 60 graded exemplars in problems/ and voice-questions/ on
+ * 20 September 2026: strong runs 88 to 92, adequate 60 to 66, weak 26 to 31.
+ * These are the medians of those three groups. `off_question` has no authored
+ * examples, so 10 is a judgement: below anything a person has been willing to
+ * call weak.
+ *
+ * Re-derive with scripts/band_anchors.py when the content changes.
+ */
 const SCORE: Readonly<Record<Band, number>> = {
   strong: 90,
-  adequate: 65,
-  weak: 35,
-  off_question: 5,
+  adequate: 63,
+  weak: 29,
+  off_question: 10,
 };
 
 export function bandScore(band: Band): number {
   return SCORE[band];
+}
+
+/**
+ * A judge's rubric score turned into a band.
+ *
+ * The boundaries are the midpoints of the gaps between the authored groups:
+ * 66 to 88 leaves 77, and 31 to 60 leaves 45. Those gaps are wide, which is
+ * what makes the mapping stable: an answer has to move 20 points before it
+ * changes band, and a judge that disagrees with itself by a few points does
+ * not flip the result.
+ */
+export function bandForScore(score: number): Band {
+  if (score >= 77) return "strong";
+  if (score >= 45) return "adequate";
+  if (score >= 20) return "weak";
+  return "off_question";
 }
 
 /** How far apart two bands are, in steps. Two or more is a disagreement. */
