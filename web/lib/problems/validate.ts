@@ -12,6 +12,9 @@ import { compilePattern, PatternError, type PromptRule } from "../gate/index.ts"
 import {
   ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, VISIBILITIES,
 } from "./vocabulary.ts";
+import {
+  COMPLEXITIES, defaultComplexity, isComplexity, panelFor,
+} from "../policy/complexity.ts";
 
 export type Rule =
   | "yaml_syntax" | "schema" | "script_needs_fallback" | "unknown_competency"
@@ -20,7 +23,8 @@ export type Rule =
   | "no_prompt_rules" | "no_probes" | "unknown_rule_kind" | "unknown_assertion_type"
   | "bad_pattern" | "rule_pattern_absent" | "no_adequate_exemplar"
   | "no_word_range" | "no_rubric" | "rubric_weights" | "no_defence_question"
-  | "probe_pattern_absent" | "missing_call_budget" | "matcher_shadows_input";
+  | "probe_pattern_absent" | "missing_call_budget" | "matcher_shadows_input"
+  | "bad_complexity" | "panel_without_static" | "panel_mismatch";
 
 export interface ValidationError {
   rule: Rule;
@@ -147,6 +151,8 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
         lineOf(["difficulty"]));
   }
   if (errors.length) return { ok: false, file, errors };
+
+  validatePanel(raw, artefact, add, lineOf);
 
   const tests = Array.isArray(raw["tests"]) ? (raw["tests"] as Record<string, unknown>[]) : [];
   const competencies = Array.isArray(raw["competencies"])
@@ -316,6 +322,68 @@ function validateTests(
 }
 
 /** Returns the offending pattern, or null when the rule cannot match the input. */
+/**
+ * The panel a problem declares, against the level it declares. docs/10 section 11.
+ *
+ * Both fields are optional today, because no problem in problems/ carries
+ * either and requiring them would fail CI on the whole catalogue. What is
+ * checked is consistency: a problem that says something about its panel has to
+ * say something coherent. Once the backfill lands, absence becomes an error
+ * too and this comment goes with it.
+ */
+function validatePanel(
+  raw: Record<string, unknown>,
+  artefact: string,
+  add: (rule: Rule, message: string, line: number) => void,
+  lineOf: (path: Array<string | number>) => number,
+): void {
+  const declared = raw["complexity"];
+  if (declared !== undefined && !isComplexity(declared)) {
+    add("bad_complexity",
+        `complexity ${String(declared)} is not one of ${COMPLEXITIES.join(", ")}`,
+        lineOf(["complexity"]));
+    return;
+  }
+
+  const complexity = isComplexity(declared) ? declared : defaultComplexity(artefact);
+  const panel = raw["panel"];
+  if (panel === undefined) return;
+  if (typeof panel !== "object" || panel === null || Array.isArray(panel)) {
+    add("panel_mismatch", "panel is not a mapping of panelist names to booleans",
+        lineOf(["panel"]));
+    return;
+  }
+
+  const declaredPanel = panel as Record<string, unknown>;
+  const uses = (name: string) => declaredPanel[name] === true;
+
+  // The outage fallback is structural rather than something an author
+  // remembered. A problem whose only evaluator needs the network has no
+  // fallback at all when the network is the thing that is down.
+  if ((uses("pretrained") || uses("llm")) && declaredPanel["static"] !== true) {
+    add("panel_without_static",
+        "panel declares pretrained or llm without static, so a model outage would " +
+        "leave this problem with no evaluator at all. Add `static: true`.",
+        lineOf(["panel"]));
+  }
+
+  const demand = panelFor(complexity);
+  for (const name of ["pretrained", "llm"] as const) {
+    if (demand[name] === "required" && declaredPanel[name] !== true) {
+      add("panel_mismatch",
+          `complexity ${complexity} requires the ${name} panelist and panel does not ` +
+          `declare it. Either declare it or lower the complexity.`,
+          lineOf(["panel"]));
+    }
+    if (demand[name] === "no" && declaredPanel[name] === true) {
+      add("panel_mismatch",
+          `complexity ${complexity} has one right answer, so the ${name} panelist is ` +
+          `waste that compounds across a cohort. Remove it or raise the complexity.`,
+          lineOf(["panel"]));
+    }
+  }
+}
+
 export function matchesSeed(rule: unknown, seeded: string): string | null {
   if (!rule || typeof rule !== "object") return null;
   const entries = Object.entries(rule as Record<string, unknown>);
