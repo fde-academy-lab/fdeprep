@@ -143,11 +143,55 @@ Every graded submission is embedded and added to the index with its final band. 
 
 That is a system that learns from your cohort without anybody running a training job, and without the overfitting risk that made the trained version unbuildable. The quality of P2 on a given problem is a function of how many graded answers that problem has, which is a number `analytics/` reports.
 
-### The container problem, unresolved
+### The model, measured
 
-Offline embeddings need a model inside the judge container, and PyTorch is roughly 2 GB. ONNX Runtime with a small quantised sentence embedding model is the likely answer and fits comfortably inside Lambda's image limit, but this has not been measured.
+Measured on 20 September 2026 with `scripts/bench_embeddings.py`, against this repository's own nine graded design exemplars. Re-run it when a model, a runtime version or a Lambda price changes.
 
-**Before writing P2 code, verify:** the model's licence permits this use, its ONNX export is current, its CPU latency at p95 on the judge's memory setting, and the resulting image size. Record the versions checked in the pull request, per the rule in `CLAUDE.md`. If CPU latency turns out to exceed the judge's budget, the fallback is to run P2 in the result writer rather than the judge, and that decision belongs in the pull request rather than here.
+| Candidate | Licence | Params | Dims | Documented limit |
+|---|---|---|---|---|
+| `sentence-transformers/all-MiniLM-L6-v2` | Apache-2.0 | 22.7M | 384 | 256 tokens |
+| `BAAI/bge-small-en-v1.5` | MIT | 33.4M | 384 | 512 tokens |
+
+Both licences permit this use. Both ship an ONNX export. MiniLM also ships files pre-quantised per instruction set, which matters more than it sounds.
+
+Latency, one intra-op thread on an AVX-512 Xeon, embedding an answer at the problems' own 700-word ceiling, twenty runs:
+
+| Variant | Model | Load | One pass (truncates) | Chunked (complete) |
+|---|---|---|---|---|
+| MiniLM int8, avx2 | 23.0 MB | 200 ms | 43.6 ms p95 | 147.0 ms p95 |
+| **MiniLM int8, avx512-vnni** | **23.0 MB** | **191 ms** | 20.6 ms p95 | **67.0 ms p95** |
+| MiniLM fp32 | 90.4 MB | 614 ms | 38.4 ms p95 | 127.0 ms p95 |
+| bge-small fp32 | 133.1 MB | 794 ms | 169.9 ms p95 | 280.4 ms p95 |
+
+The runtime adds 120 MB: ONNX Runtime 67.9, numpy 40.7, tokenizers 11.6. With two model variants that is about 190 MB of image, against Lambda's 10 GB limit. Image size was never the constraint.
+
+### Two traps that would have shipped silently
+
+**MiniLM's `tokenizer.json` truncates at 128 tokens by default.** Not the 256 its model card documents, and not anything the caller asked for. Loaded as shipped, it returns exactly 128 tokens for a 117-word answer and for a 700-word one. A P2 built without calling `no_truncation()` would embed the first hundred words of every answer and band the rest on nothing. The benchmark prints a warning when it detects this, and any P2 implementation sets truncation explicitly rather than inheriting it.
+
+**Half the real answers exceed MiniLM's documented limit anyway.** Measured at 1.19 tokens per word: five of ten test inputs pass 256 tokens, and an answer at the 700-word ceiling is 880. A design argument puts its trade-off in the back half, so truncation does not lose detail, it loses the thing being graded.
+
+Chunking is the fix. Split on paragraphs, embed each, mean-pool. It costs four inferences on a long answer and the numbers above already include that cost.
+
+### The decision: MiniLM int8, chunked, and not in the judge
+
+**Model:** `all-MiniLM-L6-v2`, int8, chunked. At 67 ms p95 for a complete 700-word answer it is four times faster than bge-small chunked, on a model file 5.8 times smaller, and it loses nothing to truncation.
+
+Ship both quantised variants, 46 MB together, and select on CPU flags at start-up. The avx512-vnni file is twice as fast as the avx2 one on hardware that supports it and Lambda's fleet is mixed, so the avx2 file is the fallback rather than the default.
+
+**Where it runs: the worker, not the judge Lambda.** The judge stays at 512 MB with no embedding model in it.
+
+AWS documents that Lambda allocates CPU in proportion to memory and that "at 1,769 MB, a function has the equivalent of one vCPU", verified on 20 September 2026. The judge's 512 MB is therefore 0.29 of a vCPU, so a single-core measurement multiplies by 3.46:
+
+| Where | P2 on a 700-word answer |
+|---|---|
+| This benchmark, one core | 67 ms p95 |
+| Judge Lambda at 512 MB | about 232 ms p95 |
+| A Lambda at 1,769 MB | about 67 ms p95 |
+
+Raising memory looks free, because cost is GB-seconds and both settings come to 0.119 GB-seconds for the same work. The reason not to do it is the judge's other job: **P3 spends its time waiting on Bedrock, and waiting is not CPU-bound.** Raising the judge to 1,769 MB would multiply the cost of every second it spends waiting on a model by 3.46, to buy speed for work that is a fraction of its duration. One memory setting cannot serve a CPU-bound workload and a network-bound one.
+
+So P2 runs in the worker, invoked as a Python subprocess exactly as the test battery already is through `RUNNER_PYTHON`. No new language, no new pattern, and the 191 ms model load happens in a long-lived process rather than on every cold start.
 
 P2 makes no network call. That is the whole point of it, since a panelist that needs the network cannot be the fallback for a panelist that needs the network.
 
