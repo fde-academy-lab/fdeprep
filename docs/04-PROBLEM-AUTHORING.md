@@ -8,6 +8,8 @@ Problems live as YAML files in a Git repository under `problems/<track>/<slug>.y
 
 The import fails, with the offending line number, when any of these hold.
 
+The last six rows land with `eval/` and are not enforced today, because no problem carries `complexity`, `panel` or `interview_evidence` yet. They are listed here rather than in a separate document so that an author writing a new problem writes the fields once. Backfilling the 25 existing problems is a short-term roadmap item, and the rules switch on when that backfill completes.
+
 | Rule | Reason |
 |---|---|
 | No `"*"` fallback in an `llm_script` | The mock would raise mid-test and the learner would see an infrastructure error |
@@ -21,6 +23,12 @@ The import fails, with the offending line number, when any of these hold.
 | A probe whose assertion references a pattern absent from the problem | Author error, always |
 | `call_budget` not set on a code problem | Budget scoring silently disables |
 | A `contains` or `regex` matcher that already matches the case's own `input`, with a later entry after it | The input is in the first prompt and a scratchpad keeps it there, so that entry wins on every call and every entry below it is unreachable. Use `call_index` when the intent is "the first call". |
+| No `complexity`, or a value outside C1 to C5 | The evaluation panel cannot assign panelists without it. See `10-EVALUATION-PANEL.md` section 3. |
+| A problem declaring panelist 2 or 3 with no panelist 1 checks | The outage fallback has to be structural rather than hoped for |
+| A C4 or C5 problem with no panelist 3 | Those levels have no deterministic answer, so a panel without a judge would be guessing |
+| A C1 problem declaring panelist 3 | Spending a model call on an exact-match question is waste that compounds across a cohort |
+| A heuristic named in a problem that is absent from the heuristic registry | An author inventing a heuristic inline writes a rule that fails at run time in front of a learner |
+| No `interview_evidence`, or an empty `asked_as` | Every problem exists to prepare somebody for a technical round, and a North Star CI cannot check is a wish |
 
 Run the validator in CI on the problems repository so a bad problem never reaches the import screen.
 
@@ -33,8 +41,26 @@ slug: recover-from-soft-tool-errors        # unique, url-safe, never reused
 title: Recover from a tool that returns a soft error
 artefact_type: code                        # code | prompt | design
 difficulty: medium                         # easy | medium | hard | extreme
+complexity: C3                             # C1..C5, a different axis: see docs/10 section 3
 track: agent-loop
 est_minutes: 25
+
+interview_evidence:                        # the North Star, made checkable
+  round: oral                              # written | oral | both
+  asked_as: |
+    "Walk me through how you'd handle a tool that returns 200 with an
+     error in the body."
+  source: |
+    Author judgement from FDE screen debriefs, 2026 Q2.
+                                           # An author who cannot name a source
+                                           # writes "author judgement" and does
+                                           # not invent one.
+
+panel:                                     # which evaluators run, docs/10 section 3
+  static: true                             # always true; 2 and 3 imply it
+  pretrained: true
+  llm: false
+heuristics: [budget_ignored]               # must exist in the heuristic registry
 competencies:
   - slug: tool-error-handling
     weight: 1.0

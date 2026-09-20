@@ -1,0 +1,107 @@
+# The one-command way to see FDE Prep running.
+#
+#   docker compose up
+#
+# Then open http://localhost:3000. No cloud account, no database to create, no
+# GitHub application to register. Content is imported on first start.
+#
+# What this is for: seeing the product work, and demonstrating it. It runs with
+# AUTH_DEV_LEARNER=1, which resolves one development learner with admin rights,
+# so there is no sign-in step. That switch is refused when NODE_ENV is
+# production and refused when GITHUB_CLIENT_ID is set, so it cannot follow you
+# into a deployment. Do not put this file in front of learners.
+#
+# What it is not: the Lambda split. The worker here runs the test battery as a
+# local subprocess, beside the database credentials, which is fine on your own
+# machine and is not the security model a cohort needs. README section 3B has
+# the table that says when one process stops being acceptable.
+
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: fdeprep
+      POSTGRES_PASSWORD: fdeprep
+      POSTGRES_DB: fdeprep
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      # Nothing starts until Postgres answers, so a first run cannot fail with
+      # a connection error that looks like a bug in the application.
+      test: ["CMD-SHELL", "pg_isready -U fdeprep -d fdeprep"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  init:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgres://fdeprep:fdeprep@db:5432/fdeprep
+    volumes:
+      - .:/app
+      - node_modules:/app/web/node_modules
+      - venv:/app/.venv
+    # Runs once and exits. Dependencies, schema and content in one place, so
+    # the application and the worker never race each other to migrate.
+    command: >
+      bash -lc "
+        set -e
+        test -d /app/.venv/bin || python3.12 -m venv /app/.venv
+        /app/.venv/bin/pip install --quiet -r /app/requirements-dev.txt
+        cd /app/web && npm ci --silent
+        npm run migrate
+        npm run import:content
+      "
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://fdeprep:fdeprep@db:5432/fdeprep
+      AUTH_DEV_LEARNER: "1"
+      RUNNER_PYTHON: /app/.venv/bin/python
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - node_modules:/app/web/node_modules
+      - venv:/app/.venv
+    command: bash -lc "cd /app/web && npm run dev"
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgres://fdeprep:fdeprep@db:5432/fdeprep
+      RUNNER_PYTHON: /app/.venv/bin/python
+    volumes:
+      - .:/app
+      - node_modules:/app/web/node_modules
+      - venv:/app/.venv
+    # Without this nothing grades. A submission sits in queued forever and the
+    # learner watches a spinner, which is the single most common way a local
+    # run looks broken when it is not.
+    command: bash -lc "cd /app/web && npm run worker"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  # Named rather than bind-mounted, so the host's node_modules and .venv do not
+  # shadow the container's. A host install built for macOS would otherwise be
+  # mounted into Linux and fail on the first native module.
+  node_modules:
+  venv:

@@ -22,6 +22,9 @@ The specification lives in `docs/` and is authoritative. When this file and a sp
 | `docs/07-VOICE-SCREEN.md` | Anything in the voice module |
 | `docs/08-DESIGN-SYSTEM.md` | Any styling, type, colour, icon or motion decision |
 | `docs/09-SOURCE-PACK-RECONCILIATION.md` | Before trusting anything in `docs/source-pack/` |
+| `docs/10-EVALUATION-PANEL.md` | Anything in `eval/`, and before changing how any answer is graded |
+| `docs/11-ANALYTICS-AND-REPORT-CARD.md` | Anything in `analytics/`, cohort views, the report card or an export |
+| `docs/12-PROGRESS-AND-READINESS.md` | Anything in `progress/`, the heatmap or the readiness signal |
 
 `docs/source-pack/` is an earlier build pack from a different model, kept for its
 interview bank, its topic catalogue and its worked exercises. Where it disagrees
@@ -64,6 +67,12 @@ In a cloud session, use the pre-installed PostgreSQL 16 for development and test
 | Any new assertion type ships with a fixture, a unit test and a validator entry. | Otherwise an author writes a spec that fails at run time in front of a learner. |
 | Problem YAML is validated in CI, not at import. | A broken problem should never reach the import screen. |
 | No transcript text renders on screen while a learner is speaking. | They read instead of speak, and the answer gets worse. |
+| `eval/` is the only writer of a grade, a band or a competency state. `progress/` and `analytics/` read. | Two modules computing the same number from the same rows will eventually disagree, and nobody can tell which is right. |
+| A problem that declares panelist 2 or 3 declares panelist 1 checks too. | The outage fallback has to be structural. A learner submitting during a Bedrock incident gets thinner feedback and never gets silence. |
+| A panelist that cannot run never lowers a score. | Infrastructure is the platform's problem. The evaluation goes to `partial` and re-runs for free. |
+| Only deterministic checks produce a terminal failure. Bands and prose never do. | A verdict nobody can reproduce is a verdict nobody can appeal. |
+| Complexity (C1 to C5) and difficulty (Easy to Extreme) are separate axes. Never map one onto the other. | Complexity decides which panelists can check an answer. Difficulty decides how much support the learner gets. |
+| The learner reads one consolidated voice. Panelist provenance is stored and shown only to faculty. | The learner should hear an interviewer. The appeal path needs to know which finding was deterministic. |
 
 ---
 

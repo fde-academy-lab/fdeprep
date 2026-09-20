@@ -6,11 +6,11 @@ The platform exists to produce one signal the placement side can trust: is this 
 
 | | |
 |---|---|
-| **Built** | 14 to 19 September 2026, twenty merged pull requests |
+| **Built** | 14 to 20 September 2026, twenty-two merged pull requests |
 | **Size** | 21,103 lines of TypeScript in the web application, 5,248 lines of Python in the runner and judge, 1,083 lines of CDK |
 | **Tests** | 685 across four suites, all green: 396 web, 233 Python, 30 infrastructure, 26 voice |
 | **Content** | 25 problems and 12 voice questions, each solved by its author before it shipped |
-| **State** | Runs end to end on a laptop. Not yet deployed anywhere. Section 3 is the deploy. |
+| **State** | Runs end to end on a laptop with `docker compose up`. Not yet deployed anywhere. Section 3 is the deploy. |
 
 ---
 
@@ -124,7 +124,65 @@ Six layers of support. Difficulty decides which are on, and never which problems
 
 The attempt note on Hard is deliberate friction. It produces text a faculty member can read to see whether a learner is stuck on the concept or stuck on Python.
 
-## 1.6 What a learner sees
+## 1.6 How an answer is graded: the panel
+
+**Specified in `docs/10-EVALUATION-PANEL.md`. Not yet built.** The three gates in the table above are what exists today, and they become panelist 1 when the panel lands.
+
+Three evaluators run in a fixed order and their findings are consolidated into one verdict and one voice.
+
+```
+  submission
+      │
+      ▼
+ ┌──────────────────────────────────────────────────────┐
+ │  P1  static and heuristic       always runs          │
+ │      no model, no network, milliseconds              │
+ │  P2  pretrained models          when the level asks  │
+ │      no LLM, offline, CPU                            │
+ │  P3  LLM judge                  when the level asks  │
+ │      the only network call in the panel              │
+ │             │                                        │
+ │             ▼                                        │
+ │  consolidator  →  one verdict, one score, one voice  │
+ └──────────────────────────────────────────────────────┘
+```
+
+| Rule | Why |
+|---|---|
+| P1 always runs, and runs first. | A learner gets feedback even when every model in the system is unreachable. |
+| A problem using P2 or P3 must declare P1 checks. Enforced in CI. | The outage fallback is structural rather than something an author remembered. |
+| A panelist that cannot run never lowers a score. | The evaluation goes to `partial` and re-runs for free. Infrastructure is the platform's problem. |
+| Only deterministic checks produce a terminal failure. | A verdict nobody can reproduce is a verdict nobody can appeal. |
+| Disagreement between panelists is reported, never averaged. | Averaging two judges who disagree produces a confident number that hides the one fact worth knowing. |
+
+**Panelist 2 trains nothing.** The repository holds 86 labelled examples, all written by the author and none by a learner, which is far too few to train a grader and exactly enough to produce one that is confidently wrong. P2 instead uses pretrained embeddings and AST-shape features against the graded exemplars that already exist, and its nearest-neighbour index fills with real learner answers as the cohort works. It learns from your learners without anybody running a training job.
+
+### Complexity is not difficulty
+
+Two axes that answer different questions, kept separate on purpose.
+
+| Axis | Values | Decides |
+|---|---|---|
+| Difficulty | Easy, Medium, Hard, Extreme | How much support the learner gets, and which caps apply. |
+| Complexity | C1 recall, C2 application, C3 synthesis, C4 judgement, C5 open | What shape the answer has, and therefore which panelists can check it. |
+
+A Hard problem can ask a C2 question and an Easy problem can ask a C4 one. Each complexity level is named for the shape of the answer rather than for how the learner feels, because the shape is what decides whether a machine can check it: C1 has one right answer and C5 has none.
+
+### The module boundary
+
+```
+        eval/  ──writes──►  evaluation, competency_score
+                                 │
+                   ┌─────────────┴─────────────┐
+                   ▼                           ▼
+            progress/  reads              analytics/  reads
+            one learner                   many learners
+            heatmap, readiness            report card, calibration
+```
+
+**One writer, two readers.** A heatmap that disagrees with a report card becomes structurally impossible rather than a bug somebody has to find.
+
+## 1.7 What a learner sees
 
 Ten screens, specified as region maps in `docs/01-WIREFRAMES.md`. Three of them carry the product's identity, so they are reproduced here.
 
@@ -209,7 +267,7 @@ Five live instruments and nothing else. The beat track is primary and everything
 
 Every cell holds one of four states: not attempted, attempted without a pass, passed, and passed with no hints and within budget. **Only the fourth state counts toward readiness.** A learner who passed a Hard problem after revealing three hints and burning double the call budget has learned something real and has not yet demonstrated readiness, and the heatmap says so without anybody having to write it down.
 
-## 1.7 What it can do today
+## 1.8 What it can do today
 
 Everything below runs on a laptop with PostgreSQL and no cloud account.
 
@@ -237,7 +295,7 @@ Content authored and validated in CI:
 
 Every code problem ships with a reference solution that passes and a naive solution that provably fails a hidden test. CI runs both, so a problem that a lazy answer would pass cannot merge.
 
-## 1.8 What it cannot do
+## 1.9 What it cannot do
 
 Read this section before promising anything to a cohort.
 
@@ -278,7 +336,30 @@ Four integrations are written, unit-tested against recorded fixtures, and have n
 
 Twenty minutes from clone to a working product, with no cloud account and no credit card.
 
-## 2.1 What you need
+## 2.1 The fastest way, one command
+
+Docker, and nothing else installed.
+
+```bash
+git clone https://github.com/fde-academy-lab/fdeprep.git
+cd fdeprep
+docker compose up
+```
+
+Open <http://localhost:3000>. Four services come up in order: Postgres, then a one-shot `init` that installs dependencies, migrates and imports the content, then the web application and the worker. Expect `published 25 problems and 12 voice questions.` in the `init` log on a first run.
+
+You are signed in as a development learner with admin rights, because the stack sets `AUTH_DEV_LEARNER=1`. That switch is refused when `NODE_ENV` is production and refused when `GITHUB_CLIENT_ID` is set, so it cannot follow you into a deployment. **This route is for seeing the product and demonstrating it, never for putting in front of learners.**
+
+| Command | What it does |
+|---|---|
+| `docker compose up` | Starts everything. The first run takes a few minutes while dependencies install. |
+| `docker compose down` | Stops everything and keeps the database. |
+| `docker compose down -v` | Stops everything and deletes the database, so the next `up` starts clean. |
+| `docker compose logs -f worker` | Watches grading. If a submission never resolves, look here first. |
+
+The repository is bind-mounted, so an edit on your machine is live in the container. `node_modules` and `.venv` live in named volumes instead, because a dependency tree built on macOS fails the moment it is mounted into Linux.
+
+## 2.2 What you need
 
 | Requirement | Version | Check with |
 |---|---|---|
@@ -287,7 +368,7 @@ Twenty minutes from clone to a working product, with no cloud account and no cre
 | PostgreSQL | 16 | `psql --version` |
 | Git | Any recent version | `git --version` |
 
-## 2.2 Six commands
+## 2.3 Six commands
 
 ```bash
 git clone https://github.com/fde-academy-lab/fdeprep.git
@@ -318,7 +399,7 @@ Open <http://localhost:3000>.
 
 `AUTH_DEV_LEARNER=1` creates one development learner with the admin role, so every screen opens without a GitHub application. The switch refuses to work whenever `GITHUB_CLIENT_ID` is set and refuses outright when `NODE_ENV` is production, so it cannot follow you into a deployment.
 
-## 2.3 The second terminal, which is not optional
+## 2.4 The second terminal, which is not optional
 
 Nothing grades until a worker drains the queue. A submission with no worker sits in `queued` forever, and the learner watches a spinner.
 
@@ -328,7 +409,7 @@ cd web && DATABASE_URL="postgres://localhost/fdeprep" npm run worker
 
 One process runs the whole pipeline: it dispatches queued submissions, runs the battery as a Python subprocess, calls the judge, writes results, and reaps expired leases. Pass `--once` for a single pass, which is what CI uses.
 
-## 2.4 The Voice Screen, which needs a third and a fourth
+## 2.5 The Voice Screen, which needs a third and a fourth
 
 The voice socket is API Gateway in the cloud and a plain `ws` server on a developer machine. Both run the same session code.
 
@@ -352,7 +433,7 @@ Accept at `/voice/consent`, then answer one at `/voice/session?mode=guided`.
 
 `VOICE_STT=scripted` produces placeholder words driven by how loud you are, which makes the whole pipeline visible with no AWS credential. The two `VOICE_TOKEN_SECRET` values have to match, because one end signs the session token and the other verifies it.
 
-## 2.5 Demonstrating it to a room
+## 2.6 Demonstrating it to a room
 
 A five-minute path that shows the product's actual argument rather than its screens.
 
@@ -366,7 +447,7 @@ A five-minute path that shows the product's actual argument rather than its scre
 | 6 | `/voice/session?mode=guided` | Answer for thirty seconds and stop. The beat track moved, no transcript appeared, and the debrief has beat timings, pace and filler counts. |
 | 7 | `/progress` | Four cell states, and only the fourth counts. This is the number placement gets. |
 
-## 2.6 Run the tests
+## 2.7 Run the tests
 
 ```bash
 cd web   && npm test        # 396 tests
@@ -873,6 +954,9 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | Set the AWS Budgets alarm on the Bedrock line at 50 and 80 percent. | Ten minutes. | It is the only thing standing between an authoring mistake and a real bill. |
 | Run the 200-concurrent burst test against staging. | An hour. | Peak load is a projection. `npm run burst` exists and has only run locally. |
 | Add a question picker to the Voice Screen. | Half a day. | Twelve questions are reachable by URL and one by clicking, which is not a product. |
+| Build `eval/`: the three-panelist engine, the consolidator and the validator rules. | A week. | Specified in `docs/10`. It is what turns three separate gates into one panel that degrades instead of failing. |
+| Verify the ONNX embedding model for panelist 2: licence, CPU latency at p95, image size. | A day. | The one unresolved question in `docs/10` section 5. If the latency is wrong, P2 moves to the result writer and that decision should be made on a measurement. |
+| Add `complexity` and `interview_evidence` to all 25 problems. | Two days. | Both are validator-required once `eval/` lands, and `interview_evidence` is what makes the North Star checkable rather than aspirational. |
 
 ## 8.2 Mid term: during the first cohort
 
@@ -882,7 +966,10 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | The faculty override on a design verdict. | Specified in `docs/00` section 3.1 and never built. A rubric judge's score on a written answer is currently final, which is the wrong default for a human-judgement artefact. |
 | Re-grading past submissions against a new judge prompt version. | There is no mechanism today, which means changing a prompt mid-cohort leaves two populations graded differently with nothing recording that. |
 | A replacement for `/admin/import` that works on a deployment. | Content publishing is an operator command today. That is correct and it is also a person who has to be awake. |
-| Cohort-level analytics beyond the per-learner heatmap. | The heatmap answers "is this learner ready". Nobody can currently answer "which topic did this cohort fail" without SQL. |
+| Build `analytics/`: cohort views, the stuck list, problem calibration and panel health. | Specified in `docs/11`. The heatmap answers "is this learner ready". Nobody can currently answer "which topic did this cohort fail" without SQL. |
+| Build the report card as a dated, hashed snapshot. | Specified in `docs/11` section 3. The heatmap is live and a placement team needs a document that does not change after they read it. |
+| Move the `competency_score` write into `eval/` and make `progress/` a pure reader. | Specified in `docs/12` section 3. Additive and backward compatible for one release, per the standing rule. |
+| Compute the readiness signal, with its four counts and its three bands. | Specified in `docs/12` section 2. The platform has always implied one number and never produced it. |
 | More content, driven by what the cohort actually fails. | 25 problems is a launch set rather than a catalogue. `docs/source-pack/05-problem-catalog.json` holds topic material. Do not treat a count as a goal. |
 
 ## 8.3 Long term: what a second version would be
@@ -915,9 +1002,10 @@ Named because a roadmap that only grows is a roadmap nobody trusts.
 | `judge/` | The Bedrock judge, with its prompts as versioned files. |
 | `voice/` | The voice session socket, its STT adapters and the session protocol. |
 | `infra/` | CDK for the Lambdas, the queues, the buckets and the WebSocket. |
+| `docker-compose.yml` | The one-command local stack: Postgres, content import, the application and the worker. |
 | `problems/` | 25 problems as YAML, plus fixtures under `_fixtures/` that never publish. |
 | `voice-questions/` | 12 questions as YAML across five tracks. |
-| `docs/` | The specification, which is authoritative. Ten numbered documents. |
+| `docs/` | The specification, which is authoritative. Thirteen numbered documents. |
 | `.claude/rules/` | Trust boundaries and writing rules, loaded into every session. |
 | `SETUP.md` | Every field value and every link for the build environment. |
 | `CLAUDE.md` | The standing rules, the stack, and what not to do. |
