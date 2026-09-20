@@ -7,8 +7,12 @@
  * match and no verdict has landed. A late or duplicated runner therefore
  * cannot overwrite a fresh result or revive a cancelled submission.
  */
+import { parse } from "yaml";
 import { inTransaction } from "../db/pool.ts";
 import { applyForSubmission } from "../competency/score.ts";
+import { complexityOf, panelistsFor } from "../eval/from-result.ts";
+import { runPanel } from "../eval/panel.ts";
+import { saveEvaluation } from "../eval/record.ts";
 import { refund } from "../policy/caps.ts";
 import { storeTrace } from "../trace/store.ts";
 
@@ -98,6 +102,12 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
         [message.submission_id]);
     }
 
+    // docs/10: the panel reads the gates the runner and the judge already ran
+    // and writes one evaluation record. Inside this transaction so the two
+    // normally land together, behind a savepoint so a panel failure costs the
+    // evaluation and never the verdict.
+    await evaluate(client, message.submission_id, contract);
+
     await client.query(
       `insert into runner_event (submission_id, level, message, detail)
        values ($1, 'info', 'result committed', $2)`,
@@ -105,4 +115,81 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
 
     return true;
   });
+}
+
+/**
+ * Run the panel over a finished result and record what it concluded.
+ *
+ * Wrapped in a savepoint, and that is the whole design of this function. A
+ * plain try/catch inside a transaction does not work: the first failing
+ * statement aborts the transaction, so the recovery insert fails too and the
+ * committed verdict goes with it. The savepoint scopes the failure to the
+ * evaluation.
+ *
+ * The trade this settles: a verdict with no evaluation is recoverable, because
+ * the learner still sees a result and `analytics/` reports the gap. An
+ * evaluation that takes the verdict down with it leaves a submission that
+ * never resolves. The verdict wins.
+ */
+async function evaluate(
+  client: Parameters<typeof storeTrace>[0],
+  submissionId: number,
+  contract: Record<string, any>,
+): Promise<void> {
+  await client.query("savepoint panel");
+  try {
+    const { rows } = await client.query<{
+      artefact_type: string; source_yaml: string; enrolment_id: string;
+      slug: string; body: string;
+    }>(
+      `select case when s.kind = 'defence' then 'defence'
+                   else p.artefact_type::text end as artefact_type,
+              v.source_yaml, a.enrolment_id, p.slug, s.body
+         from submission s
+         join problem_version v on v.id = s.problem_version_id
+         join problem p on p.id = v.problem_id
+         join attempt a on a.id = s.attempt_id
+        where s.id = $1`, [submissionId]);
+
+    const row = rows[0];
+    if (!row) {
+      await client.query("release savepoint panel");
+      return;
+    }
+
+    // source_yaml is text holding YAML, so the level is parsed here rather
+    // than with a JSON operator in the query. The judge worker parses the same
+    // column the same way.
+    const declared = (parse(row.source_yaml) as { complexity?: unknown } | null)?.complexity;
+
+    const evaluation = await runPanel({
+      submissionId,
+      complexity: complexityOf(row.artefact_type, declared),
+      artefactType: row.artefact_type,
+      body: row.body,
+      problemSlug: row.slug,
+    }, panelistsFor(contract));
+
+    await saveEvaluation(evaluation, Number(row.enrolment_id), client);
+
+    // The contract is what the front end renders from, so the one voice and
+    // the evaluation's state go into it here rather than being fetched
+    // separately by a component that would then have two sources for one
+    // answer.
+    contract["feedback_md"] = evaluation.feedbackMd;
+    contract["evaluation"] = {
+      state: evaluation.state,
+      confidence: evaluation.confidence,
+      provisional: evaluation.scoreProvisional,
+    };
+    await client.query("update submission set result = $2 where id = $1",
+      [submissionId, JSON.stringify(contract)]);
+    await client.query("release savepoint panel");
+  } catch (error) {
+    await client.query("rollback to savepoint panel");
+    await client.query(
+      `insert into runner_event (submission_id, level, message, detail)
+       values ($1, 'warn', 'evaluation not recorded', $2)`,
+      [submissionId, JSON.stringify({ error: (error as Error).message.slice(0, 500) })]);
+  }
 }
