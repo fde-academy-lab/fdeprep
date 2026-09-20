@@ -6,9 +6,9 @@ The platform exists to produce one signal the placement side can trust: is this 
 
 | | |
 |---|---|
-| **Built** | 14 to 20 September 2026, twenty-two merged pull requests |
+| **Built** | 14 to 20 September 2026, twenty-four merged pull requests |
 | **Size** | 21,103 lines of TypeScript in the web application, 5,248 lines of Python in the runner and judge, 1,083 lines of CDK |
-| **Tests** | 685 across four suites, all green: 396 web, 233 Python, 30 infrastructure, 26 voice |
+| **Tests** | 710 across four suites, all green: 421 web, 233 Python, 30 infrastructure, 26 voice |
 | **Content** | 25 problems and 12 voice questions, each solved by its author before it shipped |
 | **State** | Runs end to end on a laptop with `docker compose up`. Not yet deployed anywhere. Section 3 is the deploy. |
 
@@ -956,7 +956,7 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | Set the AWS Budgets alarm on the Bedrock line at 50 and 80 percent. | Ten minutes. | It is the only thing standing between an authoring mistake and a real bill. |
 | Run the 200-concurrent burst test against staging. | An hour. | Peak load is a projection. `npm run burst` exists and has only run locally. |
 | Add a question picker to the Voice Screen. | Half a day. | Twelve questions are reachable by URL and one by clicking, which is not a product. |
-| Build `eval/`: the three-panelist engine, the consolidator and the validator rules. | A week. | Specified in `docs/10`. It is what turns three separate gates into one panel that degrades instead of failing. |
+| Wire `eval/` into the worker, and build panelist 2 and the heuristic registry. | Four days. | The panel, the consolidator, the record and the validator rules are built. What remains is the two evaluators that do not exist yet and the call site that runs them. |
 | Build panelist 2 on MiniLM int8, chunked, running in the worker. | Three days. | Measured and decided: `docs/10` section 5 carries the numbers, and `scripts/bench_embeddings.py` re-runs them when a model or a price changes. |
 | Add `complexity` and `interview_evidence` to all 25 problems. | Two days. | Both are validator-required once `eval/` lands, and `interview_evidence` is what makes the North Star checkable rather than aspirational. |
 
