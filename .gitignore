@@ -11,6 +11,10 @@ node_modules/
 out/
 .turbo/
 
+# panelist 2's embedding model: 46MB, fetched by
+# scripts/fetch_embedding_model.py and pinned by checksum there.
+.models/
+
 # python
 __pycache__/
 *.pyc

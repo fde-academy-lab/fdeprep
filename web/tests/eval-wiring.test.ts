@@ -8,6 +8,9 @@
  * returning what they were told to return, which proves orchestration and
  * nothing about fit.
  */
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "../lib/db/pool.ts";
 import { createSubmission } from "../lib/submissions/create.ts";
@@ -233,8 +236,11 @@ describe("the judge's rubric score becomes a band, once", () => {
   });
 });
 
-describe("panelist 2 is honest about not existing yet", () => {
-  it("records itself as skipped and names why", async () => {
+describe("panelist 2 without a pool to compare against", () => {
+  it("skips rather than reporting unavailable when it has no database context", async () => {
+    // An evaluation assembled from a bare contract was never going to have a
+    // neighbour pool. That is a different thing from an encoder that failed,
+    // and the record has to say which.
     const panel = await runPanel({
       submissionId: 1, complexity: "C4", artefactType: "design",
       body: "An argument.", problemSlug: "a-problem",
@@ -245,13 +251,13 @@ describe("panelist 2 is honest about not existing yet", () => {
 
     const p2 = panel.panel.find((p) => p.panelist === "pretrained");
     expect(p2!.status).toBe("skipped");
-    expect(p2!.reason).toBe("not_implemented");
+    expect(p2!.reason).toBe("no_pool_context");
   });
 
-  it("does not make every design submission promise a review that never lands", async () => {
-    // A demanded panelist that has not been built is a deployment fact, not an
-    // outage. Marking these partial would queue a re-evaluation nobody can
-    // ever drain, and a promise nobody drains is worse than a plain failure.
+  it("does not promise a review that never lands", async () => {
+    // A skipped panelist is a deployment fact, not an outage. Marking these
+    // partial would queue a re-evaluation nobody can ever drain, and a promise
+    // nobody drains is worse than a plain failure.
     const panel = await runPanel({
       submissionId: 1, complexity: "C4", artefactType: "design",
       body: "An argument.", problemSlug: "a-problem",
@@ -263,6 +269,47 @@ describe("panelist 2 is honest about not existing yet", () => {
     expect(panel.state).toBe("complete");
     expect(panel.scoreProvisional).toBe(false);
     expect(panel.feedbackMd).not.toContain("still running");
+  });
+});
+
+describe("a host without the embedding model", () => {
+  const DESIGN = {
+    verdict: "pass",
+    score: 80,
+    gates: {
+      static: { status: "pass", checks: [] },
+      probes: { status: "skipped" },
+      rubric: { status: "pass", score: 80 },
+    },
+    budget: { llm_calls: 1, tool_calls: 0, wall_ms: 900 },
+    trace: { submission_id: 0, steps: [], flags: [] },
+  };
+
+  it("finishes the evaluation rather than queueing a re-run nobody will drain", async () => {
+    // The real subprocess, against a directory with no weights in it, which
+    // is what a worker built without the fetch step actually looks like. A
+    // worker in that state never encodes anything, so marking this partial
+    // would promise every learner a review that is never coming.
+    const previous = process.env["FDEPREP_EMBED_MODEL_DIR"];
+    process.env["FDEPREP_EMBED_MODEL_DIR"] = await mkdtemp(
+      path.join(tmpdir(), "fdeprep-no-model-"));
+    try {
+      const id = await commit("argue-the-eval-plan", DESIGN);
+      const evaluation = await latestEvaluation(id);
+
+      expect(evaluation!.state).toBe("complete");
+      expect(evaluation!.scoreProvisional).toBe(false);
+      const p2 = evaluation!.panel.find((p) => p.panelist === "pretrained");
+      expect(p2!.status).toBe("skipped");
+      expect(["model_missing", "dependency_missing"]).toContain(p2!.reason);
+      // The band still comes from the judge, so the learner loses detail and
+      // never loses a grade.
+      expect(evaluation!.band).toBe("strong");
+      expect(evaluation!.feedbackMd).not.toContain("still running");
+    } finally {
+      if (previous === undefined) delete process.env["FDEPREP_EMBED_MODEL_DIR"];
+      else process.env["FDEPREP_EMBED_MODEL_DIR"] = previous;
+    }
   });
 });
 

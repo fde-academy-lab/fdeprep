@@ -11,6 +11,7 @@ import { parse } from "yaml";
 import { inTransaction } from "../db/pool.ts";
 import { applyForSubmission } from "../competency/score.ts";
 import { complexityOf, panelistsFor } from "../eval/from-result.ts";
+import { rememberGraded } from "../eval/pretrained.ts";
 import { runPanel } from "../eval/panel.ts";
 import { saveEvaluation } from "../eval/record.ts";
 import { refund } from "../policy/caps.ts";
@@ -140,11 +141,11 @@ async function evaluate(
   try {
     const { rows } = await client.query<{
       artefact_type: string; source_yaml: string; enrolment_id: string;
-      slug: string; body: string;
+      slug: string; body: string; problem_id: string;
     }>(
       `select case when s.kind = 'defence' then 'defence'
                    else p.artefact_type::text end as artefact_type,
-              v.source_yaml, a.enrolment_id, p.slug, s.body
+              v.source_yaml, a.enrolment_id, p.slug, s.body, p.id as problem_id
          from submission s
          join problem_version v on v.id = s.problem_version_id
          join problem p on p.id = v.problem_id
@@ -168,9 +169,26 @@ async function evaluate(
       artefactType: row.artefact_type,
       body: row.body,
       problemSlug: row.slug,
-    }, panelistsFor(contract));
+    }, panelistsFor(contract, {
+      problemId: Number(row.problem_id),
+      sourceYaml: row.source_yaml,
+      client,
+    }));
 
     await saveEvaluation(evaluation, Number(row.enrolment_id), client);
+
+    // docs/10 section 5: the pool grows by one row per graded submission, which
+    // is how panelist 2 comes to know a cohort without a training run. Only a
+    // band the panel actually settled on goes in, because an errored
+    // submission is not evidence about anybody.
+    if (evaluation.state !== "error") {
+      await rememberGraded(client, {
+        problemId: Number(row.problem_id),
+        submissionId,
+        band: evaluation.band,
+        body: row.body,
+      });
+    }
 
     // The contract is what the front end renders from, so the one voice and
     // the evaluation's state go into it here rather than being fetched
