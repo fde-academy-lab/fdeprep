@@ -11,6 +11,7 @@
  * what they produced and attributes it.
  */
 import { bandForScore } from "../policy/bands.ts";
+import { pretrainedPanelist, type PretrainedOptions } from "./pretrained.ts";
 import { defaultComplexity, isComplexity, type Complexity } from "../policy/complexity.ts";
 import type { Finding, Panelist, PanelistResult } from "./panel.ts";
 
@@ -106,20 +107,23 @@ export function staticPanelist(contract: ResultContract): Panelist {
 }
 
 /**
- * Panelist 2, which does not exist yet.
+ * Panelist 2, when the caller can reach the database.
  *
- * Reported as skipped with a reason rather than omitted, so the record says
- * plainly that this panelist was never asked rather than implying it was asked
- * and stayed silent. docs/10 section 5 has the model and the measurement; the
- * implementation is the next piece of work.
+ * Without that context there is nothing for it to compare against, so it
+ * reports skipped rather than unavailable: an evaluation assembled from a bare
+ * contract was never going to have a neighbour pool, which is a different
+ * thing from an encoder that failed.
  */
-export function pretrainedPanelist(): Panelist {
-  return {
-    name: "pretrained",
-    async run(): Promise<PanelistResult> {
-      return { status: "skipped", reason: "not_implemented", ms: 0, findings: [] };
-    },
-  };
+export function pretrainedFor(options?: PretrainedOptions): Panelist {
+  if (!options) {
+    return {
+      name: "pretrained",
+      async run(): Promise<PanelistResult> {
+        return { status: "skipped", reason: "no_pool_context", ms: 0, findings: [] };
+      },
+    };
+  }
+  return pretrainedPanelist(options);
 }
 
 /**
@@ -153,6 +157,9 @@ export function llmPanelist(contract: ResultContract): Panelist {
   };
 }
 
-export function panelistsFor(contract: ResultContract): Panelist[] {
-  return [staticPanelist(contract), pretrainedPanelist(), llmPanelist(contract)];
+export function panelistsFor(
+  contract: ResultContract,
+  pretrained?: PretrainedOptions,
+): Panelist[] {
+  return [staticPanelist(contract), pretrainedFor(pretrained), llmPanelist(contract)];
 }

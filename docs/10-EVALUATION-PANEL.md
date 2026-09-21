@@ -271,6 +271,8 @@ Two rules make degradation safe rather than merely graceful.
 
 **A re-evaluation never consumes an allowance.** It is the platform finishing work it already owed.
 
+**A panelist this deployment does not have is `skipped`, not `unavailable`.** The two look alike and mean opposite things. A worker image built without the embedding model on disk will never encode anything, so calling that an outage marks every design evaluation `partial` and queues a free re-run that nothing will ever drain, and a promise nobody drains is worse than a plain absence. An outage is a timeout, a crash, or a response that did not parse, and those are worth a re-run because the next attempt may work. In code the split is one function, `statusFor` in `web/lib/eval/pretrained.ts`: `model_missing`, `dependency_missing` and `spawn_failed` are absence; everything else is an outage.
+
 The learner-facing message names the next action, per `.claude/rules/02-writing.md`: "Your submission was graded against the deterministic checks. The detailed review is still running and will appear here within the hour. Your attempt has been counted once."
 
 ---

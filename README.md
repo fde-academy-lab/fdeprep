@@ -155,7 +155,9 @@ Three evaluators run in a fixed order and their findings are consolidated into o
 | Only deterministic checks produce a terminal failure. | A verdict nobody can reproduce is a verdict nobody can appeal. |
 | Disagreement between panelists is reported, never averaged. | Averaging two judges who disagree produces a confident number that hides the one fact worth knowing. |
 
-**Panelist 2 trains nothing.** The repository holds 86 labelled examples, all written by the author and none by a learner, which is far too few to train a grader and exactly enough to produce one that is confidently wrong. P2 instead uses pretrained embeddings and AST-shape features against the graded exemplars that already exist, and its nearest-neighbour index fills with real learner answers as the cohort works. It learns from your learners without anybody running a training job.
+**Panelist 2 trains nothing.** The repository holds 86 labelled examples, all written by the author and none by a learner, which is far too few to train a grader and exactly enough to produce one that is confidently wrong. So the learning already happened, elsewhere. P2 embeds the answer with a pretrained model and asks which graded answers it sits nearest to. The pool starts as the three authored exemplars on a problem and grows by one row per graded submission, which is how it comes to know a cohort without anybody running a training job.
+
+Three neighbours vote, weighted by how near each one is, because a neighbour at 0.82 is far better evidence than one at 0.31 and counting them equally throws that away. An answer that resembles nothing in the pool gets no band at all: that is not a weak answer, it is an answer this panelist has no evidence about, and saying so is worth more than a confident guess.
 
 Measured and settled: `all-MiniLM-L6-v2` int8, chunked to avoid truncation, at 67ms p95 for a 700-word answer on one core, running in the worker rather than the judge Lambda. `docs/10` section 5 carries the numbers and the reasoning, and `scripts/bench_embeddings.py` re-runs the measurement.
 
@@ -281,6 +283,7 @@ Everything below runs on a laptop with PostgreSQL and no cloud account.
 | Run against public tests, submit against the full battery, watch the verdict arrive over SSE. | Same screen |
 | Edit a system prompt against static checks, a probe battery and a rubric judge. | Same screen, prompt problems |
 | Write a design argument graded against three exemplars. | Same screen, design problems |
+| Grade any written answer against the nearest graded answers to it, with no model call and no network. | The worker, on every design, prompt and voice submission |
 | Replay the trace of what the agent actually called, step by step. | `/traces/[id]` |
 | Answer a spoken interview question in guided, unguided or pressure mode. | `/voice/session` |
 | Read a voice debrief with beat timings, pace, filler counts and a rubric score. | `/voice/sessions/[id]` |
@@ -307,7 +310,7 @@ Four integrations are written, unit-tested against recorded fixtures, and have n
 
 | Integration | State | What could go wrong on first contact |
 |---|---|---|
-| Bedrock rubric judge | Code complete, 233 Python tests green, `JUDGE_LIVE=1` never run. | A model id, a region, an inference profile prefix or the thinking-mode combination is wrong, and every design and prompt submission errors. |
+| Bedrock rubric judge | Code complete, 253 Python tests green, `JUDGE_LIVE=1` never run. | A model id, a region, an inference profile prefix or the thinking-mode combination is wrong, and every design and prompt submission errors. |
 | Amazon Transcribe streaming | Adapter written against the documented API, exercised only through the scripted adapter. | The live stream shape differs and the cockpit shows a dead microphone. |
 | Amazon Polly | Pressure-mode follow-up audio. Never synthesised. | Follow-ups arrive as silence. |
 | S3 audio storage | Written, never exercised against a real bucket. | Voice sessions finish and the audio is unreachable. |
@@ -370,7 +373,7 @@ The repository is bind-mounted, so an edit on your machine is live in the contai
 | PostgreSQL | 16 | `psql --version` |
 | Git | Any recent version | `git --version` |
 
-## 2.3 Six commands
+## 2.3 Six commands, and an optional seventh
 
 ```bash
 git clone https://github.com/fde-academy-lab/fdeprep.git
@@ -398,6 +401,13 @@ AUTH_DEV_LEARNER=1 npm run dev
 ```
 
 Open <http://localhost:3000>.
+
+```bash
+# 7. Optional: panelist 2's embedding model, 46MB, verified by checksum
+python scripts/fetch_embedding_model.py
+```
+
+Skip it and everything still works. Panelist 2 reports that this machine does not have it, the panel runs on panelists 1 and 3, and the evaluation stays `complete` rather than promising a review that is not coming. Fetch it and design, prompt and voice answers also get a band from the nearest graded answers to them. The script pins a model revision and verifies a SHA-256 before it writes, so a model that changed underneath you is a failure rather than a silent change to every band the panel assigns.
 
 `AUTH_DEV_LEARNER=1` creates one development learner with the admin role, so every screen opens without a GitHub application. The switch refuses to work whenever `GITHUB_CLIENT_ID` is set and refuses outright when `NODE_ENV` is production, so it cannot follow you into a deployment.
 
@@ -452,11 +462,13 @@ A five-minute path that shows the product's actual argument rather than its scre
 ## 2.7 Run the tests
 
 ```bash
-cd web   && npm test        # 396 tests
-cd ../   && python -m pytest -q   # 233 tests
-cd voice && npm test        # 26 tests
-cd infra && npm test        # 30 tests
+cd web   && npm test              # 459 tests
+cd ../   && python -m pytest -q   # 253 tests, 3 skipped without the embedding model
+cd voice && npm test              # 26 tests
+cd infra && npm test              # 30 tests
 ```
+
+The three skips are the tests that read the real MiniLM weights. A skipped test is honest; a test that quietly passes without the thing it claims to test is not.
 
 ---
 
@@ -567,6 +579,14 @@ DATABASE_URL="<production>" npm run worker
 ```
 
 For a first beta, a `systemd` service or a `tmux` session on a small VM is enough. Anything that restarts it on exit will do. Confirm it is alive by submitting once and watching the verdict arrive.
+
+The worker is also where panelist 2 runs, so run `python scripts/fetch_embedding_model.py` on the same host if you want written answers banded against the nearest graded answers to them. Three variables tune it, and all three have working defaults:
+
+| Variable | Default | What it does |
+|---|---|---|
+| `RUNNER_PYTHON` | `.venv/bin/python`, then `python3` | The interpreter the worker spawns for the test battery and for the encoder. Set it explicitly when neither resolves. |
+| `FDEPREP_EMBED_MODEL_DIR` | `.models/minilm` | Where the encoder looks for the weights. Point it at a shared read-only path when several workers share a host. |
+| `EMBED_TIMEOUT_MS` | `20000` | How long the worker waits for an encode before killing it. A hung encoder becomes an unavailable panelist rather than a stuck queue. |
 
 ## Step 6: the roster, before students arrive
 
@@ -769,6 +789,8 @@ Judge prompts are files in `judge/prompts/`, versioned as `rubric.v1.md` and so 
 | The Voice Screen serves the wrong question. | Content was never imported, so it fell back to the `docs/07` fixture. | `npm run import:content`. The fixture's prompt mentions spinning forever in production, which is how you recognise it. |
 | `next build` fails on `/_global-error` with a null `useContext`. | `NODE_ENV` is set to `development` in the shell. | `NODE_ENV=production npx next build`. |
 | A local run cannot find Python. | The runner subprocess resolves `.venv` then `python3`. | Set `RUNNER_PYTHON` to an explicit interpreter path. |
+| Every design evaluation is `partial` and the re-run queue only grows. | Panelist 2's encoder is failing rather than absent: a timeout, a crash or a response that did not parse. An absent model is `skipped` and leaves the evaluation `complete`, so a growing backlog means something is breaking. | Read the `reason` on the `pretrained` panelist in the evaluation record. `timeout` means the host is too slow or `EMBED_TIMEOUT_MS` is too tight; `encode_failed` and `exit_1` carry the Python error. Reproduce with `echo '{"texts":["an answer"]}' \| python -m embed.cli`, which prints the reason and exits zero. |
+| Design answers get a band from the judge and never from the nearest graded answers. | This host has no embedding model, which is a supported state rather than a fault. | `python scripts/fetch_embedding_model.py`. Until then panelist 2 reports `model_missing` and skips, and the panel runs two-strong. |
 
 ## 5.3 Reading a failure properly
 
@@ -956,9 +978,9 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | Set the AWS Budgets alarm on the Bedrock line at 50 and 80 percent. | Ten minutes. | It is the only thing standing between an authoring mistake and a real bill. |
 | Run the 200-concurrent burst test against staging. | An hour. | Peak load is a projection. `npm run burst` exists and has only run locally. |
 | Add a question picker to the Voice Screen. | Half a day. | Twelve questions are reachable by URL and one by clicking, which is not a product. |
-| Wire `eval/` into the worker, and build panelist 2 and the heuristic registry. | Four days. | The panel, the consolidator, the record and the validator rules are built. What remains is the two evaluators that do not exist yet and the call site that runs them. |
-| Build panelist 2 on MiniLM int8, chunked, running in the worker. | Three days. | Measured and decided: `docs/10` section 5 carries the numbers, and `scripts/bench_embeddings.py` re-runs them when a model or a price changes. |
+| Build the heuristic registry that panelist 1 runs on written answers. | Two days. | The panel, the consolidator, the record, the validator rules, the worker call site and panelist 2 are all built. P1 currently reads the gates the runner and the judge already produced, which is the right floor and is not yet a registry of heuristics an author can add to. |
 | Add `complexity` and `interview_evidence` to all 25 problems. | Two days. | Both are validator-required once `eval/` lands, and `interview_evidence` is what makes the North Star checkable rather than aspirational. |
+| Fetch the embedding model on every worker host that grades written answers. | Ten minutes per host. | Without it panelist 2 correctly reports that the host does not have it and the panel runs two-strong, which is a quiet halving of the evidence behind a band. `analytics/` reports the rate, so watch it rather than assuming. |
 
 ## 8.2 Mid term: during the first cohort
 
