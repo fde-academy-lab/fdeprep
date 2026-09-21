@@ -150,6 +150,20 @@ function Result({ view }: { view: SubmissionView }) {
 
   return (
     <div className="space-y-3">
+      {view.correction ? (
+        <section className="rounded border border-accent px-3 py-2">
+          <h3 className="mb-1 text-accent">
+            {view.correction.direction === "raised"
+              ? "A reviewer raised this grade"
+              : "A reviewer lowered this grade"}
+          </h3>
+          <p className="text-text-dim">{view.correction.note}</p>
+          <p className="mt-1 text-text-faint">
+            Your cohort lead can take this up if you think it is wrong.
+          </p>
+        </section>
+      ) : null}
+
       <p>
         <span className="capitalize">{view.verdict}</span>
         {view.score === null ? null : <span className="tnum"> at {view.score}</span>}

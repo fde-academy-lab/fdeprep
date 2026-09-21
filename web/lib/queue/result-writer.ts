@@ -141,11 +141,12 @@ async function evaluate(
   try {
     const { rows } = await client.query<{
       artefact_type: string; source_yaml: string; enrolment_id: string;
-      slug: string; body: string; problem_id: string;
+      slug: string; body: string; problem_id: string; call_budget: string | null;
     }>(
       `select case when s.kind = 'defence' then 'defence'
                    else p.artefact_type::text end as artefact_type,
-              v.source_yaml, a.enrolment_id, p.slug, s.body, p.id as problem_id
+              v.source_yaml, a.enrolment_id, p.slug, s.body, p.id as problem_id,
+              v.call_budget
          from submission s
          join problem_version v on v.id = s.problem_version_id
          join problem p on p.id = v.problem_id
@@ -170,9 +171,13 @@ async function evaluate(
       body: row.body,
       problemSlug: row.slug,
     }, panelistsFor(contract, {
-      problemId: Number(row.problem_id),
       sourceYaml: row.source_yaml,
-      client,
+      callBudget: row.call_budget === null ? null : Number(row.call_budget),
+      pretrained: {
+        problemId: Number(row.problem_id),
+        sourceYaml: row.source_yaml,
+        client,
+      },
     }));
 
     await saveEvaluation(evaluation, Number(row.enrolment_id), client);

@@ -51,6 +51,20 @@ export interface RubricView {
   }>;
 }
 
+/**
+ * A grade a person changed after the panel set it. docs/10 section 9.7.
+ *
+ * Carries no reviewer name. Faculty see who on the record; a learner sees that
+ * a person reviewed it, which way it went and why. Naming the individual to a
+ * learner invites them to lobby that person, and the decision belongs to the
+ * programme rather than to whoever happened to read it.
+ */
+export interface CorrectionView {
+  direction: "raised" | "lowered";
+  note: string;
+  at: string;
+}
+
 export interface SubmissionView {
   id: number;
   status: "queued" | "running" | "evaluating" | "terminal";
@@ -67,9 +81,24 @@ export interface SubmissionView {
   modelCalls: number | null;
   budget: Record<string, unknown> | null;
   message: string | null;
+  /** Present only when faculty changed this grade. */
+  correction: CorrectionView | null;
 }
 
 const EMPTY: GateView = { status: "skipped", passed: 0, total: 0, cases: [] };
+
+function trimCorrection(evaluation: unknown): CorrectionView | null {
+  const block = (evaluation ?? {}) as { correction?: Record<string, unknown> };
+  const correction = block.correction;
+  if (!correction) return null;
+  const direction = correction["direction"];
+  if (direction !== "raised" && direction !== "lowered") return null;
+  return {
+    direction,
+    note: String(correction["note"] ?? ""),
+    at: String(correction["at"] ?? ""),
+  };
+}
 
 export async function publicView(submissionId: number): Promise<SubmissionView> {
   const { rows } = await db().query<{
@@ -108,6 +137,7 @@ export async function publicView(submissionId: number): Promise<SubmissionView> 
     modelCalls: row.result?.["model_calls"] === undefined
       ? null : Number(row.result["model_calls"]),
     budget: (row.result?.["budget"] ?? null) as Record<string, unknown> | null,
+    correction: trimCorrection(row.result?.["evaluation"]),
     message: (row.result?.["message"] ?? null) as string | null,
   };
 }
