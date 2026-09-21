@@ -17,7 +17,8 @@
 import { dispatchOnce, reapExpiredLeases } from "../lib/queue/dispatcher.ts";
 import { judgeOnce } from "../lib/queue/judge-worker.ts";
 import { runOnce, writeResultsOnce } from "../lib/queue/runner-worker.ts";
-import { closeDb } from "../lib/db/pool.ts";
+import { preflight } from "../lib/eval/preflight.ts";
+import { closeDb, db } from "../lib/db/pool.ts";
 
 /** Long enough that an idle worker is quiet, short enough that a learner
  *  watching the results pane does not notice the wait. */
@@ -69,7 +70,26 @@ async function loop(): Promise<void> {
   console.log("worker stopped");
 }
 
+/**
+ * Check the worker can run what its catalogue requires, before it grades
+ * anything. docs/10 section 9.
+ *
+ * At boot rather than per submission, because the failure this catches is a
+ * deployment fact: a model that is not on disk now will not be on disk in an
+ * hour. Discovering it one submission at a time means a cohort graded on half
+ * a panel and nobody told.
+ */
+async function startable(): Promise<boolean> {
+  const report = await preflight(db());
+  console.log(report.message);
+  return report.ok;
+}
+
 if (import.meta.filename === process.argv[1]) {
+  if (!await startable()) {
+    await closeDb();
+    process.exit(1);
+  }
   if (process.argv.includes("--once")) {
     console.log(JSON.stringify(await pass()));
   } else {

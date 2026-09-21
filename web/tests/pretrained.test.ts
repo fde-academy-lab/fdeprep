@@ -48,18 +48,25 @@ function failingEmbed(reason: string): Embed {
   return async () => ({ ok: false, reason });
 }
 
-/** Three exemplars whose text lands on known basis words. */
+/**
+ * Three exemplars that share a topic and differ in what else they mention.
+ *
+ * Orthogonal exemplars would be easier to reason about and would not resemble
+ * a real problem at all: three answers to one question are all about that
+ * question, which is why a real pool puts a median of two neighbours above
+ * the similarity floor rather than one.
+ */
 const AUTHORED = `
 slug: a-problem
 exemplars:
-  - { band: strong,   body_md: "retry retry retry" }
-  - { band: adequate, body_md: "budget budget budget" }
-  - { band: weak,     body_md: "cache cache cache" }
+  - { band: strong,   body_md: "retry retry retry retry" }
+  - { band: adequate, body_md: "retry budget" }
+  - { band: weak,     body_md: "retry cache" }
 `;
 
 const INPUT = {
   submissionId: 1, complexity: "C4" as const, artefactType: "design",
-  body: "retry", problemSlug: "a-problem",
+  body: "retry retry retry budget", problemSlug: "a-problem",
 };
 
 let learner: Awaited<ReturnType<typeof seedLearner>>;
@@ -99,15 +106,15 @@ describe("the neighbour pool seeds itself from the authored exemplars", () => {
     // Three exemplars in one batch, then the answer. Batched because the
     // encoder is a subprocess and three spawns would cost three model loads.
     expect(encode.calls).toEqual([
-      ["retry retry retry", "budget budget budget", "cache cache cache"],
-      ["retry"],
+      ["retry retry retry retry", "retry budget", "retry cache"],
+      [INPUT.body],
     ]);
 
     await panelist.run(INPUT);
     expect(await embeddingCount()).toBe(3);
     // Only the answer the second time. The pool is read from the table, so
     // every submission after the first pays one encode rather than four.
-    expect(encode.calls.slice(2)).toEqual([["retry"]]);
+    expect(encode.calls.slice(2)).toEqual([[INPUT.body]]);
   });
 
   it("records which model produced each vector", async () => {
@@ -302,6 +309,74 @@ describe("what the panelist says about its own evidence", () => {
   });
 });
 
+describe("how much evidence a band needs rises with the level", () => {
+  /** A pool holding one neighbour the answer is near and one it is not. */
+  async function oneNeighbour(): Promise<void> {
+    await db().query(
+      `insert into embedding (problem_id, band, source, vector, model)
+       values ($1, 'strong', 'exemplar', $2, $4), ($1, 'weak', 'exemplar', $3, $4)`,
+      [problemId, stubVector("retry"), stubVector("cache"), EMBEDDING_MODEL]);
+  }
+
+  it("declines to band a C4 answer that only one graded answer is near", async () => {
+    // Measured across 11 problems: whenever exactly one neighbour clears the
+    // floor, the weighted vote reports confidence 1.00, because that one
+    // neighbour holds all the weight. So `split_neighbours` cannot fire in
+    // precisely the case where the evidence is thinnest. At C4 the band is
+    // most of the grade, so a band resting on one neighbour is withheld.
+    await oneNeighbour();
+    const result = await pretrainedPanelist(options(stubEmbed())).run(INPUT);
+
+    expect(result.status).toBe("ran");
+    expect(result.band).toBeUndefined();
+    expect(result.findings.map((f) => f.code)).toContain("thin_evidence");
+  });
+
+  it("bands the same answer at C2, where the tests already decided", async () => {
+    // A code problem is graded by its battery. One neighbour is a garnish on
+    // a verdict that does not depend on it, so withholding it buys nothing.
+    await oneNeighbour();
+    const result = await pretrainedPanelist(options(stubEmbed()))
+      .run({ ...INPUT, complexity: "C2", artefactType: "code" });
+
+    expect(result.band).toBe("strong");
+    expect(result.findings.map((f) => f.code)).not.toContain("thin_evidence");
+  });
+
+  it("bands a C4 answer once two graded answers are near it", async () => {
+    // Two is what a fresh three-exemplar pool actually supplies: measured
+    // median 2 across every authored problem. A bar of three would silence
+    // this panelist until a cohort filled the pool rather than restrain it.
+    await db().query(
+      `insert into embedding (problem_id, band, source, vector, model)
+       values ($1, 'strong', 'exemplar', $2, $4), ($1, 'strong', 'exemplar', $3, $4)`,
+      [problemId, stubVector("retry"), stubVector("retry retry"), EMBEDDING_MODEL]);
+
+    const result = await pretrainedPanelist(options(stubEmbed())).run(INPUT);
+    expect(result.band).toBe("strong");
+    expect(result.findings.map((f) => f.code)).not.toContain("thin_evidence");
+  });
+
+  it("never lowers a grade when it withholds a band", async () => {
+    // Withholding is not a weak band. The panel has to read it as silence.
+    await oneNeighbour();
+    const evaluation = await runPanel(INPUT, [
+      { name: "static", async run() {
+        return { status: "ran" as const, ms: 0, findings: [],
+                 verdict: "pass" as const, scoreContribution: 90 };
+      } },
+      pretrainedPanelist(options(stubEmbed())),
+      { name: "llm", async run() {
+        return { status: "ran" as const, ms: 0, findings: [], band: "strong" as const };
+      } },
+    ]);
+
+    expect(evaluation.band).toBe("strong");
+    expect(evaluation.disagreement).toBeNull();
+    expect(evaluation.state).toBe("complete");
+  });
+});
+
 describe("the pool learns from the cohort", () => {
   let nextLearner = 2;
 
@@ -377,8 +452,9 @@ describe("the pool learns from the cohort", () => {
     expect(before.band).toBe("strong");
 
     for (const [index, band] of (["weak", "weak", "weak"] as Band[]).entries()) {
-      const id = await submissionId(`retry ${index}`);
-      await rememberGraded(db(), { problemId, submissionId: id, band, body: "retry" }, encode);
+      const id = await submissionId(`a cohort answer ${index}`);
+      await rememberGraded(db(),
+        { problemId, submissionId: id, band, body: INPUT.body }, encode);
     }
 
     const after = await pretrainedPanelist(options(encode)).run(INPUT);

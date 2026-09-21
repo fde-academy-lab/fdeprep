@@ -58,6 +58,16 @@ function unavailable(name: "pretrained" | "llm", reason: string): Panelist & { c
   return p;
 }
 
+/** A panelist this deployment does not have, as against one that broke. */
+function skipped(name: "pretrained" | "llm", reason: string): Panelist {
+  return {
+    name,
+    async run(): Promise<PanelistResult> {
+      return { status: "skipped", reason, ms: 0, findings: [] };
+    },
+  };
+}
+
 const INPUT: Omit<PanelInput, "complexity"> = {
   submissionId: 1,
   artefactType: "design",
@@ -162,6 +172,36 @@ describe("degradation, which is the point of the panel", () => {
     expect(ran).toEqual(["static", "pretrained"]);
     expect(evaluation.panel.find((p) => p.panelist === "llm")?.reason)
       .toBe("deadline_exceeded");
+  });
+
+  it("says the panel was thin when a level's required panelist was skipped", async () => {
+    // Skipped, not unavailable: this deployment does not have the panelist,
+    // so no re-run is owed and the evaluation is complete. What it must not
+    // claim is the confidence of a full panel. The record is what an appeal
+    // and a placement conversation both read.
+    const evaluation = await runPanel(input("C4"), [
+      fake("static", { verdict: "pass", scoreContribution: 70 }),
+      skipped("pretrained", "model_missing"),
+      fake("llm", { band: "strong" }),
+    ]);
+
+    expect(evaluation.state).toBe("complete");
+    expect(evaluation.scoreProvisional).toBe(false);
+    expect(evaluation.confidence).toBe("medium");
+    // No free re-run is promised, because none is coming.
+    expect(evaluation.feedbackMd).not.toContain("still running");
+  });
+
+  it("keeps full confidence when the skipped panelist was only optional", async () => {
+    // A code problem is C2. Panelist 2 adds nothing its tests did not already
+    // say, so its absence costs the evaluation nothing at all.
+    const evaluation = await runPanel(input("C2"), [
+      fake("static", { verdict: "pass", scoreContribution: 100 }),
+      skipped("pretrained", "no_graded_pool"),
+      fake("llm", { band: "strong" }),
+    ]);
+
+    expect(evaluation.confidence).toBe("high");
   });
 
   it("still answers when only P1 survives", async () => {

@@ -159,6 +159,8 @@ Three evaluators run in a fixed order and their findings are consolidated into o
 
 Three neighbours vote, weighted by how near each one is, because a neighbour at 0.82 is far better evidence than one at 0.31 and counting them equally throws that away. An answer that resembles nothing in the pool gets no band at all: that is not a weak answer, it is an answer this panelist has no evidence about, and saying so is worth more than a confident guess.
 
+**How much evidence it needs rises with the level.** One neighbour is enough on a C2 code problem the battery already graded. From C3 up it needs two, because one neighbour produces a weighted vote of confidence 1.00 by construction, so the split warning cannot fire exactly where the evidence is thinnest. Two is what a fresh three-exemplar pool actually supplies, measured across the 11 authored problems with rubrics; three would silence the panelist rather than restrain it. Below the bar it reports what it saw and withholds the band, and a withheld band never lowers a grade.
+
 Measured and settled: `all-MiniLM-L6-v2` int8, chunked to avoid truncation, at 67ms p95 for a 700-word answer on one core, running in the worker rather than the judge Lambda. `docs/10` section 5 carries the numbers and the reasoning, and `scripts/bench_embeddings.py` re-runs the measurement.
 
 ### Complexity is not difficulty
@@ -351,7 +353,9 @@ cd fdeprep
 docker compose up
 ```
 
-Open <http://localhost:3000>. Four services come up in order: Postgres, then a one-shot `init` that installs dependencies, migrates and imports the content, then the web application and the worker. Expect `published 25 problems and 12 voice questions.` in the `init` log on a first run.
+Open <http://localhost:3000>. Four services come up in order: Postgres, then a one-shot `init` that installs dependencies, migrates, imports the content and fetches panelist 2's embedding model, then the web application and the worker. Expect `published 25 problems and 12 voice questions.` in the `init` log on a first run.
+
+The model fetch is the one step allowed to fail. On a laptop with no network the stack still comes up: the worker carries `EVAL_DEGRADED_PANELISTS=pretrained`, so it starts without panelist 2 and says so in its log rather than refusing. Outside the demo the refusal is the point, and section 3 step 5 covers it.
 
 You are signed in as a development learner with admin rights, because the stack sets `AUTH_DEV_LEARNER=1`. That switch is refused when `NODE_ENV` is production and refused when `GITHUB_CLIENT_ID` is set, so it cannot follow you into a deployment. **This route is for seeing the product and demonstrating it, never for putting in front of learners.**
 
@@ -403,11 +407,21 @@ AUTH_DEV_LEARNER=1 npm run dev
 Open <http://localhost:3000>.
 
 ```bash
-# 7. Optional: panelist 2's embedding model, 46MB, verified by checksum
+# 7. Panelist 2's embedding model, 46MB, verified by checksum
 python scripts/fetch_embedding_model.py
 ```
 
-Skip it and everything still works. Panelist 2 reports that this machine does not have it, the panel runs on panelists 1 and 3, and the evaluation stays `complete` rather than promising a review that is not coming. Fetch it and design, prompt and voice answers also get a band from the nearest graded answers to them. The script pins a model revision and verifies a SHA-256 before it writes, so a model that changed underneath you is a failure rather than a silent change to every band the panel assigns.
+The worker refuses to start without it, because the published catalogue holds 8 problems that require panelist 2 and grading those without it drops most of the evidence behind every band. It says so at boot and names both ways out:
+
+```
+The pretrained panelist cannot run here: model_missing. 8 of 25 published
+problems require it, and grading them without it would quietly drop most of
+the evidence behind every band.
+  Fix it:          python scripts/fetch_embedding_model.py
+  Or accept it:    EVAL_DEGRADED_PANELISTS=pretrained
+```
+
+`EVAL_DEGRADED_PANELISTS=pretrained` starts anyway and prints what you gave up. Use it for a demo or a box that only serves code problems; those evaluations carry `medium` confidence rather than `high` until the panelist runs. The script pins a model revision and verifies a SHA-256 before it writes, so a model that changed underneath you is a failure rather than a silent change to every band the panel assigns.
 
 `AUTH_DEV_LEARNER=1` creates one development learner with the admin role, so every screen opens without a GitHub application. The switch refuses to work whenever `GITHUB_CLIENT_ID` is set and refuses outright when `NODE_ENV` is production, so it cannot follow you into a deployment.
 
@@ -587,6 +601,7 @@ The worker is also where panelist 2 runs, so run `python scripts/fetch_embedding
 | `RUNNER_PYTHON` | `.venv/bin/python`, then `python3` | The interpreter the worker spawns for the test battery and for the encoder. Set it explicitly when neither resolves. |
 | `FDEPREP_EMBED_MODEL_DIR` | `.models/minilm` | Where the encoder looks for the weights. Point it at a shared read-only path when several workers share a host. |
 | `EMBED_TIMEOUT_MS` | `20000` | How long the worker waits for an encode before killing it. A hung encoder becomes an unavailable panelist rather than a stuck queue. |
+| `EVAL_DEGRADED_PANELISTS` | unset | Panelists this worker starts without, comma separated. Without it the worker refuses to start when its catalogue requires one it cannot run. A name that is not a panelist is rejected rather than ignored, so a typo does not read as "everything is fine". |
 
 ## Step 6: the roster, before students arrive
 
@@ -789,6 +804,7 @@ Judge prompts are files in `judge/prompts/`, versioned as `rubric.v1.md` and so 
 | The Voice Screen serves the wrong question. | Content was never imported, so it fell back to the `docs/07` fixture. | `npm run import:content`. The fixture's prompt mentions spinning forever in production, which is how you recognise it. |
 | `next build` fails on `/_global-error` with a null `useContext`. | `NODE_ENV` is set to `development` in the shell. | `NODE_ENV=production npx next build`. |
 | A local run cannot find Python. | The runner subprocess resolves `.venv` then `python3`. | Set `RUNNER_PYTHON` to an explicit interpreter path. |
+| The worker exits immediately with "cannot run here: model_missing". | The published catalogue requires panelist 2 and this host has no embedding model. This is the check working, not a fault. | `python scripts/fetch_embedding_model.py` on that host, or `EVAL_DEGRADED_PANELISTS=pretrained` to start without it and accept `medium` confidence on the affected problems. |
 | Every design evaluation is `partial` and the re-run queue only grows. | Panelist 2's encoder is failing rather than absent: a timeout, a crash or a response that did not parse. An absent model is `skipped` and leaves the evaluation `complete`, so a growing backlog means something is breaking. | Read the `reason` on the `pretrained` panelist in the evaluation record. `timeout` means the host is too slow or `EMBED_TIMEOUT_MS` is too tight; `encode_failed` and `exit_1` carry the Python error. Reproduce with `echo '{"texts":["an answer"]}' \| python -m embed.cli`, which prints the reason and exits zero. |
 | Design answers get a band from the judge and never from the nearest graded answers. | This host has no embedding model, which is a supported state rather than a fault. | `python scripts/fetch_embedding_model.py`. Until then panelist 2 reports `model_missing` and skips, and the panel runs two-strong. |
 

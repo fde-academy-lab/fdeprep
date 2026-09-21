@@ -33,17 +33,36 @@ export interface PanelDemand {
   llm: Demand;
   /** C5 asks a second model, so disagreement is visible rather than assumed. */
   secondModel: boolean;
+  /**
+   * How many graded answers have to sit near a submission before panelist 2's
+   * band counts at this level.
+   *
+   * One neighbour produces a weighted vote of confidence 1.00 by construction,
+   * since that neighbour holds all the weight, so the split-neighbours warning
+   * cannot fire exactly when the evidence is thinnest. Measured across the 11
+   * authored problems with rubrics: a fresh three-exemplar pool supplies a
+   * median of two neighbours above the similarity floor, so a bar of two
+   * restrains the panelist and a bar of three would silence it.
+   */
+  minimumNeighbours: number;
 }
 
 const DEMANDS: Readonly<Record<Complexity, PanelDemand>> = {
   // One right answer, and it is short. A model call here is waste that
   // compounds across a cohort.
-  C1: { static: "required", pretrained: "no", llm: "no", secondModel: false },
-  C2: { static: "required", pretrained: "optional", llm: "no", secondModel: false },
-  C3: { static: "required", pretrained: "required", llm: "optional", secondModel: false },
-  C4: { static: "required", pretrained: "required", llm: "required", secondModel: false },
+  C1: { static: "required", pretrained: "no", llm: "no", secondModel: false,
+        minimumNeighbours: 1 },
+  // The battery decides a C2 grade. A band from one neighbour is a garnish on
+  // a verdict that does not depend on it, so there is nothing to protect.
+  C2: { static: "required", pretrained: "optional", llm: "no", secondModel: false,
+        minimumNeighbours: 1 },
+  C3: { static: "required", pretrained: "required", llm: "optional", secondModel: false,
+        minimumNeighbours: 2 },
+  C4: { static: "required", pretrained: "required", llm: "required", secondModel: false,
+        minimumNeighbours: 2 },
   // No single right answer, so a panel of one would be guessing.
-  C5: { static: "required", pretrained: "required", llm: "required", secondModel: true },
+  C5: { static: "required", pretrained: "required", llm: "required", secondModel: true,
+        minimumNeighbours: 2 },
 };
 
 export function panelFor(complexity: Complexity): PanelDemand {
