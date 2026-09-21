@@ -22,7 +22,7 @@ import {
   defaultComplexity, isComplexity, panelFor, type Demand,
 } from "../policy/complexity.ts";
 import { embed } from "./embed.ts";
-import type { PanelistName } from "./panel.ts";
+import type { AutomatedPanelist, PanelistName } from "./panel.ts";
 
 export type ProbeResult = { ok: true } | { ok: false; reason: string };
 export type Probe = () => Promise<ProbeResult>;
@@ -54,7 +54,7 @@ export interface PreflightOptions {
 }
 
 /** Only the pretrained panelist has a cheap, honest boot probe. */
-const PROBED: readonly PanelistName[] = ["pretrained"];
+const PROBED: readonly AutomatedPanelist[] = ["pretrained"];
 
 const FIXES: Readonly<Record<string, string>> = {
   pretrained: "python scripts/fetch_embedding_model.py",

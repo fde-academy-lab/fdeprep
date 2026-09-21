@@ -15,10 +15,18 @@ import {
 import type { Band } from "../policy/bands.ts";
 import { consolidate, type Evaluation } from "./consolidate.ts";
 
-export type PanelistName = "static" | "pretrained" | "llm";
+/**
+ * `faculty` is a seat on the record, never a panelist the panel runs.
+ * PANEL_ORDER below is the three automated ones, and a human is added to a
+ * stored panel only by an override.
+ */
+export type PanelistName = "static" | "pretrained" | "llm" | "faculty";
+
+/** The three the panel runs. A level's demand table is indexed by these. */
+export type AutomatedPanelist = Exclude<PanelistName, "faculty">;
 
 /** The order is the contract. P1 first, always. docs/10 section 1. */
-export const PANEL_ORDER: readonly PanelistName[] = ["static", "pretrained", "llm"];
+export const PANEL_ORDER: readonly AutomatedPanelist[] = ["static", "pretrained", "llm"];
 
 export type Severity = "blocking" | "informational";
 

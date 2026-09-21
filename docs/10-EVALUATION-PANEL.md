@@ -241,7 +241,19 @@ A reviewer records one of three dispositions, each requiring a note, because the
 | `disputed` | The held band is wrong and the higher one was right. This is the backlog the grade override works from. |
 | `problem_flagged` | Neither band is the story. The problem is miscalibrated, usually exemplars too close together to separate anything. |
 
-**A review is a reading, not an override.** Nothing in `evaluation_review` writes a score, a band or a competency state, so section 13 holds unchanged. The grade override in `00` section 3.1 is a separate thing and is not built. Until it is, `disputed` is a list somebody works from rather than an action, and that limit is worth stating plainly: faculty can currently see a wrong grade and record that it is wrong, and not change it.
+**A review is a reading. The override is the correction, and it is a separate action.** Nothing in `evaluation_review` writes a score, a band or a competency state. A row marked `disputed` offers `Correct the grade`, which is the override from `00` section 3.1.
+
+An override writes a new `evaluation` row rather than editing one, because the table is append-only and an appeal has to be able to read what the panel said before a human disagreed with it. The row carries `overridden_by` and `override_note`, and the panel gains a `faculty` seat beside the three automated ones. It does not pass through `saveEvaluation`, whose rise-only floor exists so that the platform finishing its own work never costs a learner points; a human saying an answer was graded too generously is the opposite case and the floor would swallow it.
+
+The human chooses a band. Everything else follows:
+
+| Field | How it moves |
+|---|---|
+| `score` | `bandScore` of the chosen band. |
+| `verdict` | Follows the band only where the rubric decided it. A design answer passes at `adequate` or better, which is the judge's own rule: `pass_threshold` takes the threshold from the exemplar the author labelled `adequate`. Where a probe battery decided the verdict, as on a prompt problem, the verdict is left alone, because overruling a deterministic battery is a larger decision than regrading an argument. |
+| `competency_score` | Recomputed for that enrolment, per `02` section 7. |
+
+An `error` evaluation cannot be overridden. It consumes no allowance and says nothing about the learner, so there is no grade there to correct.
 
 Faculty may settle a disagreement, which widens who may write beyond the admin-only ops actions. It widens nothing else: the roster, the import screen, the counters and the requeue stay admin only, and `permits` in `web/lib/admin/guard.ts` is the one place that decides.
 
@@ -431,5 +443,5 @@ The rule that makes it worth enforcing: a heatmap that disagrees with a report c
 4. P2 assigns a band to a design answer with no network call, tested with the interface offline.
 5. Every heuristic in the registry runs against all 25 reference solutions and fires on none of them.
 6. A problem declaring P3 without P1 fails CI, with the file and the line named.
-7. Two judges disagreeing by two bands produce `disagreement` on the record, the lower band as the score, and a row in the faculty view at `/admin/disagreements` that leaves the open queue once somebody records what they concluded.
+7. Two judges disagreeing by two bands produce `disagreement` on the record, the lower band as the score, and a row in the faculty view at `/admin/disagreements` that leaves the open queue once somebody records what they concluded. A row marked `disputed` can be corrected, which writes a new evaluation, moves the learner's verdict and score, and recomputes their competency cells.
 8. The learner-facing payload contains no panelist name, verified by a test that greps the serialised result contract.
