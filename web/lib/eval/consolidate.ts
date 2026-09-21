@@ -84,6 +84,13 @@ export function consolidate(input: ConsolidateInput): Evaluation {
     p.status === "unavailable" && demandFor(input.demand, p.panelist) !== "no");
   const state: EvaluationState = missing.length ? "partial" : "complete";
 
+  // A panelist this deployment does not have is a different thing: no re-run
+  // is owed because none is coming, so the evaluation is complete. What it
+  // must not do is claim the confidence of a full panel, or the one number a
+  // placement conversation reads would be quietly overstated.
+  const thin = panel.some((p) =>
+    p.status === "skipped" && demandFor(input.demand, p.panelist) === "required");
+
   const verdict = statik.verdict ?? null;
   const score = input.deterministicScore || band === null
     ? statik.scoreContribution ?? null
@@ -95,7 +102,7 @@ export function consolidate(input: ConsolidateInput): Evaluation {
     verdict,
     score,
     scoreProvisional: state === "partial",
-    confidence: confidenceFor(state, disagreement),
+    confidence: confidenceFor(state, disagreement, thin),
     band,
     disagreement,
     feedbackMd: feedback(panel, state, verdict),
@@ -125,9 +132,14 @@ function findDisagreement(bands: Band[]): Disagreement | null {
   return { bands: worst, held: lowerBand(worst[0], worst[1]) };
 }
 
-function confidenceFor(state: EvaluationState, disagreement: Disagreement | null): Confidence {
+function confidenceFor(
+  state: EvaluationState,
+  disagreement: Disagreement | null,
+  thin: boolean,
+): Confidence {
   if (disagreement) return "low";
-  return state === "complete" ? "high" : "medium";
+  if (state !== "complete" || thin) return "medium";
+  return "high";
 }
 
 /**

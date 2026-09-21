@@ -254,6 +254,24 @@ A model asked for a number invents precision it does not have, and two runs of t
 
 Band-to-score mapping lives in the policy module, so changing what `adequate` is worth is one file.
 
+### How much evidence a band needs rises with the level
+
+Panelist 2's band is withheld below a minimum number of neighbours, and the minimum is one at C1 and C2 and two from C3 up. The reason is a defect found by measurement rather than a preference: when exactly one neighbour clears the similarity floor, the weighted vote reports confidence 1.00, because that one neighbour holds all the weight. The `split_neighbours` warning therefore cannot fire in precisely the case where the evidence is thinnest.
+
+The number two is what the content supplies rather than a tuned constant. Measured across the 11 authored problems that carry a rubric, a fresh three-exemplar pool puts a median of two neighbours above the floor. A bar of three would silence panelist 2 until a cohort filled the pool, which is suppression rather than restraint.
+
+Below the bar the panelist reports `thin_evidence` and no band. The consolidator reads that as silence, so a withheld band never lowers a grade.
+
+### What was measured and rejected
+
+Two richer uses of the embedding model were built as far as measurement and then dropped, recorded here so nobody rebuilds them.
+
+**Rubric coverage as a quality signal.** Embedding each rubric criterion and scoring an answer against it separates the bands in the right order and nowhere near well enough to use: across 11 problems and 33 authored exemplars, mean similarity runs 0.455 for `strong`, 0.405 for `adequate` and 0.312 for `weak`, with overlapping distributions, and on two problems a `weak` answer scores above the `strong` one. The model is measuring topic, not quality, which is expected once stated: two answers to the same question are about the same thing.
+
+**Rubric coverage as a "never went near this" signal.** Narrower and still not usable. No floor separates: at 0.15 on design problems it fires on one of four `strong` exemplars and three of four `weak` ones, and the `strong` exemplar it fires on scores -0.016, lower than every `weak` answer but one.
+
+`scripts/bench_embeddings.py` re-runs the first measurement when a model changes.
+
 ---
 
 ## 9. Degradation, which is the point of the panel
@@ -270,6 +288,12 @@ Two rules make degradation safe rather than merely graceful.
 **A missing panelist never lowers a score.** If P3 would have contributed points and P3 was down, the learner is not charged for the outage. The evaluation is `partial`, the score is marked provisional, and a free re-evaluation is queued.
 
 **A re-evaluation never consumes an allowance.** It is the platform finishing work it already owed.
+
+**A worker refuses to start when its own catalogue requires a panelist it cannot run.** Checked once at boot, never per submission, because the failure it catches is permanent: a model that is not on disk now will not be on disk in an hour. The worker reads the published problems, takes the strongest demand any one of them places, and probes. A code-only catalogue starts without the embedding model, because C2 makes panelist 2 optional and the battery decides the grade. A catalogue holding one C3 problem does not. Nothing here is configured by hand: an operator describing what their box is for would eventually describe it wrong, so the content decides. `EVAL_DEGRADED_PANELISTS=pretrained` starts anyway, prints what was given up, and is a decision somebody made rather than a default.
+
+Only absences are checked at boot. Bedrock being unreachable is transient, costs a model call to test, and is already handled at run time by the evaluation going `partial` and owing a free re-run.
+
+**An evaluation whose panel was thinner than its level asked for carries `medium` confidence, not `high`.** It is still `complete`, because no re-run is owed when the panelist is absent rather than broken. What it may not do is claim the confidence of a full panel, since that number is what a placement conversation reads.
 
 **A panelist this deployment does not have is `skipped`, not `unavailable`.** The two look alike and mean opposite things. A worker image built without the embedding model on disk will never encode anything, so calling that an outage marks every design evaluation `partial` and queues a free re-run that nothing will ever drain, and a promise nobody drains is worse than a plain absence. An outage is a timeout, a crash, or a response that did not parse, and those are worth a re-run because the next attempt may work. In code the split is one function, `statusFor` in `web/lib/eval/pretrained.ts`: `model_missing`, `dependency_missing` and `spawn_failed` are absence; everything else is an outage.
 

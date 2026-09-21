@@ -14,6 +14,7 @@
 import type { Pool, PoolClient } from "pg";
 import { parse } from "yaml";
 import { bandDistance, BANDS, type Band } from "../policy/bands.ts";
+import { panelFor } from "../policy/complexity.ts";
 import { embed, EMBEDDING_MODEL, similarity, type Embed } from "./embed.ts";
 import type { Finding, Panelist, PanelistResult } from "./panel.ts";
 
@@ -106,6 +107,23 @@ export function pretrainedPanelist(options: PretrainedOptions): Panelist {
           findings: [{
             code: "no_close_neighbour",
             detail: "This answer does not resemble any graded answer for this problem.",
+            severity: "informational",
+          }],
+        };
+      }
+
+      // The level says how much evidence a band needs before it counts. Below
+      // that this panelist says what it saw and withholds the band, which the
+      // consolidator reads as silence rather than as a weak answer.
+      const required = panelFor(input.complexity).minimumNeighbours;
+      if (neighbours.length < required) {
+        return {
+          status: "ran",
+          ms: Date.now() - started,
+          findings: [{
+            code: "thin_evidence",
+            detail: `Only ${neighbours.length} graded answer for this problem is ` +
+              "close enough to compare against, which is too few to place this one.",
             severity: "informational",
           }],
         };

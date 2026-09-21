@@ -56,6 +56,8 @@ services:
         cd /app/web && npm ci --silent
         npm run migrate
         npm run import:content
+        cd /app && /app/.venv/bin/python scripts/fetch_embedding_model.py ||
+          echo 'panelist 2 has no model, so the worker starts without it'
       "
 
   app:
@@ -88,6 +90,12 @@ services:
     environment:
       DATABASE_URL: postgres://fdeprep:fdeprep@db:5432/fdeprep
       RUNNER_PYTHON: /app/.venv/bin/python
+      # init fetches the embedding model, and this stack has to come up on a
+      # laptop with no network as well. Without the opt-out the worker would
+      # refuse to start, and `restart: unless-stopped` would turn that refusal
+      # into a silent crash loop, which is worse than the degradation it
+      # exists to prevent. When the model is there this line does nothing.
+      EVAL_DEGRADED_PANELISTS: pretrained
     volumes:
       - .:/app
       - node_modules:/app/web/node_modules
