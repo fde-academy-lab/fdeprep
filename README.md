@@ -292,6 +292,7 @@ Everything below runs on a laptop with PostgreSQL and no cloud account.
 | Sit a timed rehearsal under Extreme rules and get a report. | `/rehearsal` |
 | See the competency heatmap and export attempt history as CSV. | `/progress` |
 | Administer the roster, bulk-change personas from a CSV, read submissions, requeue a stuck one, and flip degraded mode. | `/admin/*` |
+| Work a faculty queue of the answers the panel argued about, seeing which panelist said what and recording what you concluded. | `/admin/disagreements` |
 
 Content authored and validated in CI:
 
@@ -324,7 +325,7 @@ Four integrations are written, unit-tested against recorded fixtures, and have n
 | Gap | Effect |
 |---|---|
 | The baseline diagnostic that sets a learner's persona does not exist. An admin sets the persona by hand or by CSV. | Personas work. Nothing assigns them automatically. |
-| The faculty override on a design verdict is specified in `docs/00` section 3.1 and not implemented. | A rubric judge's score on a design answer is final. |
+| The faculty override on a design verdict is specified in `docs/00` section 3.1 and not implemented. | Faculty can see a wrong grade at `/admin/disagreements` and record that it is wrong. They cannot change it. |
 | The Voice Screen has no question picker. A learner gets the first published question, or the one named in `?q=<slug>`. | Twelve questions are reachable by URL and one is reachable by clicking. |
 | `/admin/import` reads `problems/` from disk at request time, so it works locally and cannot work on Vercel. | Publishing content on a deployment is `npm run import:content`, run by an operator. Section 4 covers it. |
 | There is no mobile layout. | Explicitly a non-goal for v1 in `docs/00`. The three-pane workspace is usable and unpleasant on a phone. |
@@ -1003,7 +1004,7 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | Item | What it fixes |
 |---|---|
 | A baseline diagnostic that sets a learner's persona. | Personas work today and nothing assigns them. An admin sets them by hand or by CSV, which does not scale past one cohort. |
-| The faculty override on a design verdict. | Specified in `docs/00` section 3.1 and never built. A rubric judge's score on a written answer is currently final, which is the wrong default for a human-judgement artefact. |
+| The faculty override on a design verdict. | Specified in `docs/00` section 3.1 and never built. The disagreement queue now shows faculty which grades are worth disputing and records their verdict; nothing acts on it. A `disputed` row is a wrong grade a human has already identified and cannot fix, which is a worse position to be in than not knowing. |
 | Re-grading past submissions against a new judge prompt version. | There is no mechanism today, which means changing a prompt mid-cohort leaves two populations graded differently with nothing recording that. |
 | A replacement for `/admin/import` that works on a deployment. | Content publishing is an operator command today. That is correct and it is also a person who has to be awake. |
 | Build `analytics/`: cohort views, the stuck list, problem calibration and panel health. | Specified in `docs/11`. The heatmap answers "is this learner ready". Nobody can currently answer "which topic did this cohort fail" without SQL. |

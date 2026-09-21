@@ -229,6 +229,22 @@ Three panelists produce findings. The learner sees one verdict, one score and on
 
 When P2 and P3 both score an artefact and land more than one band apart, the consolidator does not take the mean. It marks `disagreement` on the record, holds the lower band, and surfaces the row to faculty.
 
+The surfacing is `/admin/disagreements`, and it is what makes holding the lower band defensible rather than merely decided. Holding the lower hands the grade to the more cautious voice, and the more cautious voice is often P2, which has never been checked against a human grader on a single answer. Without a screen, an unvalidated panelist pulls a grade down and nobody learns it happened.
+
+The queue is oldest first, since a queue sorted newest first grows a tail nobody reaches, and the tail is where a learner has been sitting on a wrong grade the longest. Only the newest evaluation per submission appears: a re-run that no longer disagrees has settled the argument, and leaving it there would have faculty adjudicating something the platform already fixed.
+
+A reviewer records one of three dispositions, each requiring a note, because the note is the only record and the person reading it later is not the person who wrote it.
+
+| Disposition | Means |
+|---|---|
+| `upheld` | The held band is right. The panel argued and the cautious answer won. |
+| `disputed` | The held band is wrong and the higher one was right. This is the backlog the grade override works from. |
+| `problem_flagged` | Neither band is the story. The problem is miscalibrated, usually exemplars too close together to separate anything. |
+
+**A review is a reading, not an override.** Nothing in `evaluation_review` writes a score, a band or a competency state, so section 13 holds unchanged. The grade override in `00` section 3.1 is a separate thing and is not built. Until it is, `disputed` is a list somebody works from rather than an action, and that limit is worth stating plainly: faculty can currently see a wrong grade and record that it is wrong, and not change it.
+
+Faculty may settle a disagreement, which widens who may write beyond the admin-only ops actions. It widens nothing else: the roster, the import screen, the counters and the requeue stay admin only, and `permits` in `web/lib/admin/guard.ts` is the one place that decides.
+
 Averaging two judges who disagree produces a number that looks confident and hides the one fact worth knowing, which is that this answer is hard to grade. A cohort's most interesting submissions are the ones where the panel argued, and silently averaging them throws that away.
 
 ### The one voice
@@ -415,5 +431,5 @@ The rule that makes it worth enforcing: a heatmap that disagrees with a report c
 4. P2 assigns a band to a design answer with no network call, tested with the interface offline.
 5. Every heuristic in the registry runs against all 25 reference solutions and fires on none of them.
 6. A problem declaring P3 without P1 fails CI, with the file and the line named.
-7. Two judges disagreeing by two bands produce `disagreement` on the record, the lower band as the score, and a row in the faculty view.
+7. Two judges disagreeing by two bands produce `disagreement` on the record, the lower band as the score, and a row in the faculty view at `/admin/disagreements` that leaves the open queue once somebody records what they concluded.
 8. The learner-facing payload contains no panelist name, verified by a test that greps the serialised result contract.
