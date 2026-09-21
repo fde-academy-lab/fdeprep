@@ -209,3 +209,14 @@ reference_md: |
   the field is named for. It was written by the process being judged. An
   evaluator that reads it has asked the defendant for the verdict, and it
   will keep passing until the day something has a reason to lie.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    The answer is correct but the agent used an unauthorized tool. Did it pass?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I019.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

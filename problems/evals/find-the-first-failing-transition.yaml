@@ -223,3 +223,12 @@ reference_md: |
 
   The unreadable trace is not a corner case, it is Tuesday. Services change
   shape mid-incident precisely because somebody is deploying a fix.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A run failed and three steps logged errors. Which one broke it, and how did you decide that from the trace?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

@@ -76,14 +76,16 @@ export function isComplexity(value: unknown): value is Complexity {
 /**
  * What a problem gets when it carries no `complexity` of its own.
  *
- * Nothing in problems/ declares it yet. Without a default the panel could not
- * run against today's catalogue at all, and a backfill would have to land
- * before any of this could be exercised. These are the levels the artefact
- * types already imply: a code problem applies a known technique to a fixed
- * case, and a design answer argues a trade-off with no single right answer.
+ * Every problem in problems/ now declares one and the validator requires it,
+ * so this is no longer the path a problem takes. Two callers remain.
  *
- * An explicit `complexity` in the YAML always wins. Once the backfill lands the
- * validator requires one and this becomes dead weight worth deleting.
+ * A defence has no problem of its own: it is a written argument about a choice
+ * the learner already made, so it takes the level this returns rather than the
+ * level of the problem it defends.
+ *
+ * And a submission whose problem version predates the backfill still has to
+ * grade rather than throw, since `evaluation` rows outlive the YAML they were
+ * written against.
  */
 export function defaultComplexity(artefactType: string): Complexity {
   switch (artefactType) {

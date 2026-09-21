@@ -455,17 +455,35 @@ tests:
       input: { question: "q" }
       llm_script: [{ match: "*", reply: "Final Answer: x" }]
       assertions: [{ type: returns_nonempty }]
+interview_evidence:
+  round: written
+  asked_as: |
+    A question in the words an interviewer would use.
+  source: |
+    Author judgement.
 `;
 
-  const check = (extra: string) => validateProblemYaml(BASE + extra, "a-problem.yaml");
+  /**
+   * Every problem declares a level now, so the fixture supplies one unless the
+   * test is about the level itself. Passing it through `extra` instead would
+   * put two `complexity` keys in one document.
+   */
+  const check = (extra: string, complexity: string | null = "C2") =>
+    validateProblemYaml(
+      BASE + (complexity === null ? "" : `complexity: ${complexity}\n`) + extra,
+      "a-problem.yaml");
 
-  it("accepts today's problems, which declare neither field", () => {
-    expect(check("").ok).toBe(true);
+  it("rejects a problem that declares no level", () => {
+    // docs/10 section 11. Until the backfill landed this was inferred from the
+    // artefact type, which is a guess wearing a default's clothes.
+    const report = check("", null);
+    expect(report.ok).toBe(false);
+    expect(report.errors.some((e) => e.rule === "no_complexity")).toBe(true);
   });
 
   it("rejects a panel that names a model panelist and no static one", () => {
     // docs/10 section 14 criterion 6.
-    const report = check("complexity: C4\npanel: { pretrained: true, llm: true }\n");
+    const report = check("panel: { pretrained: true, llm: true }\n", "C4");
     expect(report.ok).toBe(false);
     const error = report.errors.find((e) => e.rule === "panel_without_static");
     expect(error).toBeDefined();
@@ -475,15 +493,51 @@ tests:
   });
 
   it("rejects a level that demands a panelist the panel does not declare", () => {
-    const report = check("complexity: C4\npanel: { static: true, pretrained: true }\n");
+    const report = check("panel: { static: true, pretrained: true }\n", "C4");
     expect(report.ok).toBe(false);
     expect(report.errors.some((e) => e.rule === "panel_mismatch")).toBe(true);
   });
 
   it("rejects a model call on an exact-match question", () => {
-    const report = check("complexity: C1\npanel: { static: true, llm: true }\n");
+    const report = check("panel: { static: true, llm: true }\n", "C1");
     expect(report.ok).toBe(false);
     expect(report.errors.some((e) => e.rule === "panel_mismatch")).toBe(true);
+  });
+
+  it("rejects a problem that claims no interview asks it", () => {
+    // docs/10 section 12. Every problem exists to prepare somebody for a
+    // technical round, and a North Star CI cannot check is a wish.
+    const report = validateProblemYaml(
+      BASE.replace(/interview_evidence:[\s\S]*$/, "") + "complexity: C2\n",
+      "a-problem.yaml");
+    expect(report.ok).toBe(false);
+    const error = report.errors.find((e) => e.rule === "no_interview_evidence");
+    expect(error).toBeDefined();
+    // A missing block and a malformed one are different mistakes, and an
+    // author reading "interview_evidence is not a mapping" about a key they
+    // never wrote has to work out what was wanted. This one names the fields.
+    expect(error!.message).toContain("round, asked_as and source");
+  });
+
+  it("rejects a round that is not a round", () => {
+    const report = validateProblemYaml(
+      BASE.replace("round: written", "round: whiteboard") + "complexity: C2\n",
+      "a-problem.yaml");
+    expect(report.ok).toBe(false);
+    const error = report.errors.find((e) => e.rule === "no_interview_evidence");
+    expect(error!.message).toContain("written, oral, both");
+  });
+
+  it("rejects an empty asked_as or source", () => {
+    // An author who cannot name a source writes author judgement. An empty
+    // field is the one thing that reads as though somebody checked.
+    for (const field of ["asked_as", "source"]) {
+      const report = validateProblemYaml(
+        BASE.replace(new RegExp(`  ${field}: \\|\\n    [^\\n]*\\n`), `  ${field}: ""\n`) +
+          "complexity: C2\n",
+        "a-problem.yaml");
+      expect(report.errors.some((e) => e.rule === "no_interview_evidence")).toBe(true);
+    }
   });
 
   it("rejects a heuristic that is not in the registry", () => {
@@ -513,12 +567,12 @@ tests:
   });
 
   it("rejects a complexity outside C1 to C5", () => {
-    const report = check("complexity: epic\n");
+    const report = check("", "epic");
     expect(report.ok).toBe(false);
     expect(report.errors.some((e) => e.rule === "bad_complexity")).toBe(true);
   });
 
   it("accepts a coherent declaration", () => {
-    expect(check("complexity: C3\npanel: { static: true, pretrained: true }\n").ok).toBe(true);
+    expect(check("panel: { static: true, pretrained: true }\n", "C3").ok).toBe(true);
   });
 });

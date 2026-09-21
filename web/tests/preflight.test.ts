@@ -109,8 +109,11 @@ describe("the catalogue decides what the worker must be able to do", () => {
     // Once the backfill lands a problem says its own level. A code problem
     // declared C4 is a code problem whose grade leans on the band.
     await publish("echo-the-question.yaml");
+    // Replace rather than append: every fixture declares a level now, and two
+    // `complexity` keys in one document is a YAML error rather than a test.
     await db().query(
-      `update problem_version v set source_yaml = v.source_yaml || E'\\ncomplexity: C4\\n'
+      `update problem_version v
+          set source_yaml = replace(v.source_yaml, 'complexity: C2', 'complexity: C4')
          from problem p where p.id = v.problem_id and p.slug = 'echo-the-question'`);
     const { probe } = counting({ ok: false, reason: "model_missing" });
 

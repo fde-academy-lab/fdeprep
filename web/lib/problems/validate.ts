@@ -26,7 +26,8 @@ export type Rule =
   | "no_word_range" | "no_rubric" | "rubric_weights" | "no_defence_question"
   | "probe_pattern_absent" | "missing_call_budget" | "matcher_shadows_input"
   | "bad_complexity" | "panel_without_static" | "panel_mismatch"
-  | "unknown_heuristic" | "heuristic_wrong_artefact";
+  | "unknown_heuristic" | "heuristic_wrong_artefact"
+  | "no_complexity" | "no_interview_evidence";
 
 export interface ValidationError {
   rule: Rule;
@@ -156,6 +157,7 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
 
   validatePanel(raw, artefact, add, lineOf);
   validateHeuristics(raw, artefact, add, lineOf);
+  validateInterviewEvidence(raw, add, lineOf);
 
   const tests = Array.isArray(raw["tests"]) ? (raw["tests"] as Record<string, unknown>[]) : [];
   const competencies = Array.isArray(raw["competencies"])
@@ -341,7 +343,16 @@ function validatePanel(
   lineOf: (path: Array<string | number>) => number,
 ): void {
   const declared = raw["complexity"];
-  if (declared !== undefined && !isComplexity(declared)) {
+  // docs/10 section 11. The panel cannot assign panelists without it, and
+  // until every problem declares one the level is inferred from the artefact
+  // type, which is a guess wearing a default's clothes.
+  if (declared === undefined) {
+    add("no_complexity",
+        `every problem declares complexity, one of ${COMPLEXITIES.join(", ")}. ` +
+        "It decides which panelists can check the answer.", lineOf(["slug"]));
+    return;
+  }
+  if (!isComplexity(declared)) {
     add("bad_complexity",
         `complexity ${String(declared)} is not one of ${COMPLEXITIES.join(", ")}`,
         lineOf(["complexity"]));
@@ -422,6 +433,58 @@ function validateHeuristics(
       add("heuristic_wrong_artefact",
           `${name} reads a ${rule.artefacts.join(" or ")} answer and this is a ` +
           `${artefact} problem, so it would never run.`, at);
+    }
+  }
+}
+
+const ROUNDS = ["written", "oral", "both"];
+
+/**
+ * The relevance gate. docs/10 section 12.
+ *
+ * Every problem exists to prepare somebody for a technical round, and a North
+ * Star CI cannot check is a wish. This checks the fields are there and carry
+ * something. It cannot check a claim is true, which is why `source` is
+ * required: an author who cannot name one writes "author judgement" and the
+ * review is where a false claim gets caught.
+ */
+function validateInterviewEvidence(
+  raw: Record<string, unknown>,
+  add: (rule: Rule, message: string, line: number) => void,
+  lineOf: (path: Array<string | number>) => number,
+): void {
+  const evidence = raw["interview_evidence"];
+  const at = lineOf(["interview_evidence"]);
+  if (evidence === undefined) {
+    add("no_interview_evidence",
+        "every problem declares interview_evidence with round, asked_as and source. " +
+        "A problem nobody can say is asked in an interview is a problem nobody " +
+        "should be practising.", lineOf(["slug"]));
+    return;
+  }
+  if (typeof evidence !== "object" || evidence === null || Array.isArray(evidence)) {
+    add("no_interview_evidence", "interview_evidence is not a mapping", at);
+    return;
+  }
+
+  const fields = evidence as Record<string, unknown>;
+  const round = fields["round"];
+  if (typeof round !== "string" || !ROUNDS.includes(round)) {
+    add("no_interview_evidence",
+        `round is ${String(round)} and has to be one of ${ROUNDS.join(", ")}. ` +
+        "It decides whether this can appear in a Voice Screen.",
+        lineOf(["interview_evidence", "round"]));
+  }
+  for (const key of ["asked_as", "source"] as const) {
+    const value = fields[key];
+    if (typeof value !== "string" || !value.trim()) {
+      add("no_interview_evidence",
+          key === "asked_as"
+            ? "asked_as is the question in the words an interviewer would use, and it " +
+              "is empty. A paraphrase of the brief is not one."
+            : "source says where the claim comes from. An author who cannot name one " +
+              "writes author judgement rather than inventing a source.",
+          lineOf(["interview_evidence", key]));
     }
   }
 }

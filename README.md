@@ -300,7 +300,7 @@ Content authored and validated in CI:
 
 | | Count | Breakdown |
 |---|---|---|
-| Problems | 25 | 17 code, 5 prompt, 3 design. By difficulty: 8 Easy, 8 Medium, 6 Hard, 3 Extreme. |
+| Problems | 25 | 17 code, 5 prompt, 3 design. By difficulty: 8 Easy, 8 Medium, 6 Hard, 3 Extreme. By complexity: 17 C2, 5 C3, 3 C4. |
 | Voice questions | 12 | Across five tracks: agent loop (3), client communication (3), evaluation design (2), system design (2), tool schema design (2). Budgets run 125 to 155 seconds. |
 
 Every code problem ships with a reference solution that passes and a naive solution that provably fails a hidden test. CI runs both, so a problem that a lazy answer would pass cannot merge.
@@ -998,7 +998,7 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | Run the 200-concurrent burst test against staging. | An hour. | Peak load is a projection. `npm run burst` exists and has only run locally. |
 | Add a question picker to the Voice Screen. | Half a day. | Twelve questions are reachable by URL and one by clicking, which is not a product. |
 | Validate `no_tradeoff_language` against spoken answers. | A day. | The rule is narrowed to design because four of twelve authored voice exemplars carry no written trade marker and are still plainly arguments. Widening the list until they stop firing would fit it to twelve examples; deciding what a spoken trade looks like needs more transcripts than exist. |
-| Add `complexity` and `interview_evidence` to all 25 problems. | Two days. | Both are validator-required once `eval/` lands, and `interview_evidence` is what makes the North Star checkable rather than aspirational. |
+| Build the second model C5 asks for, or drop C5 from the demand table. | Two days either way. | `secondModel` is in the policy table and nowhere else in the codebase, so no problem can honestly declare C5. A level nothing can use is a level that misleads the next author. |
 | Fetch the embedding model on every worker host that grades written answers. | Ten minutes per host. | Without it panelist 2 correctly reports that the host does not have it and the panel runs two-strong, which is a quiet halving of the evidence behind a band. `analytics/` reports the rate, so watch it rather than assuming. |
 
 ## 8.2 Mid term: during the first cohort

@@ -79,6 +79,16 @@ Each level is named for the shape of the answer rather than for how the learner 
 
 For an author holding the earlier vocabulary: C1 is very easy, C2 easy, C3 intermediate, C4 hard, C5 the one that has no clean answer.
 
+### What the catalogue actually declares
+
+All 25 problems declare a level, and the validator requires one. The distribution is 17 at C2, 5 at C3 and 3 at C4, which matches the artefact types exactly, and two facts rather than a lack of effort explain why.
+
+**Code cannot go above C2.** From C3 the level requires panelist 2, and a code problem has no graded exemplar pool for it to compare against, so the panelist would report `skipped` against a `required` demand on every submission for ever. That drops every code evaluation to `medium` confidence and promises a voice that is never coming. A code problem stays at C2 until either code answers carry graded exemplars or the demand table changes.
+
+**Nothing can be C5.** C5 asks for a second model so disagreement is visible rather than assumed, and `secondModel` appears in the demand table and nowhere else in the codebase. Declaring a problem C5 would promise a panelist that does not exist. The level stays in the table because the table is the specification; no problem may use it until somebody builds the second model.
+
+This is the intended behaviour of keeping the axes separate rather than a flattening of them. `bind-approval-to-an-exact-action` is Extreme and C2: it is hard, and there is still a right answer a battery can check.
+
 ### Which panelists a level demands
 
 | Level | P1 static | P2 pretrained | P3 LLM |
@@ -437,6 +447,10 @@ interview_evidence:
 The validator checks the fields exist and are non-empty. It cannot check that a claim is true, so the authoring skill asks for the source out loud and the review is where a false one gets caught.
 
 `analytics/` reports coverage across rounds, which is how you find out that the catalogue has drifted toward written problems while learners keep failing oral rounds.
+
+The catalogue declares 22 `written` and 3 `both`, and no problem declares `oral`. That is correct rather than a gap: a problem's artefact is code, a prompt or a written argument, and the oral round is covered by `voice-questions/` instead. The number is worth watching all the same, because it is the measurement that would show the two halves drifting apart.
+
+Fifteen of the 25 `asked_as` questions are adapted from `docs/source-pack/09-interview-bank.json`, which labels every entry "Original interview-style practice; actual employer frequency unverified". Each one that borrows from it inherits that caveat in its `source`. The other ten say "author judgement" and name no evidence, because there is none.
 
 ---
 

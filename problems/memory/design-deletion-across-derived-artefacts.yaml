@@ -201,3 +201,14 @@ reference_md: |
 
   The confirmation email is worth a sentence because it is the only part of
   this the customer ever sees, and on the day it mattered it was false.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    How can a corrected fact remain wrong in a memory-enabled system?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I018.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

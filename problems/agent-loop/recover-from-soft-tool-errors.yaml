@@ -163,3 +163,11 @@ reference_md: |
   It returns a sentence when everything fails. Raising leaves the learner with
   no answer and the caller with an exception.
 
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A tool returns two hundred with an error in the body. What does your loop do next, and how many times?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

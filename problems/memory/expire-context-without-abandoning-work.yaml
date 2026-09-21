@@ -226,3 +226,14 @@ reference_md: |
   unreadable payload as an empty record set deletes nothing either, and then
   exits zero, and the erasure request that was due today is now overdue and
   nobody knows.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    How do you evict stale state without abandoning active work?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I017.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

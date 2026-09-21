@@ -210,3 +210,12 @@ reference_md: |
   state to 12 and 12's to 9, so one carrier being slow silently renumbers the
   entire answer. A line that says `9=unknown` is worth more than a line that
   says something confident and wrong.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    You fire three tool calls at once and three results come back. How does each result find the request it belongs to?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

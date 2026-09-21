@@ -189,3 +189,14 @@ reference_md: |
   Naming the field in the refusal is what makes the retry different. "Invalid
   arguments" gets the same payload back. "amount_cents must be an integer
   between 1 and 20000, and true is not one" gets a number.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Why should tool arguments be validated after a model chooses the tool?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I013.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

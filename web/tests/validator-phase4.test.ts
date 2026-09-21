@@ -41,6 +41,13 @@ exemplars:
   - { band: strong, score: 90, body_md: "..." }
   - { band: adequate, score: 65, body_md: "..." }
   - { band: weak, score: 30, body_md: "..." }
+complexity: C3
+interview_evidence:
+  round: written
+  asked_as: |
+    A question in the words an interviewer would use.
+  source: |
+    Author judgement.
 `.trim();
 
 const DESIGN = `
@@ -63,6 +70,13 @@ exemplars:
   - { band: strong, score: 90, body_md: "..." }
   - { band: adequate, score: 65, body_md: "..." }
   - { band: weak, score: 30, body_md: "..." }
+complexity: C4
+interview_evidence:
+  round: written
+  asked_as: |
+    A question in the words an interviewer would use.
+  source: |
+    Author judgement.
 `.trim();
 
 const rules = (source: string) => validateProblemYaml(source, "f.yaml").errors.map((e) => e.rule);
