@@ -293,7 +293,8 @@ Everything below runs on a laptop with PostgreSQL and no cloud account.
 | See the competency heatmap and export attempt history as CSV. | `/progress` |
 | Administer the roster, bulk-change personas from a CSV, read submissions, requeue a stuck one, and flip degraded mode. | `/admin/*` |
 | Work a faculty queue of the answers the panel argued about, seeing which panelist said what and recording what you concluded. | `/admin/disagreements` |
-| Correct a grade the panel got wrong, which moves the learner's verdict, their score and their competency heatmap. | Same screen, on a row marked disputed |
+| Correct a grade the panel got wrong, which moves the learner's verdict, their score and their competency heatmap, and tells the learner it moved. | Same screen, on a row marked disputed |
+| Grade a written answer against rules that need no model: restating the brief, arguing no trade, a long answer in one block, a code answer at double its call budget. | The worker, inside panelist 1 |
 
 Content authored and validated in CI:
 
@@ -996,7 +997,7 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | Set the AWS Budgets alarm on the Bedrock line at 50 and 80 percent. | Ten minutes. | It is the only thing standing between an authoring mistake and a real bill. |
 | Run the 200-concurrent burst test against staging. | An hour. | Peak load is a projection. `npm run burst` exists and has only run locally. |
 | Add a question picker to the Voice Screen. | Half a day. | Twelve questions are reachable by URL and one by clicking, which is not a product. |
-| Build the heuristic registry that panelist 1 runs on written answers. | Two days. | The panel, the consolidator, the record, the validator rules, the worker call site and panelist 2 are all built. P1 currently reads the gates the runner and the judge already produced, which is the right floor and is not yet a registry of heuristics an author can add to. |
+| Validate `no_tradeoff_language` against spoken answers. | A day. | The rule is narrowed to design because four of twelve authored voice exemplars carry no written trade marker and are still plainly arguments. Widening the list until they stop firing would fit it to twelve examples; deciding what a spoken trade looks like needs more transcripts than exist. |
 | Add `complexity` and `interview_evidence` to all 25 problems. | Two days. | Both are validator-required once `eval/` lands, and `interview_evidence` is what makes the North Star checkable rather than aspirational. |
 | Fetch the embedding model on every worker host that grades written answers. | Ten minutes per host. | Without it panelist 2 correctly reports that the host does not have it and the panel runs two-strong, which is a quiet halving of the evidence behind a band. `analytics/` reports the rate, so watch it rather than assuming. |
 
@@ -1005,7 +1006,7 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | Item | What it fixes |
 |---|---|
 | A baseline diagnostic that sets a learner's persona. | Personas work today and nothing assigns them. An admin sets them by hand or by CSV, which does not scale past one cohort. |
-| A learner is not told when their grade was corrected. | The override moves the score and the heatmap, and the learner sees the new number with no note saying a human changed it. That is a product decision rather than a gap in the machinery: the note faculty wrote is on the record and nothing shows it to them. |
+| No problem authors a `constraints` list yet. | `names_no_constraint` is in the registry, validated and tested, and stays silent on all 25 problems because it has nothing to compare against. An author turns it on by writing the list. |
 | Re-grading past submissions against a new judge prompt version. | There is no mechanism today, which means changing a prompt mid-cohort leaves two populations graded differently with nothing recording that. |
 | A replacement for `/admin/import` that works on a deployment. | Content publishing is an operator command today. That is correct and it is also a person who has to be awake. |
 | Build `analytics/`: cohort views, the stuck list, problem calibration and panel health. | Specified in `docs/11`. The heatmap answers "is this learner ready". Nobody can currently answer "which topic did this cohort fail" without SQL. |

@@ -113,12 +113,26 @@ P1 is not only exact matching. A heuristic is a rule an author writes that needs
 | Heuristic | Fires when | Artefact |
 |---|---|---|
 | `names_no_constraint` | A design answer never mentions any term from the brief's constraint list. | design |
-| `no_tradeoff_language` | A C4 answer contains no comparative construction at all, which means no trade was argued. | design, voice |
+| `no_tradeoff_language` | A C4 answer contains no comparative construction at all, which means no trade was argued. | design |
 | `single_paragraph` | A 400-word answer with no structure, which reads as a stream rather than an argument. | design |
 | `restates_the_brief` | Over 60 percent token overlap with the brief itself. | design, prompt |
 | `budget_ignored` | A code answer whose call count exceeds the declared budget by more than double. | code |
 
 Heuristics produce findings and never produce a terminal fail on their own, because a heuristic is a strong hint and not a fact. A heuristic that fires on a reference solution is a bug in the heuristic, and CI runs every heuristic against every reference solution to catch exactly that.
+
+The registry lives in `web/lib/eval/heuristics.ts` and runs inside panelist 1. It runs after the gates rather than before them, which does not soften the deterministic-first rule in `CLAUDE.md`: that rule exists so a cheap check can save a model call, and a rule that cannot fail a submission can never save one.
+
+Every threshold was measured against the catalogue on 21 September 2026 rather than chosen.
+
+| Rule | Threshold | What the measurement said |
+|---|---|---|
+| `restates_the_brief` | 0.60 of the answer's distinct content words appear in the brief | The highest any authored reference reaches is 0.44. An *unedited* original prompt, which is the case this rule exists to catch, reaches 0.45. |
+| `single_paragraph` | 400 words in one paragraph | No authored reference is close. |
+| `budget_ignored` | More than twice the declared budget | Straight from this table. |
+| `no_tradeoff_language` | No marker from a deliberately narrow list | `but` and `while` appear in nearly every answer of any quality, so including them makes the rule unable to fire at all. |
+| `names_no_constraint` | No constraint term appears in the answer | Needs a `constraints` list, which no problem authors yet, so it is silent until one does. |
+
+**`no_tradeoff_language` is narrowed to design, against this document's own table.** Measured across the 12 authored voice questions, four `strong` exemplars carry no written trade marker and are still plainly arguments: spoken answers compare by contrast rather than by phrase, as in "what it is evidence of, and what it is not evidence of". A marker list widened until those four stopped firing would be fitted to twelve examples rather than derived from anything, so the rule does not run on voice until somebody has a reason better than that.
 
 ---
 
@@ -255,6 +269,10 @@ The human chooses a band. Everything else follows:
 
 An `error` evaluation cannot be overridden. It consumes no allowance and says nothing about the learner, so there is no grade there to correct.
 
+**The learner is told.** A grade that moves under somebody with no explanation teaches them the number is arbitrary, and the case that costs the most trust is the one where it goes down. The result contract's `evaluation` block gains a `correction` carrying the direction, the note faculty wrote and when, and every workspace renders it above the verdict with a line saying their cohort lead can take it up.
+
+It carries no reviewer name. Faculty see who on the record; naming the individual to a learner invites them to lobby that person over a decision that belongs to the programme. That is the same rule as section 10's, applied to a human rather than to a panelist.
+
 Faculty may settle a disagreement, which widens who may write beyond the admin-only ops actions. It widens nothing else: the roster, the import screen, the counters and the requeue stay admin only, and `permits` in `web/lib/admin/guard.ts` is the one place that decides.
 
 Averaging two judges who disagree produces a number that looks confident and hides the one fact worth knowing, which is that this answer is hard to grade. A cohort's most interesting submissions are the ones where the panel argued, and silently averaging them throws that away.
@@ -389,6 +407,7 @@ Checked in CI on every problem, per the rule in `CLAUDE.md` that problem YAML is
 | A C4 or C5 problem declares P3. | Those levels have no deterministic answer and a panel of one would be guessing. |
 | A C1 problem declares no P3. | Spending a model call on an exact-match question is waste that compounds across a cohort. |
 | Every heuristic named in a problem exists in the heuristic registry. | An author inventing a heuristic inline produces a rule that fails at run time in front of a learner. |
+| A heuristic a problem names can read that problem's artefact. | The same mistake wearing a better disguise: the name exists, so nothing looks wrong, and the rule never runs. |
 | Every design problem has at least three graded exemplars. | P2's nearest-neighbour vote needs anchors. This rule already exists and now has a second reason. |
 | Every problem declares `interview_evidence` with a non-empty `asked_as`. | Section 12. |
 

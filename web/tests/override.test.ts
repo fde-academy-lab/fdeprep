@@ -24,6 +24,7 @@ import {
   NoteRequired, NotOverridable, UnknownBand, overrideBand,
 } from "../lib/eval/override.ts";
 import { bestStates, heatmapFor, type State } from "../lib/competency/score.ts";
+import { publicView } from "../lib/submissions/view.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 
 let faculty: number;
@@ -244,6 +245,75 @@ describe("what the learner's grade does", () => {
       "select score, verdict::text from submission where id = $1", [submissionId]);
     expect(Number(rows[0]!.score)).toBe(29);
     expect(rows[0]!.verdict).toBe("pass");
+  });
+});
+
+describe("what the learner is told when their grade moves", () => {
+  it("says a person reviewed it, which way it went, and why", async () => {
+    // A learner who saw 29 and later sees 90 with no explanation learns that
+    // the number is arbitrary. The note faculty wrote is the answer to the
+    // question they would otherwise have to ask somebody.
+    const { submissionId, evaluationId } = await graded({ verdict: "fail", score: 29 });
+
+    await overrideBand({ evaluationId, reviewerId: faculty, band: "strong",
+                         note: "Two numeric gates and the cost of a wrong refund." });
+
+    const { rows } = await db().query<{ result: Record<string, any> }>(
+      "select result from submission where id = $1", [submissionId]);
+    const correction = rows[0]!.result["evaluation"]["correction"];
+    expect(correction.direction).toBe("raised");
+    expect(correction.note).toBe("Two numeric gates and the cost of a wrong refund.");
+    expect(typeof correction.at).toBe("string");
+  });
+
+  it("says so just as plainly when the grade goes down", async () => {
+    // The case that costs trust if it is hidden. A learner who organised their
+    // week around a pass deserves to be told it moved and why, not to find out
+    // by noticing a different number.
+    const { submissionId, evaluationId } = await graded({ verdict: "pass", score: 90,
+      rubric: { status: "pass", score: 90, threshold: 65 } });
+
+    await overrideBand({ evaluationId, reviewerId: faculty, band: "weak",
+                         note: "Right headings, no argument under them." });
+
+    const { rows } = await db().query<{ result: Record<string, any> }>(
+      "select result from submission where id = $1", [submissionId]);
+    expect(rows[0]!.result["evaluation"]["correction"].direction).toBe("lowered");
+  });
+
+  it("names no reviewer, because the decision belongs to the programme", async () => {
+    // Naming the individual invites a learner to lobby them. Faculty see who
+    // on the record; a learner sees that a person reviewed it.
+    const { submissionId, evaluationId } = await graded({});
+
+    await overrideBand({ evaluationId, reviewerId: faculty, band: "strong",
+                         note: "A strong answer." });
+
+    const { rows } = await db().query<{ result: Record<string, any> }>(
+      "select result from submission where id = $1", [submissionId]);
+    // Asserting an id does not appear in a JSON blob proves nothing when the
+    // id is a single digit that a timestamp also contains. The real claim is
+    // that the block carries these three fields and no fourth.
+    const correction = rows[0]!.result["evaluation"]["correction"];
+    expect(Object.keys(correction).sort()).toEqual(["at", "direction", "note"]);
+    expect(JSON.stringify(correction)).not.toContain("faculty1");
+  });
+
+  it("says nothing on a submission nobody corrected", async () => {
+    const { submissionId } = await graded({});
+    const { rows } = await db().query<{ result: Record<string, any> }>(
+      "select result from submission where id = $1", [submissionId]);
+    expect(rows[0]!.result["evaluation"]["correction"]).toBeUndefined();
+  });
+
+  it("reaches the view the workspace renders from", async () => {
+    const { submissionId, evaluationId } = await graded({ verdict: "fail", score: 29 });
+    await overrideBand({ evaluationId, reviewerId: faculty, band: "adequate",
+                         note: "Names one gap and one gate." });
+
+    const view = await publicView(submissionId);
+    expect(view.correction).toMatchObject({ direction: "raised" });
+    expect(view.correction!.note).toBe("Names one gap and one gate.");
   });
 });
 

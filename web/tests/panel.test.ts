@@ -486,6 +486,32 @@ tests:
     expect(report.errors.some((e) => e.rule === "panel_mismatch")).toBe(true);
   });
 
+  it("rejects a heuristic that is not in the registry", () => {
+    // docs/10 section 11. An author inventing one inline produces a rule that
+    // does nothing, silently, and the first sign of it is a learner not
+    // getting feedback somebody thought they had authored.
+    const report = check("heuristics: [names_no_constraint, hand_waving]\n");
+    expect(report.ok).toBe(false);
+    const error = report.errors.find((e) => e.rule === "unknown_heuristic");
+    expect(error).toBeDefined();
+    expect(error!.message).toContain("hand_waving");
+    // The message lists what is available, so the fix is in front of the author.
+    expect(error!.message).toContain("single_paragraph");
+    expect(error!.line).toBeGreaterThan(1);
+  });
+
+  it("rejects a real heuristic named for an artefact it cannot read", () => {
+    // The same mistake wearing a better disguise: the name exists, so nothing
+    // looks wrong, and the rule never runs.
+    const report = check("heuristics: [single_paragraph]\n");
+    expect(report.ok).toBe(false);
+    expect(report.errors.some((e) => e.rule === "heuristic_wrong_artefact")).toBe(true);
+  });
+
+  it("accepts a heuristic the artefact can actually reach", () => {
+    expect(check("heuristics: [budget_ignored]\n").ok).toBe(true);
+  });
+
   it("rejects a complexity outside C1 to C5", () => {
     const report = check("complexity: epic\n");
     expect(report.ok).toBe(false);

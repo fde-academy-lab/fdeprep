@@ -154,14 +154,29 @@ export async function overrideBand(
         where id = $1 returning verdict::text`,
       [submissionId, score, verdict]);
 
-    // The disagreement is settled, so the contract's evaluation block says so.
-    // No panelist name and no reviewer name reaches it: docs/10 section 10
-    // keeps provenance on the record and out of the learner's reading.
+    // The disagreement is settled, so the contract's evaluation block says so,
+    // and it carries the correction the learner is owed.
+    //
+    // A grade that moves under somebody with no explanation teaches them the
+    // number is arbitrary, and the case that costs the most trust is the one
+    // where it goes down. So the direction and the reason both travel, and the
+    // reviewer's name does not: faculty see who on the record, and naming the
+    // individual to a learner invites them to lobby that person over a
+    // decision that belongs to the programme.
     if (row.result) {
       await tx.query("update submission set result = $2 where id = $1",
         [submissionId, JSON.stringify({
           ...contract,
-          evaluation: { state: "complete", confidence: "high", provisional: false },
+          evaluation: {
+            state: "complete",
+            confidence: "high",
+            provisional: false,
+            correction: {
+              direction: direction(row.band, input.band),
+              note,
+              at: new Date().toISOString(),
+            },
+          },
         })]);
     }
 
@@ -185,6 +200,19 @@ export async function overrideBand(
 
   if (client) return run(client as PoolClient);
   return inTransaction(run);
+}
+
+/**
+ * Which way the grade moved, in the learner's terms.
+ *
+ * Band order is descending, so a smaller index is a better band. A correction
+ * that lands on the same band still reads as `raised`, because the only way to
+ * get there is a verdict or a score the panel had wrong, and there is no
+ * honest third word for it.
+ */
+function direction(from: string | null, to: Band): "raised" | "lowered" {
+  const before = from ? BANDS.indexOf(from as Band) : BANDS.length;
+  return BANDS.indexOf(to) <= before ? "raised" : "lowered";
 }
 
 /**

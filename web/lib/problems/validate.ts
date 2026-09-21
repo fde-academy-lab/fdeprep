@@ -9,6 +9,7 @@
  */
 import { LineCounter, parseDocument, type Document } from "yaml";
 import { compilePattern, PatternError, type PromptRule } from "../gate/index.ts";
+import { HEURISTICS, heuristicNames, isHeuristic } from "../eval/heuristics.ts";
 import {
   ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, VISIBILITIES,
 } from "./vocabulary.ts";
@@ -24,7 +25,8 @@ export type Rule =
   | "bad_pattern" | "rule_pattern_absent" | "no_adequate_exemplar"
   | "no_word_range" | "no_rubric" | "rubric_weights" | "no_defence_question"
   | "probe_pattern_absent" | "missing_call_budget" | "matcher_shadows_input"
-  | "bad_complexity" | "panel_without_static" | "panel_mismatch";
+  | "bad_complexity" | "panel_without_static" | "panel_mismatch"
+  | "unknown_heuristic" | "heuristic_wrong_artefact";
 
 export interface ValidationError {
   rule: Rule;
@@ -153,6 +155,7 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
   if (errors.length) return { ok: false, file, errors };
 
   validatePanel(raw, artefact, add, lineOf);
+  validateHeuristics(raw, artefact, add, lineOf);
 
   const tests = Array.isArray(raw["tests"]) ? (raw["tests"] as Record<string, unknown>[]) : [];
   const competencies = Array.isArray(raw["competencies"])
@@ -380,6 +383,45 @@ function validatePanel(
           `complexity ${complexity} has one right answer, so the ${name} panelist is ` +
           `waste that compounds across a cohort. Remove it or raise the complexity.`,
           lineOf(["panel"]));
+    }
+  }
+}
+
+/**
+ * A problem may name the heuristics it wants. docs/10 section 11.
+ *
+ * An author inventing one inline produces a rule that does nothing, silently,
+ * and the first sign of it is a learner not getting feedback somebody thought
+ * they had authored. Naming a real rule for the wrong artefact is the same
+ * mistake wearing a better disguise.
+ */
+function validateHeuristics(
+  raw: Record<string, unknown>,
+  artefact: string,
+  add: (rule: Rule, message: string, line: number) => void,
+  lineOf: (path: Array<string | number>) => number,
+): void {
+  const declared = raw["heuristics"];
+  if (declared === undefined) return;
+  if (!Array.isArray(declared)) {
+    add("unknown_heuristic", "heuristics is not a list of rule names",
+        lineOf(["heuristics"]));
+    return;
+  }
+
+  for (const [index, name] of declared.entries()) {
+    const at = lineOf(["heuristics", index]);
+    if (typeof name !== "string" || !isHeuristic(name)) {
+      add("unknown_heuristic",
+          `${String(name)} is not a heuristic. The registry holds ` +
+          `${heuristicNames().join(", ")}.`, at);
+      continue;
+    }
+    const rule = HEURISTICS.find((h) => h.name === name)!;
+    if (!rule.artefacts.includes(artefact)) {
+      add("heuristic_wrong_artefact",
+          `${name} reads a ${rule.artefacts.join(" or ")} answer and this is a ` +
+          `${artefact} problem, so it would never run.`, at);
     }
   }
 }

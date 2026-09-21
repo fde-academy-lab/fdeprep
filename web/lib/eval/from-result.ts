@@ -10,7 +10,9 @@
  * already done their work by the time a result reaches the writer; this reads
  * what they produced and attributes it.
  */
+import { parse } from "yaml";
 import { bandForScore } from "../policy/bands.ts";
+import { authoredContext, runHeuristics } from "./heuristics.ts";
 import { pretrainedPanelist, type PretrainedOptions } from "./pretrained.ts";
 import { defaultComplexity, isComplexity, type Complexity } from "../policy/complexity.ts";
 import type { Finding, Panelist, PanelistResult } from "./panel.ts";
@@ -52,10 +54,31 @@ export function complexityOf(
  * already decided and re-deriving it here would give two answers to one
  * question.
  */
-export function staticPanelist(contract: ResultContract): Panelist {
+/**
+ * What P1 needs beyond the contract, and what P2 needs to reach the database.
+ *
+ * Separate from the contract because the contract is what the runner and the
+ * judge produced, and this is what the problem was authored with. A panelist
+ * that had to dig authored content out of a result would be reading the wrong
+ * source.
+ */
+export interface PanelContext {
+  /** The problem's YAML, for the heuristics that read authored content. */
+  sourceYaml?: string;
+  /** The declared call budget, which lives on the version rather than the result. */
+  callBudget?: number | null;
+  pretrained?: PretrainedOptions;
+}
+
+export function staticPanelist(
+  contract: ResultContract, context: PanelContext = {},
+): Panelist {
+  const authored = authoredContext(
+    context.sourceYaml ? safeParse(context.sourceYaml) : null);
+
   return {
     name: "static",
-    async run(): Promise<PanelistResult> {
+    async run(input): Promise<PanelistResult> {
       const verdict = String(contract.verdict ?? "");
       if (verdict === "error" || verdict === "timeout" || verdict === "") {
         return {
@@ -94,6 +117,20 @@ export function staticPanelist(contract: ResultContract): Panelist {
           });
         }
       }
+
+      // docs/10 section 4: the heuristic layer. These never change the verdict
+      // and never block, so they run after the gates rather than before: a
+      // rule that cannot fail a submission cannot save a model call either,
+      // which is what the deterministic-first rule is protecting.
+      findings.push(...runHeuristics({
+        artefactType: input.artefactType,
+        complexity: input.complexity,
+        body: input.body,
+        brief: authored.brief,
+        constraints: authored.constraints,
+        llmCalls: numberOrNull((contract.budget ?? {})["llm_calls"]),
+        callBudget: context.callBudget ?? null,
+      }));
 
       return {
         status: "ran",
@@ -159,7 +196,25 @@ export function llmPanelist(contract: ResultContract): Panelist {
 
 export function panelistsFor(
   contract: ResultContract,
-  pretrained?: PretrainedOptions,
+  context: PanelContext = {},
 ): Panelist[] {
-  return [staticPanelist(contract), pretrainedFor(pretrained), llmPanelist(contract)];
+  return [
+    staticPanelist(contract, context),
+    pretrainedFor(context.pretrained),
+    llmPanelist(contract),
+  ];
+}
+
+/** A problem whose YAML will not parse still gets graded; it just gets no
+ *  heuristics, because the rules that read authored content have nothing. */
+function safeParse(source: string): unknown {
+  try {
+    return parse(source);
+  } catch {
+    return null;
+  }
+}
+
+function numberOrNull(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
