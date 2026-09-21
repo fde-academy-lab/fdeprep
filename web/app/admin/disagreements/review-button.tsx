@@ -26,6 +26,48 @@ const LABELS: Readonly<Record<Disposition, string>> = {
   problem_flagged: "Problem is miscalibrated",
 };
 
+const BAND_PROMPT =
+  "Which band is right? strong, adequate, weak or off_question.\n\n" +
+  "A design answer passes at adequate or better, so this can change the " +
+  "learner's verdict and their competency heatmap.";
+
+export function OverrideAction({ evaluationId, held }: {
+  evaluationId: number; held: string;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+
+  const override = async () => {
+    const band = prompt(`${BAND_PROMPT}\n\nThe panel gave ${held}.`);
+    if (!band?.trim()) return;
+    const note = prompt(
+      "Say what the answer does and why the panel was wrong. A learner may ask, " +
+      "and this is the answer.");
+    if (!note?.trim()) return;
+
+    setBusy(true);
+    const response = await fetch(`/api/admin/evaluations/${evaluationId}/override`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ band: band.trim(), note }),
+    });
+    if (!response.ok) {
+      const body = (await response.json().catch(() => ({}))) as { message?: string };
+      alert(body.message ?? "That did not go through.");
+    }
+    setBusy(false);
+    router.refresh();
+  };
+
+  return (
+    <button type="button" onClick={override} disabled={busy}
+            className="rounded border border-accent px-2 py-1 text-accent
+                       hover:bg-accent hover:text-bg disabled:opacity-40">
+      {busy ? "Correcting" : "Correct the grade"}
+    </button>
+  );
+}
+
 export function ReviewActions({ evaluationId }: { evaluationId: number }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);

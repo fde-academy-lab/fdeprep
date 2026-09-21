@@ -344,6 +344,8 @@ create table competency_score (
 
 State transitions are one-way and computed on every finished submission.
 
+One exception, added with the faculty override in `10` section 9.7. A correction recomputes the cell from every submission the learner has rather than merging one more into it. The one-way behaviour survives for ordinary grading by construction rather than by rule, since a cell is the best state across a set and adding to a set never lowers a maximum: a later scruffy attempt still cannot erase earned evidence. What changes is that removing the basis for a state now removes the state, so a grade a human corrects downward stops counting toward readiness. Without that, an over-generous grade would be permanent in the one signal the placement side reads.
+
 | State | Condition |
 |---|---|
 | `untouched` | No submission against any problem carrying this competency at this difficulty |

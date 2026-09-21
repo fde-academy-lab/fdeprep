@@ -110,7 +110,11 @@ export function consolidate(input: ConsolidateInput): Evaluation {
 }
 
 function demandFor(demand: PanelDemand, name: PanelistName): string {
-  return name === "static" ? "required" : demand[name];
+  if (name === "static") return "required";
+  // A human on the record is not a panelist the level asked for, so its
+  // presence or absence never makes an evaluation partial.
+  if (name === "faculty") return "no";
+  return demand[name];
 }
 
 function findDisagreement(bands: Band[]): Disagreement | null {

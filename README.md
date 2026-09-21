@@ -293,6 +293,7 @@ Everything below runs on a laptop with PostgreSQL and no cloud account.
 | See the competency heatmap and export attempt history as CSV. | `/progress` |
 | Administer the roster, bulk-change personas from a CSV, read submissions, requeue a stuck one, and flip degraded mode. | `/admin/*` |
 | Work a faculty queue of the answers the panel argued about, seeing which panelist said what and recording what you concluded. | `/admin/disagreements` |
+| Correct a grade the panel got wrong, which moves the learner's verdict, their score and their competency heatmap. | Same screen, on a row marked disputed |
 
 Content authored and validated in CI:
 
@@ -325,7 +326,7 @@ Four integrations are written, unit-tested against recorded fixtures, and have n
 | Gap | Effect |
 |---|---|
 | The baseline diagnostic that sets a learner's persona does not exist. An admin sets the persona by hand or by CSV. | Personas work. Nothing assigns them automatically. |
-| The faculty override on a design verdict is specified in `docs/00` section 3.1 and not implemented. | Faculty can see a wrong grade at `/admin/disagreements` and record that it is wrong. They cannot change it. |
+| Nothing validates panelist 2 against a human grader. | Its band has never been checked against one on a single answer. The override exists so a wrong band can be fixed, and `analytics/` can now count how often the panel is overruled, which is the measurement that would settle it. |
 | The Voice Screen has no question picker. A learner gets the first published question, or the one named in `?q=<slug>`. | Twelve questions are reachable by URL and one is reachable by clicking. |
 | `/admin/import` reads `problems/` from disk at request time, so it works locally and cannot work on Vercel. | Publishing content on a deployment is `npm run import:content`, run by an operator. Section 4 covers it. |
 | There is no mobile layout. | Explicitly a non-goal for v1 in `docs/00`. The three-pane workspace is usable and unpleasant on a phone. |
@@ -1004,7 +1005,7 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | Item | What it fixes |
 |---|---|
 | A baseline diagnostic that sets a learner's persona. | Personas work today and nothing assigns them. An admin sets them by hand or by CSV, which does not scale past one cohort. |
-| The faculty override on a design verdict. | Specified in `docs/00` section 3.1 and never built. The disagreement queue now shows faculty which grades are worth disputing and records their verdict; nothing acts on it. A `disputed` row is a wrong grade a human has already identified and cannot fix, which is a worse position to be in than not knowing. |
+| A learner is not told when their grade was corrected. | The override moves the score and the heatmap, and the learner sees the new number with no note saying a human changed it. That is a product decision rather than a gap in the machinery: the note faculty wrote is on the record and nothing shows it to them. |
 | Re-grading past submissions against a new judge prompt version. | There is no mechanism today, which means changing a prompt mid-cohort leaves two populations graded differently with nothing recording that. |
 | A replacement for `/admin/import` that works on a deployment. | Content publishing is an operator command today. That is correct and it is also a person who has to be awake. |
 | Build `analytics/`: cohort views, the stuck list, problem calibration and panel health. | Specified in `docs/11`. The heatmap answers "is this learner ready". Nobody can currently answer "which topic did this cohort fail" without SQL. |

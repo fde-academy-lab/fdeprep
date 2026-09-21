@@ -13,7 +13,7 @@
 import Link from "next/link";
 import { disagreementQueue, type QueueFilter } from "@/lib/eval/review";
 import { relativeDay } from "@/lib/progress/summary";
-import { ReviewActions } from "./review-button";
+import { OverrideAction, ReviewActions } from "./review-button";
 
 export const dynamic = "force-dynamic";
 
@@ -119,9 +119,15 @@ export default async function DisagreementsPage({ searchParams }: {
                   {row.review ? (
                     <div>
                       <div>{row.review.disposition}</div>
-                      <div className="text-text-faint">
+                      <div className="mb-1 text-text-faint">
                         {row.review.reviewer}: {row.review.note}
                       </div>
+                      {/* A grade somebody has already called wrong is the one
+                          worth offering to fix, so the action appears here
+                          rather than beside every unread row. */}
+                      {row.review.disposition === "disputed" && (
+                        <OverrideAction evaluationId={row.evaluationId} held={row.held} />
+                      )}
                     </div>
                   ) : (
                     <ReviewActions evaluationId={row.evaluationId} />
