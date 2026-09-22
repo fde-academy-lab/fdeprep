@@ -216,3 +216,14 @@ reference_md: |
   threshold can be quoted to the client when they ask why the assistant went
   quiet, which is a conversation that happens, and 0.55 chosen in a notebook
   cannot.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A citation points to a real document but the claim is unsupported. Is the answer grounded?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I007.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

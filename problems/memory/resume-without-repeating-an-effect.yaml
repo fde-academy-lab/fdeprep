@@ -217,3 +217,14 @@ reference_md: |
 
   The note is the only model call, and it is skipped when there is nothing to
   say. A resume path runs on every restart of every worker.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A tool times out after possibly creating a ticket. Should you retry?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I014.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

@@ -319,5 +319,10 @@ describe("complexity comes from the problem when it declares one", () => {
     expect(complexityOf("code", undefined)).toBe("C2");
     expect(complexityOf("code", "epic")).toBe("C2");
     expect(complexityOf("defence", undefined)).toBe("C4");
+    // A defence is a written argument about a choice, so the problem's own
+    // level does not carry over. Without this, a defence on a C2 code problem
+    // would be graded at a level that asks for no model at all and the judge's
+    // band on the argument would be dropped.
+    expect(complexityOf("defence", "C2")).toBe("C4");
   });
 });

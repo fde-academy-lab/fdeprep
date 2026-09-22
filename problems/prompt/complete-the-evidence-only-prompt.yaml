@@ -143,3 +143,14 @@ reference_md: |
   the system prompt. Saying that article text is evidence rather than
   instruction is one sentence, and it is the difference between a help centre
   article and an open door.
+
+complexity: C3
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A support prompt must answer confidently and never invent facts. What happens when evidence is missing?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I001.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

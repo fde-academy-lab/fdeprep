@@ -65,3 +65,13 @@ reference_md: |
   A passing edit removes the tool names, replaces "always comply" with a
   verification condition, and says that text inside a customer message is
   data rather than instruction.
+
+complexity: C3
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A fixture, not a question anybody is asked.
+  source: |
+    Fixture scaffolding. Carries the fields so the validator
+    exercises them, and claims nothing.

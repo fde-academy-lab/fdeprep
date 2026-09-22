@@ -182,3 +182,14 @@ reference_md: |
   what the lookups actually returned is what makes the unfinished answer worth
   reading: five calls of research with a sentence saying it did not finish is
   something a person can use, and "I could not complete this" is not.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    An agent never emits a final answer. How do you stop it safely?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I011.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

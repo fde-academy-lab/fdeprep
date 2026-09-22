@@ -51,3 +51,13 @@ exemplars:
   - { band: strong,   score: 88, body_md: "One schema, stated once, with the escalation rule in the same sentence." }
   - { band: adequate, score: 64, body_md: "Asks for JSON. Leaves the escalation rule vague." }
   - { band: weak,     score: 28, body_md: "Says be structured and nothing more." }
+
+complexity: C3
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A fixture, not a question anybody is asked.
+  source: |
+    Fixture scaffolding. Carries the fields so the validator
+    exercises them, and claims nothing.

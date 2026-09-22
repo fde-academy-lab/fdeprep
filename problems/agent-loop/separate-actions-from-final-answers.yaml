@@ -189,3 +189,12 @@ reference_md: |
   Returning the customer-facing sentence from an ambiguous reply is the
   expensive version of this bug. A table that was never booked is a customer
   standing in a doorway, and the trace says the agent succeeded.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    The model emits something that could be a tool call or could be the answer. How do you tell, and what happens when you are wrong?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

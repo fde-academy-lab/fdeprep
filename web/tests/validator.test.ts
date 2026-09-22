@@ -55,6 +55,13 @@ tests:
       input: { question: "q" }
       llm_script: [{ match: "*", reply: "Final Answer: x" }]
       assertions: [{ type: returns_nonempty }]
+complexity: C2
+interview_evidence:
+  round: written
+  asked_as: |
+    A question in the words an interviewer would use.
+  source: |
+    Author judgement.
 `;
 
 /** Replace a line in the fixture so the expected line number stays predictable. */

@@ -187,3 +187,12 @@ reference_md: |
   over statuses has nowhere to put it. Catching it and counting it as a
   retryable attempt keeps one contract for the caller: this function returns
   JSON, always, within a bounded time.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A carrier is failing and you have a deadline to answer in. How many times do you retry, and what do you send when the clock runs out?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

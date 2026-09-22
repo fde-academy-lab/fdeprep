@@ -93,3 +93,13 @@ tests:
       assertions:
         - { type: returns_nonempty }
         - { type: terminates }
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A fixture, not a question anybody is asked.
+  source: |
+    Fixture scaffolding. Carries the fields so the validator
+    exercises them, and claims nothing.

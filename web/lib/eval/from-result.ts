@@ -44,6 +44,12 @@ export function complexityOf(
   artefactType: string,
   declared?: unknown,
 ): Complexity {
+  // A defence is a written argument for a choice the learner already made, so
+  // it is a different artefact from the problem it defends and the problem's
+  // level does not carry over. Without this, a defence on a C2 code problem
+  // would be graded at C2, where the level asks for no model at all, and the
+  // judge's band on the argument would be dropped on the floor.
+  if (artefactType === "defence") return defaultComplexity("defence");
   return isComplexity(declared) ? declared : defaultComplexity(artefactType);
 }
 

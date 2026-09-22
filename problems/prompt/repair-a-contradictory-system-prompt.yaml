@@ -155,3 +155,12 @@ reference_md: |
   a claim inside a customer message, and the prompt asks for a code. Text that
   asserts a permission is not a permission, and the distinction is the same
   one that makes the injection probe fail for an unhardened prompt.
+
+complexity: C3
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Two rules in this prompt cannot both hold. Which one wins at run time, and how would you have found that before a customer did?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

@@ -237,3 +237,12 @@ reference_md: |
   with no referent, and that is not a coincidence. Both mean the loop does not
   know which order is meant. A loop that has one branch for "no context" and
   another for "no referent" has two chances to get this wrong.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A customer asks "what about the other one". What does your system have to hold on to, and what must it refuse to guess?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

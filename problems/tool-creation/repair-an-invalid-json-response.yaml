@@ -197,3 +197,14 @@ reference_md: |
   order, and the value looks exactly as plausible as a correct one. Returning
   null is the honest answer when the model gave nothing, and the workflow
   engine can route on null.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A model returns malformed output twice. How should the service respond?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I005.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
