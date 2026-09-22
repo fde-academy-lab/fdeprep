@@ -103,7 +103,7 @@ export const HEURISTICS: readonly Heuristic[] = [
     fires(input) {
       // C1 to C3 ask for a technique rather than an argument. Wanting a trade
       // in an answer nobody asked one of is the rule firing on the level.
-      if (input.complexity !== "C4" && input.complexity !== "C5") return null;
+      if (input.complexity !== "C4") return null;
       const body = input.body.toLowerCase();
       if (TRADE_MARKERS.some((marker) => body.includes(marker))) return null;
       return "This answer asserts a position without weighing it against the " +

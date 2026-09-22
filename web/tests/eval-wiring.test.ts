@@ -315,7 +315,10 @@ describe("a host without the embedding model", () => {
 
 describe("complexity comes from the problem when it declares one", () => {
   it("prefers an explicit level over the artefact default", () => {
-    expect(complexityOf("code", "C5")).toBe("C5");
+    expect(complexityOf("code", "C4")).toBe("C4");
+    // The scale stops at C4, so a problem declaring a fifth level falls back
+    // to the artefact default rather than being taken at its word.
+    expect(complexityOf("code", "C5")).toBe("C2");
     expect(complexityOf("code", undefined)).toBe("C2");
     expect(complexityOf("code", "epic")).toBe("C2");
     expect(complexityOf("defence", undefined)).toBe("C4");

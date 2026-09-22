@@ -83,7 +83,7 @@ A `partial` evaluation is one where a panelist was unavailable, per `10` section
 |---|---|
 | `partial` with a deterministic verdict of `fail`. | Moves to `attempted`, as a fail always does. P1 was enough to know it failed. |
 | `partial` with a deterministic verdict of `pass`. | Moves to `passed` or `clean` as normal. P1 was enough to know it passed. |
-| `partial` where the verdict itself depends on a missing panelist, which is design problems at C4 and C5. | Moves nothing. The cell waits for the re-evaluation. |
+| `partial` where the verdict itself depends on a missing panelist, which is design problems at C4. | Moves nothing. The cell waits for the re-evaluation. |
 | `error`. | Moves nothing, consumes nothing. |
 
 The third row is the one to get right. A design answer graded by P1 and P2 while P3 was down has a provisional score and no defensible verdict, and writing a competency state from it would put a number into the readiness signal that the platform cannot stand behind.

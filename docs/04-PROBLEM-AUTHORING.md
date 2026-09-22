@@ -23,9 +23,9 @@ The last six rows land with `eval/` and are not enforced today, because no probl
 | A probe whose assertion references a pattern absent from the problem | Author error, always |
 | `call_budget` not set on a code problem | Budget scoring silently disables |
 | A `contains` or `regex` matcher that already matches the case's own `input`, with a later entry after it | The input is in the first prompt and a scratchpad keeps it there, so that entry wins on every call and every entry below it is unreachable. Use `call_index` when the intent is "the first call". |
-| No `complexity`, or a value outside C1 to C5 | The evaluation panel cannot assign panelists without it. See `10-EVALUATION-PANEL.md` section 3. |
+| No `complexity`, or a value outside C1 to C4 | The evaluation panel cannot assign panelists without it. See `10-EVALUATION-PANEL.md` section 3. |
 | A problem declaring panelist 2 or 3 with no panelist 1 checks | The outage fallback has to be structural rather than hoped for |
-| A C4 or C5 problem with no panelist 3 | Those levels have no deterministic answer, so a panel without a judge would be guessing |
+| A C4 problem with no panelist 3 | That level has no deterministic answer, so a panel without a judge would be guessing |
 | A C1 problem declaring panelist 3 | Spending a model call on an exact-match question is waste that compounds across a cohort |
 | A heuristic named in a problem that is absent from the heuristic registry | An author inventing a heuristic inline writes a rule that fails at run time in front of a learner |
 | No `interview_evidence`, or an empty `asked_as` | Every problem exists to prepare somebody for a technical round, and a North Star CI cannot check is a wish |
@@ -41,7 +41,7 @@ slug: recover-from-soft-tool-errors        # unique, url-safe, never reused
 title: Recover from a tool that returns a soft error
 artefact_type: code                        # code | prompt | design
 difficulty: medium                         # easy | medium | hard | extreme
-complexity: C3                             # C1..C5, a different axis: see docs/10 section 3
+complexity: C3                             # C1..C4, a different axis: see docs/10 section 3
 track: agent-loop
 est_minutes: 25
 
