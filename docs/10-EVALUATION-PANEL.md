@@ -61,11 +61,11 @@ Two axes, deliberately separate, because they answer different questions.
 | Axis | Owns | Values | Decides |
 |---|---|---|---|
 | **Difficulty** | The policy module, `lib/policy/tiers.ts` | Easy, Medium, Hard, Extreme | How much support the learner gets, which caps apply, what the UI hides. |
-| **Complexity** | This module | C1 to C5 | What shape the answer has, and therefore which panelists can check it. |
+| **Complexity** | This module | C1 to C4 | What shape the answer has, and therefore which panelists can check it. |
 
 They are orthogonal. A Hard problem can ask a C2 question, and an Easy problem can ask a C4 one. Conflating them was the mistake worth avoiding: a learner on their first week can be asked to argue a trade-off, and an experienced learner can be asked to recall an exact contract.
 
-### The five levels
+### The four levels
 
 Each level is named for the shape of the answer rather than for how the learner feels, because the shape is what decides whether a machine can check it.
 
@@ -75,17 +75,18 @@ Each level is named for the shape of the answer rather than for how the learner 
 | **C2** | application | A known technique applied to a stated case. | Running it. The case is fixed, so the output is fixed. |
 | **C3** | synthesis | Two or more ideas combined. Several answers are correct. | Structural similarity to correct shapes, and the absence of known-wrong ones. |
 | **C4** | judgement | A trade-off argued under constraints. No single right answer. | Whether the constraints were engaged and the trade named. |
-| **C5** | open | An underspecified problem where the framing is the work. | Almost nothing deterministic. The framing itself is the artefact. |
 
-For an author holding the earlier vocabulary: C1 is very easy, C2 easy, C3 intermediate, C4 hard, C5 the one that has no clean answer.
+For an author holding the earlier vocabulary: C1 is very easy, C2 easy, C3 intermediate, C4 hard.
+
+**The scale stops at C4, and a fifth level comes back only with the panelist it needs.** A level exists to say which panelists can check an answer. An earlier draft of this document carried a fifth for an underspecified problem where the framing is the work, and gave it a second model so disagreement between two judges would be visible rather than assumed. That second model was specified and never built, which left a level an author could declare that promised a panelist the pipeline could not supply, and nothing anywhere would have said so.
+
+A fifth level is worth adding the day two things are true together: a second judge runs, and there is a problem whose framing is genuinely the artefact. Neither is true yet, and a level that describes an ambition rather than a capability misleads the next author into declaring it.
 
 ### What the catalogue actually declares
 
 All 25 problems declare a level, and the validator requires one. The distribution is 17 at C2, 5 at C3 and 3 at C4, which matches the artefact types exactly, and two facts rather than a lack of effort explain why.
 
 **Code cannot go above C2.** From C3 the level requires panelist 2, and a code problem has no graded exemplar pool for it to compare against, so the panelist would report `skipped` against a `required` demand on every submission for ever. That drops every code evaluation to `medium` confidence and promises a voice that is never coming. A code problem stays at C2 until either code answers carry graded exemplars or the demand table changes.
-
-**Nothing can be C5.** C5 asks for a second model so disagreement is visible rather than assumed, and `secondModel` appears in the demand table and nowhere else in the codebase. Declaring a problem C5 would promise a panelist that does not exist. The level stays in the table because the table is the specification; no problem may use it until somebody builds the second model.
 
 This is the intended behaviour of keeping the axes separate rather than a flattening of them. `bind-approval-to-an-exact-action` is Extreme and C2: it is hard, and there is still a right answer a battery can check.
 
@@ -97,7 +98,6 @@ This is the intended behaviour of keeping the axes separate rather than a flatte
 | C2 | Required. | Optional, author's choice. | Not run. |
 | C3 | Required. | Required. | Optional, author's choice. |
 | C4 | Required. | Required. | Required. |
-| C5 | Required. | Required. | Required, with a second model for disagreement. |
 
 **P2 and P3 always imply P1.** This is a validator rule, checked in CI, not a convention somebody remembers. A problem declaring P3 with no P1 checks fails the import.
 
@@ -228,7 +228,6 @@ This is the judge that exists today, in `judge/`, with its prompts as versioned 
 | Addition | What it does |
 |---|---|
 | A panelist envelope | The judge returns findings tagged with its own identity, rather than a bare score, so the consolidator can attribute them. |
-| A second model on C5 | Two models answer independently. Agreement raises confidence. Disagreement is reported rather than averaged, for the reason in section 7. |
 | A hard timeout | The panel does not wait indefinitely. When the deadline passes, P3 is `unavailable` and the evaluation is `partial`. |
 
 Everything in `.claude/rules/01-trust-boundaries.md` about prompt injection still holds. Learner text reaches P3 wrapped in delimiters and labelled as data, output is parsed as JSON against a schema and rejected when it does not conform, and a design answer asking for full marks scores on content.
@@ -412,9 +411,9 @@ Checked in CI on every problem, per the rule in `CLAUDE.md` that problem YAML is
 
 | Rule | Reason |
 |---|---|
-| Every problem declares `complexity`, one of C1 to C5. | The panel cannot assign panelists without it. |
+| Every problem declares `complexity`, one of C1 to C4. | The panel cannot assign panelists without it. |
 | A problem declaring P2 or P3 declares P1 checks too. | The outage fallback is structural rather than hoped for. |
-| A C4 or C5 problem declares P3. | Those levels have no deterministic answer and a panel of one would be guessing. |
+| A C4 problem declares P3. | That level has no deterministic answer and a panel of one would be guessing. |
 | A C1 problem declares no P3. | Spending a model call on an exact-match question is waste that compounds across a cohort. |
 | Every heuristic named in a problem exists in the heuristic registry. | An author inventing a heuristic inline produces a rule that fails at run time in front of a learner. |
 | A heuristic a problem names can read that problem's artefact. | The same mistake wearing a better disguise: the name exists, so nothing looks wrong, and the rule never runs. |

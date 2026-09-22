@@ -199,7 +199,7 @@ describe("no heuristic fires on an authored reference", () => {
         artefactType: item.artefactType,
         // The level that turns on the most rules, so this is the hardest bar
         // the catalogue could be held to rather than the easiest.
-        complexity: "C5",
+        complexity: "C4",
         body: item.body,
         brief: item.brief,
         // No problem authors constraints yet. When one does, a reference that

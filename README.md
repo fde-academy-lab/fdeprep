@@ -170,9 +170,9 @@ Two axes that answer different questions, kept separate on purpose.
 | Axis | Values | Decides |
 |---|---|---|
 | Difficulty | Easy, Medium, Hard, Extreme | How much support the learner gets, and which caps apply. |
-| Complexity | C1 recall, C2 application, C3 synthesis, C4 judgement, C5 open | What shape the answer has, and therefore which panelists can check it. |
+| Complexity | C1 recall, C2 application, C3 synthesis, C4 judgement | What shape the answer has, and therefore which panelists can check it. |
 
-A Hard problem can ask a C2 question and an Easy problem can ask a C4 one. Each complexity level is named for the shape of the answer rather than for how the learner feels, because the shape is what decides whether a machine can check it: C1 has one right answer and C5 has none.
+A Hard problem can ask a C2 question and an Easy problem can ask a C4 one. Each complexity level is named for the shape of the answer rather than for how the learner feels, because the shape is what decides whether a machine can check it: C1 has one right answer and C4 has no single one. The scale stops at C4 because a level exists to say which panelists can check an answer, and `docs/10` section 3 says what a fifth would have to arrive with.
 
 ### The module boundary
 
@@ -998,7 +998,7 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | Run the 200-concurrent burst test against staging. | An hour. | Peak load is a projection. `npm run burst` exists and has only run locally. |
 | Add a question picker to the Voice Screen. | Half a day. | Twelve questions are reachable by URL and one by clicking, which is not a product. |
 | Validate `no_tradeoff_language` against spoken answers. | A day. | The rule is narrowed to design because four of twelve authored voice exemplars carry no written trade marker and are still plainly arguments. Widening the list until they stop firing would fit it to twelve examples; deciding what a spoken trade looks like needs more transcripts than exist. |
-| Build the second model C5 asks for, or drop C5 from the demand table. | Two days either way. | `secondModel` is in the policy table and nowhere else in the codebase, so no problem can honestly declare C5. A level nothing can use is a level that misleads the next author. |
+| Put the platform in front of a cohort. | The deployment steps in section 3. | Panelist 2 grades on a signal nobody has checked against a human, `no_tradeoff_language` is narrowed for want of transcripts, and `names_no_constraint` is built and unused. All three are answered by learners rather than by more building. |
 | Fetch the embedding model on every worker host that grades written answers. | Ten minutes per host. | Without it panelist 2 correctly reports that the host does not have it and the panel runs two-strong, which is a quiet halving of the evidence behind a band. `analytics/` reports the rate, so watch it rather than assuming. |
 
 ## 8.2 Mid term: during the first cohort

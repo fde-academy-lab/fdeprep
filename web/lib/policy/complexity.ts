@@ -12,8 +12,15 @@
  * reason: a level's meaning changes, and a check written elsewhere drifts.
  */
 
-export type Complexity = "C1" | "C2" | "C3" | "C4" | "C5";
-export const COMPLEXITIES: readonly Complexity[] = ["C1", "C2", "C3", "C4", "C5"];
+/**
+ * Four levels. C4 is the top, and the reason is worth knowing before adding a
+ * fifth: a level exists to say which panelists can check an answer, so a level
+ * naming a panelist nothing implements is a level that misleads an author into
+ * declaring something the pipeline silently cannot supply. docs/10 section 3
+ * records the decision and what a fifth level would have to come with.
+ */
+export type Complexity = "C1" | "C2" | "C3" | "C4";
+export const COMPLEXITIES: readonly Complexity[] = ["C1", "C2", "C3", "C4"];
 
 /** Named for the shape of the answer, which is what decides who can check it. */
 export const COMPLEXITY_NAMES: Readonly<Record<Complexity, string>> = {
@@ -21,7 +28,6 @@ export const COMPLEXITY_NAMES: Readonly<Record<Complexity, string>> = {
   C2: "application",
   C3: "synthesis",
   C4: "judgement",
-  C5: "open",
 };
 
 export type Demand = "required" | "optional" | "no";
@@ -31,8 +37,6 @@ export interface PanelDemand {
   static: "required";
   pretrained: Demand;
   llm: Demand;
-  /** C5 asks a second model, so disagreement is visible rather than assumed. */
-  secondModel: boolean;
   /**
    * How many graded answers have to sit near a submission before panelist 2's
    * band counts at this level.
@@ -50,18 +54,16 @@ export interface PanelDemand {
 const DEMANDS: Readonly<Record<Complexity, PanelDemand>> = {
   // One right answer, and it is short. A model call here is waste that
   // compounds across a cohort.
-  C1: { static: "required", pretrained: "no", llm: "no", secondModel: false,
+  C1: { static: "required", pretrained: "no", llm: "no",
         minimumNeighbours: 1 },
   // The battery decides a C2 grade. A band from one neighbour is a garnish on
   // a verdict that does not depend on it, so there is nothing to protect.
-  C2: { static: "required", pretrained: "optional", llm: "no", secondModel: false,
+  C2: { static: "required", pretrained: "optional", llm: "no",
         minimumNeighbours: 1 },
-  C3: { static: "required", pretrained: "required", llm: "optional", secondModel: false,
-        minimumNeighbours: 2 },
-  C4: { static: "required", pretrained: "required", llm: "required", secondModel: false,
+  C3: { static: "required", pretrained: "required", llm: "optional",
         minimumNeighbours: 2 },
   // No single right answer, so a panel of one would be guessing.
-  C5: { static: "required", pretrained: "required", llm: "required", secondModel: true,
+  C4: { static: "required", pretrained: "required", llm: "required",
         minimumNeighbours: 2 },
 };
 

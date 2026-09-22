@@ -71,7 +71,7 @@ In a cloud session, use the pre-installed PostgreSQL 16 for development and test
 | A problem that declares panelist 2 or 3 declares panelist 1 checks too. | The outage fallback has to be structural. A learner submitting during a Bedrock incident gets thinner feedback and never gets silence. |
 | A panelist that cannot run never lowers a score. | Infrastructure is the platform's problem. The evaluation goes to `partial` and re-runs for free. |
 | Only deterministic checks produce a terminal failure. Bands and prose never do. | A verdict nobody can reproduce is a verdict nobody can appeal. |
-| Complexity (C1 to C5) and difficulty (Easy to Extreme) are separate axes. Never map one onto the other. | Complexity decides which panelists can check an answer. Difficulty decides how much support the learner gets. |
+| Complexity (C1 to C4) and difficulty (Easy to Extreme) are separate axes. Never map one onto the other. | Complexity decides which panelists can check an answer. Difficulty decides how much support the learner gets. |
 | The learner reads one consolidated voice. Panelist provenance is stored and shown only to faculty. | The learner should hear an interviewer. The appeal path needs to know which finding was deterministic. |
 
 ---

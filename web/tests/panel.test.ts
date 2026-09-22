@@ -100,11 +100,11 @@ describe("which panelists a complexity level demands", () => {
   it("refuses to spend a model call on an exact-match question", () => {
     expect(panelFor("C1").llm).toBe("no");
     expect(panelFor("C4").llm).toBe("required");
-    expect(panelFor("C5").llm).toBe("required");
+    expect(panelFor("C4").llm).toBe("required");
   });
 
   it("always demands P1, at every level", () => {
-    for (const level of ["C1", "C2", "C3", "C4", "C5"] as Complexity[]) {
+    for (const level of ["C1", "C2", "C3", "C4"] as Complexity[]) {
       expect(panelFor(level).static).toBe("required");
     }
   });
@@ -339,7 +339,7 @@ describe("a re-evaluation finishes the work the platform already owed", () => {
 
 describe("disagreement is reported, never averaged", () => {
   it("flags two bands apart, holds the lower, and does not take the mean", async () => {
-    const evaluation = await runPanel(input("C5"), [
+    const evaluation = await runPanel(input("C4"), [
       fake("static", { verdict: "pass", scoreContribution: 50 }),
       fake("pretrained", { band: "weak" }),
       fake("llm", { band: "strong" }),
@@ -352,7 +352,7 @@ describe("disagreement is reported, never averaged", () => {
   });
 
   it("stays quiet when they agree, and says so in the confidence", async () => {
-    const evaluation = await runPanel(input("C5"), [
+    const evaluation = await runPanel(input("C4"), [
       fake("static", { verdict: "pass", scoreContribution: 50 }),
       fake("pretrained", { band: "adequate" }),
       fake("llm", { band: "adequate" }),
@@ -363,7 +363,7 @@ describe("disagreement is reported, never averaged", () => {
   });
 
   it("does not flag one band apart, which is normal judging", async () => {
-    const evaluation = await runPanel(input("C5"), [
+    const evaluation = await runPanel(input("C4"), [
       fake("static", { verdict: "pass", scoreContribution: 50 }),
       fake("pretrained", { band: "adequate" }),
       fake("llm", { band: "strong" }),
@@ -566,7 +566,17 @@ interview_evidence:
     expect(check("heuristics: [budget_ignored]\n").ok).toBe(true);
   });
 
-  it("rejects a complexity outside C1 to C5", () => {
+  it("rejects a fifth level, which nothing can supply a panel for", () => {
+    // A level says which panelists can check an answer. One naming a panelist
+    // nothing implements reads as available and is not, so the scale stops
+    // where the pipeline does.
+    const report = check("", "C5");
+    expect(report.ok).toBe(false);
+    const error = report.errors.find((e) => e.rule === "bad_complexity");
+    expect(error!.message).toContain("C1, C2, C3, C4");
+  });
+
+  it("rejects a complexity outside C1 to C4", () => {
     const report = check("", "epic");
     expect(report.ok).toBe(false);
     expect(report.errors.some((e) => e.rule === "bad_complexity")).toBe(true);
