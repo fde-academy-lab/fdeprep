@@ -219,6 +219,26 @@ class TestDefence:
             judge_defence("short and sound", DEFENCE_CRITERION, [], transport)
 
 
+def test_the_transport_can_build_a_real_bedrock_client():
+    """boto3 has to be installed, and until this test nothing here said so.
+
+    The import sits inside the `client` property, so a missing install does not
+    fail at import time. It fails on the first model call, which locally is a
+    design submission returning an error verdict whose detail reads
+    ModuleNotFoundError and whose message says nothing about a dependency.
+
+    Building a client is offline and needs no credential, so this checks the
+    install where a developer reads the failure rather than where a learner
+    does. Asking for the `converse` operation rather than the client alone also
+    fails an SDK too old to know the API the judge sends.
+    """
+    transport = BedrockTransport(JudgeConfig(model_id="us.anthropic.claude-opus-5",
+                                             region="us-east-1"))
+
+    assert transport.client.meta.region_name == "us-east-1"
+    assert hasattr(transport.client, "converse")
+
+
 @pytest.mark.skipif(os.environ.get("JUDGE_LIVE") != "1",
                     reason="needs Bedrock credentials; set JUDGE_LIVE=1 to run")
 def test_live_the_configured_model_answers():

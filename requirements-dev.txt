@@ -1,2 +1,13 @@
 -r requirements.txt
 pytest==8.3.4
+
+# The judge's Bedrock transport imports boto3 inside its `client` property, so
+# a missing install does not fail at import time. It fails on the first model
+# call, which locally is a design submission coming back as an error verdict
+# whose detail reads ModuleNotFoundError. requirements-judge.txt leaves boto3
+# out because the Lambda base image ships it, and nothing here needed it while
+# every local path to the judge went through JUDGE_SCRIPTED_REPLIES. Running
+# the judge against Bedrock from a laptop needs it, and so do the JUDGE_LIVE=1
+# tests. It stays out of requirements.txt: the web suite drives the judge with
+# scripted replies and has no reason to carry an AWS SDK.
+boto3==1.43.99
