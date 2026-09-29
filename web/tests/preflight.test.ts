@@ -211,3 +211,73 @@ describe("starting degraded is a decision somebody made, not a default", () => {
     expect(report.message).toContain("llmm");
   });
 });
+
+describe("the fix names what is actually missing", () => {
+  // The first operator to run the worker on a laptop had no encoder runtime
+  // and was told to download the model, which would not have helped whether or
+  // not the model was already there. The fix follows the reason, not the
+  // panelist.
+
+  it("sends a missing runtime to pip rather than to the model download", async () => {
+    await publish("argue-the-eval-plan.yaml");
+    const { probe } = counting({ ok: false, reason: "dependency_missing" });
+
+    const report = await preflight(db(), { pretrained: probe });
+
+    expect(report.message).toContain("-m pip install -r requirements-embed.txt");
+    expect(report.message).not.toContain("fetch_embedding_model.py");
+  });
+
+  it("sends a missing model to the download rather than to pip", async () => {
+    await publish("argue-the-eval-plan.yaml");
+    const { probe } = counting({ ok: false, reason: "model_missing" });
+
+    const report = await preflight(db(), { pretrained: probe });
+
+    expect(report.message).toContain("scripts/fetch_embedding_model.py");
+    expect(report.message).not.toContain("requirements-embed.txt");
+  });
+
+  it("names the interpreter the worker runs, not whichever one the shell activated", async () => {
+    // Activating a virtualenv changes the shell's python and not the worker's,
+    // which resolves RUNNER_PYTHON, then the repository's .venv, then python3.
+    // A pip command without the interpreter installs into the wrong one.
+    await publish("argue-the-eval-plan.yaml");
+    const previous = process.env["RUNNER_PYTHON"];
+    process.env["RUNNER_PYTHON"] = "/opt/cohort/bin/python3.12";
+    try {
+      const { probe } = counting({ ok: false, reason: "dependency_missing" });
+      const report = await preflight(db(), { pretrained: probe });
+      expect(report.message)
+        .toContain("/opt/cohort/bin/python3.12 -m pip install -r requirements-embed.txt");
+    } finally {
+      if (previous === undefined) delete process.env["RUNNER_PYTHON"];
+      else process.env["RUNNER_PYTHON"] = previous;
+    }
+  });
+
+  it("says how to create an interpreter when none would start", async () => {
+    await publish("argue-the-eval-plan.yaml");
+    const previous = process.env["RUNNER_PYTHON"];
+    delete process.env["RUNNER_PYTHON"];
+    try {
+      const { probe } = counting({ ok: false, reason: "spawn_failed: spawn python3 ENOENT" });
+      const report = await preflight(db(), { pretrained: probe });
+      expect(report.message).toContain("python3.12 -m venv .venv");
+    } finally {
+      if (previous !== undefined) process.env["RUNNER_PYTHON"] = previous;
+    }
+  });
+
+  it("gives an outage the command that reproduces it", async () => {
+    // A timeout or a crash has no standing fix, so the useful next action is
+    // to run the probe by hand and read what it prints.
+    await publish("argue-the-eval-plan.yaml");
+    const { probe } = counting({ ok: false, reason: "timeout" });
+
+    const report = await preflight(db(), { pretrained: probe });
+
+    expect(report.message).toContain("-m embed.cli");
+    expect(report.message).not.toContain("fetch_embedding_model.py");
+  });
+});

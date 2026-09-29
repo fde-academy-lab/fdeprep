@@ -16,12 +16,13 @@
  * and is already handled at run time by the panel degrading to `partial` and
  * owing a free re-evaluation. Boot-time checks are for permanent facts.
  */
+import path from "node:path";
 import type { Pool, PoolClient } from "pg";
 import { parse } from "yaml";
 import {
   defaultComplexity, isComplexity, panelFor, type Demand,
 } from "../policy/complexity.ts";
-import { embed } from "./embed.ts";
+import { embed, encoderInvocation } from "./embed.ts";
 import type { AutomatedPanelist, PanelistName } from "./panel.ts";
 
 export type ProbeResult = { ok: true } | { ok: false; reason: string };
@@ -56,9 +57,45 @@ export interface PreflightOptions {
 /** Only the pretrained panelist has a cheap, honest boot probe. */
 const PROBED: readonly AutomatedPanelist[] = ["pretrained"];
 
-const FIXES: Readonly<Record<string, string>> = {
-  pretrained: "python scripts/fetch_embedding_model.py",
-};
+/**
+ * The command that clears this reason, runnable from any directory.
+ *
+ * Keyed by reason rather than by panelist. A host missing the runtime and a
+ * host missing the weights need different commands, and the first operator to
+ * run the worker on a laptop was told to download the model when what was
+ * missing was onnxruntime.
+ *
+ * Every command starts with a cd, because the worker runs from web/ and the
+ * files it names live at the repository root, and every command names the
+ * interpreter the worker spawns, because that is the one that has to change.
+ */
+function fixFor(panelist: PanelistName, reason: string): string {
+  if (panelist !== "pretrained") return "see docs/10 section 9";
+
+  const { cwd, python } = encoderInvocation();
+  const inRoot = `cd ${quoted(cwd)} && `;
+  const py = quoted(python.startsWith(cwd + path.sep) ? path.relative(cwd, python) : python);
+
+  if (reason.startsWith("model_missing")) {
+    return `${inRoot}${py} scripts/fetch_embedding_model.py`;
+  }
+  if (reason.startsWith("dependency_missing")) {
+    return `${inRoot}${py} -m pip install -r requirements-embed.txt`;
+  }
+  if (reason.startsWith("spawn_failed")) {
+    return process.env["RUNNER_PYTHON"]
+      ? `point RUNNER_PYTHON at a Python 3.12 interpreter, since ${py} did not start`
+      : `${inRoot}python3.12 -m venv .venv && .venv/bin/python -m pip install -r requirements-dev.txt`;
+  }
+  // A timeout, a crash or an unreadable reply has no standing fix. Running the
+  // probe by hand prints the error the worker swallowed.
+  return `${inRoot}echo '{"texts": ["probe"]}' | ${py} -m embed.cli`;
+}
+
+/** Quoted for a POSIX shell only when it has to be, so the common case reads plainly. */
+function quoted(arg: string): string {
+  return /^[\w@%+=:,./-]+$/.test(arg) ? arg : `'${arg.replaceAll("'", `'\\''`)}'`;
+}
 
 export async function preflight(
   client: Pool | PoolClient,
@@ -174,7 +211,7 @@ function describe(
       `The ${check.panelist} panelist cannot run here: ${check.reason}. ` +
       `${countOf(check.requiredBy, published)} require it, and grading them ` +
       "without it would quietly drop most of the evidence behind every band.");
-    lines.push(`  Fix it:          ${FIXES[check.panelist] ?? "see docs/10 section 9"}`);
+    lines.push(`  Fix it:          ${fixFor(check.panelist, check.reason ?? "")}`);
     lines.push(`  Or accept it:    EVAL_DEGRADED_PANELISTS=${check.panelist}`);
   }
 
