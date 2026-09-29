@@ -84,6 +84,18 @@ Six layers. Difficulty decides which are on.
 
 The written attempt note on Extreme is deliberate friction. It produces text a faculty member can read to see whether the learner is stuck on the concept or on Python.
 
+Every tier also has a live coach, a deterministic reader of the learner's work that says one sentence an author wrote (`04-PROBLEM-AUTHORING.md` section 2.1). Like hints, what it may say tightens with the tier:
+
+| Difficulty | Coach |
+|---|---|
+| Easy | Speaks as soon as the code shows the mistake the problem is about, after a failed test, and when the learner has sat idle. |
+| Medium | The same as Easy. |
+| Hard | Nudges that read the code wait for one failed run. Nudges about a failed test and idle nudges speak at once. |
+| Extreme | Nudges that read the code wait for two failed runs, the same currency hints cost. |
+| Screen conditions | Off. An interviewer does not coach. |
+
+The tier table lives in `web/lib/policy/tiers.ts` with the rest of the ladder.
+
 **Amended 29 September 2026.** The ladder used to give Hard no stub and Extreme a blank editor with no hints, so that the top two tiers imitated a screen. Learners running the platform read that as a blank page with nobody to ask, and the tiers taught less than the easier ones. Every tier now carries starter code and hints, and the tiers differ in how much the starter code gives away and what a hint costs. The screen itself did not go away: rehearsal mode (section 7.4) runs under **screen conditions**, which are the old Extreme rules kept whole: the brief only, a blank editor, no hints, nothing about the tests.
 
 ### 3.3 Competency tags

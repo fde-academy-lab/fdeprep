@@ -167,6 +167,20 @@ a learner's own class still works, and namedtuple's `_asdict`, `_replace`,
 `_fields`, `_field_defaults` and `_make` are exempt because their underscores
 exist to avoid colliding with field names rather than to mark them private.
 
+**Amended 29 September 2026.** Two reads of a private attribute never appear
+as an attribute node, so the rule above missed them. `str.format` resolves
+`"{0._script}"` with a real `getattr` at run time, and `format_map` does the
+same through a mapping; a class pattern in a `match` statement,
+`case object(_script=s)`, binds an attribute by keyword. The gate now checks
+a literal format string field by field (nested specs included) and rejects any
+field that reads an attribute or an item; it rejects `.format` on a string built
+at run time, `str.format` called on the class, and every `format_map`, since an
+f-string does everything a learner needs and the gate reads it as ordinary
+attribute nodes. A class pattern binding an underscored name is rejected. `gc`
+and `inspect` join the forbidden modules whatever a problem allows, because
+`gc.get_referents(llm)` returns the object's state with no attribute access at
+all.
+
 ### 4.2 Prompt surgery
 
 ```

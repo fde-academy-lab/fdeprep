@@ -179,6 +179,12 @@ build:                                     # only on a stage of a multi-stage bu
 
 The coach is deterministic on purpose. Learner code never reaches a model endpoint, so the coach reads the code with patterns and reads runs by the names of the tests that failed. That also makes it instant and free, and a nudge a learner disputes traces to one line of this file. It runs on the server; the browser receives the nudge that fired and never the script.
 
+Three behaviours to write for:
+
+- On a code problem, `code_matches` and `code_lacks` read the code with its full-line comments removed. Starter code narrates its TODOs in comments, and a signal written to notice that nothing handles a Final Answer would otherwise be satisfied by the comment that says to handle one. Trailing comments stay, so prefer patterns that match code rather than prose. Prompt and design answers are read whole.
+- When a run fails and no authored signal fires, the coach says how many public tests failed and points at the first failure. An author does not need a signal per public test; one per hidden and adversarial test is what adds information the results pane cannot show.
+- On Hard and Extreme the code-reading signals wait for failed runs (docs/00 section 3.2). Write the first signal of a Hard problem so it still helps after a failed run, rather than as a first step.
+
 Quote any value that holds a comma, a colon or a question mark. The runner parses problems with PyYAML, which implements YAML 1.1 and rejects an unquoted `?` inside a flow mapping that the web validator's YAML 1.2 parser accepts, and both parsers read `{ sub: fix, rerun }` as `sub: fix` plus an empty key `rerun`. The validator rejects the unknown key, which is how the split gets caught.
 
 ---

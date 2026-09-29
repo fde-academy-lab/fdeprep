@@ -158,6 +158,20 @@ Instrument replay is the reason to build unguided mode second rather than first.
 
 ---
 
+### Timed practice, where graded voice is not deployed
+
+Added 29 September 2026. Graded sessions need the voice socket, which is
+infrastructure a human deploys. On a deployment without it the Voice Screen
+does not show a Start button that fails with a configuration error: the page
+asks the server whether `VOICE_SOCKET_URL` and `VOICE_TOKEN_SECRET` are set
+and, when they are not, offers timed practice instead. Practice runs the
+question's clock and walks the beats by their time budgets, which is the part
+of the cockpit that needs no server. It records nothing, transcribes nothing
+and sends nothing, so it needs no consent and leaves no row. Faculty see which
+of the two variables is missing; learners see that graded sessions are not
+switched on yet. The transport check page, `/voice/lab`, and its API are closed
+to learners, since both exist to diagnose the socket.
+
 ## 5. Pressure mode
 
 An interviewer agent interrupts. Two interruptions maximum in one session.
