@@ -50,6 +50,9 @@ interview_evidence:
     Author judgement.
 `.trim();
 
+/** An answer of exactly n words, for exemplars that have to sit inside a word range. */
+const words = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
+
 const DESIGN = `
 slug: a-design-problem
 title: A design problem
@@ -67,9 +70,9 @@ rubric:
   - { label: "Names the gap", weight: 60 }
   - { label: "Proposes a gate", weight: 40 }
 exemplars:
-  - { band: strong, score: 90, body_md: "..." }
-  - { band: adequate, score: 65, body_md: "..." }
-  - { band: weak, score: 30, body_md: "..." }
+  - { band: strong, score: 90, body_md: "${words(60)}" }
+  - { band: adequate, score: 65, body_md: "${words(50)}" }
+  - { band: weak, score: 30, body_md: "${words(40)}" }
 complexity: C4
 interview_evidence:
   round: written
@@ -187,5 +190,23 @@ describe("design problems", () => {
 
   it("rejects rubric weights that do not sum to 100", () => {
     expect(rules(DESIGN.replace("weight: 40 }", "weight: 25 }"))).toContain("rubric_weights");
+  });
+
+  it("rejects an exemplar the structural gate would reject before grading it", () => {
+    // The adequate exemplar is the pass threshold and all three anchor the
+    // neighbour vote (docs/10). An exemplar outside the range anchors a band
+    // on an answer the platform never grades; a strong one outside it is a
+    // model answer the platform refuses.
+    const short = DESIGN.replace(`body_md: "${words(50)}"`, 'body_md: "Too short to grade."');
+    expect(rules(short)).toContain("exemplar_out_of_range");
+    const long = DESIGN.replace(`body_md: "${words(60)}"`, `body_md: "${words(401)}"`);
+    expect(rules(long)).toContain("exemplar_out_of_range");
+  });
+
+  it("counts an exemplar's words the way the structural gate counts an answer's", () => {
+    const edge = DESIGN.replace(`body_md: "${words(40)}"`, `body_md: "${words(40)}"`);
+    expect(rules(edge)).not.toContain("exemplar_out_of_range");
+    const under = DESIGN.replace(`body_md: "${words(40)}"`, `body_md: "${words(39)}"`);
+    expect(rules(under)).toContain("exemplar_out_of_range");
   });
 });

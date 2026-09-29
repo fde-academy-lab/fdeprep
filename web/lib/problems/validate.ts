@@ -8,7 +8,7 @@
  * This runs in CI over problems/ and again behind the admin import screen.
  */
 import { LineCounter, parseDocument, type Document } from "yaml";
-import { compilePattern, PatternError, type PromptRule } from "../gate/index.ts";
+import { compilePattern, PatternError, wordCount, type PromptRule } from "../gate/index.ts";
 import { HEURISTICS, heuristicNames, isHeuristic } from "../eval/heuristics.ts";
 import {
   ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, TRACKS, VISIBILITIES,
@@ -28,7 +28,8 @@ export type Rule =
   | "probe_pattern_absent" | "missing_call_budget" | "matcher_shadows_input"
   | "bad_complexity" | "panel_without_static" | "panel_mismatch"
   | "unknown_heuristic" | "heuristic_wrong_artefact"
-  | "no_complexity" | "no_interview_evidence" | "unknown_track" | KitRule;
+  | "no_complexity" | "no_interview_evidence" | "unknown_track" | "exemplar_out_of_range"
+  | KitRule;
 
 export interface ValidationError {
   rule: Rule;
@@ -620,6 +621,25 @@ function validateDesign(
   if (!Array.isArray(raw["rubric"]) || !(raw["rubric"] as unknown[]).length) {
     add("no_rubric", "a design problem needs a rubric, or the judge has nothing to score", 1);
   }
+
+  // Rule: an exemplar the structural gate would reject. The adequate exemplar
+  // is the pass threshold and all three anchor the neighbour vote (docs/10),
+  // so one outside the range anchors a band on an answer that is refused
+  // before anything grades it.
+  if (!ok) return;
+  const [low, high] = range as [number, number];
+  const exemplars = Array.isArray(raw["exemplars"]) ? (raw["exemplars"] as unknown[]) : [];
+  exemplars.forEach((entry, index) => {
+    const exemplar = entry as { band?: unknown; body_md?: unknown } | null;
+    if (typeof exemplar?.body_md !== "string") return;
+    const count = wordCount(exemplar.body_md);
+    if (count >= low && count <= high) return;
+    add("exemplar_out_of_range",
+        `the ${String(exemplar.band ?? "unlabelled")} exemplar is ${count} words and the range is ` +
+        `${low} to ${high}. The structural gate refuses an answer outside the range before ` +
+        "any grading, so this exemplar anchors a band on an answer the platform never grades",
+        lineOf(["exemplars", index, "body_md"]));
+  });
 }
 
 function validateRubric(
