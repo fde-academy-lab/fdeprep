@@ -230,10 +230,9 @@ approach:
     - label: Split on the unit that leaks
       detail: Forty rows from one template are one case, and they move together.
       leaves: [source ticket, customer thread, template family, calendar month]
-    - label: Decide who may look
-      leaves: [prompt authors never read it, used to decide releases and nothing else]
-    - label: Check the line every release
-      leaves: [a shared source or template fails the run]
+    - label: Guard the line
+      detail: A holdout lasts while nobody tuning the prompt can read it.
+      leaves: [who may open it, used to decide releases and nothing else, a shared source or template fails the run]
     - label: Say what 94 means now
       leaves: [a development number, which number to plan staffing on]
 
