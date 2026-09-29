@@ -380,6 +380,18 @@ The repository is bind-mounted, so an edit on your machine is live in the contai
 | PostgreSQL | 16 | `psql --version` |
 | Git | Any recent version | `git --version` |
 
+On a Mac, PostgreSQL 16 comes from Homebrew. The `postgresql@16` formula is keg-only because it is a versioned formula, so its tools stay off your PATH until you add them, and `createdb` in step 3 fails with `command not found` until you do:
+
+```bash
+brew install postgresql@16
+brew services start postgresql@16          # starts it now and at every login
+echo "export PATH=\"$(brew --prefix postgresql@16)/bin:\$PATH\"" >> ~/.zshrc
+source ~/.zshrc
+pg_isready                                  # accepting connections
+```
+
+The install runs `initdb` as you, so your macOS user is the database superuser and `postgres://localhost/fdeprep` needs no username or password. Checked against the Homebrew formula on 29 September 2026, when it was at 16.15.
+
 ## 2.3 Six commands, and an optional seventh
 
 ```bash
