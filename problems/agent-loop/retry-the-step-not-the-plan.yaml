@@ -206,13 +206,6 @@ coach:
       say: >-
         Your retry runs every failed step again. The record says which
         failures can change on a second try. Which field says so?
-    - id: missing-value-becomes-none
-      when:
-        code_matches: '\(\s*\w+\.get\(\s*\w+\s*\)\s*or\s*\{\}\s*\)\.get\('
-        code_lacks: '(?i)is\s+None|==\s*""|==\s*''''|in\s*\(\s*None'
-      say: >-
-        A reference whose value is missing turns into None in your code, and
-        the step that needed it runs anyway. What should happen to that step?
     - id: hidden-refund-again
       when: { test_failed: the_refund_that_already_went_out_is_not_issued_again }
       say: >-
