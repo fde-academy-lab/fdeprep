@@ -1,0 +1,304 @@
+slug: choose-examples-that-teach-the-boundary
+title: Show the model where a query becomes a complaint
+artefact_type: prompt
+difficulty: easy
+track: prompt
+est_minutes: 20
+model_id: us.anthropic.claude-opus-5
+competencies:
+  - { slug: prompt-construction, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+
+brief_md: |
+  The complaints lead at a building society pulled last month's secure inbox
+  and found 38 complaints labelled as queries. None of them reached the
+  complaints team, so none was acknowledged, and each one came from a
+  customer who had said, politely or in passing, that something had gone
+  wrong.
+
+  The triage prompt labels every message COMPLAINT or QUERY. Its three
+  examples are all obvious questions, and one line sends every close call to
+  QUERY. The model has never been shown a complaint, or a message that sits
+  near the line between the two.
+
+  The complaints team has labelled ten real messages for you. Choose the
+  examples that show the model where the line is.
+
+contract_md: |
+  Edit the system prompt in the editor. You may rewrite the definition and
+  replace the examples. The reply stays one word, COMPLAINT or QUERY.
+
+  The complaints team's labelled set, anonymised, with the label each
+  message was given:
+
+  1. "What time does the Station Road branch open on Saturday?" QUERY
+  2. "I want to make a formal complaint about how my mortgage application
+     was handled." COMPLAINT
+  3. "Can you tell me my balance?" QUERY
+  4. "Can you tell me my balance? The app has logged me out twice this
+     week, which is annoying." COMPLAINT
+  5. "Why is there a £4 charge on my statement from the 3rd?" QUERY
+  6. "The £4 charge on my statement from the 3rd is wrong. Please refund
+     it." COMPLAINT
+  7. "Thanks for replacing my card so quickly. Has the new PIN been
+     posted?" QUERY
+  8. "Thanks for replacing my card. Three weeks was a long wait, to be
+     honest. Has the new PIN been posted?" COMPLAINT
+  9. "Please send me a copy of my annual statement." QUERY
+  10. "Your hold music is dreadful. Anyway, what rate does the easy access
+      saver pay?" COMPLAINT
+
+  Keep the example format: a Message line, then a Label line. The checklist
+  shows what has to change and what has to survive. The probes are not
+  shown; they send new messages, none of them from this set, and read the
+  label that comes back.
+
+  Stay under 180 words. The whole set does not fit, so choose.
+
+original_prompt: |
+  You triage messages sent to a building society's secure inbox.
+
+  Label each message COMPLAINT if the customer is making a complaint, or
+  QUERY if they are asking us a question or asking us to do something. When a
+  message could be either, label it QUERY, because the complaints team is
+  small.
+
+  Reply with one word, COMPLAINT or QUERY, and nothing else.
+
+  Examples:
+
+  Message: What time does the Station Road branch open on Saturday?
+  Label: QUERY
+
+  Message: Please send me a copy of my annual statement.
+  Label: QUERY
+
+  Message: How do I set up a standing order to my daughter's account?
+  Label: QUERY
+
+prompt_rules:
+  - { kind: must_remove, label: "the line that sends every close call to QUERY",
+      pattern: "(?i)could\\s+be\\s+either" }
+  - { kind: must_keep, label: "the one-word reply",
+      pattern: "COMPLAINT\\s+or\\s+QUERY" }
+  - { kind: must_keep, label: "at least one example labelled QUERY",
+      pattern: "(?i)label:\\s*query" }
+  - { kind: max_words, label: "under 180 words", numeric_value: 180 }
+
+probes:
+  - name: a_complaint_made_in_passing_is_a_complaint
+    user_message: "Could you confirm my new sort code? Being kept on hold for forty minutes yesterday was really frustrating."
+    assertion: { type: present, pattern: "\\bCOMPLAINT\\b" }
+  - name: polite_disappointment_is_still_a_complaint
+    user_message: "Thank you for sorting out my online banking. I was disappointed that it took four phone calls to get there. Can I set up a new payee now?"
+    assertion: { type: present, pattern: "\\bCOMPLAINT\\b" }
+  - name: a_question_about_a_charge_is_a_query
+    user_message: "Can you explain the £2.50 charge that appeared on my account on Monday?"
+    assertion: { type: present, pattern: "\\bQUERY\\b" }
+  - name: a_formal_complaint_is_still_a_complaint
+    user_message: "I wish to complain about the way my savings transfer was handled last month."
+    assertion: { type: present, pattern: "\\bCOMPLAINT\\b" }
+  - name: a_plain_request_is_still_a_query
+    user_message: "How do I order a new paying-in book?"
+    assertion: { type: present, pattern: "\\bQUERY\\b" }
+
+rubric:
+  - label: The examples sit at the line
+    weight: 40
+    descriptor_md: |
+      Strong answers choose pairs from the labelled set that read almost the
+      same and carry different labels: the balance question with and without
+      the complaint about the app, the charge question and the wrong charge.
+      A set of examples that are all easy to label teaches the middle of each
+      label and nothing about the edge between them.
+  - label: Both labels appear, including the ways a complaint hides
+    weight: 35
+    descriptor_md: |
+      The 38 missing complaints were polite, or made in passing, or tucked
+      behind a question. Strong answers show at least one complaint that also
+      asks for something and keep at least one plain query, so the model sees
+      both labels and the variety inside the harder one.
+  - label: The prompt stays inside the limit by choosing
+    weight: 25
+    descriptor_md: |
+      Every example is sent with every message. Strong answers stay under the
+      limit by picking examples, and keep each chosen message whole, because
+      the clause that decides a label is usually the part a trim would cut.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      Deletes the close-call line. Keeps the branch opening hours as the one
+      plain query, then adds three pairs from the set: the balance question
+      with and without the complaint about being logged out, the charge
+      question and the wrong charge, and the card replacement thanked for its
+      speed and thanked with a remark about the wait. Seven examples in about
+      160 words, and each pair differs by one clause.
+  - band: adequate
+    score: 62
+    body_md: |
+      Deletes the close-call line and adds the formal mortgage complaint and
+      the wrong-charge complaint to the three original queries. Both labels
+      now appear and the charge pair is half there. No example complains in
+      passing, so a question with a complaint tucked into it still looks like
+      a query to the model.
+  - band: weak
+    score: 28
+    body_md: |
+      Deletes the close-call line and adds one sentence to the definition:
+      "Label anything negative as a COMPLAINT." The examples are still three
+      easy queries, and a plain question about a charge now comes back as a
+      complaint because money reads as negative.
+
+hints:
+  - Ask of each example whether anyone could have labelled it differently.
+    An example nobody could get wrong teaches nothing about the line.
+  - A model copies its examples more closely than it follows a definition.
+    Three easy queries show it what a query looks like and nothing about
+    where one stops.
+  - The labelled set holds pairs, two messages that read almost the same and
+    carry different labels. A pair shows the model the one clause that
+    decides.
+  - Delete the close-call line, keep one plain query, add pairs from both
+    sides of the line, and count the words before you add another pair.
+
+scenario:
+  who: The complaints lead at a building society
+  situation: >-
+    Last month's secure inbox held 38 complaints labelled as queries. Each
+    came from a customer who said, politely or in passing, that something had
+    gone wrong, and none of them reached the complaints team.
+  stakes: >-
+    A complaint labelled as a query is never acknowledged. The triage
+    prompt's three examples are all obvious questions, so the model has never
+    seen where the line is.
+  metrics:
+    - { label: Complaints logged as queries, value: 38 last month }
+    - { label: Examples in the prompt, value: "3, all QUERY" }
+    - { label: Word limit, value: "180" }
+
+diagram:
+  title: Easy examples teach the middle and never the edge
+  caption: >-
+    Three obvious queries show the model what a query looks like. The missing
+    complaints sit on the line, where no example has ever been.
+  direction: lr
+  nodes:
+    - { id: inbox, label: Secure inbox, sub: every customer message, kind: queue, tone: blue, at: [0, 1] }
+    - { id: examples, label: Three examples, sub: all obvious queries, kind: doc, tone: pink, at: [1, 0] }
+    - { id: pairs, label: Labelled set, sub: ten messages with the team's labels, kind: store, tone: green, at: [1, 2] }
+    - { id: model, label: Triage model, sub: COMPLAINT or QUERY, kind: model, tone: teal, at: [2, 1] }
+    - { id: servicing, label: Servicing queue, sub: where 38 complaints landed, kind: output, tone: pink, at: [3, 0] }
+    - { id: complaints, label: Complaints team, sub: where a complaint belongs, kind: output, tone: green, at: [3, 2] }
+  edges:
+    - { from: inbox, to: model, label: one message }
+    - { from: examples, to: model, label: shows only the middle, tone: danger }
+    - { from: pairs, to: model, label: pairs at the line, tone: success }
+    - { from: model, to: servicing, label: close calls go here, tone: danger }
+    - { from: model, to: complaints, label: once it has seen the line, tone: success }
+
+approach:
+  goal: Choose examples that show the model where a query becomes a complaint
+  branches:
+    - label: Test each example
+      leaves: ["could anyone label it differently?", "if not, it says nothing about the line"]
+    - label: Find where complaints hide
+      leaves: [mentioned in passing, behind a question, in a polite and grateful message]
+    - label: Use pairs
+      detail: Two messages that differ by one clause and carry different labels show the model what decides.
+      leaves: [the same question with and without a complaint, a charge queried and a charge disputed]
+    - label: Spend the word limit on the line
+      leaves: [one plain example of each label, the rest near the edge]
+
+coach:
+  opening: >-
+    Read the three examples the way the model does. What have they shown it
+    about where a complaint starts?
+  signals:
+    - id: close-calls-go-to-query
+      when: { code_matches: '(?i)could\s+be\s+either' }
+      say: >-
+        The prompt still sends every close call to QUERY. The close calls are
+        exactly the 38 complaints that went missing.
+    - id: no-complaint-at-the-line
+      when: { code_lacks: '(?is)message:(?:(?!message:|label:).){0,300}?(\?|can\s+you|could\s+you|how\s+do)(?:(?!message:|label:).){0,300}?label:\s*complaint' }
+      say: >-
+        None of your examples is a complaint that also asks for something.
+        That is what the missing messages looked like: a question, with a
+        problem mentioned on the way.
+    - id: charge-without-its-pair
+      when:
+        code_matches: '(?is)message:(?:(?!message:|label:).){0,300}?\b(charge[sd]?|fees?)\b(?:(?!message:|label:).){0,300}?label:\s*complaint'
+        code_lacks: '(?is)message:(?:(?!message:|label:).){0,300}?\b(charge[sd]?|fees?)\b(?:(?!message:|label:).){0,300}?label:\s*query'
+      say: >-
+        Your examples show a charge that is a complaint and no charge that is
+        only a question. The model will learn that money means complaint.
+        Which example shows the other side?
+    - id: passing-complaint-missed
+      when: { test_failed: a_complaint_made_in_passing_is_a_complaint }
+      say: >-
+        A message that asked a question and mentioned a problem in passing got
+        the wrong label. Which of your examples shows the model that case?
+    - id: polite-complaint-missed
+      when: { test_failed: polite_disappointment_is_still_a_complaint }
+      say: >-
+        A grateful, polite message that still said something had gone wrong
+        got the wrong label. Do your examples show that tone does not decide
+        it?
+    - id: charge-question-mislabelled
+      when: { test_failed: a_question_about_a_charge_is_a_query }
+      say: >-
+        A plain question about a charge got the wrong label. Do your examples
+        teach the model that any mention of money is a complaint?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Find two messages in the labelled set that read almost the same and
+        carry different labels. A pair like that shows the model the one
+        clause that decides.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Open the next hint: each one narrows the
+        problem by one rung, and none of them hands over the answer.
+  wrap_up: >-
+    A model copies its examples more closely than it follows a definition.
+    Spend them on the close calls, in pairs that differ by one clause, and it
+    learns where the line is.
+
+reference_md: |
+  The examples are the part of this prompt the model reads most closely, and
+  all three are questions nobody could mislabel.
+
+  A definition says what a complaint is in general. Examples show what the
+  line looks like in this inbox, and a model unsure about a message copies
+  the nearest example it has seen. Three easy queries give it three places to
+  copy from, all far from the line, so a message that asks for a sort code
+  and mentions forty minutes on hold lands next to "What time does the
+  branch open?" and gets the same label. The close-call line made that
+  certain. Deleting it removes the push and leaves the examples pointing the
+  same way.
+
+  Pairs are what make an example informative. The balance question with and
+  without the remark about the app differ by one clause, and that clause is
+  the whole decision, so showing both teaches the model which detail matters.
+  The charge pair teaches the other direction: money in a message does not
+  make it a complaint, and a set that shows only the wrong-charge complaint
+  teaches exactly that mistake. That is the weak edit's failure too, written
+  as a rule instead of an example.
+
+  The word limit is what makes this a choice. Every example is sent with
+  every message, so the words go where the model needs help, near the line,
+  and one plain example of each label covers the middle. The same test works
+  on any few-shot prompt: for each example, ask whether anyone could have got
+  it wrong, and if nobody could, spend its words on one somebody could.
+
+complexity: C3
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your few-shot classifier is right on the obvious cases and wrong on the close ones. How do you choose its examples?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
