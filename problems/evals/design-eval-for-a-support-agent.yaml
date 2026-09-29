@@ -149,6 +149,105 @@ exemplars:
       Two weeks is likely not enough time to do this properly and I would
       recommend pushing the date to ensure quality.
 
+hints:
+  - Ask who wrote the forty conversations, and what that means for the cases
+    nobody thought of.
+  - An average over correctness and harm goes up when you fix the cheap half.
+  - Give every gate a number, a population and a consequence, and keep the
+    list short enough that nobody waives it on the day.
+  - Say which gates can move and which cannot before the pushback arrives,
+    and name the version that ships on their date.
+
+scenario:
+  who: The head of support at a client launching a refund-capable agent
+  situation: >-
+    Two weeks before launch, the support agent passes 38 of 40 hand-written
+    test conversations. It can issue refunds of up to 200 dollars on its own.
+  stakes: >-
+    A refund to the wrong account costs money and a complaint, and nothing in
+    the 95 percent says how often the agent issues one.
+  metrics:
+    - { label: Pass rate, value: 95% }
+    - { label: Hand-written cases, value: "40" }
+    - { label: Refund ceiling, value: $200 }
+
+diagram:
+  title: What the 95 percent can see, and what it averages away
+  caption: >-
+    Forty cases written before launch cannot show what real customers or
+    attackers send, and one average cannot tell a vague answer from a wrong
+    refund.
+  direction: lr
+  nodes:
+    - { id: written, label: 40 hand-written cases, sub: "38 pass, 95 percent", kind: store, tone: blue, at: [0, 0] }
+    - { id: unseen, label: What nobody wrote down, sub: "real phrasings, attacks, other accounts", kind: doc, tone: neutral, at: [0, 2] }
+    - { id: agent, label: Support agent, sub: answers and refunds up to $200, kind: agent, tone: purple, at: [1, 1] }
+    - { id: average, label: One pass rate, sub: a vague answer and a wrong refund averaged, kind: output, tone: pink, at: [2, 0] }
+    - { id: harm, label: Harm gate, sub: wrong refunds counted on their own, kind: guard, tone: green, at: [2, 2] }
+    - { id: decision, label: Launch decision, sub: two weeks away, kind: decision, tone: orange, at: [3, 1] }
+  edges:
+    - { from: written, to: agent, label: tested on }
+    - { from: unseen, to: agent, label: never tested, tone: muted }
+    - { from: agent, to: average, label: 38 of 40 }
+    - { from: average, to: decision, label: decides alone, tone: danger }
+    - { from: agent, to: harm, label: every refund it issued }
+    - { from: harm, to: decision, label: blocks on its own, tone: success }
+
+approach:
+  goal: An evaluation plan the head of support can launch against
+  branches:
+    - label: Ask what forty cases can see
+      leaves: [who wrote them, what real customers send, what an attacker sends]
+    - label: Split harm from quality
+      detail: A vague answer costs a follow-up message. A wrong refund costs money and a complaint.
+      leaves: [one gate per kind of failure]
+    - label: Make every gate a number
+      leaves: [a population, a threshold, a consequence]
+    - label: Plan for the date
+      leaves: [what can be built in two weeks, the launch that keeps the date]
+
+coach:
+  opening: >-
+    Before you write the plan, decide which single failure would stop this
+    launch whatever the pass rate says.
+  signals:
+    - id: no-harm-gate
+      when: { code_lacks: '(?i)unauthori[sz]ed|wrong (account|customer|order|person)|someone else|somebody else|\bharm' }
+      say: >-
+        Your plan treats every failure alike. Which failure costs money rather
+        than a follow-up message, and does it get a gate of its own?
+    - id: no-real-traffic
+      when: { code_lacks: '(?i)real (traffic|conversations|customers|tickets)|replay|production (traffic|conversations|logs)|last (quarter|month)' }
+      say: >-
+        Where would your extra cases come from? Five hundred cases written by
+        the same people share the blind spots of the first forty.
+    - id: adjectives-for-gates
+      when: { code_matches: '(?i)\b(robust|comprehensive|significantly|properly|thorough(ly)?)\b' }
+      say: >-
+        An adjective cannot block a launch. Give each gate a number, the
+        population it is measured on, and what happens when it fails.
+    - id: only-the-date-moves
+      when:
+        code_matches: '(?i)push(ing)? (back )?the (date|launch)|delay(ing)? the launch|move the (date|launch)|following week'
+        code_lacks: '(?i)smaller launch|reduced launch|human approv|approval on refunds|refunds? (off|held|disabled)'
+      say: >-
+        Moving the date is one answer, and the head of support has heard it
+        before. What could ship on the date with the risky part held back?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with two lines: the failure that stops the launch on its own, and
+        the population you would measure it on. The plan hangs off those.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hint ladder is open, and its first rung
+        narrows where to look.
+  wrap_up: >-
+    A pass rate over cases the builders wrote measures their imagination.
+    Measure real traffic and an outside attack set, gate harm apart from
+    quality, and name the smaller launch before anyone pushes on the date.
+
 reference_md: |
   This is where the FDE part of the programme shows up. An engineer who can
   write the loop and cannot hold this conversation fails the screen.
