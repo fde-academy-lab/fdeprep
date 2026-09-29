@@ -151,9 +151,7 @@ approach:
       leaves: [an observation with nothing in it, three identical calls in a row, a step whose type is error]
     - label: Walk forwards and stop
       detail: A run carries its state forward, so everything after the first break is downstream of it.
-      leaves: [the first match is the cause, later matches are symptoms]
-    - label: Report the start of a loop
-      leaves: [the first of the repeated calls, its observation is the one to read]
+      leaves: [the first match is the cause, later matches are symptoms, a loop is reported at its first call]
     - label: Keep the model on the sentence
       leaves: [your code picks the step, the model writes the line]
     - label: Expect a trace that is not a trace
