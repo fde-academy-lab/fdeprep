@@ -22,8 +22,8 @@ brief_md: |
   Last week an engineer asked about an M400 showing E-4102 that would not
   pull paper from tray 2. Keyword search put three pages that mention E-4102
   on top: a firmware note, another model's code index and a fuser fault on
-  that model. Vector search put three paper feed pages for other printers on
-  top. The runbook that answers it, a worn tray 2 pick roller on the M400,
+  that model. Vector search put three general pages about paper feed
+  problems on top. The runbook that answers it, a worn tray 2 pick roller on the M400,
   was fourth in both. Merging by score kept keyword search's top three,
   because keyword scores run to 20 and vector scores stop at 1. The engineer
   replaced the fuser, and the customer's printer was down for two more days.
