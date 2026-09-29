@@ -57,11 +57,174 @@ contract_md: |
 
   Budget: at most 2 model calls. Allowed imports: json, re.
 
+stub_code: |
+  import json
+  import re
+
+  DELAYS_MS = (1000, 2000, 4000, 8000)
+  DEADLINE_MS = 8000
+  MAX_ATTEMPTS = 5
+
+
+  def _result(outcome: str, attempts: int, waited_ms: int) -> str:
+      """The one JSON shape every path returns."""
+      return json.dumps({"outcome": outcome, "attempts": attempts, "waited_ms": waited_ms})
+
+
+  def _status(ship, order: str):
+      """Call the carrier once and return what its answer means for the loop.
+
+      A carrier that stops responding raises instead of returning a status.
+      Decide here what that counts as, so nothing raises past this function.
+      """
+      raise NotImplementedError("call ship(order=...) and read its status")
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Book the order with the carrier inside a fixed waiting budget.
+
+      llm(prompt) replies once, with: Action: ship(order=<id>)
+      tools["ship"](order=<id>) returns {"status": 200, "booking": <ref>},
+      {"status": 429}, {"status": 503} or {"status": 401}, or it raises.
+
+      Policy:
+        - The waits before attempts 2, 3, 4 and 5 are DELAYS_MS.
+        - Before each wait, check that it fits in what is left of DEADLINE_MS.
+          When it does not fit, stop. Never wait less, and never wait anyway.
+        - A 401 is not retried.
+        - MAX_ATTEMPTS is the ceiling even when the deadline would allow more.
+
+      Return _result(outcome, attempts, waited_ms), where outcome is booked,
+      exhausted or not_retryable. At most 2 model calls. Allowed imports:
+      json, re.
+      """
+      return _result("exhausted", 0, 0)
+
 hints:
-  - The deadline is spent before the call, not after it.
-  - A delay that does not fit is a reason to stop, not a reason to wait less.
+  - Look at the line where the loop compares the time it has waited with the
+    deadline, and at what has already happened by the time it gets there.
+  - The deadline is spent before each wait. Checked after the wait, the loop
+    has already waited past the deadline, and the wait that did it is the
+    largest one.
+  - A delay that does not fit ends the loop. Waiting a shorter time instead
+    sends a request at the exact moment the policy said not to send one.
   - One of the four status codes is not a temporary condition, and trying it
-    again is a way of not reading it.
+    again is a way of not reading it. A carrier that stops answering raises
+    instead of returning, and that has to count as something too.
+  - "Per attempt: call ship and catch a raise, return on a 200, return on a
+    status that will not change, stop after the fifth attempt, stop if the next
+    delay does not fit, and only then add the delay to the total."
+
+scenario:
+  who: The checkout team in front of a carrier booking agent
+  situation: >-
+    The carrier was down for four minutes on Tuesday. The agent retried with
+    exponential backoff and no total deadline, so requests that should have
+    stopped after eight seconds took forty seven.
+  stakes: >-
+    Checkout gives up at thirty seconds, so customers saw a spinner and then an
+    error while the agent was still waiting to retry. The same loop retried a
+    401 eleven times.
+  metrics:
+    - { label: Slowest request, value: 47 s }
+    - { label: Deadline, value: 8 s }
+    - { label: Retries of one 401, value: "11" }
+
+diagram:
+  title: Where the deadline gets checked too late
+  caption: >-
+    The check belongs before each wait. After the wait, the largest delay has
+    already been spent and the checkout in front has given up.
+  direction: lr
+  nodes:
+    - { id: checkout, label: Checkout, sub: gives up at 30 s, kind: service, tone: blue, at: [0, 1] }
+    - { id: agent, label: Agent loop, sub: books the order, kind: agent, tone: purple, at: [1, 1] }
+    - { id: carrier, label: ship(), sub: "200, 429, 503, 401 or no answer", kind: tool, tone: orange, at: [2, 0] }
+    - { id: check, label: Deadline check, sub: "does the next delay fit?", kind: decision, tone: green, at: [2, 1] }
+    - { id: wait, label: Backoff wait, sub: "1, 2, 4 then 8 seconds", kind: queue, tone: teal, at: [3, 1] }
+    - { id: answer, label: JSON answer, sub: "booked, exhausted or not_retryable", kind: output, tone: neutral, at: [3, 2] }
+    - { id: spinner, label: 47 s spinner, sub: waited first and checked after, kind: output, tone: pink, at: [1, 2] }
+  edges:
+    - { from: checkout, to: agent, label: order, step: 1 }
+    - { from: agent, to: carrier, label: attempt, step: 2 }
+    - { from: carrier, to: agent, label: "a status, or a raise", step: 3 }
+    - { from: agent, to: check, label: before each wait, step: 4 }
+    - { from: check, to: wait, label: it fits, tone: success }
+    - { from: check, to: answer, label: it does not fit, tone: success }
+    - { from: wait, to: agent, label: next attempt, tone: muted }
+    - { from: agent, to: spinner, label: wait now and check later, tone: danger }
+
+approach:
+  goal: Answer inside a worst case the checkout can plan around
+  branches:
+    - label: Read the status
+      leaves: [two codes are temporary, one says stop now, a call that raises is still an attempt]
+    - label: Spend the deadline before each wait
+      detail: The comparison that ends the loop has to happen before the wait it is about to spend.
+      leaves: [time waited plus the next delay, a delay that does not fit ends the loop]
+    - label: Cap the attempts
+      leaves: [five at most, even when the deadline would allow more]
+    - label: Report what happened
+      leaves: [attempts made and time waited, one JSON shape on every path]
+
+coach:
+  opening: >-
+    Before you write the loop, add up the delays by hand and mark the attempt
+    where the next wait would pass eight seconds. The code has to stop exactly
+    there.
+  signals:
+    - id: checks-after-waiting
+      when: { code_matches: '(\w+)\s*\+=[^\n]*\n\s*if\s+\1\s*>=?' }
+      say: >-
+        Your loop adds the delay to the total and then compares the total with
+        the deadline. By then the wait has happened. What would you compare
+        before waiting?
+    - id: shortened-wait
+      when: { code_matches: '\bmin\(' }
+      say: >-
+        A delay cut down to fit the time left sends a request at the moment the
+        policy said not to send one. What should happen when the next delay
+        does not fit?
+    - id: retries-every-failure
+      when: { code_lacks: '(?i)401|429|503|retr[iy]able|transient|temporary' }
+      say: >-
+        Your loop treats every status that is not 200 the same way. Which of
+        the four will stay the same no matter how many times you ask?
+    - id: no-exception-branch
+      when: { code_lacks: '\bexcept\b' }
+      say: >-
+        A carrier that stops responding raises instead of returning a status.
+        Which line of your loop would that exception leave from?
+    - id: hidden-deadline
+      when: { test_failed: a_carrier_that_stays_down_stops_at_the_deadline }
+      say: >-
+        That carrier never recovers. Write down the total your loop has waited
+        when it stops, and whether the last wait fitted inside the deadline.
+    - id: hidden-401
+      when: { test_failed: a_401_is_not_a_temporary_condition }
+      say: >-
+        That carrier answered 401 every time. How many attempts does your loop
+        spend on a status that will not change?
+    - id: adversarial-no-answer
+      when: { test_failed: adversarial_the_carrier_stops_responding }
+      say: >-
+        In that run ship() never returned a status. Follow the exception from
+        the call to the caller, and check what your function returns afterwards.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one attempt: call ship and return booked on a 200 with
+        nothing waited. That turns the first public test green, and the retry
+        loop grows from there.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint says where to look, and the
+        second says when the deadline is spent.
+  wrap_up: >-
+    A deadline is spent before each wait, so the loop stops while there is
+    still time to answer. Read the status before you retry, and give the
+    caller a worst case it can plan around.
 
 defence_question: |
   Your policy stops after 7000 ms of waiting rather than using the full 8000.
@@ -139,10 +302,10 @@ tests:
     visibility: adversarial
     fixture: slow_then_timeout
     annotation_md: |
-      The carrier answered twice and then stopped responding, which arrives as
-      an exception rather than a status code. A retry policy written around
-      status codes has no branch for it, and the exception travels straight up
-      through the loop into whatever called the agent.
+      The carrier stopped responding, and that arrives as an exception with no
+      status code at all. A retry policy written around status codes has no
+      branch for it, and the exception travels straight up through the loop
+      into whatever called the agent.
 
       A deadline that only counts planned delays does not count this at all.
     spec:
