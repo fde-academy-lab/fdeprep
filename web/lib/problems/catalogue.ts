@@ -13,6 +13,8 @@ export type Sort = "roadmap" | "difficulty" | "recent" | "least_attempted";
 export interface CatalogueFilters {
   search?: string;
   track?: string;
+  /** Any of these tracks, which is how a stage filters. */
+  tracks?: readonly string[];
   difficulty?: string;
   artefactType?: string;
   status?: SolveState | "all";
@@ -30,8 +32,10 @@ export interface CatalogueRow {
   artefactType: string;
   estMinutes: number;
   state: SolveState;
-  /** Null when the tier hides it, which the policy module decides. */
+  /** Null when the tier hides it, which the policy module decides, or nobody has tried. */
   solveRate: number | null;
+  /** Whether this tier shows a solve rate at all. */
+  solveRateShown: boolean;
   attemptCount: number;
 }
 
@@ -72,6 +76,7 @@ export async function listProblems(
         "or p.track ilike '%' || $$ || '%')", options.search);
   }
   if (options.track && options.track !== "all") add("p.track = $$", options.track);
+  if (options.tracks?.length) add("p.track = any($$::text[])", [...options.tracks]);
   if (options.difficulty && options.difficulty !== "all") {
     add("p.difficulty::text = $$", options.difficulty);
   }
@@ -146,6 +151,7 @@ function toRow(row: Record<string, any>): CatalogueRow {
     solveRate: tierFor(difficulty).visibility.acceptanceRate && attempts > 0
       ? Math.round((solved / attempts) * 100)
       : null,
+    solveRateShown: tierFor(difficulty).visibility.acceptanceRate,
     attemptCount: attempts,
   };
 }

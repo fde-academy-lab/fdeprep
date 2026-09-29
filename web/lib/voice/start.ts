@@ -23,6 +23,18 @@ export class VoiceNotConfigured extends Error {
   readonly status = 503;
 }
 
+/**
+ * Whether graded voice sessions can open on this deployment at all.
+ *
+ * Asked by the page before it draws a Start button, so a learner on a
+ * deployment without the socket meets a practice screen instead of a
+ * configuration error meant for whoever runs the platform.
+ */
+export function voiceReadiness(): { ready: boolean; missing: string[] } {
+  const missing = ["VOICE_SOCKET_URL", "VOICE_TOKEN_SECRET"].filter((name) => !process.env[name]);
+  return { ready: missing.length === 0, missing };
+}
+
 function socketUrl(): string {
   const url = process.env.VOICE_SOCKET_URL;
   if (!url) {

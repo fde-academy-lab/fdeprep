@@ -17,7 +17,7 @@ import { readFile, readdir } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { firing, NEUTRAL } from "../lib/coach/engine.ts";
+import { firing, NEUTRAL, readableCode } from "../lib/coach/engine.ts";
 import { validateProblemYaml, type ParsedProblem } from "../lib/problems/validate.ts";
 
 const PROBLEMS = path.join(import.meta.dirname, "..", "..", "problems");
@@ -55,7 +55,7 @@ describe("every coach script in the catalogue", () => {
       const coach = validateProblemYaml(source, file).problem?.kit.coach;
       const reference = path.join(dir, "reference_solution.py");
       if (!coach || !existsSync(reference)) continue;
-      const code = await readFile(reference, "utf8");
+      const code = readableCode("code", await readFile(reference, "utf8"));
       for (const signal of firing(coach, { ...NEUTRAL, code })) {
         noisy.push(`${path.basename(file)}: ${signal.id}`);
       }
@@ -69,7 +69,7 @@ describe("every coach script in the catalogue", () => {
       const coach = validateProblemYaml(source, file).problem?.kit.coach;
       const naive = path.join(dir, "naive_solution.py");
       if (!coach || !existsSync(naive)) continue;
-      const code = await readFile(naive, "utf8");
+      const code = readableCode("code", await readFile(naive, "utf8"));
       if (firing(coach, { ...NEUTRAL, code }).length === 0) silent.push(path.basename(file));
     }
     expect(silent).toEqual([]);

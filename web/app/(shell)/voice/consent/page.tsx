@@ -7,12 +7,15 @@
  * speak freely, and an interview simulator where nobody speaks freely
  * measures nothing.
  */
-import Link from "next/link";
+import type { Metadata } from "next";
+import { ArrowRight } from "lucide-react";
 import { consentState } from "@/lib/voice/consent";
+import { ButtonLink } from "@/components/ui/button";
 import { currentLearner } from "@/lib/session/current";
 import { ConsentControls } from "./controls";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Recording consent" };
 
 const TERMS: { heading: string; body: string }[] = [
   {
@@ -53,18 +56,18 @@ export default async function VoiceConsentPage() {
   const state = await consentState(learner.enrolmentId);
 
   return (
-    <main className="mx-auto max-w-2xl px-6 py-8">
-      <h1 className="text-xl font-semibold">Recording your spoken answers</h1>
-      <p className="mt-2 text-text-dim">
+    <main className="mx-auto max-w-2xl px-5 pb-16 pt-10">
+      <h1 className="text-display font-semibold tracking-[-0.02em] text-text">Recording your spoken answers</h1>
+      <p className="mt-2 text-lead leading-relaxed text-text-dim">
         The Voice Screen records you speaking. Read this once and accept, and you will not be
         asked again.
       </p>
 
-      <dl className="mt-6 divide-y divide-border border-y border-border">
+      <dl className="mt-8 divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
         {TERMS.map((term) => (
-          <div key={term.heading} className="py-4">
-            <dt className="font-medium">{term.heading}</dt>
-            <dd className="mt-1 text-text-dim">{term.body}</dd>
+          <div key={term.heading} className="px-5 py-4">
+            <dt className="font-semibold text-text">{term.heading}</dt>
+            <dd className="mt-1 leading-relaxed text-text-dim">{term.body}</dd>
           </div>
         ))}
       </dl>
@@ -74,11 +77,13 @@ export default async function VoiceConsentPage() {
         grantedAt={state.grantedAt ? state.grantedAt.toISOString() : null}
       />
 
-      {state.granted && (
-        <p className="mt-6 text-text-dim">
-          Next: <Link href="/voice/lab" className="text-accent">check your microphone</Link>.
-        </p>
-      )}
+      {state.granted ? (
+        <div className="mt-8">
+          <ButtonLink href="/voice/session" variant="primary">
+            Go to the Voice Screen <ArrowRight aria-hidden />
+          </ButtonLink>
+        </div>
+      ) : null}
     </main>
   );
 }

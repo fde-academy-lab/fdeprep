@@ -181,3 +181,20 @@ export async function attemptHistory(
     })),
   };
 }
+
+export interface Teaser { who: string; situation: string; diagram: Diagram | null }
+
+/** The scenario's first lines, for a card that has to make a problem concrete in two lines. */
+export async function teasers(slugs: string[]): Promise<Map<string, Teaser>> {
+  if (!slugs.length) return new Map();
+  const { rows } = await db().query<{
+    slug: string; who: string | null; situation: string | null; diagram: Diagram | null;
+  }>(
+    `select p.slug, v.kit->'scenario'->>'who' as who, v.kit->'scenario'->>'situation' as situation,
+            v.kit->'diagram' as diagram
+       from problem p
+       join problem_version v on v.problem_id = p.id and v.version = p.current_version
+      where p.slug = any($1::text[])`, [slugs]);
+  return new Map(rows.filter((r) => r.who && r.situation)
+    .map((r) => [r.slug, { who: r.who!, situation: r.situation!, diagram: r.diagram }]));
+}

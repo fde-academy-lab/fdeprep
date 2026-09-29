@@ -11,7 +11,7 @@
 import { db } from "../db/pool.ts";
 import type { Coach } from "../problems/kit.ts";
 import { SCREEN_CONDITIONS, tierFor, type Difficulty } from "../policy/tiers.ts";
-import { nudge, type CoachState } from "./engine.ts";
+import { nudge, readableCode, type CoachState } from "./engine.ts";
 
 export interface CoachReply {
   nudge: { id: string; say: string } | null;
@@ -23,6 +23,7 @@ export interface CoachReply {
 
 interface Row {
   difficulty: Difficulty;
+  artefact: string;
   kit: { coach?: Coach } | null;
   attempt_id: string | null;
   solved: boolean;
@@ -39,7 +40,8 @@ export async function coachReply(options: {
   dismissed: readonly string[];
 }): Promise<CoachReply> {
   const { rows } = await db().query<Row>(
-    `select p.difficulty::text as difficulty, v.kit, a.id as attempt_id,
+    `select p.difficulty::text as difficulty, p.artefact_type::text as artefact, v.kit,
+            a.id as attempt_id,
             coalesce(a.solved_at is not null, false) as solved,
             coalesce((select count(*) from submission s
                        where s.attempt_id = a.id and s.verdict is not null), 0)::int as runs,
@@ -61,9 +63,10 @@ export async function coachReply(options: {
     : SCREEN_CONDITIONS.coach;
   if (!row || !coach || !rule.enabled) return { nudge: null, wrapUp: null, enabled: false };
 
+  const latest = row.attempt_id ? await latestRun(Number(row.attempt_id)) : null;
   const state: CoachState = {
-    code: options.code,
-    failedTests: row.attempt_id ? await failedTests(Number(row.attempt_id)) : [],
+    code: readableCode(row.artefact, options.code),
+    failedTests: latest?.failed ?? [],
     runs: row.runs,
     failedRuns: row.failed_runs,
     idleMinutes: options.idleMinutes,
@@ -72,37 +75,60 @@ export async function coachReply(options: {
   // After a pass the coach stops correcting and says what the problem was for.
   if (row.solved) return { nudge: null, wrapUp: coach.wrap_up ?? null, enabled: true };
 
-  const fired = nudge(coach, state, new Set(options.dismissed), {
+  const dismissed = new Set(options.dismissed);
+  const fired = nudge(coach, state, dismissed, {
     codeSignals: row.failed_runs >= rule.codeSignalsAfterFailedRuns,
   });
+  if (fired) return { nudge: { id: fired.id, say: fired.say }, wrapUp: null, enabled: true };
+
+  // Nothing the author wrote covers what just happened. After a failed run
+  // the coach still says where to look, because silence after a red run
+  // reads as a coach that stopped watching.
+  const fallback = latest && latest.publicFailed > 0 ? {
+    id: `run-${latest.id}`,
+    say: `${latest.publicFailed} of ${latest.publicTotal} public tests failed on the last run. ` +
+         "Start with the first failure in Results: its message says which check broke and " +
+         "what came back instead.",
+  } : null;
   return {
-    nudge: fired ? { id: fired.id, say: fired.say } : null,
+    nudge: fallback && !dismissed.has(fallback.id) ? fallback : null,
     wrapUp: null,
     enabled: true,
   };
 }
 
 /**
- * Names of every test and probe that failed on the latest graded run.
+ * The latest graded run: which tests and probes failed, and the public count.
  *
  * Read from the stored result rather than from anything the browser sends,
  * and only ever used to pick a nudge on the server. A hidden test's name does
  * not travel back: the reply carries the author's sentence, not the name.
  */
-async function failedTests(attemptId: number): Promise<string[]> {
-  const { rows } = await db().query<{ result: Record<string, any> | null }>(
-    `select result from submission
+async function latestRun(attemptId: number): Promise<{
+  id: number; failed: string[]; publicFailed: number; publicTotal: number;
+} | null> {
+  const { rows } = await db().query<{ id: string; result: Record<string, any> | null }>(
+    `select id, result from submission
       where attempt_id = $1 and verdict is not null and kind in ('run', 'submit', 'live')
       order by coalesce(finished_at, queued_at) desc, id desc
       limit 1`, [attemptId]);
-  const gates = (rows[0]?.result?.["gates"] ?? {}) as Record<string, any>;
-  const names: string[] = [];
+  const row = rows[0];
+  if (!row) return null;
+  const gates = (row.result?.["gates"] ?? {}) as Record<string, any>;
+  const failed: string[] = [];
   for (const key of ["public", "hidden", "adversarial", "probes"]) {
     for (const testCase of (gates[key]?.["cases"] ?? []) as Array<Record<string, unknown>>) {
       if (testCase["status"] !== "pass" && typeof testCase["name"] === "string") {
-        names.push(testCase["name"]);
+        failed.push(testCase["name"]);
       }
     }
   }
-  return names;
+  const pub = gates["public"] ?? {};
+  const publicTotal = Number(pub["total"] ?? 0);
+  return {
+    id: Number(row.id),
+    failed,
+    publicTotal,
+    publicFailed: Math.max(0, publicTotal - Number(pub["passed"] ?? 0)),
+  };
 }

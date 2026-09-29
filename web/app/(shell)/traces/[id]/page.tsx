@@ -7,13 +7,18 @@
  * which the replay module gates.
  */
 import Link from "next/link";
+import type { Metadata, Route } from "next";
 import { notFound } from "next/navigation";
+import { ArrowLeft, Route as Route_ } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ButtonLink } from "@/components/ui/button";
 import { replayFor } from "@/lib/trace/replay";
 import { db } from "@/lib/db/pool";
 import { currentLearner } from "@/lib/session/current";
 import Replay from "./replay";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Trace replay" };
 
 export default async function TracePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -38,45 +43,42 @@ export default async function TracePage({ params }: { params: Promise<{ id: stri
   const replay = await replayFor(submissionId);
 
   return (
-    <main className="mx-auto max-w-5xl">
-
-      <header className="flex flex-wrap items-baseline justify-between gap-2 border-b
-                         border-border px-4 py-3">
-        <div className="flex flex-wrap items-baseline gap-3">
-          <Link href={`/problems/${owner.slug}`} className="text-text-dim hover:text-accent">
-            &lt; {owner.title}
-          </Link>
-          <h1>Trace: submission #{submissionId}</h1>
-        </div>
+    <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-8 sm:px-6">
+      <Link href={`/problems/${owner.slug}` as Route}
+            className="inline-flex items-center gap-1.5 text-meta text-text-dim hover:text-text">
+        <ArrowLeft aria-hidden className="size-3.5" /> {owner.title}
+      </Link>
+      <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+        <h1 className="text-display font-semibold tracking-[-0.02em] text-text">Trace replay</h1>
         <p className="tnum text-text-dim">
           {replay.llmCalls} model calls, {replay.toolCalls} tool calls
-          {owner.wall_ms === null ? "" : `, wall ${(owner.wall_ms / 1000).toFixed(1)}s`}
+          {owner.wall_ms === null ? "" : `, ${(owner.wall_ms / 1000).toFixed(1)} s wall time`}
         </p>
-      </header>
+      </div>
 
       {replay.flags.length ? (
-        <section className="border-b border-border px-4 py-2">
-          <ul className="flex flex-wrap gap-2">
-            {replay.flags.map((flag) => (
-              <li key={flag} className="rounded border border-warn px-2 py-0.5 text-warn">
-                {flag.replace(/_/g, " ")}
-              </li>
-            ))}
-          </ul>
-        </section>
+        <ul className="mt-4 flex flex-wrap gap-1.5">
+          {replay.flags.map((flag) => (
+            <li key={flag} className="rounded-full border border-warn/40 bg-warn-soft px-2.5 py-0.5 text-meta text-text">
+              {flag.replace(/_/g, " ")}
+            </li>
+          ))}
+        </ul>
       ) : null}
 
-      {replay.available ? (
-        <Replay replay={replay} />
-      ) : (
-        <p className="px-4 py-6 text-text-dim">
-          This submission has no trace. Prompt and design submissions are judged rather than
-          run, so there is no loop to replay.
-        </p>
-      )}
+      <div className="mt-6">
+        {replay.available ? (
+          <Replay replay={replay} />
+        ) : (
+          <EmptyState icon={Route_} action={<ButtonLink href={`/problems/${owner.slug}` as Route} size="sm">Back to the problem</ButtonLink>}>
+            This submission has no trace. Prompt and design submissions are judged rather than run,
+            so there is no loop to replay.
+          </EmptyState>
+        )}
+      </div>
 
       {replay.truncated ? (
-        <p className="px-4 pb-4 text-text-dim">
+        <p className="mt-3 text-meta text-text-faint">
           The trace was longer than the cap, so the middle steps were dropped.
         </p>
       ) : null}

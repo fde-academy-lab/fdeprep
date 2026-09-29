@@ -2,6 +2,8 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status";
 
 export function ConsentControls({
   granted,
@@ -35,19 +37,15 @@ export function ConsentControls({
   if (granted) {
     return (
       <div className="mt-6">
-        <p className="text-pass">
+        <StatusBadge kind="pass">
           You accepted on {grantedAt ? new Date(grantedAt).toLocaleDateString() : "an earlier day"}.
-        </p>
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => void call("DELETE")}
-          className="mt-3 rounded border border-border px-3 py-1.5 text-text-dim
-                     hover:text-text disabled:opacity-50"
-        >
-          Withdraw consent
-        </button>
-        <p className="mt-2 text-text-faint">
+        </StatusBadge>
+        <div className="mt-3">
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void call("DELETE")}>
+            Withdraw consent
+          </Button>
+        </div>
+        <p className="mt-2 text-meta text-text-faint">
           Withdrawing stops new sessions. It does not delete recordings you already made; each
           session has its own delete button.
         </p>
@@ -58,15 +56,9 @@ export function ConsentControls({
 
   return (
     <div className="mt-6">
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => void call("POST")}
-        className="rounded border border-accent px-4 py-2 text-accent hover:bg-surface
-                   disabled:opacity-50"
-      >
+      <Button variant="primary" size="lg" disabled={busy} onClick={() => void call("POST")}>
         {busy ? "Saving" : "I accept. Record my answers."}
-      </button>
+      </Button>
       {error && <p className="mt-3 text-fail">{error}</p>}
     </div>
   );

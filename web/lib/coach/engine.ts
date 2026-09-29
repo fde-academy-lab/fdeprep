@@ -27,6 +27,19 @@ export const NEUTRAL: Omit<CoachState, "code"> = {
   failedTests: [], runs: 0, failedRuns: 0, idleMinutes: 0,
 };
 
+/**
+ * What a code-reading signal reads: the code, less its full-line comments.
+ *
+ * Starter code narrates its TODOs in comments ("return the text when the reply
+ * is a Final Answer"), so a signal written to notice that nothing handles a
+ * Final Answer would be satisfied by the comment and never speak. Prompts and
+ * written answers are prose, where every line counts, so they pass through.
+ */
+export function readableCode(artefact: string, text: string): string {
+  if (artefact !== "code") return text;
+  return text.split("\n").filter((line) => !/^\s*#/.test(line)).join("\n");
+}
+
 const compiled = new Map<string, RegExp>();
 
 function pattern(source: string): RegExp {

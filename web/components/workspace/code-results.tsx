@@ -39,7 +39,8 @@ export function Pipeline({ view, visibility }: { view: SubmissionView; visibilit
       {GATES.map((gate, index) => {
         const data = view.gates[gate.key];
         const kind = gateKind(data);
-        const showCount = data.total > 0 && (gate.key !== "hidden" || visibility.hiddenCount);
+        const showCount = data.total > 0 && data.status !== "skipped" &&
+          (gate.key !== "hidden" || visibility.hiddenCount);
         return (
           <li key={gate.key} className="flex items-center gap-1.5">
             {index > 0 ? <ChevronRight aria-hidden className="size-3.5 text-text-faint" /> : null}
@@ -171,7 +172,14 @@ export function CodeResults({ view, running, notice, visibility, callBudget }: {
         </ul>
       ) : null}
 
-      {view.gates.hidden.total > 0 && !view.gates.hidden.cases.length && visibility.hiddenCount ? (
+      {view.gates.hidden.status === "skipped" && view.kind === "run" ? (
+        <p className="text-meta text-text-faint">
+          Run stops at the public tests. The hidden{visibility.hiddenCount ? "" : " and adversarial"} tests
+          run when you submit.
+        </p>
+      ) : null}
+      {view.gates.hidden.total > 0 && view.gates.hidden.status !== "skipped" &&
+        !view.gates.hidden.cases.length && visibility.hiddenCount ? (
         <p className="text-text-dim">
           Hidden tests: <span className="tnum text-text">{view.gates.hidden.passed} of {view.gates.hidden.total}</span> pass.
           Their names open once you pass the problem.

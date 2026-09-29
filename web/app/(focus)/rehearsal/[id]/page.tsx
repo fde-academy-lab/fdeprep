@@ -9,6 +9,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { finishRehearsal, reportFor } from "@/lib/rehearsal";
 import { currentLearner } from "@/lib/session/current";
+import { LogoMark } from "@/components/ui/logo";
+import { ButtonLink } from "@/components/ui/button";
+import { StatusIcon } from "@/components/ui/status";
 import Shell from "./shell";
 
 export const dynamic = "force-dynamic";
@@ -33,44 +36,48 @@ export default async function RehearsalShell({ params }: { params: Promise<{ id:
 
   if (current.finishedAt || expired) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-6">
-        <h1 className="mb-1">Rehearsal report</h1>
-        <p className="mb-4 text-text-dim">{current.summary}</p>
+      <div className="min-h-dvh">
+        <header className="flex h-12 items-center gap-3 border-b border-border px-4">
+          <Link href="/" aria-label="FDE Prep home"><LogoMark /></Link>
+          <Link href="/rehearsal" className="text-text-dim hover:text-text">Rehearsals</Link>
+        </header>
+        <main className="mx-auto max-w-3xl px-5 pb-16 pt-10">
+          <h1 className="text-display font-semibold tracking-[-0.02em] text-text">Rehearsal report</h1>
+          <p className="mt-2 text-lead leading-relaxed text-text-dim">{current.summary}</p>
 
-        <p className="tnum mb-4">
-          {current.passed} of {current.total} passed. Score {current.score}.
-          Budget used: {current.llmCalls} model calls.
-        </p>
+          <dl className="mt-8 grid grid-cols-3 divide-x divide-border overflow-hidden rounded-panel border border-border bg-surface">
+            <div className="px-5 py-4">
+              <dt className="text-meta text-text-faint">Passed</dt>
+              <dd className="tnum mt-1 text-title font-semibold text-text">{current.passed} of {current.total}</dd>
+            </div>
+            <div className="px-5 py-4">
+              <dt className="text-meta text-text-faint">Score</dt>
+              <dd className="tnum mt-1 text-title font-semibold text-text">{current.score}</dd>
+            </div>
+            <div className="px-5 py-4">
+              <dt className="text-meta text-text-faint">Model calls</dt>
+              <dd className="tnum mt-1 text-title font-semibold text-text">{current.llmCalls}</dd>
+            </div>
+          </dl>
 
-        <table className="w-full text-left">
-          <thead>
-            <tr className="text-text-dim">
-              <th scope="col" className="py-1 pr-4 font-normal">Problem</th>
-              <th scope="col" className="py-1 pr-4 font-normal">Verdict</th>
-              <th scope="col" className="py-1 pr-4 font-normal">Score</th>
-              <th scope="col" className="py-1 font-normal">Calls</th>
-            </tr>
-          </thead>
-          <tbody>
+          <ul className="mt-8 divide-y divide-border overflow-hidden rounded-panel border border-border">
             {current.problems.map((row) => (
-              <tr key={row.problemId} className="border-t border-border">
-                <td className="py-2 pr-4">{row.title}</td>
-                <td className={`py-2 pr-4 ${
-                  row.verdict === "pass" ? "text-pass"
-                    : row.verdict === null ? "text-text-faint" : "text-warn"}`}>
-                  {row.verdict ?? "not submitted"}
-                </td>
-                <td className="tnum py-2 pr-4">{row.score ?? 0}</td>
-                <td className="tnum py-2">{row.llmCalls ?? 0}</td>
-              </tr>
+              <li key={row.problemId} className="flex items-center gap-4 bg-surface px-4 py-3">
+                <StatusIcon kind={row.verdict === "pass" ? "pass" : row.verdict === null ? "untouched" : "fail"}
+                            label={row.verdict === "pass" ? "Passed" : row.verdict === null ? "Not submitted" : "Failed"} />
+                <span className="grow text-text">{row.title}</span>
+                <span className="tnum text-meta text-text-dim">
+                  {row.verdict === null ? "Not submitted" : `Score ${row.score ?? 0}, ${row.llmCalls ?? 0} calls`}
+                </span>
+              </li>
             ))}
-          </tbody>
-        </table>
+          </ul>
 
-        <p className="mt-6">
-          <Link href="/rehearsal" className="text-accent">Back to rehearsals</Link>
-        </p>
-      </main>
+          <div className="mt-8">
+            <ButtonLink href="/rehearsal" variant="secondary">Back to rehearsals</ButtonLink>
+          </div>
+        </main>
+      </div>
     );
   }
 

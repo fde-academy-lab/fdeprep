@@ -9,6 +9,8 @@
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Play } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 interface Props {
   durationMinutes: number;
@@ -43,11 +45,14 @@ export default function StartButton(props: Props) {
 
   return (
     <div>
-      <button type="button" onClick={start} disabled={starting}
-              className="rounded bg-accent px-3 py-1 text-bg disabled:opacity-40">
-        {starting ? "Starting" : "Start a rehearsal"}
-      </button>
-      {notice ? <p className="mt-2 text-warn">{notice}</p> : null}
+      <Button variant="primary" size="lg" onClick={start} disabled={starting}>
+        <Play aria-hidden /> {starting ? "Starting" : "Start a rehearsal"}
+      </Button>
+      {notice ? (
+        <p role="alert" className="mt-3 rounded-control border border-warn/40 bg-warn-soft px-3 py-2 text-text">
+          {notice}
+        </p>
+      ) : null}
     </div>
   );
 }

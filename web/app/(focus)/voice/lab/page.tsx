@@ -6,6 +6,7 @@
  * The cockpit is Phase 7b and this page is thrown away when it arrives.
  */
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { consentState } from "@/lib/voice/consent";
 import { currentLearner } from "@/lib/session/current";
 import { VoiceLab } from "./lab";
@@ -14,6 +15,9 @@ export const dynamic = "force-dynamic";
 
 export default async function VoiceLabPage() {
   const learner = await currentLearner();
+  // A transport check for whoever runs the platform. A learner who reaches it
+  // by URL meets a configuration message that was never written for them.
+  if (learner.role === "learner") notFound();
   const { granted } = await consentState(learner.enrolmentId);
 
   return (

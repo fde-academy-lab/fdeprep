@@ -98,6 +98,26 @@ describe("on an Easy problem", () => {
     expect(second.nudge?.id).not.toBe("no-final-answer");
   });
 
+  it("reads the code without its comment lines, so a TODO cannot answer for the code", async () => {
+    const id = await publish(EASY);
+    const stub = "def run_agent(question, llm, tools):\n" +
+      "    # TODO 1: return the text when the reply is a Final Answer\n    pass\n";
+    expect((await ask(id, stub)).nudge?.id).toBe("no-final-answer");
+  });
+
+  it("still says where to look after a failed run that no authored signal covers", async () => {
+    const id = await publish(EASY);
+    await gradedRun(id, "fail", [{ gate: "public", name: "calls_a_registered_tool" }]);
+    await db().query(
+      `update submission set result = jsonb_set(result, '{gates,public}',
+         '{"total": 2, "passed": 1, "cases": [{"name": "calls_a_registered_tool", "status": "fail"}]}')`);
+    const reply = await ask(id, await solution(EASY, "reference"));
+    expect(reply.nudge?.id).toMatch(/^run-\d+$/);
+    expect(reply.nudge?.say).toMatch(/1 of 2 public tests failed/);
+    const later = await ask(id, await solution(EASY, "reference"), { dismissed: [reply.nudge!.id] });
+    expect(later.nudge).toBeNull();
+  });
+
   it("names what a failed hidden test was about without naming the test", async () => {
     const id = await publish(EASY);
     await gradedRun(id, "fail", [{ gate: "hidden", name: "an_invented_tool_is_refused_not_raised" }]);
