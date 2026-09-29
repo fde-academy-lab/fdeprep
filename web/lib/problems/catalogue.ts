@@ -51,7 +51,9 @@ const DIFFICULTY_ORDER = "case p.difficulty when 'easy' then 1 when 'medium' the
   "when 'hard' then 3 else 4 end";
 
 const SORTS: Record<Sort, string> = {
-  roadmap: `${DIFFICULTY_ORDER}, p.track, p.id`,
+  // The learner's own persona roadmap, which lib/policy orders. A problem no
+  // roadmap carries yet sorts after all of them rather than disappearing.
+  roadmap: `road.ordinal nulls last, ${DIFFICULTY_ORDER}, p.track, p.id`,
   difficulty: `${DIFFICULTY_ORDER}, p.title`,
   recent: "p.created_at desc, p.id desc",
   least_attempted: "coalesce(stats.attempts, 0) asc, p.title",
@@ -109,6 +111,9 @@ export async function listProblems(
       from problem p
       left join stats on stats.problem_id = p.id
       left join attempt mine on mine.problem_id = p.id and mine.enrolment_id = $1
+      left join track_item road on road.problem_id = p.id and road.track_id = (
+        select t.id from track t join enrolment e on t.slug = 'roadmap-' || e.persona::text
+         where e.id = $1)
      ${where.length ? `where ${where.join(" and ")}` : ""}
      order by ${sort}
      limit ${perPage} offset ${(page - 1) * perPage}`;

@@ -12,6 +12,7 @@
  */
 import type { Pool, PoolClient } from "pg";
 import { db } from "../db/pool.ts";
+import { STAGES } from "../problems/vocabulary.ts";
 import { DIFFICULTIES, type Difficulty } from "./tiers.ts";
 
 export type Persona = "builder" | "navigator" | "accelerator";
@@ -110,7 +111,7 @@ interface SeedRow {
  */
 export function rank(
   persona: Persona, row: { difficulty: Difficulty; track: string; artefact_type: string },
-): { order: [number, number, number]; isOptional: boolean } {
+): { order: [number, number, number, number]; isOptional: boolean } {
   const shape = SHAPES[persona];
   const onLadder = shape.ladder.indexOf(row.difficulty);
   const isOptional = onLadder === -1;
@@ -127,7 +128,27 @@ export function rank(
   // problems", so a design artefact sorts ahead of code within its tier.
   const artefactRank = persona === "accelerator" && row.artefact_type === "design" ? 0 : 1;
 
-  return { order: [tier, trackRank, artefactRank], isOptional };
+  return { order: [tier, trackRank, journeyRank(row.track), artefactRank], isOptional };
+}
+
+/**
+ * Where a track sits on the journey: its stage, then its place in the stage.
+ *
+ * docs/00 orders a roadmap by tier and by the persona's emphasis and says
+ * nothing about the tracks outside the emphasis, which used to tie and fall
+ * to the slug. A builder then met a capstone build's first stage between two
+ * retrieval problems. The journey order is the one the home page draws, so
+ * the roadmap and the map now agree.
+ */
+function journeyRank(track: string): number {
+  let position = 0;
+  for (const stage of STAGES) {
+    for (const member of stage.tracks as readonly string[]) {
+      if (member === track) return position;
+      position += 1;
+    }
+  }
+  return position;
 }
 
 /** Deterministic order for one persona over the whole catalogue. */
@@ -138,6 +159,7 @@ export function orderFor(persona: Persona, rows: SeedRow[]): Array<SeedRow & { i
       a.order[0] - b.order[0] ||
       a.order[1] - b.order[1] ||
       a.order[2] - b.order[2] ||
+      a.order[3] - b.order[3] ||
       // Slug last, so the order is total and the same on every run.
       a.row.slug.localeCompare(b.row.slug))
     .map(({ row, isOptional }) => ({ ...row, isOptional }));
