@@ -1,0 +1,364 @@
+slug: incident-investigator-1-stop-on-a-definitive-finding
+title: Stop the investigation at the check that finds the cause
+artefact_type: code
+difficulty: easy
+track: builds
+est_minutes: 20
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+build: { id: incident-investigator, title: "Build an incident investigator for the on-call team", stage: 1, of: 4 }
+
+brief_md: |
+  An online grocery's on-call team wants an agent that investigates a
+  checkout alert before the engineer on call has opened a laptop. It works
+  through the runbook, checking recent deploys, error logs and service
+  metrics, and writes a finding. You are building it, and this is the first
+  of four stages.
+
+  The prototype ran on Tuesday night. Its second check found the cause:
+  deploy d-4471 had cut the payment gateway timeout from 3000 ms to 300 ms.
+  The prototype kept going. The log search took another four minutes, the
+  metrics check reported database CPU at 91 percent, and the finding blamed
+  the database. The engineer scaled the database while checkout stayed
+  broken for 38 minutes.
+
+  A check that finds the cause is the end of the investigation. Build the
+  runbook so each lead is followed before the next check, and the run stops
+  the moment one check is definitive.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the alert as JSON, such as
+  `{"incident": "INC-8123", "service": "checkout-api"}`.
+
+  The runbook is three checks in this order, each called as
+  `tools[check](service=<the alert's service>)`: `deploys`, `logs`,
+  `metrics`. Every check returns
+
+      {"status": 200, "verdict": "definitive" | "lead" | "clear",
+       "finding": "<one line>", "next": [{"check": "<tool>", "args": {...}}]}
+
+  A result's `next` checks depend on it. Run them straight after it, before
+  the rest of the runbook, as `tools[check](**args)`. A next check can have
+  next checks of its own.
+
+  Stop at the first definitive verdict. No check runs after it.
+
+  Then ask the model once for the finding the on-call engineer reads, giving
+  it one line per check that ran, and return the model's reply.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  RUNBOOK = ("deploys", "logs", "metrics")
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      alert = json.loads(question)
+
+      # TODO 1: start the queue with the runbook, each check paired with
+      #         {"service": alert["service"]} as its arguments
+      queue = []
+      evidence = []
+
+      while queue:
+          check, args = queue.pop(0)
+          # TODO 2: call tools[check](**args) and add a line to evidence that
+          #         names the check, its verdict and its finding
+
+          # TODO 3: stop at the first definitive verdict
+
+          # TODO 4: put the result's next checks on the FRONT of the queue,
+          #         in the order they are listed
+
+      # TODO 5: ask the model once for the finding, with every evidence line,
+      #         and return its reply
+      return "No finding yet."
+
+steps:
+  - id: s1
+    text: Start the queue with the three runbook checks for the alert's service.
+    check_id: s1
+  - id: s2
+    text: Run the check at the front of the queue and record its line.
+    check_id: s2
+  - id: s3
+    text: Stop at the first definitive verdict.
+    check_id: s3
+  - id: s4
+    text: Put a result's next checks on the front of the queue, in order.
+    check_id: s4
+  - id: s5
+    text: Ask the model once for the finding, with every line, and return it.
+    check_id: s5
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: deploys }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: calls_tool, name: metrics }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: terminates }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s5
+    spec:
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+
+hints:
+  - Look at the verdict each check returns. Only one of its three values should
+    change what the loop does next.
+  - A queue lets the investigation follow a lead. Where a result's next checks
+    join the queue decides when they run.
+  - Put next checks on the front of the queue, in order, so a follow-up runs
+    before the rest of the runbook, and leave the loop on the first definitive
+    verdict.
+  - "The loop: take the first check off the queue, call it, write its line,
+    stop if it is definitive, otherwise push its next checks onto the front.
+    After the loop, one model call with every line."
+  - The model can only write from what you give it. Evidence gathered after the
+    cause was found competes with the cause.
+
+scenario:
+  who: The on-call team at an online grocery
+  situation: >-
+    The investigation prototype found the cause of Tuesday's checkout alert
+    on its second check, then ran the rest of the runbook anyway.
+  stakes: >-
+    The extra evidence turned the finding toward the database. The engineer
+    scaled the database while checkout stayed broken for 38 minutes.
+  metrics:
+    - { label: Checks after the cause, value: "2" }
+    - { label: Extra log search, value: 4 min }
+    - { label: Checkout broken, value: 38 min }
+
+diagram:
+  title: Where the investigation kept going after it had the cause
+  caption: >-
+    Every check can end the run. After a definitive finding, each extra check
+    costs minutes and adds evidence that pulls the finding toward a symptom.
+  direction: lr
+  nodes:
+    - { id: alert, label: Alert, sub: checkout errors at 14 percent, kind: service, tone: pink, at: [0, 1] }
+    - { id: investigator, label: Investigator, sub: works through the runbook, kind: agent, tone: purple, at: [1, 1] }
+    - { id: deploys, label: deploys, sub: what changed in the window, kind: tool, tone: blue, at: [2, 0] }
+    - { id: diff, label: diff, sub: what one deploy changed, kind: tool, tone: blue, at: [3, 0] }
+    - { id: logs, label: logs, sub: four minutes per search, kind: tool, tone: neutral, at: [2, 1] }
+    - { id: metrics, label: metrics, sub: database CPU at 91 percent, kind: tool, tone: neutral, at: [2, 2] }
+    - { id: model, label: Model, sub: writes the finding from the lines, kind: model, tone: teal, at: [3, 2] }
+    - { id: finding, label: Finding, sub: what the on-call engineer reads, kind: output, tone: green, at: [4, 2] }
+  edges:
+    - { from: alert, to: investigator, label: incident and service, step: 1 }
+    - { from: investigator, to: deploys, label: first in the runbook, step: 2 }
+    - { from: deploys, to: diff, label: "lead: d-4471", step: 3 }
+    - { from: diff, to: investigator, label: definitive, step: 4, tone: success }
+    - { from: investigator, to: model, label: the lines that ran, step: 5 }
+    - { from: model, to: finding, label: roll back d-4471, tone: success }
+    - { from: investigator, to: logs, label: not needed, tone: muted }
+    - { from: investigator, to: metrics, label: ran on after the cause, tone: danger }
+
+approach:
+  goal: End the investigation at the first definitive finding
+  branches:
+    - label: Run the runbook in order
+      leaves: [deploys then logs then metrics, each for the alert's service]
+    - label: Follow a lead before moving on
+      detail: A result's next checks depend on it, so they run straight after it.
+      leaves: [the front of the queue, a follow-up can have follow-ups]
+    - label: Stop on definitive
+      leaves: [nothing after it runs, lead and clear both carry on]
+    - label: Write the finding from what ran
+      leaves: [one line per check that ran, one model call]
+
+coach:
+  opening: >-
+    Find the place where a check's result comes back. What your loop does next
+    with its verdict is the whole of this stage.
+  signals:
+    - id: verdict-ignored
+      when: { code_lacks: '["'']definitive["'']' }
+      say: >-
+        Nothing in your code compares a verdict with "definitive" yet, so the
+        run cannot end early. What should happen the moment one check finds
+        the cause?
+    - id: follow-ups-at-the-back
+      when:
+        code_matches: 'queue\.append\(|queue\.extend\(|queue\s*\+='
+        code_lacks: 'queue\.insert\(\s*0|queue\[\s*0?\s*:\s*0\s*\]|queue\s*=\s*[^\n]*\+\s*queue\b|appendleft|extendleft'
+      say: >-
+        Next checks go on the back of your queue, so they run after the rest of
+        the runbook. A follow-up depends on the lead in front of it. When
+        should it run?
+    - id: kept-going
+      when: { test_failed: a_definitive_finding_ends_the_investigation }
+      say: >-
+        That run found the cause on its second check and kept going. What did
+        the checks after it add to the model's prompt?
+    - id: stopped-on-a-lead
+      when: { test_failed: a_clear_follow_up_hands_back_to_the_runbook }
+      say: >-
+        The deploy lead came back clear when it was followed up. The runbook
+        still had checks to run, and one of them finds the cause.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and TODO 2 and press Run. Once the queue holds the
+        runbook, the first public test shows every check running.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints narrow this one step at a time, and
+        the first one is about the verdict.
+  wrap_up: >-
+    An investigation that keeps going after the cause pays twice: once in
+    minutes, and again when the extra evidence buries the answer. Stop on the
+    finding, and let the order of the queue carry the dependencies.
+
+tests:
+  - name: the_last_check_in_the_runbook_finds_the_cause
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8120", "service": "checkout-api"}' }
+      llm_script:
+        - { match: { contains: "ran out of connections" },
+            reply: "The payments database ran out of connections at 02:21. Raise the pool limit and restart the payment workers." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        deploys: { returns: { status: 200, verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] } }
+        logs: { returns: { status: 200, verdict: clear, finding: "error lines match the usual background rate", next: [] } }
+        metrics: { returns: { status: 200, verdict: definitive, finding: "the payments database ran out of connections at 02:21", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: metrics }
+        - { type: returns_matches, value: '(?i)ran out of connections' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: with_nothing_definitive_the_finding_names_the_best_lead
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8121", "service": "basket-api"}' }
+      llm_script:
+        - { match: { contains: "timeouts calling the pricing service" },
+            reply: "No definitive cause yet. The strongest lead is basket-api timing out on the pricing service since 01:50." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        deploys: { returns: { status: 200, verdict: clear, finding: "no deploys to basket-api in the last two hours", next: [] } }
+        logs: { returns: { status: 200, verdict: lead, finding: "timeouts calling the pricing service since 01:50", next: [] } }
+        metrics: { returns: { status: 200, verdict: clear, finding: "CPU and memory within normal range", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: deploys }
+        - { type: calls_tool, name: logs }
+        - { type: calls_tool, name: metrics }
+        - { type: returns_matches, value: '(?i)strongest lead' }
+
+  - name: a_definitive_finding_ends_the_investigation
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8123", "service": "checkout-api"}' }
+      llm_script:
+        - { match: { contains: "database CPU" },
+            reply: "Database saturation is causing the checkout errors. Scale the database." }
+        - { match: { contains: "3000 ms to 300 ms" },
+            reply: "Deploy d-4471 cut the payment gateway timeout from 3000 ms to 300 ms. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        deploys:
+          returns:
+            status: 200
+            verdict: lead
+            finding: "checkout-api deploy d-4471 at 02:14, eleven minutes before the alert"
+            next: [{ check: diff, args: { deploy: "d-4471" } }]
+        diff: { returns: { status: 200, verdict: definitive, finding: "d-4471 cut the payment gateway timeout from 3000 ms to 300 ms", next: [] } }
+        logs: { returns: { status: 200, verdict: lead, finding: "payment gateway timeouts in 96 percent of failed checkouts", next: [] } }
+        metrics: { returns: { status: 200, verdict: lead, finding: "database CPU at 91 percent since 02:16", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: diff }
+        - { type: does_not_call_tool, name: logs }
+        - { type: does_not_call_tool, name: metrics }
+        - { type: returns_matches, value: '(?i)roll it back' }
+
+  - name: a_clear_follow_up_hands_back_to_the_runbook
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8124", "service": "checkout-api"}' }
+      llm_script:
+        - { match: { contains: "latency up 40 percent" },
+            reply: "Checkout is slow under load. Add capacity to checkout-api." }
+        - { match: { contains: "certificate expired" },
+            reply: "The payment gateway certificate expired at 03:00 and every checkout fails its TLS check. Renew the certificate." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        deploys:
+          returns:
+            status: 200
+            verdict: lead
+            finding: "checkout-api deploy d-4490 at 02:58"
+            next: [{ check: diff, args: { deploy: "d-4490" } }]
+        diff: { returns: { status: 200, verdict: clear, finding: "d-4490 changed only the text on the order confirmation page", next: [] } }
+        logs: { returns: { status: 200, verdict: definitive, finding: "every failed checkout is a TLS error because the payment gateway certificate expired at 03:00", next: [] } }
+        metrics: { returns: { status: 200, verdict: lead, finding: "checkout latency up 40 percent since 03:00", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: diff }
+        - { type: does_not_call_tool, name: metrics }
+        - { type: returns_matches, value: '(?i)certificate' }
+
+reference_md: |
+  The investigation had its answer on the second check and paid for two more.
+  The log search cost four minutes, which is the visible cost. The invisible
+  one is worse. The metrics check reported database CPU at 91 percent, which
+  was true, and a symptom of every checkout retrying against a 300 ms
+  timeout. Given both lines, the model led with the louder one. Evidence
+  gathered after the cause is found can only compete with the cause.
+
+  The stop belongs to the code, because only the code sees each verdict as it
+  arrives. A definitive result ends the run, whatever the runbook still lists.
+  A lead is different: it says where to look next, and its next checks run
+  straight after it because they depend on what it found. The deploy check
+  named d-4471, and only the diff of d-4471 shows the timeout. Putting
+  follow-ups on the front of the queue gives the runbook that depth-first
+  shape with no special cases.
+
+  A clear follow-up hands control back to the runbook. In the second hidden
+  case the deploy lead went nowhere, and the logs, next in the runbook, found
+  the cause. An investigation that stops on the first lead misses that cause,
+  and one that never stops buries it.
+
+  The model writes one finding from exactly the lines that ran. That keeps
+  the spend to one call, and it means the engineer reads a finding built on
+  the cause and on nothing that came after it.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Your investigation agent found the cause on its second check and ran two more. What should have stopped it, and what did the extra checks cost?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
