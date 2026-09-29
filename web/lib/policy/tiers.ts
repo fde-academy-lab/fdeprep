@@ -43,6 +43,22 @@ export interface Visibility {
   acceptanceRate: boolean;
 }
 
+/**
+ * How much the live coach says. Added with the 29 September 2026 amendment.
+ *
+ * The coach reads the learner's code with author-written patterns, so a
+ * code-reading nudge is close to a hint. On Easy and Medium it speaks as soon
+ * as the code shows the mistake. Hard and Extreme get a clean first attempt:
+ * code-reading nudges wait for failed runs, the same currency hints cost, and
+ * nudges about a failed test speak once there is a failed test to speak about.
+ * Under screen conditions the coach is off, because an interviewer does not
+ * coach.
+ */
+export interface CoachRule {
+  enabled: boolean;
+  codeSignalsAfterFailedRuns: number;
+}
+
 export interface Tier {
   /** Layers this tier renders before any per-attempt gate is applied. */
   layers: readonly Layer[];
@@ -61,6 +77,7 @@ export interface Tier {
    * submitted.
    */
   requiresDefence: boolean;
+  coach: CoachRule;
 }
 
 export const TIERS: Readonly<Record<Difficulty, Tier>> = {
@@ -74,6 +91,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     adversarialAlwaysRuns: false,
     rejectsDuplicateSubmissions: false,
     requiresDefence: false,
+    coach: { enabled: true, codeSignalsAfterFailedRuns: 0 },
   },
   medium: {
     layers: ["brief", "contract", "stub", "steps", "hints"],
@@ -85,6 +103,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     adversarialAlwaysRuns: false,
     rejectsDuplicateSubmissions: false,
     requiresDefence: false,
+    coach: { enabled: true, codeSignalsAfterFailedRuns: 0 },
   },
   hard: {
     layers: ["brief", "contract", "stub", "hints"],
@@ -96,6 +115,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     adversarialAlwaysRuns: false,
     rejectsDuplicateSubmissions: false,
     requiresDefence: true,
+    coach: { enabled: true, codeSignalsAfterFailedRuns: 1 },
   },
   extreme: {
     // The signature and its contract, and hints that cost a real attempt
@@ -110,6 +130,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     adversarialAlwaysRuns: true,
     rejectsDuplicateSubmissions: true,
     requiresDefence: true,
+    coach: { enabled: true, codeSignalsAfterFailedRuns: 2 },
   },
 };
 
@@ -132,6 +153,7 @@ export const SCREEN_CONDITIONS: Tier = {
   adversarialAlwaysRuns: true,
   rejectsDuplicateSubmissions: true,
   requiresDefence: true,
+  coach: { enabled: false, codeSignalsAfterFailedRuns: 0 },
 };
 
 /**
@@ -145,6 +167,23 @@ export function byTier<T>(build: (difficulty: Difficulty) => T): Record<Difficul
   const out = {} as Record<Difficulty, T>;
   for (const difficulty of DIFFICULTIES) out[difficulty] = build(difficulty);
   return out;
+}
+
+/**
+ * Where a tier sits on the ladder, 1 for Easy up to 4 for Extreme.
+ *
+ * For drawing a difficulty meter. It is a position, not a behaviour: anything
+ * that wants to act differently by tier reads the tier itself.
+ */
+export function ladderPosition(difficulty: Difficulty): number {
+  const index = DIFFICULTIES.indexOf(difficulty);
+  if (index < 0) throw new Error(`no position on the ladder for difficulty ${difficulty}`);
+  return index + 1;
+}
+
+/** The learner-facing label: Easy, Medium, Hard or Extreme, and nothing else. */
+export function difficultyLabel(difficulty: Difficulty): string {
+  return difficulty.charAt(0).toUpperCase() + difficulty.slice(1);
 }
 
 export function tierFor(difficulty: Difficulty): Tier {

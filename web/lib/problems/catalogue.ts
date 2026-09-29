@@ -5,7 +5,7 @@
  * `track_item`, which is what keeps the whole pool open to everyone.
  */
 import { db } from "../db/pool.ts";
-import { policyFor, type Difficulty } from "../policy/difficulty.ts";
+import { tierFor, type Difficulty } from "../policy/tiers.ts";
 
 export type SolveState = "solved" | "attempted" | "untouched";
 export type Sort = "roadmap" | "difficulty" | "recent" | "least_attempted";
@@ -143,7 +143,7 @@ function toRow(row: Record<string, any>): CatalogueRow {
     state: row["is_solved"] ? "solved" : row["is_attempted"] ? "attempted" : "untouched",
     // The tier decides whether a solve rate renders. No component reads
     // difficulty to answer that question itself.
-    solveRate: policyFor(difficulty).showsSolveRate && attempts > 0
+    solveRate: tierFor(difficulty).visibility.acceptanceRate && attempts > 0
       ? Math.round((solved / attempts) * 100)
       : null,
     attemptCount: attempts,
@@ -154,4 +154,43 @@ export async function facets(): Promise<{ tracks: string[] }> {
   const { rows } = await db().query<{ track: string }>(
     "select distinct track from problem order by track");
   return { tracks: rows.map((r) => r.track) };
+}
+
+/** One row of the command palette's index: enough to find a problem and go. */
+export interface PaletteProblem {
+  slug: string;
+  title: string;
+  track: string;
+  difficulty: Difficulty;
+  artefactType: string;
+  state: SolveState;
+}
+
+/**
+ * Every problem in the pool, for the palette to search in the browser.
+ *
+ * Titles and tracks only, the same fields the catalogue already shows, so the
+ * index carries nothing a learner could not read on S3.
+ */
+export async function paletteIndex(enrolmentId: number): Promise<PaletteProblem[]> {
+  const { rows } = await db().query<{
+    slug: string; title: string; track: string; difficulty: Difficulty;
+    artefact_type: string; solved: boolean; attempted: boolean;
+  }>(
+    `select p.slug, p.title, p.track, p.difficulty::text as difficulty,
+            p.artefact_type::text as artefact_type,
+            bool_or(a.solved_at is not null) is true as solved,
+            count(a.id) > 0 as attempted
+       from problem p
+       left join attempt a on a.problem_id = p.id and a.enrolment_id = $1
+      group by p.id
+      order by p.track, p.title`, [enrolmentId]);
+  return rows.map((row) => ({
+    slug: row.slug,
+    title: row.title,
+    track: row.track,
+    difficulty: row.difficulty,
+    artefactType: row.artefact_type,
+    state: row.solved ? "solved" : row.attempted ? "attempted" : "untouched",
+  }));
 }

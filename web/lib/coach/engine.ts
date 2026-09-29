@@ -62,6 +62,15 @@ export function firing(coach: Coach, state: CoachState): CoachSignal[] {
 }
 
 /**
+ * A signal that reads the code. On Hard and Extreme these wait for failed
+ * runs, because a nudge about the code before the first attempt is a hint the
+ * learner did not ask for. The policy module decides when they open.
+ */
+export function isCodeSignal(signal: CoachSignal): boolean {
+  return signal.when.code_matches !== undefined || signal.when.code_lacks !== undefined;
+}
+
+/**
  * What the coach says right now: one nudge, never a list.
  *
  * A signal the learner dismissed stays quiet until the state that fired it
@@ -70,6 +79,9 @@ export function firing(coach: Coach, state: CoachState): CoachSignal[] {
  */
 export function nudge(
   coach: Coach, state: CoachState, dismissed: ReadonlySet<string> = new Set(),
+  options: { codeSignals?: boolean } = {},
 ): CoachSignal | null {
-  return firing(coach, state).find((signal) => !dismissed.has(signal.id)) ?? null;
+  const codeSignals = options.codeSignals ?? true;
+  return firing(coach, state).find((signal) =>
+    !dismissed.has(signal.id) && (codeSignals || !isCodeSignal(signal))) ?? null;
 }

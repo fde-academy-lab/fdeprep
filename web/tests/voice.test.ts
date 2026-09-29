@@ -194,7 +194,7 @@ describe("the microphone check", () => {
  */
 describe("no transcript reaches the screen", () => {
   test("the lab page logs transcript text and never renders it", async () => {
-    const file = path.join(import.meta.dirname, "..", "app", "voice", "lab", "lab.tsx");
+    const file = path.join(import.meta.dirname, "..", "app", "(focus)", "voice", "lab", "lab.tsx");
     const lines = (await readFile(file, "utf8")).split("\n");
 
     const offenders = lines.filter(
