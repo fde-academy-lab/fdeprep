@@ -34,8 +34,9 @@ contract_md: |
   `Action: <tool>(<key>=<value>, ...)` or `Final Answer: <text>`, and nothing
   else. Tools are callables in the `tools` dict.
 
-  A reply that carries both, or neither, is not an answer. Say so in the
-  scratchpad and ask again rather than guessing which half the model meant.
+  A reply that carries both, or neither, is not an answer. Append the reply and
+  the line `That was not a valid action.` to the scratchpad and ask again,
+  rather than guessing which half the model meant.
 
   Budget: at most 3 model calls. Allowed imports: json, re.
   Return a non-empty string in every case.
@@ -44,37 +45,52 @@ stub_code: |
   import json
   import re
 
+  ACTION = re.compile(r"^Action:\s*(\w+)\((.*)\)\s*$", re.MULTILINE)
+  FINAL = re.compile(r"^Final Answer:\s*(.*)$", re.MULTILINE)
+  INVALID = "That was not a valid action."
+
+
+  def arguments(raw: str) -> dict:
+      """Turn 'table=4, time=20:00' into {'table': '4', 'time': '20:00'}."""
+      args = {}
+      for pair in raw.split(","):
+          if "=" in pair:
+              key, value = pair.split("=", 1)
+              args[key.strip()] = value.strip()
+      return args
+
 
   def run_agent(question: str, llm, tools: dict) -> str:
       scratchpad = f"Question: {question}\n"
 
       for _ in range(8):
-          output = llm(scratchpad)
+          reply = llm(scratchpad)
+          action = ACTION.search(reply)
+          final = FINAL.search(reply)
 
-          # TODO 1: decide whether this reply is an action, an answer, both or
-          #         neither, before acting on any of it
-          # TODO 2: return the text only when the reply is an answer and
-          #         nothing else
-          # TODO 3: when the reply is an action, call the tool and append what
-          #         it returned
-          # TODO 4: when the reply is neither or both, append
-          #         "That was not a valid action." and go round again
-          pass
+          # TODO 1: when the reply holds an action and an answer together,
+          #         append the reply and INVALID to the scratchpad, then go
+          #         round again without acting on either half
+          # TODO 2: when it holds only an answer, return the answer text
+          # TODO 3: when it holds only an action, call the tool it names with
+          #         arguments(...) and append the reply and what came back
+          # TODO 4: when it holds neither, append the reply and INVALID too,
+          #         so the next prompt differs from this one
 
       return "I could not finish this booking."
 
 steps:
   - id: s1
-    text: Detect both markers in one reply before you act on either.
+    text: Give a reply with both an action and an answer its own branch, first.
     check_id: s1
   - id: s2
-    text: Return the text only when the reply is an answer and nothing else.
+    text: Return the answer text when the reply holds only an answer.
     check_id: s2
   - id: s3
-    text: Parse the tool name and arguments out of an action and call it.
+    text: Call the tool when the reply holds only an action, and append the result.
     check_id: s3
   - id: s4
-    text: Append a line saying the reply was not valid, so the next prompt differs.
+    text: Send a reply with neither marker back with the same line, so the prompt changes.
     check_id: s4
 
 step_checks:
@@ -96,11 +112,107 @@ step_checks:
         - { type: terminates }
 
 hints:
-  - Two markers can appear in one string. Count them before you branch on one.
-  - A reply the loop cannot use is not a failure to report to the customer, it
-    is a reply to send back.
-  - Appending nothing to the scratchpad means the next call sees the same
-    prompt and returns the same reply.
+  - One reply can hold two markers. Find out which are present before any
+    branch acts on either of them.
+  - Whichever marker your code tests first wins when both are present. The
+    booking agent tested for a Final Answer first, so the Action was dropped.
+  - Give the both-markers case its own branch ahead of the answer branch, and
+    send that reply back to the model with the line the contract names.
+  - A reply with neither marker gets the same line. Without it the next prompt
+    is identical to the last one, and so is the next reply.
+
+scenario:
+  who: Guest support for a restaurant booking agent
+  situation: >-
+    About one reply in twenty carries a Final Answer and an Action together.
+    The loop returns the answer as soon as it sees one, so the booking call
+    never runs.
+  stakes: >-
+    Guests are told their table is booked when nothing was booked, and the
+    trace records the run as a success.
+  metrics:
+    - { label: Replies with both markers, value: 1 in 20 }
+    - { label: Tables they booked, value: "0" }
+    - { label: Model calls allowed, value: "3" }
+
+diagram:
+  title: Where an answer and an action collide in one reply
+  caption: >-
+    The loop tested for a Final Answer first and returned. Classify the whole
+    reply before acting on any part of it.
+  direction: lr
+  nodes:
+    - { id: guest, label: Guest, sub: asks for a table, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: answers and acts in one reply, kind: model, tone: teal, at: [1, 0] }
+    - { id: loop, label: Agent loop, sub: reads the reply, kind: agent, tone: purple, at: [1, 1] }
+    - { id: sort, label: Classify the reply, sub: "action, answer, both or neither", kind: decision, tone: blue, at: [2, 1] }
+    - { id: book, label: book(), sub: reserves the table, kind: tool, tone: orange, at: [3, 0] }
+    - { id: answer, label: Final Answer, sub: returned only when it stands alone, kind: output, tone: green, at: [3, 1] }
+    - { id: wrong, label: Table confirmed, sub: nothing was booked, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: guest, to: loop, label: table for two at seven, step: 1 }
+    - { from: loop, to: model, label: scratchpad, step: 2 }
+    - { from: model, to: loop, label: Final Answer and Action, step: 3 }
+    - { from: loop, to: wrong, label: returns the first marker, tone: danger }
+    - { from: loop, to: sort, label: classify first, step: 4 }
+    - { from: sort, to: book, label: action only, tone: success }
+    - { from: sort, to: answer, label: answer only, tone: success }
+    - { from: sort, to: model, label: "both or neither: ask again" }
+
+approach:
+  goal: Act on a reply only when it makes exactly one move
+  branches:
+    - label: Read the whole reply first
+      leaves: [find every marker before any branch runs, both markers means two moves at once]
+    - label: Name all four cases
+      detail: Action only, answer only, both, and neither. Only the first two can be acted on.
+      leaves: [both and neither go back to the model]
+    - label: Change the prompt when you send it back
+      leaves: [append the reply and the line the contract names, an unchanged prompt gets an unchanged reply]
+    - label: Stay inside three calls
+      leaves: [an unusable reply costs one call, every path ends in a sentence]
+
+coach:
+  opening: >-
+    Before you write a branch, list what one reply can contain. There are four
+    cases, and the booking agent handled two of them.
+  signals:
+    - id: answer-first
+      when:
+        code_matches: '(?i)^\s*(if|elif)\b[^\n]*final[^\n]*:\s*\n\s*return\b'
+        code_lacks: '(?i)^\s*(if|elif)\b[^\n]*\b(action|final)\w*\b[^\n]*\b(and|or)\b[^\n]*\b(action|final)|\blen\(|\.count\(|\bsum\('
+      say: >-
+        Your answer branch returns before anything asks whether the same reply
+        also holds an Action. What happens to the booking when both arrive
+        together?
+    - id: silent-retry
+      when: { code_matches: '(?i)(is\s+None|^\s*if\s+not\s+\w+)\s*:\s*\n\s*continue\b' }
+      say: >-
+        When a reply has no usable marker your loop goes round again with the
+        prompt unchanged. What will the model say to the identical prompt?
+    - id: hidden-both-markers
+      when: { test_failed: an_ambiguous_reply_is_not_an_answer }
+      say: >-
+        In that run the model answered and asked to book in the same reply.
+        Trace your branches with that reply and see which one it reaches first.
+    - id: hidden-neither
+      when: { test_failed: an_unusable_reply_does_not_burn_the_budget }
+      say: >-
+        That run opens with a reply that has neither marker. Does the prompt
+        your loop sends next differ from the one before it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1, the branch for a reply that holds both markers.
+        Written first, it makes the order problem impossible.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and on
+        this tier it costs nothing to open.
+  wrap_up: >-
+    One model reply can carry two moves. Classify the whole reply before acting
+    on any part of it, and send a reply you cannot use back with a reason.
 
 tests:
   - name: books_then_answers
