@@ -283,6 +283,55 @@ def test_ordinary_attribute_names_still_pass(what, source):
     assert outcome.status == "pass", (what, outcome.reasons)
 
 
+# Found when the capstone builds met the gate: TEMPLATE.format(...) on a
+# module-level constant is how most people write a prompt template, and seven
+# reference solutions and three stubs did it. A name bound exactly once, at
+# module level, to a string literal is read the way the literal would be.
+# Anything else stays a string built at run time.
+TEMPLATES_THAT_PASS = [
+    ("a module-level template",
+     "PROMPT = 'Incident {incident} on {service}'\n"
+     "def run_agent(q, llm, tools):\n    return llm(PROMPT.format(incident=q, service='db'))"),
+    ("a template split across lines",
+     "PROMPT = (\n    'Letter:\\n{letter}\\n'\n    'Reply with JSON.'\n)\n"
+     "def run_agent(q, llm, tools):\n    return llm(PROMPT.format(letter=q))"),
+    ("an annotated template",
+     "PROMPT: str = '{q}'\ndef run_agent(q, llm, tools):\n    return llm(PROMPT.format(q=q))"),
+]
+
+
+@pytest.mark.parametrize("what, source", TEMPLATES_THAT_PASS,
+                         ids=[case[0] for case in TEMPLATES_THAT_PASS])
+def test_a_constant_template_can_be_formatted(what, source):
+    outcome = check(source, ALLOWED)
+    assert outcome.status == "pass", (what, outcome.reasons)
+
+
+TEMPLATES_THAT_FAIL = [
+    ("a constant whose field reads the script",
+     "PROMPT = '{0._script}'\ndef run_agent(q, llm, tools):\n    return PROMPT.format(llm)"),
+    ("a template rebound at module level",
+     "PROMPT = '{0}'\nPROMPT = '{0._script}'\n"
+     "def run_agent(q, llm, tools):\n    return PROMPT.format(llm)"),
+    ("a template rebound inside a function",
+     "PROMPT = '{0}'\ndef run_agent(q, llm, tools):\n    PROMPT = '{0._scr' + 'ipt}'\n"
+     "    return PROMPT.format(llm)"),
+    ("a parameter that shadows the template",
+     "PROMPT = '{0}'\ndef run_agent(q, llm, tools, PROMPT='{0._script}'):\n"
+     "    return PROMPT.format(llm)"),
+    ("a template built from two pieces",
+     "PROMPT = '{0._scr' + 'ipt}'\ndef run_agent(q, llm, tools):\n    return PROMPT.format(llm)"),
+]
+
+
+@pytest.mark.parametrize("what, source", TEMPLATES_THAT_FAIL,
+                         ids=[case[0] for case in TEMPLATES_THAT_FAIL])
+def test_a_template_that_is_not_a_constant_is_still_rejected(what, source):
+    outcome = check(source, ALLOWED)
+    assert outcome.status == "fail", what
+    assert any("format" in reason for reason in outcome.reasons), outcome.reasons
+
+
 PLAIN_FORMATTING = [
     ("positional fields", "def run_agent(q, llm, tools):\n    return '{} and {}'.format(q, 1)"),
     ("numbered fields with a spec",

@@ -216,6 +216,17 @@ run time because `dataclasses` imports `inspect`, which imports the blocked
 import blocker goes in, and compiles learner code with its own `__future__`
 flags as a registered module, so string annotations resolve.
 
+The same day, the capstone builds showed the format rule rejecting the most
+common way to write a prompt template: `PROMPT = "..."` at the top of the file
+and `PROMPT.format(...)` below it, in seven reference solutions and three
+stubs. A module-level name bound exactly once, by any means and in any scope,
+to a string literal is now read the way the literal would be, field by field.
+A second binding, a parameter of the same name or a template built from two
+pieces still counts as a string built at run time. Every stub must also pass
+the static gate and fail a public test, because a stub the gate rejects
+satisfies "does not pass" while handing the learner a rejection on code the
+platform wrote.
+
 ### 4.2 Prompt surgery
 
 ```

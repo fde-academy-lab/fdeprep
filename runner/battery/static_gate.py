@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import ast
 import string
+from collections import Counter
 from dataclasses import dataclass, field
 
 from runner.problem import ALWAYS_ALLOWED_IMPORTS
@@ -77,8 +78,9 @@ NAMEDTUPLE_API = ("_asdict", "_replace", "_fields", "_field_defaults", "_make")
 
 # str.format resolves "{0._script}" with a real getattr at run time, so a
 # format string is an attribute access the walk never sees as one. A format
-# string written as a literal is checked field by field; one built at run time
-# cannot be, and an f-string does everything a learner needs, so it wins.
+# string written as a literal, or as a module-level constant bound once, is
+# checked field by field; one built at run time cannot be, and an f-string
+# does everything a learner needs, so it wins.
 FORMAT_ATTRS = ("format", "format_map")
 
 
@@ -104,6 +106,7 @@ def check(source: str, allowed_imports) -> StaticResult:
         ])
 
     allowed = set(ALWAYS_ALLOWED_IMPORTS) | {str(m) for m in (allowed_imports or ())}
+    templates = _constant_templates(tree)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -119,7 +122,7 @@ def check(source: str, allowed_imports) -> StaticResult:
         elif isinstance(node, ast.Name) and node.id in FORBIDDEN_NAMES:
             reasons.append(f"line {node.lineno}: {node.id} is not available in the sandbox")
         elif isinstance(node, ast.Attribute):
-            reasons += _check_attribute(node)
+            reasons += _check_attribute(node, templates)
         elif isinstance(node, ast.MatchClass):
             # case object(_script=s) binds s to obj._script by keyword.
             for name in node.kwd_attrs:
@@ -141,7 +144,7 @@ def check(source: str, allowed_imports) -> StaticResult:
     return StaticResult("fail" if unique else "pass", unique)
 
 
-def _check_attribute(node: ast.Attribute) -> list[str]:
+def _check_attribute(node: ast.Attribute, templates: dict[str, str]) -> list[str]:
     """One attribute access, checked for a private name and then for a name on
     the fixed list."""
     if (node.attr.startswith("_") and node.attr not in PUBLIC_DUNDERS
@@ -152,7 +155,7 @@ def _check_attribute(node: ast.Attribute) -> list[str]:
             "is reachable without it: call llm(prompt) and the callables in tools"
         ]
     if node.attr in FORMAT_ATTRS:
-        return _check_format(node)
+        return _check_format(node, templates)
     if node.attr in FORBIDDEN_ATTRS:
         return [f"line {node.lineno}: the {node.attr} attribute is not reachable"]
     if node.attr in MODULE_ROUTE_ATTRS and not _on_the_learners_own_object(node):
@@ -164,7 +167,7 @@ def _check_attribute(node: ast.Attribute) -> list[str]:
     return []
 
 
-def _check_format(node: ast.Attribute) -> list[str]:
+def _check_format(node: ast.Attribute, templates: dict[str, str]) -> list[str]:
     """str.format and format_map, which read attributes named inside a string."""
     if node.attr == "format_map":
         return [
@@ -172,18 +175,67 @@ def _check_format(node: ast.Attribute) -> list[str]:
             "sandbox does not allow. Use an f-string"
         ]
     base = node.value
-    if not (isinstance(base, ast.Constant) and isinstance(base.value, str)):
+    if isinstance(base, ast.Constant) and isinstance(base.value, str):
+        text = base.value
+    elif isinstance(base, ast.Name) and base.id in templates:
+        text = templates[base.id]
+    else:
         return [
             f"line {node.lineno}: str.format on a string built at run time can read attributes "
-            "the sandbox keeps private. Use an f-string"
+            "the sandbox keeps private. Use an f-string, or a template defined once at the top "
+            "of the file"
         ]
-    field_name = _traversing_field(base.value)
+    field_name = _traversing_field(text)
     if field_name:
         return [
             f"line {node.lineno}: the format field {{{field_name}}} reads an attribute or an "
             "item through str.format, which the sandbox does not allow. Use an f-string"
         ]
     return []
+
+
+def _constant_templates(tree: ast.Module) -> dict[str, str]:
+    """Module-level names bound exactly once, anywhere in the file, to a string literal.
+
+    PROMPT = "..." followed by PROMPT.format(...) is how most people write a
+    prompt template, and the literal is as readable to the gate as one written
+    inline. A second binding of the name, in any scope and by any means,
+    means the gate can no longer say which string is being formatted, so the
+    name is left out and the call is rejected like any string built at run
+    time.
+    """
+    literals: dict[str, list[str]] = {}
+    for node in tree.body:
+        target = value = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target, value = node.targets[0], node.value
+        elif isinstance(node, ast.AnnAssign):
+            target, value = node.target, node.value
+        if (isinstance(target, ast.Name) and isinstance(value, ast.Constant)
+                and isinstance(value.value, str)):
+            literals.setdefault(target.id, []).append(value.value)
+
+    bound: Counter[str] = Counter()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            bound[node.id] += 1
+        elif isinstance(node, ast.arg):
+            bound[node.arg] += 1
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound[node.name] += 1
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                bound[(alias.asname or alias.name).split(".")[0]] += 1
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            bound.update(node.names)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            bound[node.name] += 1
+        elif isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
+            bound[node.name] += 1
+        elif isinstance(node, ast.MatchMapping) and node.rest:
+            bound[node.rest] += 1
+    return {name: values[0] for name, values in literals.items()
+            if len(values) == 1 and bound[name] == 1}
 
 
 def _traversing_field(text: str, depth: int = 0) -> str | None:

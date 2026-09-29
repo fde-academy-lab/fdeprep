@@ -138,12 +138,20 @@ def test_the_starter_code_does_not_already_pass(path):
 
     A stub that passes its own battery hands the learner the answer and the
     readiness signal a pass nobody earned. Depth may vary by tier; a pass never.
+
+    Not passing is not enough on its own. A stub the static gate rejects also
+    fails to pass, and hands the learner "rejected before it ran" on code the
+    platform wrote. The first Run has to reach the public tests and fail one
+    of them, because that failure message is where the learner starts.
     """
     problem = load_problem(path)
     stub = yaml.safe_load(path.read_text()).get("stub_code")
     if not stub:
         pytest.skip("no stub_code yet; the TypeScript validator requires one")
-    assert run_battery(problem, stub)["verdict"] != "pass", path.stem
+    result = run_battery(problem, stub)
+    assert result["gates"]["static"]["status"] == "pass", (
+        path.stem, result["gates"]["static"]["reasons"])
+    assert result["gates"]["public"]["status"] == "fail", path.stem
 
 
 @pytest.mark.parametrize("path", CODE, ids=IDS)
