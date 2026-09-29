@@ -139,10 +139,9 @@ def run_agent(question, llm, tools):
 
 
 def test_a_solution_that_reads_the_script_never_runs(problem):
-    """The script is staged into the sandbox because the sandbox has to run it.
-
-    A solution that reads it instead of solving the problem is doing a lookup,
-    and the static gate is where that stops, before any case is spent."""
+    """The script no longer enters the sandbox at all
+    (tests/test_process_boundary.py). The gate still refuses the read, so a
+    learner who tries it gets a named reason before any case is spent."""
     result = run_battery(problem, SCRAPER)
     assert result["gates"]["static"]["status"] == "fail"
     assert any("_script" in r for r in result["gates"]["static"]["reasons"])
@@ -151,9 +150,9 @@ def test_a_solution_that_reads_the_script_never_runs(problem):
 
 
 def test_a_solution_that_writes_to_the_trace_never_runs(problem):
-    """Counts are recomputed from the trace steps, so appending to it invents
-    tool calls that never happened. That is worse than reading the script,
-    because the forged result looks like a pass."""
+    """Counts are recomputed from the trace steps, so appending to it would
+    invent tool calls that never happened. The trace is the runner's now and
+    the sandbox never holds it; the gate still names the attempt."""
     result = run_battery(problem, FORGER)
     assert result["gates"]["static"]["status"] == "fail"
     assert any("_trace" in r for r in result["gates"]["static"]["reasons"])

@@ -17,6 +17,8 @@ MAX_SOURCE_BYTES = 64 * 1024
 FORBIDDEN_NAMES = (
     "__import__", "eval", "exec", "open", "compile", "globals", "locals",
     "vars", "getattr", "setattr", "delattr", "input", "breakpoint", "memoryview",
+    # The builtins module itself, which every name above is an attribute of.
+    "__builtins__",
 )
 
 FORBIDDEN_MODULES = (
@@ -30,6 +32,20 @@ FORBIDDEN_MODULES = (
 )
 
 FORBIDDEN_ATTRS = ("system", "popen", "spawn", "fork", "__subclasses__", "__globals__")
+
+# The modules a solution may import hold public references to the
+# interpreter's own: typing.contextlib.os, json.codecs.sys, re.enum.bltns,
+# dataclasses.inspect. None of those names starts with an underscore, so the
+# private rule below never saw them. These are the last-hop names of every
+# such route, found by walking every module a solution may import;
+# tests/test_static_gate.py repeats the walk, so a Python upgrade or a newly
+# allowed module cannot add a route nobody named.
+#
+# This list names a route so that an honest learner reads a reason. It is not
+# the boundary. The scripted model and the trace are not in the sandbox's
+# process at all, and the sandbox starts with no credentials in reach
+# (runner/battery/host.py), so a route this list misses reaches nothing.
+MODULE_ROUTE_ATTRS = ("sys", "os", "builtins", "bltns", "importlib", "inspect", "io")
 
 # docs/03 section 9.1 says learner code can read anything staged into its own
 # process, and the harness objects are staged into it. Assertions are not, so
@@ -47,6 +63,12 @@ FORBIDDEN_ATTRS = ("system", "popen", "spawn", "fork", "__subclasses__", "__glob
 # cannot tell whose object it is holding. It also subsumes every dunder, which
 # is why __class__ and __mro__ need no entry of their own.
 PRIVATE_BASES = ("self", "cls")
+
+# Names with underscores that read a plain string and lead nowhere. A content
+# author found that type(exc).__name__, the usual way to name an exception's
+# type, failed the private rule; a contract that asks for the type set a trap
+# the learner could not avoid.
+PUBLIC_DUNDERS = ("__name__", "__qualname__")
 
 # namedtuple's public interface carries underscores so that the names cannot
 # collide with a field. Rejecting `_asdict()` would fail correct code for a
@@ -122,7 +144,8 @@ def check(source: str, allowed_imports) -> StaticResult:
 def _check_attribute(node: ast.Attribute) -> list[str]:
     """One attribute access, checked for a private name and then for a name on
     the fixed list."""
-    if node.attr.startswith("_") and not _private_is_the_learners_own(node):
+    if (node.attr.startswith("_") and node.attr not in PUBLIC_DUNDERS
+            and not _private_is_the_learners_own(node)):
         return [
             f"line {node.lineno}: {node.attr} is a private attribute of another object, "
             "and the sandbox does not allow reading one. Everything this problem gives you "
@@ -132,6 +155,12 @@ def _check_attribute(node: ast.Attribute) -> list[str]:
         return _check_format(node)
     if node.attr in FORBIDDEN_ATTRS:
         return [f"line {node.lineno}: the {node.attr} attribute is not reachable"]
+    if node.attr in MODULE_ROUTE_ATTRS and not _on_the_learners_own_object(node):
+        return [
+            f"line {node.lineno}: .{node.attr} reaches one of the interpreter's own modules "
+            "through another module, which the sandbox does not allow. Import what you need "
+            "from this problem's allowed imports instead"
+        ]
     return []
 
 
@@ -178,6 +207,11 @@ def _traversing_field(text: str, depth: int = 0) -> str | None:
     return None
 
 
+def _on_the_learners_own_object(node: ast.Attribute) -> bool:
+    """self.io is the learner's attribute, whatever it happens to be called."""
+    return isinstance(node.value, ast.Name) and node.value.id in PRIVATE_BASES
+
+
 def _private_is_the_learners_own(node: ast.Attribute) -> bool:
     """True when the private name belongs to the learner rather than to
     something the harness handed them."""
@@ -196,6 +230,10 @@ def _private_is_the_learners_own(node: ast.Attribute) -> bool:
 
 def _check_module(name: str, allowed: set[str], lineno: int) -> list[str]:
     top = name.split(".")[0]
+    if top == "__future__":
+        # A compiler directive. `from __future__ import annotations` is how a
+        # lot of people start every file.
+        return []
     if top in FORBIDDEN_MODULES:
         return [f"line {lineno}: {top} is not importable in the sandbox"]
     if top not in allowed:

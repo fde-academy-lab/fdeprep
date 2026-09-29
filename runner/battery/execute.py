@@ -2,16 +2,20 @@
 
 One case is staged per sandbox invocation and the payload carries inputs only,
 because learner code can read anything in its own process (docs/03 section
-9.1). Assertions stay here, in the parent, and are evaluated against bounded
-schema-valid output that the sandbox sent back.
+9.1). Assertions stay here, in the parent, and so do the scripted model, the
+tool fixtures and the trace: the sandbox holds proxies and every call it makes
+is answered and recorded by runner/battery/host.py. What comes back from the
+sandbox is how run_agent ended, and nothing it says about its own calls.
 """
 
 from __future__ import annotations
 
+import ast
 import json
+import os
 import pathlib
 import shutil
-import subprocess
+import stat
 import sys
 import tempfile
 import time
@@ -21,42 +25,36 @@ import jsonschema
 
 from runner.battery import flags as flagging
 from runner.battery import result as contract
+from runner.battery.host import (
+    Exchange, SandboxProtocolError, Session, child_env, converse,
+)
 from runner.battery.static_gate import check as static_check
 from runner.harness.assertions import Observed, evaluate
-from runner.harness.trace import truncate
+from runner.harness.mock_llm import MockLLM, ToolTable
+from runner.harness.trace import Trace, truncate
+from runner.problem import ALWAYS_ALLOWED_IMPORTS
 
 REPO_ROOT = pathlib.Path(__file__).resolve().parents[2]
-STDIO_LIMIT = 32 * 1024
 PARENT_SLACK_S = 5
+MAX_RESULT_FILE_BYTES = 2 * 1024 * 1024
+
+__all__ = ["SandboxProtocolError", "run_battery", "run_single_case"]
 
 StageObserver = Callable[[str, pathlib.Path, dict], None]
 
+# Only what the sandbox can know. Anything else in the file, a trace or a call
+# count included, is ignored rather than trusted.
 SANDBOX_RESULT_SCHEMA = {
     "type": "object",
-    "required": ["schema", "outcome", "trace", "llm_calls", "tool_calls"],
+    "required": ["schema", "outcome"],
     "properties": {
-        "schema": {"const": "fdeprep.sandbox.v1"},
+        "schema": {"const": "fdeprep.sandbox.v2"},
         "outcome": {"enum": ["returned", "raised", "timeout", "budget"]},
         "return_value": {},
         "exception": {"type": ["object", "null"]},
-        "llm_calls": {"type": "integer", "minimum": 0, "maximum": 10000},
-        "tool_calls": {"type": "integer", "minimum": 0, "maximum": 10000},
         "wall_ms": {"type": "integer", "minimum": 0},
-        "trace": {
-            "type": "object",
-            "required": ["steps"],
-            "properties": {
-                "steps": {"type": "array", "maxItems": 5000},
-                "flags": {"type": "array"},
-                "truncated": {"type": "boolean"},
-            },
-        },
     },
 }
-
-
-class SandboxProtocolError(RuntimeError):
-    """The sandbox returned something that is not a valid result document."""
 
 
 def run_single_case(name: str, spec: dict[str, Any], source: str, *,
@@ -64,6 +62,11 @@ def run_single_case(name: str, spec: dict[str, Any], source: str, *,
                     stage_observer: StageObserver | None = None) -> dict[str, Any]:
     budget = spec.get("budget") or {}
     wall_ms = int(budget.get("wall_ms", time_limit_s * 1000))
+    trace = Trace()
+    session = Session(
+        MockLLM(spec.get("llm_script") or [], trace, int(budget.get("max_llm_calls", 6))),
+        ToolTable(spec.get("tools") or {}, trace, int(budget.get("max_tool_calls", 8))),
+    )
     root = pathlib.Path(tempfile.mkdtemp(prefix="fdeprep-case-"))
 
     try:
@@ -76,13 +79,9 @@ def run_single_case(name: str, spec: dict[str, Any], source: str, *,
         payload = {
             "case_name": name,
             "input": spec.get("input") or {},
-            "llm_script": spec.get("llm_script") or [],
-            "tools": spec.get("tools") or {},
-            "budget": {
-                "max_llm_calls": int(budget.get("max_llm_calls", 6)),
-                "max_tool_calls": int(budget.get("max_tool_calls", 8)),
-                "wall_ms": wall_ms,
-            },
+            "tools": session.tools.names(),
+            "budget": {"wall_ms": wall_ms},
+            "preload": _imports_to_preload(source, allowed_imports),
             "solution_path": str(work / "solution.py"),
         }
         assert "assertions" not in payload, "assertions must never reach the sandbox"
@@ -94,80 +93,104 @@ def run_single_case(name: str, spec: dict[str, Any], source: str, *,
         if stage_observer is not None:
             stage_observer(name, work, payload)
 
-        sandbox = _invoke(work, payload_path, result_path, wall_ms)
-        document = _read_result(result_path, sandbox, wall_ms)
-        return _judge(name, spec, document, sandbox)
+        exchange = converse(
+            [sys.executable, "-s", "-P", "-m", "runner.harness.sandbox",
+             str(payload_path), str(result_path)],
+            cwd=str(work), env=child_env(REPO_ROOT), wall_ms=wall_ms,
+            slack_s=PARENT_SLACK_S, session=session,
+        )
+        document = _read_result(result_path, exchange, wall_ms)
+        _close_trace(trace, document)
+        return _judge(name, spec, document, exchange, trace)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
 
-def _invoke(work: pathlib.Path, payload_path, result_path, wall_ms) -> dict[str, Any]:
-    import os
-
-    env = dict(os.environ)
-    env["PYTHONPATH"] = str(REPO_ROOT)
-    env["PYTHONHASHSEED"] = "0"
-    env["PYTHONDONTWRITEBYTECODE"] = "1"
-
+def _imports_to_preload(source: str, allowed_imports) -> list[str]:
+    """The modules this solution imports that the gate allows, by top-level name."""
+    allowed = set(ALWAYS_ALLOWED_IMPORTS) | {str(m) for m in (allowed_imports or ())}
     try:
-        completed = subprocess.run(
-            [sys.executable, "-m", "runner.harness.sandbox",
-             str(payload_path), str(result_path)],
-            cwd=str(work), env=env, capture_output=True,
-            timeout=wall_ms / 1000.0 + PARENT_SLACK_S,
-        )
-        return {
-            "killed": False,
-            "returncode": completed.returncode,
-            "stdout": completed.stdout[:STDIO_LIMIT].decode("utf-8", "replace"),
-            "stderr": completed.stderr[:STDIO_LIMIT].decode("utf-8", "replace"),
-        }
-    except subprocess.TimeoutExpired as expired:
-        # The in-process watchdog should have fired already. This is the backstop
-        # that stands in for the Lambda timeout.
-        return {
-            "killed": True,
-            "returncode": None,
-            "stdout": (expired.stdout or b"")[:STDIO_LIMIT].decode("utf-8", "replace"),
-            "stderr": (expired.stderr or b"")[:STDIO_LIMIT].decode("utf-8", "replace"),
-        }
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    wanted: set[str] = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            wanted.update(alias.name.split(".")[0] for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
+            wanted.add(node.module.split(".")[0])
+    return sorted(wanted & allowed)
 
 
-def _read_result(result_path: pathlib.Path, sandbox: dict, wall_ms: int) -> dict[str, Any]:
-    if not result_path.exists():
-        if sandbox["killed"]:
+def _close_trace(trace: Trace, document: dict[str, Any]) -> None:
+    """The last step, which is how run_agent ended."""
+    outcome = document["outcome"]
+    exception = document.get("exception") or {}
+    if outcome == "returned":
+        trace.final(document.get("return_value"))
+    elif outcome == "raised":
+        trace.error(str(exception.get("type", "Exception")), str(exception.get("message", "")))
+    elif outcome == "budget":
+        trace.error("BudgetExceeded", str(exception.get("message", "")))
+
+
+def _read_result(result_path: pathlib.Path, exchange: Exchange, wall_ms: int) -> dict[str, Any]:
+    raw = _read_bounded(result_path)
+    if raw is None:
+        if exchange.killed:
             return _synthetic_timeout(wall_ms)
         raise SandboxProtocolError(
             "the sandbox exited without writing a result: "
-            f"rc={sandbox['returncode']} stderr={sandbox['stderr'][:400]}"
+            f"rc={exchange.returncode} stderr={exchange.stderr[:400]}"
         )
     try:
-        document = json.loads(result_path.read_text(encoding="utf-8"))
+        document = json.loads(raw)
     except ValueError as exc:
         raise SandboxProtocolError(f"the sandbox result is not JSON: {exc}") from exc
 
     jsonschema.validate(document, SANDBOX_RESULT_SCHEMA)
-    return document
+    return {key: document.get(key) for key in SANDBOX_RESULT_SCHEMA["properties"]}
+
+
+def _read_bounded(path: pathlib.Path) -> bytes | None:
+    """The result file, if the sandbox left a regular file there.
+
+    The sandbox runs as the same user and can put anything at this path: a
+    FIFO that would block the read forever, a link to /dev/zero, a file of a
+    gigabyte. None of those is a result.
+    """
+    try:
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK | getattr(os, "O_NOFOLLOW", 0))
+    except OSError:
+        return None
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            raise SandboxProtocolError("the sandbox left something other than a file as its result")
+        if info.st_size > MAX_RESULT_FILE_BYTES:
+            raise SandboxProtocolError("the sandbox result is larger than any result can be")
+        with os.fdopen(fd, "rb", closefd=False) as handle:
+            return handle.read(MAX_RESULT_FILE_BYTES + 1)
+    finally:
+        os.close(fd)
 
 
 def _synthetic_timeout(wall_ms: int) -> dict[str, Any]:
     return {
-        "schema": "fdeprep.sandbox.v1",
+        "schema": "fdeprep.sandbox.v2",
         "outcome": "timeout",
         "return_value": None,
         "exception": {"type": "Timeout",
                       "message": f"learner code ran past {wall_ms}ms and was stopped"},
-        "trace": {"steps": [], "flags": [], "truncated": False},
-        "llm_calls": 0,
-        "tool_calls": 0,
         "wall_ms": wall_ms,
     }
 
 
-def _judge(name: str, spec: dict, document: dict, sandbox: dict) -> dict[str, Any]:
-    steps = tuple(document["trace"]["steps"])
+def _judge(name: str, spec: dict, document: dict, exchange: Exchange,
+           recorded: Trace) -> dict[str, Any]:
+    steps = tuple(recorded.steps)
 
-    # Counts come from the steps rather than from the sandbox's own totals.
+    # Counts come from the steps the runner recorded while answering calls.
     observed = Observed(
         outcome=document["outcome"],
         return_value=document.get("return_value"),
@@ -184,7 +207,7 @@ def _judge(name: str, spec: dict, document: dict, sandbox: dict) -> dict[str, An
         (a.get("canary") for a in (spec.get("assertions") or []) if a.get("canary")), None
     )
     trace = truncate(flagging.annotate(
-        document["trace"],
+        recorded.as_dict(),
         budget=spec.get("budget") or {},
         had_tools=bool(spec.get("tools")),
         canary=canary,
@@ -195,6 +218,10 @@ def _judge(name: str, spec: dict, document: dict, sandbox: dict) -> dict[str, An
                    "message": "timeout: learner code ran past the wall clock"}]
         results = results + failed
 
+    # The sandbox's own timing is a claim; the runner's is a bound on it.
+    reported = document.get("wall_ms")
+    wall = min(reported, exchange.wall_ms) if isinstance(reported, int) else exchange.wall_ms
+
     return {
         "name": name,
         "status": "fail" if failed else "pass",
@@ -204,8 +231,8 @@ def _judge(name: str, spec: dict, document: dict, sandbox: dict) -> dict[str, An
         "trace": trace,
         "llm_calls": observed.llm_calls,
         "tool_calls": observed.tool_calls,
-        "wall_ms": document.get("wall_ms", 0),
-        "stdout": sandbox["stdout"],
+        "wall_ms": wall,
+        "stdout": exchange.stdout,
     }
 
 

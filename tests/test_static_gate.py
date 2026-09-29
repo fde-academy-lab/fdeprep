@@ -171,6 +171,118 @@ def test_introspection_modules_stay_closed_even_if_a_problem_allows_them(module)
     assert any(module in reason for reason in outcome.reasons)
 
 
+# Found on 29 September 2026: the modules every problem allows hold public
+# references to the interpreter's own modules. typing.contextlib.os,
+# json.codecs.sys and re.enum.bltns are ordinary attribute reads with no
+# underscore, so the private rule never saw them. The process boundary is what
+# keeps secrets out of reach (tests/test_process_boundary.py); the gate names
+# the route so an honest learner reads a reason instead of meeting a sandbox
+# that behaves strangely.
+MODULE_ROUTES = [
+    ("sys through typing",
+     "import typing\ndef run_agent(q, llm, tools):\n    return str(typing.sys.modules)", "sys"),
+    ("os through contextlib",
+     "import typing\ndef run_agent(q, llm, tools):\n    return str(typing.contextlib.os.environ)",
+     "os"),
+    ("builtins through codecs",
+     "import json\ndef run_agent(q, llm, tools):\n"
+     "    return json.codecs.builtins.open('/etc/hostname').read()", "builtins"),
+    ("builtins under the alias enum gives it",
+     "import re\ndef run_agent(q, llm, tools):\n    return str(re.enum.bltns.eval('1'))", "bltns"),
+    ("inspect through dataclasses",
+     "import dataclasses\ndef run_agent(q, llm, tools):\n"
+     "    return str(dataclasses.inspect.getmembers(llm))", "inspect"),
+    ("the builtins module by its own name",
+     "def run_agent(q, llm, tools):\n    return __builtins__.open('/etc/hostname').read()",
+     "__builtins__"),
+]
+
+
+@pytest.mark.parametrize("what, source, needle", MODULE_ROUTES,
+                         ids=[case[0] for case in MODULE_ROUTES])
+def test_a_public_route_to_an_interpreter_module_is_rejected(what, source, needle):
+    outcome = check(source, ALLOWED)
+    assert outcome.status == "fail", what
+    assert any(needle in reason for reason in outcome.reasons), outcome.reasons
+
+
+def _modules_problems_declare():
+    import pathlib
+
+    import yaml
+
+    names = set()
+    for path in pathlib.Path(__file__).resolve().parents[1].glob("problems/**/*.yaml"):
+        document = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+        names.update(str(m) for m in (document.get("allowed_imports") or []))
+    return names
+
+
+def test_every_public_route_to_an_interpreter_module_is_on_the_list():
+    """The route list is only as good as the walk behind it. This repeats the
+    walk over every module a solution may import, so a Python upgrade or a
+    problem that allows a new module cannot open a route nobody named. A route
+    counts as closed when any one of its hops is on the list."""
+    import importlib
+    import types
+
+    from runner.battery.static_gate import MODULE_ROUTE_ATTRS
+    from runner.problem import ALWAYS_ALLOWED_IMPORTS
+
+    closed = {"sys", "os", "builtins", "importlib", "inspect", "io", "gc", "subprocess",
+              "socket", "ctypes", "threading", "_thread", "posix", "pickle", "marshal",
+              "shutil", "signal", "resource"}
+    found: dict[str, str] = {}
+    visited: set[int] = set()
+
+    def walk(module, path, depth):
+        if depth > 4 or id(module) in visited:
+            return
+        visited.add(id(module))
+        for name in dir(module):
+            if name.startswith("_"):
+                continue
+            try:
+                value = getattr(module, name)
+            except Exception:
+                continue
+            if not isinstance(value, types.ModuleType) or name in MODULE_ROUTE_ATTRS:
+                continue  # a named hop closes every route that runs through it
+            if value.__name__ in closed:
+                found.setdefault(name, f"{path}.{name}")
+            walk(value, f"{path}.{name}", depth + 1)
+
+    for name in sorted(set(ALWAYS_ALLOWED_IMPORTS) | _modules_problems_declare()):
+        walk(importlib.import_module(name), name, 0)
+    assert not found, f"unnamed routes: {found}"
+
+
+LEGITIMATE_NAMES = [
+    ("a compiled pattern",
+     "import re\ndef run_agent(q, llm, tools):\n    return str(re.compile('x').search(q))"),
+    ("json and a counter",
+     "import json, collections\ndef run_agent(q, llm, tools):\n"
+     "    return json.dumps(collections.Counter(q.split()))"),
+    ("a learner's own attribute that shares a module's name",
+     "class Port:\n    def __init__(self):\n        self.io = []\n"
+     "    def put(self, x):\n        self.io.append(x)\n        return self.io\n\n"
+     "def run_agent(q, llm, tools):\n    return str(Port().put(q))"),
+    ("a future import",
+     "from __future__ import annotations\ndef run_agent(q: str, llm, tools) -> str:\n"
+     "    return q"),
+    ("the name of an exception's type",
+     "def run_agent(q, llm, tools):\n    try:\n        tools['track']()\n"
+     "    except Exception as exc:\n        return type(exc).__name__\n    return 'x'"),
+]
+
+
+@pytest.mark.parametrize("what, source", LEGITIMATE_NAMES,
+                         ids=[case[0] for case in LEGITIMATE_NAMES])
+def test_ordinary_attribute_names_still_pass(what, source):
+    outcome = check(source, ALLOWED)
+    assert outcome.status == "pass", (what, outcome.reasons)
+
+
 PLAIN_FORMATTING = [
     ("positional fields", "def run_agent(q, llm, tools):\n    return '{} and {}'.format(q, 1)"),
     ("numbered fields with a spec",

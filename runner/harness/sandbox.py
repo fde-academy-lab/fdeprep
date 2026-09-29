@@ -1,27 +1,34 @@
 """The child process that runs learner code. Nothing here is trusted.
 
-It receives inputs only: the question, the model script and the tool table.
-It never receives an assertion, an expected value or another case, because
-learner code can read anything present in its own process (docs/03 section
-9.1). It writes one bounded JSON document and exits.
+It receives the question, the wall clock, the names of the tools and the
+modules the solution imports, and nothing else. The scripted model, the tool
+fixtures, the call budget and the trace stay in the runner, which answers each
+call over a pipe and records it (runner/harness/proxy.py). So whatever learner
+code manages to reach in this process, it finds no script to look up and no
+trace to write into (docs/03 section 9.1).
 
-Run as: python -m runner.harness.sandbox <payload.json> <result.json>
+It writes one bounded JSON document saying how run_agent ended, and exits.
+
+Run as: python -m runner.harness.sandbox <payload.json> <result.json> <request fd> <reply fd>
 """
 
 from __future__ import annotations
 
 import builtins as _builtins
+import importlib as _importlib
 import json as _json
 import os as _os
 import sys as _sys
 import threading as _threading
 import time as _time
 import traceback as _traceback
+import types as _types
 
-from runner.harness.mock_llm import BudgetExceeded, MockLLM, ToolTable
-from runner.harness.trace import Trace, clip
+from runner.harness.proxy import BudgetExceeded, connect
+from runner.harness.trace import clip
 
-SCHEMA = "fdeprep.sandbox.v1"
+SCHEMA = "fdeprep.sandbox.v2"
+MAX_RESULT_BYTES = 1024 * 1024
 
 BLOCKED_MODULES = frozenset({
     "subprocess", "socket", "ctypes", "importlib", "os", "sys", "shutil",
@@ -48,42 +55,76 @@ class _Blocker:
 
 def _write(path: str, document: dict) -> None:
     with _open(path, "w", encoding="utf-8") as handle:
-        _json.dump(document, handle, ensure_ascii=False)
+        _json.dump(document, handle)
         handle.flush()
         _os.fsync(handle.fileno())
 
 
-def _result(outcome, trace, llm_calls, tool_calls, wall_ms, value=None, exception=None):
+def _result(outcome, wall_ms, value=None, exception=None):
     return {
         "schema": SCHEMA,
         "outcome": outcome,
         "return_value": value,
         "exception": exception,
-        "trace": trace,
-        "llm_calls": llm_calls,
-        "tool_calls": tool_calls,
         "wall_ms": wall_ms,
     }
 
 
+def _plain(value):
+    """A return value the result document can carry, whatever learner code built."""
+    try:
+        _json.dumps(value)
+        return value
+    except (TypeError, ValueError):
+        return clip(repr(value), 2000)
+
+
+def _preload(names) -> None:
+    """Import what the solution imports before the blocker goes in.
+
+    dataclasses imports inspect, and inspect imports importlib, which the
+    blocker refuses. A module loaded here is already in sys.modules when
+    learner code imports it, so its own imports never reach the blocker. The
+    names are the ones the static gate allowed; a name that fails to import
+    here fails again, with the learner's own line number, when their code
+    runs.
+    """
+    for name in names:
+        try:
+            _importlib.import_module(str(name))
+        except Exception:
+            pass
+
+
+def _no_new_processes() -> None:
+    """docs/03 section 7: a fork or thread bomb stops at the kernel.
+
+    RLIMIT_NPROC counts threads too, so this runs after the watchdog thread
+    exists. Root ignores the limit; Lambda does not run code as root.
+    """
+    try:
+        import resource
+
+        resource.setrlimit(resource.RLIMIT_NPROC, (0, 0))
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+    except (ImportError, ValueError, OSError):
+        pass
+
+
 def main(argv: list[str]) -> int:
     payload_path, result_path = argv[1], argv[2]
+    request_fd, reply_fd = int(argv[3]), int(argv[4])
     with _open(payload_path, encoding="utf-8") as handle:
         payload = _json.load(handle)
 
-    if "assertions" in payload:
-        raise SystemExit("the sandbox was handed assertions, which is a trust boundary bug")
+    for leak in ("assertions", "llm_script"):
+        if leak in payload:
+            raise SystemExit(f"the sandbox was handed {leak}, which is a trust boundary bug")
 
-    budget = payload.get("budget") or {}
-    max_llm = int(budget.get("max_llm_calls", 6))
-    max_tool = int(budget.get("max_tool_calls", 8))
-    wall_ms = int(budget.get("wall_ms", 10000))
-
-    trace = Trace()
-    llm = MockLLM(payload.get("llm_script") or [], trace, max_llm)
-    tools = ToolTable(payload.get("tools") or {}, trace, max_tool)
-
+    wall_ms = int((payload.get("budget") or {}).get("wall_ms", 10000))
+    llm, tools = connect(request_fd, reply_fd, list(payload.get("tools") or []))
     source = _open(payload["solution_path"], encoding="utf-8").read()
+    _preload(payload.get("preload") or [])
 
     # The watchdog gets scheduled even inside a tight Python loop, because the
     # interpreter switches threads on its own interval. It writes a timeout
@@ -91,7 +132,7 @@ def main(argv: list[str]) -> int:
     def watchdog() -> None:
         _time.sleep(wall_ms / 1000.0)
         _write(result_path, _result(
-            "timeout", trace.as_dict(), llm.calls, tools.calls, wall_ms,
+            "timeout", wall_ms,
             exception={"type": "Timeout",
                        "message": f"learner code ran past {wall_ms}ms and was stopped"},
         ))
@@ -100,27 +141,32 @@ def main(argv: list[str]) -> int:
 
     guard = _threading.Thread(target=watchdog, daemon=True)
     guard.start()
+    _no_new_processes()
 
     _sys.meta_path.insert(0, _Blocker())
     for name in list(_sys.modules):
         if name.split(".")[0] in BLOCKED_MODULES and name not in ("sys", "os", "threading"):
             _sys.modules.pop(name, None)
 
-    namespace: dict = {"__name__": "learner_solution", "__builtins__": _builtins}
+    # A real module, registered, because dataclasses and typing look a class's
+    # module up in sys.modules to resolve string annotations. dont_inherit
+    # keeps this file's own __future__ flags out of the learner's code.
+    module = _types.ModuleType("learner_solution")
+    module.__dict__["__builtins__"] = _builtins
+    _sys.modules["learner_solution"] = module
+    namespace = module.__dict__
     started = _time.monotonic()
     outcome, value, exception = "returned", None, None
 
     try:
-        exec(compile(source, "solution.py", "exec"), namespace)
+        exec(compile(source, "solution.py", "exec", dont_inherit=True), namespace)
         entry = namespace.get("run_agent")
         if not callable(entry):
             raise TypeError("solution.py defines no run_agent function")
         value = entry(payload["input"].get("question", ""), llm, tools)
-        trace.final(value)
     except BudgetExceeded as exc:
         outcome = "budget"
         exception = {"type": "BudgetExceeded", "message": str(exc)}
-        trace.error("BudgetExceeded", str(exc))
     except BaseException as exc:  # learner code may raise anything at all
         outcome = "raised"
         exception = {
@@ -128,16 +174,17 @@ def main(argv: list[str]) -> int:
             "message": clip(str(exc), 2000),
             "traceback": clip("".join(_traceback.format_exception_only(type(exc), exc)), 2000),
         }
-        trace.error(type(exc).__name__, str(exc))
 
     elapsed = int((_time.monotonic() - started) * 1000)
     if not isinstance(value, (str, int, float, bool, type(None), list, dict)):
         value = repr(value)
-
-    _write(result_path, _result(
-        outcome, trace.as_dict(), llm.calls, tools.calls, elapsed,
-        value=value, exception=exception,
-    ))
+    document = _result(outcome, elapsed, value=_plain(value), exception=exception)
+    if len(_json.dumps(document)) > MAX_RESULT_BYTES:
+        document = _result("raised", elapsed, exception={
+            "type": "ValueError",
+            "message": "run_agent returned more than 1MB, which no answer here needs",
+        })
+    _write(result_path, document)
     return 0
 
 

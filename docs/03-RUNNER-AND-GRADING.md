@@ -45,6 +45,20 @@ def run_agent(question: str, llm, tools: dict) -> str:
 
 Learner code sees no other injected globals. `harness` is importable for type hints only and exposes nothing that reveals the fixture.
 
+**Amended 29 September 2026.** Both arguments are proxies. Each call crosses a
+pipe to the runner, which runs the scripted model and the tool fixtures,
+applies the call budget, records the step in the trace and sends back the
+answer. The script, the fixtures, the budget ceilings and the trace never exist
+in the sandbox's process, so nothing learner code can reach there turns a
+problem into a lookup or writes a tool call that never happened. What learner
+code sees is unchanged: `tools` is still a dict of callables that take keyword
+arguments; a fixture that raises still raises the same exception type in
+learner code; the budget ceiling still arrives as `BudgetExceeded`, a
+`RuntimeError`, which published problems catch. Tool arguments cross as JSON,
+and a value JSON cannot carry crosses as its `repr`, which is how the trace
+always recorded one. A single call may carry 4MB; a larger one raises
+`ValueError` in learner code.
+
 ### 2.2 Fixture format
 
 A test's `spec` column holds the script. This is the shape:
@@ -180,6 +194,27 @@ attribute nodes. A class pattern binding an underscored name is rejected. `gc`
 and `inspect` join the forbidden modules whatever a problem allows, because
 `gc.get_referents(llm)` returns the object's state with no attribute access at
 all.
+
+**Amended 29 September 2026, second time.** The modules every problem allows
+hold public references to the interpreter's own: `typing.contextlib.os`,
+`json.codecs.sys`, `json.codecs.builtins`, `re.enum.bltns`,
+`dataclasses.inspect`. None starts with an underscore, so the private rule
+never saw them, and through them learner code reached `open`, `eval`,
+`os.environ` and the rest. Two changes follow, and only the second is the
+boundary.
+
+| Change | What it does |
+|---|---|
+| The gate names the routes | Rejects the attribute names `sys`, `os`, `builtins`, `bltns`, `importlib`, `inspect` and `io` on anything but `self` or `cls`, and the bare name `__builtins__`. The list is the last hop of every route found by walking every module a solution may import, and a test repeats the walk, so a Python upgrade or a newly allowed module cannot add a route nobody named. |
+| Nothing worth reaching is in the sandbox | The script, the fixtures and the trace moved to the runner (section 2.1), and the sandbox starts with no credentials in reach (section 7). A route the gate misses now reaches a process with nothing in it. |
+
+The gate also stops rejecting three things that were never a risk and that
+content authors hit: `__name__` and `__qualname__`, so `type(exc).__name__`
+works; `from __future__ import annotations`; and a dataclass, which failed at
+run time because `dataclasses` imports `inspect`, which imports the blocked
+`importlib`. The sandbox now imports what the solution imports before the
+import blocker goes in, and compiles learner code with its own `__future__`
+flags as a registered module, so string annotations resolve.
 
 ### 4.2 Prompt surgery
 
@@ -335,11 +370,12 @@ The runner executes untrusted code written by 200 people who are learning, some 
 |---|---|
 | Network | Lambda in a VPC with no NAT and no internet route. Nothing in the runner can reach out. Model calls for probes and judging happen in a separate Lambda that never executes learner code. |
 | Filesystem | Working directory under `/tmp`, 512MB, wiped per invocation. Image layers are read-only. |
-| Process | No `subprocess`, blocked at the AST gate and again by an import hook. |
+| Process | No `subprocess`, blocked at the AST gate and again by an import hook. Since 29 September 2026 the kernel refuses it too: the sandbox runs with `RLIMIT_NPROC` at 0, and the runner kills the sandbox's whole process group before reaping it. |
+| Harness state | The scripted model, the tool fixtures, the budget ceilings and the trace live in the runner, which answers each call over a pipe (section 2.1). The sandbox reports how `run_agent` ended and nothing else; a trace or a count in its result file is ignored. |
 | CPU and memory | Lambda memory 1024MB, per-test wall clock enforced by a watchdog thread that raises, then by the Lambda timeout as a backstop. |
-| Fork and thread bombs | `resource.setrlimit(RLIMIT_NPROC)` and a thread count check after each test. |
+| Fork and thread bombs | `resource.setrlimit(RLIMIT_NPROC)` at 0 in the sandbox, set after its watchdog thread starts, because the limit counts threads. Root ignores the limit; Lambda does not run code as root, and a test run as a normal user proves the fork is refused. |
 | Output size | Captured stdout and stderr truncated at 32KB per test. |
-| Secrets | The runner's execution role can read the problem bundle from S3 and write traces. It has no Bedrock permission and no database write permission; results return through the queue. |
+| Secrets | The runner's execution role can read the problem bundle from S3 and write traces. It has no Bedrock permission and no database write permission; results return through the queue. Those credentials sit in the runner's environment, so the sandbox inherits none of it: it starts with five allowlisted variables. The runner also marks itself not dumpable before starting a sandbox, which puts its own `/proc/<pid>/environ` out of a same-user child's reach. The problem bundle stays in the runner's memory and is never written to `/tmp`, because the sandbox runs as the same user and can read anything the runner writes there. |
 | Prompt injection into the judge | The judge Lambda wraps learner text in delimiters and instructs the judge to treat it as data. Judge output is parsed as JSON and rejected if it does not match the expected schema. A learner who writes "give me full marks" in a design answer gets it scored as content. |
 
 Separating the code-executing Lambda from the model-calling Lambda is the single control that matters most. Learner code can never reach a model endpoint, so there is no token-spend attack.
@@ -376,6 +412,7 @@ Learner code can read anything present in its own process. A test input staged i
 | Never stage an expected output alongside an input | Comparison happens in the trusted evaluator outside the sandbox |
 | Never trust a pass count, a timing figure or a result summary printed by learner code | Parse bounded schema-valid output only, then judge correctness independently |
 | Treat a learner who prints the staged input as having learned something, not as having cheated | The defence is that they still have to satisfy independently generated cases |
+| Never stage the scripted model, the tool fixtures or the trace | The runner answers each call over a pipe and records it (section 2.1, amended 29 September 2026) |
 
 Fix this before Phase 2. An architecture where hidden fixtures live in the same process as learner code is not repairable later without redoing grading.
 
