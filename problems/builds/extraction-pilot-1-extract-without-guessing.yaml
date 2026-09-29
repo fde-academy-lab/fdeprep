@@ -97,20 +97,31 @@ steps:
     check_id: s4
 
 step_checks:
+  # s1 and s4 cannot be told apart from the stub on the public cases: the
+  # scripted model replies the same whatever the prompt says, and every public
+  # value sits on one line in the letter's own case. s2 shows only once s3
+  # keeps a value, because the stub writes null for every field until then.
   - step_id: s1
     spec:
       assertions:
         - { type: llm_calls_at_most, value: 1 }
+  # Reads extracts_the_four_fields_from_a_complete_letter.
   - step_id: s2
-    spec:
-      assertions:
-        - { type: no_exception }
-  - step_id: s3
     spec:
       assertions:
         - { type: valid_json_return,
             schema: { type: object,
-                      required: [policy_number, claimant, incident_date, amount_claimed] } }
+                      required: [policy_number, claimant, incident_date, amount_claimed],
+                      properties: { policy_number: { type: string },
+                                    claimant: { type: string },
+                                    incident_date: { type: string },
+                                    amount_claimed: { type: string } } } }
+  # Reads a_field_the_letter_does_not_state_stays_empty.
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"policy_number":\s*"HX-301977"' }
+        - { type: returns_matches, value: '"amount_claimed":\s*null' }
   - step_id: s4
     spec:
       assertions:
