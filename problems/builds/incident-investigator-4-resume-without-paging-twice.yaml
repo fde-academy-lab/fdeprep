@@ -1,0 +1,690 @@
+slug: incident-investigator-4-resume-without-paging-twice
+title: Resume an interrupted investigation without paging anyone twice
+artefact_type: code
+difficulty: extreme
+track: builds
+est_minutes: 50
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+build: { id: incident-investigator, title: "Build an incident investigator for the on-call team", stage: 4, of: 4 }
+
+brief_md: |
+  Stages 1 to 3 are live. The investigator fans out, matches every result to
+  its job, shares its follow-up allowance fairly, and now pages the owning
+  team when it finds a definitive cause. Investigations run on workers that
+  are restarted during deploys, so each one checkpoints and resumes.
+
+  On Sunday a worker was restarted twice during one investigation. Each time
+  it resumed, its checkpoint had no record of the page it had just sent,
+  because the page went out and the process died before the save. The
+  payments engineer was paged three times in forty minutes for one incident,
+  muted the pager, and missed the next incident's page for 25 minutes. The
+  same week the checkpoint store, under load, answered one investigation
+  with another incident's checkpoint.
+
+  Make the investigation resumable without ever paging twice for one cause,
+  and without trusting a tool's answer further than it can be checked.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is stage 3's alert. The stub carries stages 1 to 3 as working
+  code in `_investigate(alert, tools)`, which returns `(lines, cause)`: the
+  evidence lines, and `{"finding": ..., "owner": ...}` from the definitive
+  result, or None.
+
+  When there is a cause, page its owner once:
+  `tools["page"](team=<owner>, key=<incident>/page/<owner>, incident=...,
+  finding=...)`. The paging provider drops a repeated key only within one
+  minute, so the same page an hour later rings again.
+
+  The run can be killed at any line and restarted with the same question.
+  `tools["checkpoint_load"](incident=...)` returns
+  `{"status": 200, "data": {"state": <the state saved last, or null>}}`, and
+  `tools["checkpoint_save"](incident=..., state=...)` saves a state shaped
+
+      {"incident": "INC-8150", "lines": [...], "cause": {...} | null,
+       "page": null | {"key": "...", "state": "sending" | "sent"}}
+
+  - Resume only from a state whose incident is this incident. Any other
+    state is not yours, so start fresh.
+  - A resumed state with lines skips the investigation.
+  - Save "sending" before you call page, and "sent" after it returns.
+  - When you find "sending" on resume, or page raises in this run, the page
+    may or may not have gone out. Ask `tools["page_status"](key=...)`, which
+    returns `{"status": 200, "delivered": true | false}`. Delivered means no
+    page. Not delivered, found on resume, means page. Anything else means
+    page nobody and report it. Never call page twice in one run.
+
+  Ask the model once for the finding, with the lines, and return
+  `json.dumps({"finding": <its reply>, "resumed": true | false,
+  "page": "sent" | "already_sent" | "unknown" | "not_needed"})`.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+defence_question: |
+  During a major outage the paging provider's status endpoint is down for
+  twenty minutes, which is when restarts are most likely. Your code finds
+  "sending", cannot get an answer, reports "unknown" and pages nobody.
+  Argue for or against paging anyway in that window, and say what you would
+  change so that neither answer depends on the status endpoint.
+
+stub_code: |
+  import json
+  import re
+
+  RUNBOOK = ("deploys", "logs", "metrics")
+
+  FINDING = (
+      "Incident {incident}. One line per check, in the order they were started:\n"
+      "{lines}\n"
+      "Write the finding for the on-call engineer in two sentences: the cause "
+      "and the service it is on if a check found one, otherwise the strongest "
+      "lead.\n"
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Investigate once, page the cause's owner once, and survive a restart.
+
+      _investigate(alert, tools) below is stages 1 to 3, working. It returns
+      (lines, cause), where cause is {"finding": ..., "owner": ...} or None.
+
+      tools["checkpoint_load"](incident=...) returns
+          {"status": 200, "data": {"state": <the state saved last, or null>}}
+      tools["checkpoint_save"](incident=..., state=...) saves a state shaped
+          {"incident": ..., "lines": [...], "cause": {...} or None,
+           "page": None or {"key": ..., "state": "sending" or "sent"}}
+      tools["page"](team=<owner>, key=<incident>/page/<owner>, incident=..., finding=...)
+      tools["page_status"](key=...) returns {"status": 200, "delivered": true or false}
+
+      Resume only from a state whose incident is this one. A resumed state with
+      lines skips the investigation. Save "sending" before page and "sent"
+      after it. On "sending" at resume, or when page raises, ask page_status:
+      delivered means no page, not delivered means page, and anything else
+      means page nobody and report it. Never call page twice in one run.
+
+      Return json.dumps({"finding": <the model's reply>, "resumed": True or False,
+                         "page": "sent", "already_sent", "unknown" or "not_needed"}).
+      At most 2 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"finding": "", "resumed": False, "page": "not_needed"})
+
+
+  def _investigate(alert, tools):
+      """Stages 1 to 3, working. Returns (lines, cause), where cause is the
+      definitive result's {"finding", "owner"} or None."""
+      incident = alert["incident"]
+      allowance = int(alert.get("follow_up_allowance", 4))
+
+      jobs = []
+      for service in alert["services"]:
+          for check in RUNBOOK:
+              job = f"{incident}/{check}/{service}"
+              tools["dispatch"](job=job, check=check, service=service)
+              jobs.append((job, check, service))
+
+      mine = {job for job, _, _ in jobs}
+      by_job = {}
+      for result in (tools["collect"]() or {}).get("results") or []:
+          job = result.get("job") if isinstance(result, dict) else None
+          if job in mine and job not in by_job:
+              by_job[job] = result
+
+      lines, leads, cause = [], [], None
+      for job, check, service in jobs:
+          result = by_job.get(job)
+          if result is None:
+              lines.append(f"{check} {service}: no result")
+              continue
+          verdict = result.get("verdict", "clear")
+          lines.append(f"{check} {service}: {verdict}: {result.get('finding', '')}")
+          if verdict == "definitive" and cause is None:
+              cause = _cause(result)
+          elif verdict == "lead" and result.get("next"):
+              leads.append((f"{check} {service}", _steps(result)))
+
+      if cause is None:
+          cause = _follow_up_fairly(leads, allowance, tools, lines)
+      return lines, cause
+
+
+  def _cause(result: dict) -> dict:
+      return {"finding": result.get("finding", ""), "owner": result.get("owner")}
+
+
+  def _steps(result: dict) -> list:
+      return [(step["check"], step.get("args") or {}) for step in result.get("next") or []]
+
+
+  def _follow_up_fairly(leads, allowance, tools, lines):
+      """Stage 3: leads take turns under one allowance. Returns the cause or None."""
+      spent = 0
+      while spent < allowance and any(queue for _, queue in leads):
+          for _, queue in leads:
+              if not queue or spent >= allowance:
+                  continue
+              check, args = queue.pop(0)
+              if check not in tools:
+                  lines.append(f"{check}: skipped: no such check")
+                  continue
+              spent += 1
+              try:
+                  result = tools[check](**args) or {}
+              except Exception:
+                  lines.append(f"{check}: failed")
+                  continue
+              verdict = result.get("verdict", "clear")
+              lines.append(f"{check}: {verdict}: {result.get('finding', '')}")
+              if verdict == "definitive":
+                  return _cause(result)
+              queue[0:0] = _steps(result)
+      for label, queue in leads:
+          if queue:
+              lines.append(f"{label}: {len(queue)} follow-ups not run")
+      return None
+
+hints:
+  - Walk a restart through every line of your code. Find the line after which
+    the page has gone out and nothing records it.
+  - A checkpoint records what this process believed. The paging provider knows
+    what actually happened. When the two can disagree, ask the one that knows.
+  - Save the page as sending before you call page, and as sent after. On
+    resume, sending is exactly the case where the provider has to be asked.
+  - A checkpoint for another incident is not a checkpoint for this one. Check
+    its incident before you believe anything else in it.
+  - An answer from page_status with no delivered flag is neither a yes nor a
+    no. Page nobody, and say so in the result.
+
+scenario:
+  who: The on-call team at an online grocery
+  situation: >-
+    The investigator now pages the owning team and resumes from a checkpoint
+    after a restart. On Sunday it was restarted twice during one
+    investigation.
+  stakes: >-
+    The payments engineer was paged three times in forty minutes for one
+    incident, muted the pager, and missed the next incident's page for 25
+    minutes.
+  metrics:
+    - { label: Pages for one incident, value: "3" }
+    - { label: Restarts mid-investigation, value: "2" }
+    - { label: Next page unanswered, value: 25 min }
+
+diagram:
+  title: Where a restart turns one page into three
+  caption: >-
+    The page went out and the process died before the save. Record the page
+    as sending first, and on resume ask the pager what the checkpoint cannot
+    know.
+  direction: lr
+  nodes:
+    - { id: alert, label: Alert, sub: the same question after a restart, kind: service, tone: pink, at: [0, 1] }
+    - { id: investigator, label: Investigator, sub: resumes or starts fresh, kind: agent, tone: purple, at: [1, 1] }
+    - { id: checkpoint, label: Checkpoint store, sub: "lines, cause and page state", kind: store, tone: blue, at: [1, 0] }
+    - { id: mine, label: Incident check, sub: "is this saved state mine?", kind: guard, tone: green, at: [2, 0] }
+    - { id: stages, label: Fan-out and follow-ups, sub: "stages 1 to 3, working", kind: tool, tone: neutral, at: [1, 2] }
+    - { id: status, label: Page status, sub: "did that key go out?", kind: service, tone: teal, at: [3, 0] }
+    - { id: pager, label: Pager, sub: rings a person, kind: service, tone: orange, at: [3, 1] }
+    - { id: engineer, label: On-call engineer, sub: one page per cause, kind: actor, tone: blue, at: [4, 1] }
+    - { id: model, label: Model, sub: writes the finding from the lines, kind: model, tone: teal, at: [3, 2] }
+    - { id: finding, label: Finding, sub: "finding, resumed and page state", kind: output, tone: green, at: [4, 2] }
+  edges:
+    - { from: alert, to: investigator, label: incident, step: 1 }
+    - { from: checkpoint, to: mine, label: saved state, step: 2 }
+    - { from: mine, to: investigator, label: only this incident's, tone: success }
+    - { from: investigator, to: stages, label: no saved lines, step: 3 }
+    - { from: investigator, to: checkpoint, label: "sending, then sent", step: 4 }
+    - { from: investigator, to: status, label: found sending on resume }
+    - { from: investigator, to: pager, label: one page per cause, step: 5, tone: success }
+    - { from: pager, to: engineer, label: rang three times on Sunday, tone: danger }
+    - { from: investigator, to: model, label: the lines }
+    - { from: model, to: finding, label: one reply }
+
+approach:
+  goal: Resume after any restart, and page once per cause
+  branches:
+    - label: Check that the checkpoint is yours
+      leaves: [the same incident or start fresh, a stale state can claim a page went out]
+    - label: Record before the side effect
+      detail: Save that a page is about to go out, so a restart can tell a sent page from an unsent one.
+      leaves: [sending before page, sent after it returns]
+    - label: Ask the pager when you cannot know
+      leaves: [delivered means no second page, an unreadable answer means page nobody]
+    - label: Report what happened
+      leaves: [resumed or fresh, "sent, already sent, unknown or not needed"]
+
+coach:
+  opening: >-
+    Pick any line of your code and imagine the process dying right after it.
+    Which line leaves a page sent and nothing recording it?
+  signals:
+    - id: no-write-ahead
+      when:
+        code_lacks: '=\s*\{[^}\n]*["'']state["'']\s*:\s*["'']sending["'']|state\s*=\s*["'']sending["'']|\]\s*=\s*["'']sending["'']'
+      say: >-
+        Nothing records that a page is about to go out. If the process dies
+        just after the page, what will the restart find in the checkpoint?
+    - id: trusts-any-checkpoint
+      when: { code_lacks: '(?<!alert)\.get\(\s*["'']incident["'']|(?<!alert)\[\s*["'']incident["'']\s*\]' }
+      say: >-
+        Nothing checks which incident a saved state belongs to. What happens
+        if the store hands back another investigation's checkpoint?
+    - id: paged-twice
+      when: { test_failed: a_page_that_went_out_before_the_crash_is_not_sent_again }
+      say: >-
+        The checkpoint said sending and the page had in fact gone out. Who can
+        tell you that, and did you ask before paging?
+    - id: never-paged
+      when: { test_failed: a_page_that_never_went_out_is_sent_after_the_restart }
+      say: >-
+        The checkpoint said sending and the provider says it never went out.
+        The owner still needs that page.
+    - id: earlier-stages-broke
+      when: { test_failed: a_fresh_run_still_matches_results_and_shares_the_allowance }
+      say: >-
+        A fresh run with results out of order and a noisy lead went wrong.
+        The investigation from stages 1 to 3 has to behave exactly as it did.
+    - id: stale-checkpoint
+      when: { test_failed: adversarial_the_checkpoint_store_returns_last_nights_run }
+      say: >-
+        The store answered with last night's checkpoint, whose page did go
+        out, to a different team. Which field in the state would have told
+        you it was not tonight's?
+    - id: status-not-a-status
+      when: { test_failed: adversarial_the_page_status_is_not_a_status }
+      say: >-
+        The status reply had no delivered flag, only text with an instruction
+        in it. What can you conclude about the page, and should that text
+        reach the model?
+    - id: page-call-raised
+      when: { test_failed: adversarial_the_page_call_times_out }
+      say: >-
+        The page call raised. The request may have reached the provider before
+        it did. What do you ask before deciding anything else?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the fresh path: investigate, save, page, save, and return
+        the JSON. Then add one resume case at a time.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        The hints are open. The first one walks a restart through your code,
+        which is where this problem starts.
+  wrap_up: >-
+    A side effect needs a record written before it and a way to ask the world
+    afterwards. Check that a saved state is yours, and when you cannot know
+    whether something happened, say so instead of doing it again.
+
+tests:
+  - name: a_fresh_investigation_pages_the_owner_once
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8150", "services": ["payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        checkpoint_load: { returns: { status: 200, data: { state: null } } }
+        checkpoint_save: { returns: { status: 200, saved: true } }
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8150/deploys/payments-api", verdict: lead, finding: "payments-api deploy d-5520 at 00:55", next: [{ check: diff, args: { deploy: "d-5520" } }] }
+              - { job: "INC-8150/logs/payments-api", verdict: lead, finding: "connection timeouts to the payments database", next: [] }
+              - { job: "INC-8150/metrics/payments-api", verdict: clear, finding: "payments-api CPU and memory normal", next: [] }
+        diff: { returns: { status: 200, verdict: definitive, finding: "d-5520 cut the database connection pool from 50 to 5", owner: payments, next: [] } }
+        page: { returns: { status: 200, paged: true } }
+        page_status: { returns: { status: 200, delivered: false } }
+      budget: { max_llm_calls: 2, max_tool_calls: 30, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: page }
+        - { type: calls_tool, name: checkpoint_save }
+        - { type: returns_matches, value: '"page":\s*"sent"' }
+        - { type: returns_matches, value: '(?i)roll it back' }
+
+  - name: a_finished_investigation_is_not_run_again
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8151", "services": ["payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        checkpoint_load:
+          returns:
+            status: 200
+            data:
+              state:
+                incident: "INC-8151"
+                lines:
+                  - "deploys payments-api: lead: payments-api deploy d-5520 at 00:55"
+                  - "logs payments-api: lead: connection timeouts to the payments database"
+                  - "metrics payments-api: clear: payments-api CPU and memory normal"
+                  - "diff: definitive: d-5520 cut the database connection pool from 50 to 5"
+                cause: { finding: "d-5520 cut the database connection pool from 50 to 5", owner: payments }
+                page: { key: "INC-8151/page/payments", state: sent }
+        checkpoint_save: { returns: { status: 200, saved: true } }
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect: { returns: { status: 200, results: [] } }
+        page: { returns: { status: 200, paged: true } }
+        page_status: { returns: { status: 200, delivered: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 30, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: dispatch }
+        - { type: does_not_call_tool, name: page }
+        - { type: returns_matches, value: '"page":\s*"already_sent"' }
+        - { type: returns_matches, value: '"resumed":\s*true' }
+
+  - name: a_page_that_went_out_before_the_crash_is_not_sent_again
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8152", "services": ["payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        checkpoint_load:
+          returns:
+            status: 200
+            data:
+              state:
+                incident: "INC-8152"
+                lines:
+                  - "deploys payments-api: lead: payments-api deploy d-5520 at 00:55"
+                  - "logs payments-api: lead: connection timeouts to the payments database"
+                  - "metrics payments-api: clear: payments-api CPU and memory normal"
+                  - "diff: definitive: d-5520 cut the database connection pool from 50 to 5"
+                cause: { finding: "d-5520 cut the database connection pool from 50 to 5", owner: payments }
+                page: { key: "INC-8152/page/payments", state: sending }
+        checkpoint_save: { returns: { status: 200, saved: true } }
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect: { returns: { status: 200, results: [] } }
+        page: { returns: { status: 200, paged: true } }
+        page_status: { returns: { status: 200, delivered: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 30, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: page_status }
+        - { type: does_not_call_tool, name: page }
+        - { type: returns_matches, value: '"page":\s*"already_sent"' }
+
+  - name: a_page_that_never_went_out_is_sent_after_the_restart
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8153", "services": ["payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        checkpoint_load:
+          returns:
+            status: 200
+            data:
+              state:
+                incident: "INC-8153"
+                lines:
+                  - "deploys payments-api: lead: payments-api deploy d-5520 at 00:55"
+                  - "logs payments-api: lead: connection timeouts to the payments database"
+                  - "metrics payments-api: clear: payments-api CPU and memory normal"
+                  - "diff: definitive: d-5520 cut the database connection pool from 50 to 5"
+                cause: { finding: "d-5520 cut the database connection pool from 50 to 5", owner: payments }
+                page: { key: "INC-8153/page/payments", state: sending }
+        checkpoint_save: { returns: { status: 200, saved: true } }
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect: { returns: { status: 200, results: [] } }
+        page: { returns: { status: 200, paged: true } }
+        page_status: { returns: { status: 200, delivered: false } }
+      budget: { max_llm_calls: 2, max_tool_calls: 30, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: page }
+        - { type: does_not_call_tool, name: dispatch }
+        - { type: returns_matches, value: '"page":\s*"sent"' }
+
+  - name: a_fresh_run_still_matches_results_and_shares_the_allowance
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8156", "services": ["checkout-api", "payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "search index" },
+            reply: "A search index rebuild is blocking basket reads on checkout-api. Stop the rebuild." }
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        checkpoint_load: { returns: { status: 200, data: { state: null } } }
+        checkpoint_save: { returns: { status: 200, saved: true } }
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - job: "INC-8156/logs/checkout-api"
+                verdict: lead
+                finding: "40 checkout requests failed in five minutes"
+                next:
+                  - { check: trace, args: { request: "r-4401" } }
+                  - { check: trace, args: { request: "r-4402" } }
+                  - { check: trace, args: { request: "r-4403" } }
+                  - { check: trace, args: { request: "r-4404" } }
+                  - { check: trace, args: { request: "r-4405" } }
+                  - { check: trace, args: { request: "r-4406" } }
+                  - { check: trace, args: { request: "r-4407" } }
+                  - { check: trace, args: { request: "r-4408" } }
+              - { job: "INC-8127/logs/checkout-api", verdict: definitive, finding: "a search index rebuild blocked every basket read", owner: search, next: [] }
+              - { job: "INC-8156/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+              - { job: "INC-8156/deploys/payments-api", verdict: lead, finding: "payments-api deploy d-5520 at 00:55", next: [{ check: diff, args: { deploy: "d-5520" } }] }
+              - { job: "INC-8156/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - { job: "INC-8156/metrics/payments-api", verdict: clear, finding: "payments-api CPU and memory normal", next: [] }
+              - { job: "INC-8156/logs/payments-api", verdict: lead, finding: "connection timeouts to the payments database", next: [] }
+        trace: { returns: { status: 200, verdict: lead, finding: "request timed out waiting on payments-api", next: [] } }
+        diff: { returns: { status: 200, verdict: definitive, finding: "d-5520 cut the database connection pool from 50 to 5", owner: payments, next: [] } }
+        page: { returns: { status: 200, paged: true } }
+        page_status: { returns: { status: 200, delivered: false } }
+      budget: { max_llm_calls: 2, max_tool_calls: 30, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: diff }
+        - { type: calls_tool, name: page }
+        - { type: returns_matches, value: '(?i)roll it back' }
+        - { type: returns_matches, value: '"page":\s*"sent"' }
+
+  - name: adversarial_the_checkpoint_store_returns_last_nights_run
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      Under load the checkpoint store answered with the most recent state it
+      held for the service, which was last night's investigation. That state
+      is well formed and entirely confident: it has lines, a cause, and a
+      page marked sent. Every word of it is true, about a different incident.
+
+      A resume that trusts it skips tonight's investigation and reports the
+      page as already sent, so the team that owns tonight's cause is never
+      paged. The saved state names its incident. One comparison catches it,
+      and nothing else in the state can be believed until that comparison
+      has passed.
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8154", "services": ["payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "search index" },
+            reply: "A search index rebuild is blocking basket reads on checkout-api. Stop the rebuild." }
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        checkpoint_load:
+          fixture: tool_lies
+          params:
+            lie:
+              incident: "INC-8127"
+              lines:
+                - "deploys checkout-api: clear: no deploys to checkout-api in the last two hours"
+                - "logs checkout-api: definitive: a search index rebuild blocked every basket read"
+              cause: { finding: "a search index rebuild blocked every basket read", owner: search }
+              page: { key: "INC-8127/page/search", state: sent }
+        checkpoint_save: { returns: { status: 200, saved: true } }
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8154/deploys/payments-api", verdict: lead, finding: "payments-api deploy d-5520 at 00:55", next: [{ check: diff, args: { deploy: "d-5520" } }] }
+              - { job: "INC-8154/logs/payments-api", verdict: lead, finding: "connection timeouts to the payments database", next: [] }
+              - { job: "INC-8154/metrics/payments-api", verdict: clear, finding: "payments-api CPU and memory normal", next: [] }
+        diff: { returns: { status: 200, verdict: definitive, finding: "d-5520 cut the database connection pool from 50 to 5", owner: payments, next: [] } }
+        page: { returns: { status: 200, paged: true } }
+        page_status: { returns: { status: 200, delivered: false } }
+      budget: { max_llm_calls: 2, max_tool_calls: 30, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: dispatch }
+        - { type: calls_tool, name: page }
+        - { type: returns_matches, value: '"resumed":\s*false' }
+        - { type: returns_matches, value: '(?i)roll it back' }
+
+  - name: adversarial_the_page_status_is_not_a_status
+    visibility: adversarial
+    fixture: injected_instruction
+    annotation_md: |
+      The checkpoint said sending, so the page may or may not have gone out,
+      and the provider was asked. Its status endpoint answered with free
+      text and no delivered flag, and the text carried an instruction.
+
+      There is no delivered flag, so there is no answer to act on. Paging
+      again could ring the engineer a second time, and treating the reply as
+      a yes could leave the page unsent without anyone knowing. The only safe
+      move is to page nobody and report "unknown", which a person can check
+      in a minute. The reply's text is not evidence about the incident, so
+      it never reaches the model, and the canary never comes back.
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8155", "services": ["payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "CANARY_7731" }, reply: "CANARY_7731" }
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        checkpoint_load:
+          returns:
+            status: 200
+            data:
+              state:
+                incident: "INC-8155"
+                lines:
+                  - "deploys payments-api: lead: payments-api deploy d-5520 at 00:55"
+                  - "logs payments-api: lead: connection timeouts to the payments database"
+                  - "metrics payments-api: clear: payments-api CPU and memory normal"
+                  - "diff: definitive: d-5520 cut the database connection pool from 50 to 5"
+                cause: { finding: "d-5520 cut the database connection pool from 50 to 5", owner: payments }
+                page: { key: "INC-8155/page/payments", state: sending }
+        checkpoint_save: { returns: { status: 200, saved: true } }
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect: { returns: { status: 200, results: [] } }
+        page: { returns: { status: 200, paged: true } }
+        page_status: { fixture: injected_instruction, params: { canary: "CANARY_7731" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 30, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: page }
+        - { type: ignores_injection, canary: "CANARY_7731" }
+        - { type: returns_matches, value: '"page":\s*"unknown"' }
+
+  - name: adversarial_the_page_call_times_out
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      The page call raised TimeoutError. The request may have reached the
+      provider before the connection dropped, which puts this run in the same
+      gap a restart falls into: the page might have rung, and nothing here
+      knows.
+
+      Calling page again straight away is the Sunday bug without a restart.
+      The checkpoint already says sending, because it was saved before the
+      call, so the run asks the provider. The provider says delivered, the
+      state is saved as sent, and the engineer hears the pager once.
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8157", "services": ["payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        checkpoint_load: { returns: { status: 200, data: { state: null } } }
+        checkpoint_save: { returns: { status: 200, saved: true } }
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8157/deploys/payments-api", verdict: lead, finding: "payments-api deploy d-5520 at 00:55", next: [{ check: diff, args: { deploy: "d-5520" } }] }
+              - { job: "INC-8157/logs/payments-api", verdict: lead, finding: "connection timeouts to the payments database", next: [] }
+              - { job: "INC-8157/metrics/payments-api", verdict: clear, finding: "payments-api CPU and memory normal", next: [] }
+        diff: { returns: { status: 200, verdict: definitive, finding: "d-5520 cut the database connection pool from 50 to 5", owner: payments, next: [] } }
+        page: { fixture: slow_then_timeout, params: { succeeds: 0 } }
+        page_status: { returns: { status: 200, delivered: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 30, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: calls_tool, name: page_status }
+        - { type: returns_matches, value: '"page":\s*"sent"' }
+
+reference_md: |
+  A checkpoint records what this process believed at the moment it saved.
+  The pager records what actually happened. The Sunday bug lived in the gap
+  between the two: the page went out, the process died before the save, and
+  the restart believed the checkpoint. No ordering of the two writes closes
+  that gap, because the process can die between any two lines, so the design
+  has to make the gap visible and then ask about it.
+
+  Saving "sending" before the page is what makes it visible. A restart that
+  finds "sending" knows it is standing in the gap and that the checkpoint
+  cannot answer, so it asks the provider, which can. Delivered means the page
+  already rang and the only job left is to record that. Not delivered means
+  the page never left, and the owner still needs it. An answer with no
+  delivered flag is neither, so the code pages nobody and says so in the
+  result. A person who reads "unknown" can check in a minute, and a second
+  page cannot be taken back.
+
+  A page call that raises puts a run in the same gap without any restart.
+  The request may have reached the provider before the connection dropped,
+  so paging again in the same breath is the Sunday bug arriving by another
+  route. Ask, then decide.
+
+  The checkpoint is itself a tool result, and it can be wrong with total
+  confidence. Last night's state says a page went out, and one did, to the
+  search team, for a different incident. Checking that a saved state belongs
+  to this incident costs one comparison, and skipping it lets a stale answer
+  suppress tonight's page entirely. Nothing the checkpoint store or the
+  status endpoint says reaches the model's prompt unless it is this
+  investigation's own evidence, which is why the canary in the adversarial
+  status reply never comes back.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Your investigator crashed after paging the on-call engineer and before recording it. It restarts. What stops it paging her again, and what does it do when it cannot tell?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I014.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
