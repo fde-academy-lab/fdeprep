@@ -1,0 +1,601 @@
+slug: extraction-pilot-3-reconcile-line-items
+title: Check the invoice lines add up before anyone pays the total
+artefact_type: code
+difficulty: hard
+track: builds
+est_minutes: 40
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: tool-schema-design, weight: 0.5 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re, decimal]
+
+build: { id: extraction-pilot, title: "Rescue a document extraction pilot", stage: 3, of: 4 }
+
+brief_md: |
+  Stages 1 and 2 are live at the insurer. Every value comes from the letter,
+  every record meets the intake rules or reaches an adjuster after one
+  repair, and the error folder is empty.
+
+  An auditor found the next problem. Last month a contents claim was paid at
+  £4,125.00, the total the customer's letter claimed. The invoice attached to
+  it lists items that add up to £3,712.50. Nothing in the pipeline reads the
+  invoice lines, so nothing noticed the £412.50 between them. Itemised claims
+  are only 18 percent of the letters, and they carry 71 percent of the money
+  claimed.
+
+  Extend the pipeline to the invoice. Extract its lines, check that every
+  line really is on the invoice, and reconcile the lines against the letter's
+  total before anything is submitted. Two numbers that disagree go to an
+  adjuster with the reason, whichever of them looks right.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  The stub carries stages 1 and 2 as working code: the letter check in
+  `_ground`, the intake rules in `_validate`, one repair that carries the
+  error lines, and routing to `submit` or `human_queue`.
+
+  `question` is the letter, and `amount_claimed` is the total it claims.
+  `tools["invoice"]()` returns `{"status": 200, "text": "<the scanned
+  invoice>"}`. Treat any other result as an invoice with no text.
+
+  Ask the model for the four fields and `line_items`, a list of
+  `{"description": ..., "amount": ...}` copied from the invoice.
+
+  - A line item counts only when the invoice text contains its amount,
+    compared the way `_ground` compares a value with the letter. Leave any
+    other item out, with the error line `line_items: <amount> is not in the
+    invoice`.
+  - With no items left, add `line_items: missing`.
+  - When the kept items do not add up to `amount_claimed` to the penny, add
+    `amount_claimed: does not match the line items`.
+
+  These lines join the intake errors, so they drive the one repair and the
+  routing exactly as stage 2's do. The record you return carries
+  `line_items`. The return shape is stage 2's.
+
+  Budget: at most 3 model calls. Allowed imports: json, re, decimal.
+
+defence_question: |
+  Your reconciliation sends every mismatch to an adjuster. A month in, a
+  third of the human queue is invoices that miss their total by under five
+  pounds, mostly trader rounding, and the head of claims asks you to
+  auto-approve any mismatch below that line. What would you want to know
+  before agreeing, and what would you build instead of a flat tolerance?
+
+stub_code: |
+  import json
+  import re
+
+  FIELDS = ("policy_number", "claimant", "incident_date", "amount_claimed")
+  POLICY_NUMBER = re.compile(r"^[A-Z]{2}-\d{6}$")
+  AMOUNT = re.compile(r"^£\d[\d,]*(?:\.\d{2})?$")
+
+  NOT_IN_INVOICE = "line_items: {amount} is not in the invoice"
+  NO_ITEMS = "line_items: missing"
+  DOES_NOT_ADD_UP = "amount_claimed: does not match the line items"
+
+  EXTRACT = (
+      "Read the claim letter and the invoice below. Reply with one JSON object and "
+      "nothing else, with exactly these keys: policy_number, claimant, "
+      "incident_date, amount_claimed, line_items.\n"
+      "Copy each value exactly as it is written. amount_claimed is the total the "
+      "letter claims. line_items is a list with one object for each line of the "
+      "invoice, each with a description and an amount. When a value is not "
+      "stated, use null.\n\n"
+      "<letter>\n{letter}\n</letter>\n<invoice>\n{invoice}\n</invoice>\n"
+  )
+
+  REPAIR = (
+      "{extract}\n"
+      "Your previous reply was:\n{reply}\n\n"
+      "It was rejected for these reasons:\n{errors}\n\n"
+      "Reply with the corrected JSON object. A value that is not written in the "
+      "letter or the invoice stays null.\n"
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Stages 1 and 2 work below. Stage 3 adds the invoice.
+
+      tools["invoice"]() returns {"status": 200, "text": <the scanned invoice>}.
+      Treat any other result as an invoice with no text.
+
+      A line item counts only when the invoice text contains its amount. Leave
+      any other item out of the record, with the error line NOT_IN_INVOICE.
+      With no items left, the error line is NO_ITEMS. When the kept items do not
+      add up to amount_claimed to the penny, it is DOES_NOT_ADD_UP. These lines
+      join the intake errors, so they drive the one repair and the routing
+      exactly as those do. The record you return carries line_items.
+
+      At most 3 model calls. Allowed imports: json, re, decimal.
+      """
+      invoice_text = ""  # TODO 1: read it from tools["invoice"]()
+
+      prompt = EXTRACT.format(letter=question, invoice=invoice_text)
+      reply = llm(prompt)
+      record, errors = _check(reply, question, invoice_text)
+
+      if errors:
+          repair = REPAIR.format(extract=prompt, reply=reply, errors="\n".join(errors))
+          record, errors = _check(llm(repair), question, invoice_text)
+
+      if errors:
+          tools["human_queue"](record=record, errors=errors)
+          status = "queued"
+      else:
+          tools["submit"](record=record)
+          status = "submitted"
+      return json.dumps({"status": status, "record": record, "errors": errors})
+
+
+  def _check(reply: str, letter: str, invoice_text: str):
+      """Everything one reply has to pass. Returns (record, error lines)."""
+      extracted = _parse(reply)
+      record = _ground(extracted, letter)
+      errors = _validate(record)
+      # TODO 2: ground the line items and reconcile them, put the kept items in
+      #         record["line_items"], and add both sets of error lines
+      return record, errors
+
+
+  def _ground_items(items, invoice_text: str):
+      """Keep the items whose amount the invoice text contains.
+
+      Returns (kept items, error lines), one NOT_IN_INVOICE line per item left out.
+      """
+      return [], []  # TODO 3
+
+
+  def _reconcile(record: dict) -> list:
+      """[NO_ITEMS] or [DOES_NOT_ADD_UP] when the line items fail, else []."""
+      return []  # TODO 4
+
+
+  def _parse(reply: str) -> dict:
+      try:
+          parsed = json.loads(reply)
+      except ValueError:
+          return {}
+      return parsed if isinstance(parsed, dict) else {}
+
+
+  def _ground(extracted: dict, letter: str) -> dict:
+      """Stage 1: a field survives only when the letter contains it."""
+      source = _normalise(letter)
+      record = {}
+      for field in FIELDS:
+          value = extracted.get(field)
+          if isinstance(value, str) and value.strip() and _normalise(value) in source:
+              record[field] = value.strip()
+          else:
+              record[field] = None
+      return record
+
+
+  def _normalise(text: str) -> str:
+      return re.sub(r"\s+", " ", text).strip().casefold()
+
+
+  def _validate(record: dict) -> list:
+      """Stage 2: the claims system's intake rules, one error line per failed rule."""
+      errors = [f"{field}: missing" for field in FIELDS if record.get(field) is None]
+      policy = record.get("policy_number")
+      if policy is not None and not POLICY_NUMBER.match(policy):
+          errors.append("policy_number: not a policy number")
+      amount = record.get("amount_claimed")
+      if amount is not None and not AMOUNT.match(amount):
+          errors.append("amount_claimed: not an amount")
+      return errors
+
+hints:
+  - Two numbers should agree on every itemised claim. Ask which of them the
+    pipeline can verify, and against what.
+  - A line the invoice does not show is evidence of nothing, even when it makes
+    the total balance neatly. Stage 1 already solved this problem for the
+    letter.
+  - Binary floating point stores almost no pence value exactly. Count money in
+    a type that does, such as whole pence as integers or decimal.
+  - "The shape: read the invoice text, keep each line whose amount the invoice
+    contains, add the kept lines in pence, compare the sum with amount_claimed,
+    and add an error line for whatever fails. The repair and routing you
+    already have do the rest."
+  - An invoice that never arrived leaves nothing to check a line against, so
+    no line passes and the claim goes to a person.
+
+scenario:
+  who: The head of claims operations at a regional home insurer
+  situation: >-
+    Stages 1 and 2 are live. A claim with an itemised invoice goes through
+    when its fields pass, and nothing checks that the invoice lines add up to
+    the total the letter claims.
+  stakes: >-
+    A contents claim was paid at £4,125.00 against invoice lines worth
+    £3,712.50. Itemised claims are 18 percent of the letters and 71 percent
+    of the money claimed.
+  metrics:
+    - { label: Overpaid on one claim, value: "£412.50" }
+    - { label: Letters with an invoice, value: "18%" }
+    - { label: Share of money claimed, value: "71%" }
+
+diagram:
+  title: Where a stated total gets paid without the lines behind it
+  caption: >-
+    The letter's total and the invoice lines should agree. Check every line
+    against the invoice, add them in pence, and route any disagreement to a
+    person.
+  direction: lr
+  nodes:
+    - { id: letter, label: Claim letter, sub: states the total claimed, kind: doc, tone: blue, at: [0, 1] }
+    - { id: invoice, label: Invoice, sub: the scanned lines behind the total, kind: doc, tone: blue, at: [0, 2] }
+    - { id: model, label: Model, sub: can merge rows or balance the books, kind: model, tone: teal, at: [1, 0] }
+    - { id: extractor, label: Extractor, sub: "asks, then repairs once", kind: agent, tone: purple, at: [1, 1] }
+    - { id: grounding, label: Source check, sub: "fields in the letter, lines in the invoice", kind: guard, tone: green, at: [2, 1] }
+    - { id: validator, label: Validator, sub: the claims system's intake rules, kind: guard, tone: blue, at: [3, 1] }
+    - { id: reconcile, label: Reconciliation, sub: lines against the total in pence, kind: guard, tone: green, at: [3, 2] }
+    - { id: claims, label: Claims system, sub: pays what the record says, kind: service, tone: orange, at: [4, 1] }
+    - { id: queue, label: Human queue, sub: an adjuster keys it by hand, kind: queue, tone: neutral, at: [4, 2] }
+  edges:
+    - { from: letter, to: extractor, label: letter text, step: 1 }
+    - { from: invoice, to: extractor, label: invoice text, step: 2 }
+    - { from: extractor, to: model, label: fields and line items, step: 3 }
+    - { from: model, to: extractor, label: "£538.00, two rows as one", step: 4 }
+    - { from: extractor, to: grounding, label: every value and line, step: 5 }
+    - { from: grounding, to: validator, label: a grounded record }
+    - { from: validator, to: reconcile, label: a valid record }
+    - { from: reconcile, to: claims, label: adds up to the penny, tone: success }
+    - { from: reconcile, to: queue, label: does not add up }
+    - { from: validator, to: extractor, label: one repair with the reasons }
+    - { from: validator, to: claims, label: "total paid, lines unread", tone: danger }
+
+approach:
+  goal: Pay what the invoice lines prove, and send every disagreement to a person
+  branches:
+    - label: Trust neither number on its own
+      leaves: [a letter total can be inflated, a printed line can be wrong, the model can balance the books]
+    - label: Every line comes from the invoice
+      detail: The stage 1 letter check, pointed at the attachment.
+      leaves: [an amount the invoice never shows is not a line, no invoice leaves nothing to check against]
+    - label: Add money the way an auditor would
+      leaves: [to the penny, in a type that cannot drift]
+    - label: Reuse the pipeline you have
+      leaves: [new error lines drive the one repair, a merged row gets one more look]
+
+coach:
+  opening: >-
+    Two numbers on every itemised claim should agree: the total the letter
+    claims and the sum of the invoice lines. Before you write code, decide
+    which of them the pipeline can verify.
+  signals:
+    - id: lines-unchecked
+      when:
+        code_lacks: '\bin\s+[\w.(]*(?:invoice|attachment|scan)|_?normali[sz]e\(\s*invoice|invoice\w*\.(?:lower|casefold|find|count)\('
+      say: >-
+        Nothing checks a line against the invoice yet, so any line the model
+        returns counts towards the sum, including one it wrote to make the
+        total balance.
+    - id: float-money
+      when: { code_matches: '\bfloat\(' }
+      say: >-
+        Money is being added as floats. Most pence values have no exact binary
+        form, so a sum can miss a total it equals. Which type holds pence
+        exactly?
+    - id: sent-a-correct-claim-to-a-person
+      when: { test_failed: a_claim_that_adds_up_to_the_penny_is_submitted }
+      say: >-
+        That claim adds up exactly and your pipeline sent it to an adjuster.
+        Print the sum your code computed next to the total, with every digit.
+    - id: counted-a-written-line
+      when: { test_failed: a_line_the_invoice_never_shows_does_not_count }
+      say: >-
+        The model added a delivery line to make the lines match the letter.
+        Where on that invoice does a £75.00 line appear?
+    - id: merged-row-kept
+      when: { test_failed: two_items_on_one_scanned_row_are_split_on_repair }
+      say: >-
+        The scan put two items on one row and the model returned them as a
+        single £538.00 line. Nothing on the invoice says £538.00, and the
+        repair is where the model gets to look again.
+    - id: missing-invoice-trusted
+      when: { test_failed: adversarial_the_invoice_never_arrived }
+      say: >-
+        The invoice tool returned nothing, and the model still produced lines
+        that add up. What can a line be checked against when there is no
+        invoice, and does your code survive being handed None?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and print the invoice text inside _check. Then write
+        the line check before you write the sum.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints go from which number to trust, to the
+        line check, to the arithmetic.
+  wrap_up: >-
+    Two numbers that should agree are a free check, and trusting either one
+    throws it away. Ground every line in its source, add money exactly, and
+    send a disagreement to a person with the reason named.
+
+tests:
+  - name: an_invoice_that_adds_up_is_submitted
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          8 April 2026
+
+          Dear claims team,
+
+          Our home was burgled on 6 April 2026 and the electrical goods in the
+          living room were taken. My policy number is HX-509118. The
+          retailer's invoice for the replacements is attached, and the total
+          I am claiming is £1,626.00.
+
+          Yours faithfully,
+          Grace Adeyemi
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-509118", "claimant": "Grace Adeyemi", "incident_date": "6 April 2026", "amount_claimed": "£1,626.00", "line_items": [{"description": "Laptop, 14 inch", "amount": "£899.00"}, {"description": "Television, 43 inch", "amount": "£449.00"}, {"description": "Soundbar", "amount": "£189.00"}, {"description": "Wall bracket", "amount": "£89.00"}]}' }
+      tools:
+        invoice:
+          returns:
+            status: 200
+            text: |
+              INVOICE No. 20417          Date: 7 April 2026
+              Laptop, 14 inch                         £899.00
+              Television, 43 inch                     £449.00
+              Soundbar                                £189.00
+              Wall bracket                             £89.00
+              TOTAL                                 £1,626.00
+        submit: { returns: { status: 200, claim: "C-6101" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-4201" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 5, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: invoice }
+        - { type: calls_tool, name: submit }
+        - { type: returns_matches, value: '"status":\s*"submitted"' }
+        - { type: returns_matches, value: '"line_items":\s*\[' }
+
+  - name: line_items_that_do_not_add_up_go_to_the_queue
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          3 April 2026
+
+          Dear claims team,
+
+          Jewellery, a camera and a laptop were stolen from our home on 1 April
+          2026. My policy number is HX-338150. The invoice for the
+          replacements is attached, and I am claiming £1,935.00 in total.
+
+          Kind regards,
+          Omar Haddad
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-338150", "claimant": "Omar Haddad", "incident_date": "1 April 2026", "amount_claimed": "£1,935.00", "line_items": [{"description": "Laptop, 13 inch", "amount": "£899.00"}, {"description": "Camera body", "amount": "£623.50"}, {"description": "Jewellery box, silver", "amount": "£41.25"}]}' }
+      tools:
+        invoice:
+          returns:
+            status: 200
+            text: |
+              INVOICE No. 8812           Date: 2 April 2026
+              Laptop, 13 inch                         £899.00
+              Camera body                             £623.50
+              Jewellery box, silver                    £41.25
+              TOTAL                                 £1,935.00
+        submit: { returns: { status: 200, claim: "C-6102" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-4202" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 5, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: invoice }
+        - { type: calls_tool, name: human_queue }
+        - { type: does_not_call_tool, name: submit }
+        - { type: returns_matches, value: 'amount_claimed: does not match the line items' }
+
+  - name: a_claim_that_adds_up_to_the_penny_is_submitted
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          11 April 2026
+
+          Dear claims team,
+
+          A tablet, a phone and a laptop were taken when our car was broken
+          into on 10 April 2026. My policy number is HX-716402. The invoice for
+          the replacements is attached, and I am claiming £2,079.97.
+
+          Yours sincerely,
+          Ben Castellano
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-716402", "claimant": "Ben Castellano", "incident_date": "10 April 2026", "amount_claimed": "£2,079.97", "line_items": [{"description": "Tablet, 11 inch", "amount": "£229.99"}, {"description": "Phone, 128 GB", "amount": "£599.99"}, {"description": "Laptop, 15 inch", "amount": "£1,249.99"}]}' }
+      tools:
+        invoice:
+          returns:
+            status: 200
+            text: |
+              INVOICE No. 30551          Date: 11 April 2026
+              Tablet, 11 inch                         £229.99
+              Phone, 128 GB                           £599.99
+              Laptop, 15 inch                       £1,249.99
+              TOTAL                                 £2,079.97
+        submit: { returns: { status: 200, claim: "C-6103" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-4203" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 5, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: submit }
+        - { type: does_not_call_tool, name: human_queue }
+        - { type: returns_matches, value: '"status":\s*"submitted"' }
+
+  - name: a_line_the_invoice_never_shows_does_not_count
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          9 April 2026
+
+          Dear claims team,
+
+          Smoke from a kitchen fire on 7 April 2026 ruined the sofa, the rug
+          and the cushions in our living room. My policy number is HX-254877.
+          The invoice for the replacements is attached, and the total I am
+          claiming is £1,540.00, which includes the delivery charge for the
+          new sofa.
+
+          Yours faithfully,
+          Helen Marsh
+      llm_script:
+        - { match: { regex: '(?i)not\s+(?:\w+\s+){0,2}in\s+the\s+invoice' },
+            reply: '{"policy_number": "HX-254877", "claimant": "Helen Marsh", "incident_date": "7 April 2026", "amount_claimed": "£1,540.00", "line_items": [{"description": "Sofa, three seat", "amount": "£1,150.00"}, {"description": "Rug, 160 x 230", "amount": "£225.00"}, {"description": "Cushions, set of four", "amount": "£90.00"}]}' }
+        - { match: "*",
+            reply: '{"policy_number": "HX-254877", "claimant": "Helen Marsh", "incident_date": "7 April 2026", "amount_claimed": "£1,540.00", "line_items": [{"description": "Sofa, three seat", "amount": "£1,150.00"}, {"description": "Rug, 160 x 230", "amount": "£225.00"}, {"description": "Cushions, set of four", "amount": "£90.00"}, {"description": "Delivery", "amount": "£75.00"}]}' }
+      tools:
+        invoice:
+          returns:
+            status: 200
+            text: |
+              INVOICE No. 11960          Date: 8 April 2026
+              Sofa, three seat                      £1,150.00
+              Rug, 160 x 230                          £225.00
+              Cushions, set of four                    £90.00
+              TOTAL                                 £1,465.00
+        submit: { returns: { status: 200, claim: "C-6104" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-4204" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 5, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: submit }
+        - { type: calls_tool, name: human_queue }
+        - { type: returns_matches, value: 'amount_claimed: does not match the line items' }
+
+  - name: two_items_on_one_scanned_row_are_split_on_repair
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          14 April 2026
+
+          Dear claims team,
+
+          Burglars took the television and other electrical goods from our
+          flat on 12 April 2026. My policy number is HX-883021. The invoice for
+          the replacements is attached, and the total I am claiming is
+          £1,626.00.
+
+          Regards,
+          Luke Brennan
+      llm_script:
+        - { match: { regex: '(?i)not\s+(?:\w+\s+){0,2}in\s+the\s+invoice' },
+            reply: '{"policy_number": "HX-883021", "claimant": "Luke Brennan", "incident_date": "12 April 2026", "amount_claimed": "£1,626.00", "line_items": [{"description": "Laptop, 14 inch", "amount": "£899.00"}, {"description": "Television, 43 inch", "amount": "£449.00"}, {"description": "Wall bracket", "amount": "£89.00"}, {"description": "Soundbar", "amount": "£189.00"}]}' }
+        - { match: "*",
+            reply: '{"policy_number": "HX-883021", "claimant": "Luke Brennan", "incident_date": "12 April 2026", "amount_claimed": "£1,626.00", "line_items": [{"description": "Laptop, 14 inch", "amount": "£899.00"}, {"description": "Television, 43 inch and wall bracket", "amount": "£538.00"}, {"description": "Soundbar", "amount": "£189.00"}]}' }
+      tools:
+        invoice:
+          returns:
+            status: 200
+            text: |
+              INVOICE No. 20455          Date: 13 April 2026
+              Laptop, 14 inch                         £899.00
+              Television, 43 inch  £449.00   Wall bracket  £89.00
+              Soundbar                                £189.00
+              TOTAL                                 £1,626.00
+        submit: { returns: { status: 200, claim: "C-6105" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-4205" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 5, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: submit }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: returns_matches, value: '"amount":\s*"(?:£|\\u00a3)89\.00"' }
+
+  - name: adversarial_the_invoice_never_arrived
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The invoice tool returned nothing, which is what an attachment looks
+      like while the scanning service is still working on it. The model did
+      not say so. It had the letter's description of a stolen bike and a
+      total of £2,380.00, and it wrote three invoice lines that add up to
+      exactly that.
+
+      A reconciliation that trusts the model's lines passes this claim,
+      because the model wrote them to pass. Only checking each line against
+      the invoice text catches it, and with no invoice text there is nothing
+      a line can be checked against. The claim goes to an adjuster, whose
+      first question is where the invoice went.
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          15 April 2026
+
+          Dear claims team,
+
+          My road bike, helmet, lights and lock were stolen from the garage on
+          13 April 2026. My policy number is HX-590362. The shop's invoice for
+          the replacements is attached, and I am claiming £2,380.00.
+
+          Yours faithfully,
+          Chloe Brandt
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-590362", "claimant": "Chloe Brandt", "incident_date": "13 April 2026", "amount_claimed": "£2,380.00", "line_items": [{"description": "Road bike", "amount": "£1,899.00"}, {"description": "Helmet", "amount": "£129.00"}, {"description": "Lights and lock", "amount": "£352.00"}]}' }
+      tools:
+        invoice: { fixture: empty_tool_result }
+        submit: { returns: { status: 200, claim: "C-6106" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-4206" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 5, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: does_not_call_tool, name: submit }
+        - { type: calls_tool, name: human_queue }
+
+reference_md: |
+  An itemised claim carries two numbers that ought to agree: the total the
+  letter claims, and the sum of the invoice lines. The pipeline paid the first
+  and never read the second, which is how £4,125.00 went out against lines
+  worth £3,712.50. Reconciling them does not decide which number is right. It
+  notices that they disagree, which is all an automated step can honestly do,
+  and it hands the disagreement to someone who can ring the trader.
+
+  The line check matters more than the arithmetic. Given a letter claiming
+  £1,540.00 and an invoice for £1,465.00, the model added a delivery line for
+  £75.00, and a reconciliation over the model's own lines agrees with it
+  perfectly, because the model wrote the line to agree. Checking each amount
+  against the invoice text is stage 1's letter check pointed at the
+  attachment, and it is the only thing in the pipeline that separates a line
+  the trader printed from one the model supplied. With no invoice at all, as
+  in the adversarial case, there is nothing to check a line against, and the
+  claim belongs to a person.
+
+  Money goes in whole pence because binary floating point stores almost no
+  pence value exactly. 229.99 + 599.99 + 1249.99 is a hair more than 2079.97
+  in floats, so a float comparison sends a correct claim to the queue, and the
+  usual patch, a tolerance of a penny, quietly accepts a real one-penny
+  discrepancy as well. Integers have neither problem.
+
+  The new checks are error lines and nothing else, so stage 2's single repair
+  and its routing carry them without new control flow. That is what gave the
+  merged row its second look: the scan put the television and the bracket on
+  one row, the model returned one £538.00 line that the invoice never shows,
+  and the repair prompt said so.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    The line items you extracted add up to less than the total the letter claims. Which number do you pay?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
