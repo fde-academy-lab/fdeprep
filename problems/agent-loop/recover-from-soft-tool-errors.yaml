@@ -106,10 +106,14 @@ step_checks:
     spec:
       assertions:
         - { type: handles_error }
+  # Reads returns_final_answer. Steps s1, s3 and s4 cannot be told apart from
+  # the stub on the public cases: neither returns a soft error or carries text
+  # that reads like an instruction, so their checks stay as they were.
   - step_id: s2
     spec:
       assertions:
-        - { type: returns_nonempty }
+        - { type: returns_matches, value: '(?i)in transit' }
+        - { type: returns_lacks, value: 'Final Answer' }
   - step_id: s3
     spec:
       assertions:
