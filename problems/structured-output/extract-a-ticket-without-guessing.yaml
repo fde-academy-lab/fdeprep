@@ -1,0 +1,368 @@
+slug: extract-a-ticket-without-guessing
+title: Leave the order number empty when the customer never gave one
+artefact_type: code
+difficulty: easy
+track: structured-output
+est_minutes: 15
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The support desk at an online homeware shop turns every customer email into
+  a ticket before a person reads it. A model pulls out three fields, the order
+  number, the email address and the phone number, and the ticket system files
+  the email against that order.
+
+  On Tuesday a customer wrote that the lid of her kettle had arrived cracked.
+  She gave no order number. The model filled one in anyway, `HW-20931`, which
+  is a real order belonging to somebody else. The agent who picked up the
+  ticket saw a stranger's name and address, assumed the customer had moved
+  house, and refunded the stranger's order.
+
+  Nothing in that ticket was malformed. It was valid JSON with a plausible
+  order number in it, which is why nobody caught it. Write the intake step so
+  that a field the customer never wrote comes back empty.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the customer's email exactly as it arrived. `llm(prompt)`
+  always replies with a JSON object. There are no tools.
+
+  The model is asked for `order_id`, `email` and `phone`. It usually gets them
+  right. Sometimes it invents a value the email does not contain, writes a
+  placeholder such as `"unknown"` where it should write null, leaves a field
+  out, or adds a field nobody asked for.
+
+  Return the ticket as a JSON string with exactly the keys `order_id`, `email`
+  and `phone`. Each value is either a string that appears in the email,
+  ignoring case, or null. A value the email does not contain is null, no
+  matter how plausible it looks.
+
+  Budget: at most 2 model calls, and one is enough. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  FIELDS = ("order_id", "email", "phone")
+
+
+  def build_prompt(email_text: str) -> str:
+      return (
+          "Read the customer email below. Reply with a JSON object with the keys "
+          "order_id, email and phone. Use null for anything the email does not "
+          "state.\n\n"
+          f"Email:\n{email_text}\n"
+      )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      reply = llm(build_prompt(question))
+      ticket = {}
+
+      # TODO 1: parse the reply with json.loads into a dict called extracted
+      # TODO 2: put every name in FIELDS into ticket, each set to None
+      # TODO 3: for each name in FIELDS, copy the model's value into ticket
+      #         only when stated_in(value, question) is True. A field the
+      #         model left out is not in extracted at all.
+
+      return json.dumps(ticket)
+
+
+  def stated_in(value, email_text: str) -> bool:
+      """True when value is a non-empty string that the email contains."""
+      # TODO 4: check the type first (a number, a list or None is never
+      #         stated), then look for the value in email_text, ignoring case
+      return True
+
+steps:
+  - id: s1
+    text: Parse the model's reply into a dict.
+    check_id: s1
+  - id: s2
+    text: Start the ticket with all three fields set to None.
+    check_id: s2
+  - id: s3
+    text: Copy a value onto the ticket only when stated_in says the email has it.
+    check_id: s3
+  - id: s4
+    text: Make stated_in look for the value in the email, ignoring case.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [order_id, email, phone] } }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"order_id"\s*:\s*"HW-' }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [order_id, email, phone],
+                      additionalProperties: false,
+                      properties: { order_id: { type: [string, "null"] },
+                                    email: { type: [string, "null"] },
+                                    phone: { type: [string, "null"] } } } }
+
+hints:
+  - The prompt already asks for null. Look at what your code does after the
+    model replies, because that is the only part of this system you control.
+  - A value earns its place on the ticket when the email contains it. How
+    plausible it looks is no evidence at all, and HW-20931 looked perfect.
+  - Build the ticket from FIELDS with every value None, then copy a value
+    across only when the email contains it. The keys come from your list and
+    the values come from the email.
+  - Placeholders such as "unknown" are strings too. They fail the same check
+    an invented order number fails, so they need no special case.
+
+scenario:
+  who: The support desk at an online homeware shop
+  situation: >-
+    A customer reported a cracked kettle lid and gave no order number. The
+    extraction model supplied one, HW-20931, which belongs to another customer.
+  stakes: >-
+    The agent refunded the stranger's order and saw their name and address.
+    The real customer waited two more days for an answer.
+  metrics:
+    - { label: Invented order numbers, value: 9 last week }
+    - { label: Refunds to a stranger, value: "2" }
+    - { label: Emails with no order no., value: 1 in 5 }
+
+diagram:
+  title: Where a guessed order number reaches the ticket
+  caption: >-
+    Every value the model returns is checked against the email before it goes
+    on the ticket. Without the check, a guess and a fact look identical.
+  direction: lr
+  nodes:
+    - { id: email, label: Customer email, sub: no order number in it, kind: actor, tone: blue, at: [0, 1] }
+    - { id: intake, label: Intake step, sub: builds the ticket, kind: agent, tone: purple, at: [1, 1] }
+    - { id: model, label: Extraction model, sub: asked for null and guesses anyway, kind: model, tone: teal, at: [1, 0] }
+    - { id: check, label: "Stated in the email?", sub: one check per value, kind: guard, tone: green, at: [2, 1] }
+    - { id: ticket, label: Ticket, sub: order_id is null, kind: output, tone: blue, at: [3, 1] }
+    - { id: wrong, label: "A stranger's order", sub: refunded by mistake, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: email, to: intake, label: the email, step: 1 }
+    - { from: intake, to: model, label: prompt, step: 2 }
+    - { from: model, to: intake, label: "order_id HW-20931", step: 3 }
+    - { from: intake, to: check, label: each value, step: 4 }
+    - { from: check, to: ticket, label: null when not stated, tone: success }
+    - { from: intake, to: wrong, label: copied as it came, tone: danger }
+
+approach:
+  goal: Put only what the customer wrote on the ticket
+  branches:
+    - label: The ticket's shape belongs to your code
+      leaves: [three keys every time, a key the model skipped is null, a key it added is dropped]
+    - label: Every value needs evidence
+      detail: The email is the only source. A plausible value with no evidence behind it is a guess.
+      leaves: [look for the value in the email, ignore case]
+    - label: Placeholders are values too
+      leaves: ["unknown fails the same check", no special cases]
+    - label: The prompt is a request
+      leaves: [asking for null helps, the code has the last word]
+
+coach:
+  opening: >-
+    Find the line where the model's reply becomes the ticket. Everything this
+    problem is about happens on that line.
+  signals:
+    - id: hands-back-the-reply
+      when: { code_matches: 'json\.dumps\(\s*json\.loads\(' }
+      say: >-
+        This returns whatever the model wrote, its keys and its values. Which
+        line of your code decides what is allowed onto the ticket?
+    - id: no-check-against-the-email
+      when:
+        code_lacks: '\bin\s+\w*(question|email|message|text|body|source|lower)\w*|\.(lower|casefold)\(\)[^\n]*\bin\b|\.find\(|re\.search\('
+      say: >-
+        Nothing compares the model's values with the email itself. The prompt
+        asks for null and the model does not always listen. What would prove a
+        value came from the email?
+    - id: stated-in-still-returns-true
+      when:
+        code_matches: 'def stated_in\([^)]*\)[^\n]*\n(?:[ \t]*(?:#[^\n]*|"""[^\n]*""")?\n)*[ \t]*return True[ \t]*$'
+      say: >-
+        stated_in still says yes to everything, so an invented order number
+        passes it. What should it look for in the email before it says yes?
+    - id: invented-order-number
+      when: { test_failed: an_order_number_the_customer_never_wrote_comes_back_empty }
+      say: >-
+        That email has no order number in it, and the model supplied one
+        anyway. Trace the order_id value from the reply to your ticket.
+    - id: placeholder-kept
+      when: { test_failed: a_placeholder_is_not_a_value }
+      say: >-
+        The model wrote words where it should have written null. Does your
+        check treat a placeholder any differently from a real value?
+    - id: shape-from-the-reply
+      when: { test_failed: a_field_the_model_dropped_is_still_on_the_ticket }
+      say: >-
+        The model left a field out and added one nobody asked for. Where do
+        your ticket's keys come from, the reply or FIELDS?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 2: a ticket with all three keys set to None. Run it,
+        and the schema check on the public tests turns green.
+    - id: see-the-hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints walk from where to look to the shape
+        of the fix, and on Easy they cost nothing.
+  wrap_up: >-
+    Extraction fails quietly, because a guessed value looks exactly like a
+    real one. Fix the shape in code and ask for evidence behind every value,
+    and the ticket can only say what the customer said.
+
+tests:
+  - name: a_complete_email_fills_every_field
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Hello, order HW-20417 arrived with the lid of the kettle cracked. You
+          can reach me on 07700 900418 or at dana.whitfield@example.com. Dana
+      llm_script:
+        - { match: "*",
+            reply: '{"order_id": "HW-20417", "email": "dana.whitfield@example.com", "phone": "07700 900418"}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [order_id, email, phone],
+                      additionalProperties: false,
+                      properties: { order_id: { type: [string, "null"] },
+                                    email: { type: [string, "null"] },
+                                    phone: { type: [string, "null"] } } } }
+        - { type: returns_matches, value: '"order_id"\s*:\s*"HW-20417"' }
+        - { type: returns_matches, value: 'dana\.whitfield@example\.com' }
+
+  - name: an_email_with_no_phone_number_leaves_phone_empty
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Hi, the bath mat from order HW-20588 is the wrong colour. Please
+          reply to sam.okafor@example.org.
+      llm_script:
+        - { match: "*",
+            reply: '{"order_id": "HW-20588", "email": "sam.okafor@example.org", "phone": null}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [order_id, email, phone] } }
+        - { type: returns_matches, value: '"phone"\s*:\s*null' }
+        - { type: returns_matches, value: '"order_id"\s*:\s*"HW-20588"' }
+
+  - name: an_order_number_the_customer_never_wrote_comes_back_empty
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          My kettle came yesterday and the lid is cracked right across. It was
+          a birthday present. Can you help? Priya, priya.nair@example.com
+      llm_script:
+        - { match: "*",
+            reply: '{"order_id": "HW-20931", "email": "priya.nair@example.com", "phone": null}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [order_id, email, phone] } }
+        - { type: returns_matches, value: '"order_id"\s*:\s*null' }
+        - { type: returns_matches, value: '"email"\s*:\s*"priya\.nair@example\.com"' }
+
+  - name: a_placeholder_is_not_a_value
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Order HW-20702: the towels arrived but the invoice was not in the
+          box. Thanks.
+      llm_script:
+        - { match: "*",
+            reply: '{"order_id": "HW-20702", "email": "unknown", "phone": "not provided"}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"email"\s*:\s*null' }
+        - { type: returns_matches, value: '"phone"\s*:\s*null' }
+        - { type: returns_matches, value: '"order_id"\s*:\s*"HW-20702"' }
+
+  - name: a_field_the_model_dropped_is_still_on_the_ticket
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Where is order HW-20655? It was due on Friday. Call me on
+          07700 900772, it is for my mother's birthday.
+      llm_script:
+        - { match: "*",
+            reply: '{"order_id": "HW-20655", "phone": "07700 900772", "urgency": "high"}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [order_id, email, phone],
+                      additionalProperties: false,
+                      properties: { order_id: { type: [string, "null"] },
+                                    email: { type: [string, "null"] },
+                                    phone: { type: [string, "null"] } } } }
+        - { type: returns_matches, value: '"email"\s*:\s*null' }
+        - { type: returns_matches, value: '"phone"\s*:\s*"07700 900772"' }
+
+reference_md: |
+  The prompt asks for null, and the model still guesses sometimes. Asking
+  lowers the rate, and nothing checks that the model listened. The checking
+  happens on the one line after the reply: a value goes on the ticket only
+  when the email contains it.
+
+  The ticket's shape comes from `FIELDS`, never from the reply. Starting every
+  field at None means a key the model forgot is still on the ticket, empty, and
+  a key the model invented has nowhere to go. The downstream ticket system
+  reads three keys and gets three keys whatever the model did.
+
+  Placeholders need no special case. "unknown" and "not provided" are strings
+  the customer never wrote, so they fail the same check an invented order
+  number fails. A rule list of placeholder words would miss the next one the
+  model thinks of.
+
+  The check is strict on purpose, and it has a cost. If the model rewrites
+  07700 900418 as 07700900418, the check throws a real phone number away. That
+  is the right trade here: an empty field costs one question to the customer,
+  and a wrong order number cost a refund to a stranger and showed them another
+  customer's address.
+
+  The check also has a limit worth knowing. It proves the email contains the
+  value; it cannot tell which of two order numbers the customer meant when the
+  email contains both. That needs a different rule, and a later problem in
+  this track is about exactly that.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A support prompt must answer confidently and never invent facts. What happens when evidence is missing?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I001.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
