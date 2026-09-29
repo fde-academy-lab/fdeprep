@@ -70,11 +70,102 @@ stub_code: |
       return "I could not find that in the help centre."
 
 hints:
+  - Both mistakes this problem catches are about positions, where each window
+    starts and which number you write beside it. Write the start of every
+    window down for a 200 character article.
+  - A sentence that starts near the end of one window is only whole if the next
+    window starts before that sentence does.
   - A window every 80 characters is not the same as a window every 120.
   - The offset you write is the offset in the article, not the index of the
     window in your list.
-  - A sentence that starts near the end of one window is only whole if the next
-    window starts before that sentence does.
+
+scenario:
+  who: Support operations for a subscription service's help centre
+  situation: >-
+    For a month the policy assistant has answered "how long do I have to cancel
+    a subscription?" wrongly. The article says it in one sentence, and the
+    chunker cuts that sentence in half at character 120.
+  stakes: >-
+    Every customer who asked got a cancellation window the article never
+    states, and the assistant finished the sentence itself.
+  metrics:
+    - { label: Window size, value: 120 characters }
+    - { label: Answer starts at, value: character 108 }
+    - { label: Wrong for, value: a month }
+
+diagram:
+  title: Where the cancellation sentence is cut in half
+  caption: >-
+    Windows that tile the article cut any sentence that crosses a seam.
+    Overlap gives every short sentence one window where it is whole.
+  direction: lr
+  nodes:
+    - { id: article, label: Article, sub: the answer starts at character 108, kind: doc, tone: blue, at: [0, 1] }
+    - { id: chunker, label: Chunker, sub: cuts the text into windows, kind: service, tone: purple, at: [1, 1] }
+    - { id: tiled, label: Window 0 to 120, sub: ends in the middle of the answer, kind: doc, tone: orange, at: [2, 0] }
+    - { id: overlap, label: Window 80 to 200, sub: holds the whole sentence, kind: doc, tone: green, at: [2, 2] }
+    - { id: model, label: Model, sub: reads the windows that match, kind: model, tone: teal, at: [3, 1] }
+    - { id: guess, label: Invented window, sub: the model finished the sentence, kind: output, tone: pink, at: [4, 0] }
+    - { id: cited, label: Cited answer, sub: "[start=80] points into the article", kind: output, tone: green, at: [4, 2] }
+  edges:
+    - { from: article, to: chunker, label: text, step: 1 }
+    - { from: chunker, to: tiled, label: a window every 120, tone: danger }
+    - { from: tiled, to: model, label: half a sentence, tone: danger }
+    - { from: model, to: guess, label: fills in the rest, tone: danger }
+    - { from: chunker, to: overlap, label: a window every 80, tone: success }
+    - { from: overlap, to: model, label: the whole sentence, tone: success }
+    - { from: model, to: cited, label: offset in the article, tone: success }
+
+approach:
+  goal: Keep every short sentence whole in one window, and cite where it sits
+  branches:
+    - label: Find where the answer sits
+      leaves: [the sentence starts at character 108, a seam at 120 cuts it]
+    - label: Overlap the windows
+      detail: Windows 120 long that start every 80 repeat 40 characters at every seam.
+      leaves: [half as much storage again, a sentence under 40 characters is always whole]
+    - label: Carry the offset from the cut
+      leaves: [the start in the article, filtering changes positions in a list]
+    - label: Keep article order
+      leaves: [write kept windows in the order they appear, a person can follow the citations]
+
+coach:
+  opening: >-
+    Work out where each window starts. The cancellation sentence begins at
+    character 108, and everything here depends on whether one window holds all
+    of it.
+  signals:
+    - id: steps-by-the-window-size
+      when: { code_matches: 'range\(.*,\s*(SIZE|120)\s*\)|\+=\s*(SIZE|120)\b(?!\s*-)' }
+      say: >-
+        Your windows start every SIZE characters, so they tile the article with
+        no overlap. Which sentence does a seam at character 120 cut?
+    - id: hidden-sentence-at-108
+      when: { test_failed: a_sentence_starting_at_108_survives_the_cut }
+      say: >-
+        That article's answer starts at character 108. List where each of your
+        windows starts and ends, and check whether any one holds the whole
+        sentence.
+    - id: hidden-offset
+      when: { test_failed: the_offset_points_at_the_article_not_the_window_list }
+      say: >-
+        Only one window in that article matches, and it does not start at zero.
+        Is the number after start= its place in the article or in your list?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 3 on its own: turn a string into (start, window) pairs
+        and check that the starts go up by 80. The filter and the format come
+        after.
+    - id: keep-failing
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints are open now, and the second one
+        names the mechanism without writing the loop for you.
+  wrap_up: >-
+    Chunking decides what the model can ever read whole. Overlap costs a little
+    storage, and a citation that points at a real offset is the only kind a
+    person can check.
 
 tests:
   - name: answers_from_a_single_window
@@ -174,7 +265,7 @@ reference_md: |
   the model finishes the sentence, because finishing sentences is what it is
   for.
 
-  Stepping 80 to produce windows of 120 costs a third more storage and makes
+  Stepping 80 to produce windows of 120 costs half as much storage again and makes
   every sentence shorter than 40 characters whole in at least one window. That
   is the trade, and it is cheap on the side that matters.
 
