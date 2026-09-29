@@ -46,19 +46,167 @@ contract_md: |
   - Only turns whose `customer_id` equals the current customer may be put in
     the prompt. Not summarised, not paraphrased, not included with a warning.
   - If those turns contain no order reference, return
-    "I need to know which order you mean." and do not search.
+    "I need to know which order you mean." and do not search. An order
+    reference is a capital letter, a hyphen and three to six digits, such as
+    `A-1188`.
   - Otherwise send the rewritten query to `search` and answer from what comes
     back.
 
   Budget: at most 4 model calls. Allowed imports: json, re.
 
+stub_code: |
+  import json
+  import re
+
+  ASK = "I need to know which order you mean."
+
+
+  def split_question(question: str) -> tuple:
+      """Return (customer_id, text) from "customer=<id>|<text>"."""
+      raise NotImplementedError
+
+
+  def order_references(turns: list) -> list:
+      """Order references such as A-1188 in these turns' text, in order."""
+      raise NotImplementedError
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Resolve a follow-up from this customer's own turns, or ask.
+
+      question is "customer=<id>|<text>". llm(prompt) replies with one of:
+          Action: history()
+          Rewrite: <standalone query>
+          Final Answer: <text>
+
+      tools["history"]() returns {"status": 200, "turns": [
+          {"n": 1, "customer_id": "c-1", "text": "..."}]}, or nothing at all.
+      tools["search"](query=...) returns {"status": 200, "chunks": [
+          {"id": "...", "text": "..."}]}.
+
+      Only this customer's turns may reach the prompt. When they hold no
+      order reference, return ASK without searching. Otherwise send the
+      Rewrite to search and answer from what comes back.
+
+      At most 4 model calls. Allowed imports: json, re.
+      """
+      return ASK
+
 hints:
+  - Look at what history() returns and whose turns they are. The session
+    belongs to the queue, so it holds more than one customer.
+  - Once another customer's order id is in the prompt, "the other one" has a
+    referent, and a model asked to resolve it will use the nearest one.
   - The filter goes on before the turns reach the prompt, not on the rewrite
     afterwards.
   - Asking the customer which order they mean is a correct answer here, and it
     is cheaper than the alternative.
   - The history tool can return nothing. That is the same situation as having
     no referent, not a different one.
+
+scenario:
+  who: The support queue at a parcel delivery service
+  situation: >-
+    A customer asked "and what about the other one?". The agent rewrote it from
+    a session shared by the whole queue, which still held the previous
+    customer's ticket, and searched for order Z-9114.
+  stakes: >-
+    Z-9114 belongs to somebody else, and the agent told this customer where
+    that parcel was. That is a data protection incident rather than a wrong
+    answer.
+  metrics:
+    - { label: Sessions for the queue, value: "1" }
+    - { label: Customers in that session, value: "2" }
+    - { label: Order it disclosed, value: Z-9114 }
+
+diagram:
+  title: Where another customer's order becomes the referent
+  caption: >-
+    The session holds everyone in the queue. Keep this customer's turns before
+    any reach the prompt, and ask when none of them names an order.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer c-4, sub: and what about the other one, kind: actor, tone: blue, at: [0, 1] }
+    - { id: history, label: Session history, sub: one session for the whole queue, kind: store, tone: orange, at: [1, 0] }
+    - { id: loop, label: Agent loop, sub: builds the rewrite prompt, kind: agent, tone: purple, at: [1, 1] }
+    - { id: filter, label: Customer filter, sub: keeps turns whose customer_id matches, kind: guard, tone: green, at: [2, 1] }
+    - { id: model, label: Model, sub: rewrites the follow-up, kind: model, tone: teal, at: [3, 0] }
+    - { id: search, label: search, sub: finds whatever it is asked for, kind: tool, tone: neutral, at: [4, 0] }
+    - { id: leak, label: Z-9114 status, sub: "a stranger's parcel, told to c-4", kind: output, tone: pink, at: [4, 1] }
+    - { id: ask, label: Ask which order, sub: no search and no guess, kind: output, tone: teal, at: [3, 2] }
+  edges:
+    - { from: customer, to: loop, label: follow-up, step: 1 }
+    - { from: loop, to: history, label: history(), step: 2 }
+    - { from: history, to: loop, label: every customer's turns, step: 3 }
+    - { from: loop, to: filter, label: turns, step: 4 }
+    - { from: filter, to: model, label: this customer's turns only, tone: success }
+    - { from: filter, to: ask, label: no order reference left, tone: success }
+    - { from: history, to: model, label: pasted in whole, tone: danger }
+    - { from: model, to: search, label: "Rewrite: status of Z-9114", tone: danger }
+    - { from: search, to: leak, label: answered, tone: danger }
+
+approach:
+  goal: Resolve the follow-up from this customer's own words, or ask
+  branches:
+    - label: Know whose turns these are
+      leaves: [the session belongs to the queue, every turn carries a customer_id]
+    - label: Filter before the prompt
+      detail: A turn that is not in the prompt cannot be used. An instruction to ignore one is a request.
+      leaves: [keep this customer's turns, drop the rest before writing anything]
+    - label: Ask when nothing refers
+      leaves: [no order reference means ask, no search and no guess]
+    - label: Treat nothing as no referent
+      leaves: [history can return nothing at all, one branch for both cases]
+
+coach:
+  opening: >-
+    Look at what history() returns and ask whose turns they are. The session
+    is shared by the whole queue.
+  signals:
+    - id: instructs-instead-of-filtering
+      when:
+        code_matches: '(?i)scratchpad\s*\+=[^\n]*\b(only|ignore)\b[^\n]*(customer|turn)'
+        code_lacks: '(\.get\(|\[)\s*[''"]customer_id[''"]'
+      say: >-
+        Your prompt asks the model to use only this customer's turns, and every
+        turn is still in it. What stops the model reading the ones it was asked
+        to skip?
+    - id: no-customer-filter
+      when: { code_lacks: '(\.get\(|\[)\s*[''"]customer_id[''"]' }
+      say: >-
+        Nothing reads a turn's customer_id yet, so every customer in the queue
+        reaches the prompt. Which turns belong to the person asking?
+    - id: hidden-another-customers-order
+      when: { test_failed: another_customers_order_never_reaches_the_prompt }
+      say: >-
+        In that session the only order reference belongs to a different
+        customer. What does this customer's own history give the model to work
+        with?
+    - id: hidden-no-referent
+      when: { test_failed: no_referent_means_ask_rather_than_search }
+      say: >-
+        This customer's own turns in that session mention no order at all. What
+        should happen before any search runs?
+    - id: adversarial-nothing
+      when: { test_failed: adversarial_the_history_tool_returns_nothing }
+      say: >-
+        history() answered with nothing at all in that run. Does your loop
+        treat that the same way as a history with no order in it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with split_question, then keep only the turns whose customer_id
+        matches and print them for the first public case. Nobody else's turns
+        should appear.
+    - id: keep-failing
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints are open, and the first two narrow
+        where the leak happens without writing the filter for you.
+  wrap_up: >-
+    Shared context is the default in production: one session per queue, one
+    index per client. Filter by whose data it is before the model sees any of
+    it, and remember that asking is always a legal answer.
 
 defence_question: |
   A reviewer proposes keeping all the turns in the prompt and adding a line

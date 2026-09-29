@@ -1,0 +1,455 @@
+slug: choose-evidence-without-repetition
+title: Stop five copies of one paragraph filling the context
+artefact_type: code
+difficulty: medium
+track: rag
+est_minutes: 30
+competencies:
+  - { slug: retrieval, weight: 1.0 }
+  - { slug: context-assembly, weight: 1.0 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A commercial insurer's broker desk has an assistant that answers questions
+  from the policy wordings. Five product pages carry the same paragraph about
+  reporting a claim within 30 days, word for word apart from the product
+  name.
+
+  Last Thursday a broker asked whether a flood claim needs a surveyor visit
+  before repairs start. Search returned the reporting paragraph from all five
+  pages as its top five results. The context holds five blocks, so the model
+  read one fact five times and answered it: report the claim within 30 days.
+  The paragraph about surveyors ranked sixth and never reached the prompt,
+  the customer's builder started on the Monday, and the claim is now
+  disputed.
+
+  Choose the five blocks so that a copy never takes a place from a new fact.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns either `Action: search(query=<text>)` or
+  `Final Answer: <text>`. `search` returns up to ten candidates, best first:
+
+      {"status": 200, "chunks": [{"id": "p-1", "source": "Property cover",
+                                  "score": 0.93, "text": "..."}]}
+
+  Put at most five blocks in the prompt, each written as `[<id>] <text>`.
+  Walk the candidates in the order search returned them. Keep a candidate
+  unless it is a near-duplicate of a block you already kept, and stop when
+  five are kept.
+
+  Two texts are near-duplicates when their word overlap is 0.8 or more.
+  The words of a text are its lowercased runs of letters and digits, and
+
+      overlap(a, b) = len(words(a) & words(b)) / len(words(a) | words(b))
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  MAX_BLOCKS = 5
+  NEAR_DUPLICATE = 0.8
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Question: {question}\n"
+
+      for _ in range(6):
+          output = llm(scratchpad)
+
+          if "Final Answer:" in output:
+              return output.split("Final Answer:", 1)[1].strip()
+
+          action = re.search(r"Action:\s*search\(query=(.*?)\)", output)
+          if action is None:
+              scratchpad += f"{output}\nThat was not a valid action.\n"
+              continue
+
+          result = tools["search"](query=action.group(1).strip()) or {}
+          chosen = choose(result.get("chunks") or [])
+          # TODO 1: write each chosen chunk into the scratchpad as [<id>] <text>
+
+      return "I could not find that in the policy wording."
+
+
+  def words(text: str) -> set:
+      """Lowercased runs of letters and digits."""
+      return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+  def overlap(a: str, b: str) -> float:
+      """Shared words over all the words either text uses, from 0 to 1."""
+      # TODO 2: compare words(a) with words(b)
+      return 0.0
+
+
+  def choose(chunks: list) -> list:
+      """At most MAX_BLOCKS chunks, best first, with no near-duplicates."""
+      # TODO 3: walk the chunks in order, skip any that overlaps a chunk you
+      #         already kept by NEAR_DUPLICATE or more, and stop at MAX_BLOCKS
+      return chunks[:MAX_BLOCKS]
+
+steps:
+  - id: s1
+    text: Write each chosen chunk into the scratchpad as [<id>] <text>.
+    check_id: s1
+  - id: s2
+    text: Make overlap() return the shared words over all the words used.
+    check_id: s2
+  - id: s3
+    text: Keep a candidate only when it is below 0.8 against every block kept, and stop at five.
+    check_id: s3
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: search }
+        - { type: returns_nonempty }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: terminates }
+
+hints:
+  - Print the ids and the first ten words of the five blocks your loop sends
+    for the flood question. Count how many different facts they hold.
+  - Search scores each chunk against the query and never against the other
+    results, so identical paragraphs score the same and arrive side by side.
+  - Decide before a candidate takes a place. Compare it with every block
+    already kept, skip it at 0.8 or more, and stop when five are kept.
+  - Two sentences that differ in a number are two facts. A threshold low
+    enough to merge them is lower than the published 0.8.
+
+scenario:
+  who: The broker desk at a commercial insurer
+  situation: >-
+    A broker asked whether a flood claim needs a surveyor visit before repairs
+    start. Search's top five were one paragraph about reporting claims within
+    30 days, copied onto five product pages.
+  stakes: >-
+    The assistant answered with the 30 day rule. The customer's builder
+    started before a surveyor saw the damage, and the claim is now disputed.
+  metrics:
+    - { label: Copies in the top five, value: "5" }
+    - { label: Rank of the answer, value: 6th }
+    - { label: Blocks in the context, value: "5" }
+
+diagram:
+  title: Where one paragraph takes all five places
+  caption: >-
+    Search scores each chunk alone, so copies arrive together. Skip a
+    near-duplicate of anything already kept before the five places fill.
+  direction: lr
+  nodes:
+    - { id: broker, label: Broker, sub: asks about a flood survey, kind: actor, tone: blue, at: [0, 1] }
+    - { id: search, label: search, sub: scores each chunk on its own, kind: tool, tone: neutral, at: [1, 0] }
+    - { id: loop, label: Agent loop, sub: fills five places, kind: agent, tone: purple, at: [1, 1] }
+    - { id: topk, label: Top five as returned, sub: the same paragraph five times, kind: decision, tone: pink, at: [2, 0] }
+    - { id: dedup, label: Skip near-duplicates, sub: compare with every block kept, kind: guard, tone: green, at: [2, 2] }
+    - { id: model, label: Model, sub: answers what it has evidence for, kind: model, tone: teal, at: [3, 1] }
+    - { id: wrong, label: Report within 30 days, sub: an answer to a different question, kind: output, tone: pink, at: [4, 0] }
+    - { id: right, label: Surveyor first, sub: the sixth result gets a place, kind: output, tone: green, at: [4, 2] }
+  edges:
+    - { from: broker, to: loop, label: question, step: 1 }
+    - { from: loop, to: search, label: query, step: 2 }
+    - { from: search, to: loop, label: "ten candidates, best first", step: 3 }
+    - { from: loop, to: topk, label: take five, tone: danger }
+    - { from: topk, to: model, label: "one fact, five times", tone: danger }
+    - { from: model, to: wrong, label: answers from it, tone: danger }
+    - { from: loop, to: dedup, label: walk the list, tone: success }
+    - { from: dedup, to: model, label: five different facts, tone: success }
+    - { from: model, to: right, label: answers the question, tone: success }
+
+approach:
+  goal: Spend five places on five different facts
+  branches:
+    - label: See why copies cluster
+      detail: Search scores each chunk against the query, never against the other results.
+      leaves: [every copy scores about the same, so copies arrive together]
+    - label: Deduplicate before you cut
+      leaves: [walk the list best first, stop at five kept rather than five read]
+    - label: Compare with everything kept
+      leaves: [copies are rarely neighbours, five blocks is a cheap comparison]
+    - label: Let wording decide
+      leaves: [a product name changes one word, one page holds several facts]
+
+coach:
+  opening: >-
+    Look at how the five blocks are chosen. The question is what happens when
+    the best five results all say the same thing.
+  signals:
+    - id: top-five-as-returned
+      when:
+        code_matches: '\[\s*:\s*(5|MAX_BLOCKS)\s*\]'
+        code_lacks: '[<>]=?\s*(NEAR_DUPLICATE|0?\.8)\b|\bNEAR_DUPLICATE\s*[<>]'
+      say: >-
+        The five blocks are the first five results as they came. What reaches
+        the model when those five are one paragraph copied onto five pages?
+    - id: no-overlap-threshold
+      when: { code_lacks: '[<>]=?\s*(NEAR_DUPLICATE|0?\.8)\b|\bNEAR_DUPLICATE\s*[<>]' }
+      say: >-
+        Nothing compares an overlap with NEAR_DUPLICATE yet. Two copies that
+        differ by a product name are different strings, so how would your loop
+        know they are one paragraph?
+    - id: compares-with-last-only
+      when: { code_matches: '(overlap|similar\w*|near\w*|dup\w*)\([^)\n]*\[\s*-1\s*\]' }
+      say: >-
+        Each candidate is compared with the last block kept. What happens to a
+        copy when something else ranked between it and the original?
+    - id: hidden-five-copies
+      when: { test_failed: five_copies_of_one_paragraph_leave_room_for_the_answer }
+      say: >-
+        Search's top five in that run are one paragraph from five product
+        pages. List the ids your loop keeps: there should be five, and no two
+        should say the same thing.
+    - id: hidden-copies-apart
+      when: { test_failed: a_copy_further_down_the_list_is_still_a_copy }
+      say: >-
+        The copies in that run are not next to each other in the ranking. What
+        does each candidate get compared with before you keep it?
+    - id: hidden-similar-facts
+      when: { test_failed: two_facts_that_share_wording_are_both_kept }
+      say: >-
+        Two chunks in that run share most of their wording and differ in the
+        number. Work out their overlap by hand and compare it with 0.8.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 so the public tests run. Then write overlap() and try
+        it on two copies of the reporting paragraph: it should come out above
+        0.8.
+    - id: keep-failing
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints are open, and the second one names
+        why copies arrive together.
+  wrap_up: >-
+    Search ranks each chunk on its own, so five copies of one paragraph all
+    rank well. Deduplicate before you cut to the context size, compare with
+    everything you kept, and let wording decide what counts as a copy.
+
+tests:
+  - name: answers_from_the_best_chunk
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Is accidental damage to a laptop covered on the contents policy?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=laptop accidental damage contents)" }
+        - { match: { contains: "[c-1] Accidental damage" },
+            reply: "Final Answer: Yes, away from home too, when the gadget extension is on the schedule [c-1]." }
+        - { match: "*", reply: "Final Answer: I could not find that in the policy wording." }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "c-1", source: "Contents cover", score: 0.88,
+                  text: "Accidental damage to laptops and phones is covered away from home when the gadget extension is on the schedule." }
+              - { id: "c-2", source: "Contents cover", score: 0.64,
+                  text: "Contents cover pays for items lost or damaged inside the home by fire, flood, theft or escape of water." }
+              - { id: "c-3", source: "Contents cover", score: 0.41,
+                  text: "Bicycles over 1,500 pounds must be listed on the schedule." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: search }
+        - { type: returns_matches, value: "(?i)gadget extension" }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: keeps_five_distinct_chunks
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What does the storm cover exclude?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=storm cover exclusions)" }
+        - { match: { all: [ { contains: "[s-1] Storm damage to fences" }, { contains: "[s-5] Damage from a storm" } ] },
+            reply: "Final Answer: It excludes fences, gates and hedges [s-1], and damage to a building that was already in poor repair [s-5]." }
+        - { match: { contains: "[s-1] Storm damage to fences" },
+            reply: "Final Answer: It excludes fences, gates and hedges [s-1]." }
+        - { match: "*", reply: "Final Answer: I could not find that in the policy wording." }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "s-1", source: "Storm cover", score: 0.90,
+                  text: "Storm damage to fences, gates and hedges is not covered." }
+              - { id: "s-2", source: "Storm cover", score: 0.80,
+                  text: "Storm cover pays for damage caused by winds of 55 miles an hour or more." }
+              - { id: "s-3", source: "Storm cover", score: 0.70,
+                  text: "A storm claim needs photographs taken before any temporary repair." }
+              - { id: "s-4", source: "Storm cover", score: 0.60,
+                  text: "Roof repairs after a storm are made by our approved roofers." }
+              - { id: "s-5", source: "Storm cover", score: 0.50,
+                  text: "Damage from a storm to a building that was already in poor repair is not covered." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)poor repair" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: five_copies_of_one_paragraph_leave_room_for_the_answer
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Does a flood claim need a surveyor visit before repairs start?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=flood claim surveyor before repairs)" }
+        - { match: { contains: "over 25,000 pounds" },
+            reply: "Final Answer: A surveyor visit is only needed when the loss is over 25,000 pounds [cp-10]." }
+        - { match: { contains: "appointed surveyor" },
+            reply: "Final Answer: Yes. Our appointed surveyor must visit before any repair starts, apart from work to make the building safe [f-6]." }
+        - { match: "*", reply: "Final Answer: Report the claim to us within 30 days of the loss [p-1]." }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "p-1", source: "Property cover", score: 0.93,
+                  text: "Property claims must be reported to us within 30 days of the loss. Late notification can reduce what we pay or void the claim." }
+              - { id: "f-2", source: "Flood cover", score: 0.92,
+                  text: "Flood claims must be reported to us within 30 days of the loss. Late notification can reduce what we pay or void the claim." }
+              - { id: "b-3", source: "Business interruption", score: 0.92,
+                  text: "Business interruption claims must be reported to us within 30 days of the loss. Late notification can reduce what we pay or void the claim." }
+              - { id: "c-4", source: "Contents cover", score: 0.91,
+                  text: "Contents claims must be reported to us within 30 days of the loss. Late notification can reduce what we pay, or void the claim." }
+              - { id: "s-5", source: "Storm cover", score: 0.90,
+                  text: "Storm claims must be reported to us within 30 days of the loss. Late notification can reduce what we pay or void the claim." }
+              - { id: "f-6", source: "Flood cover", score: 0.84,
+                  text: "A flood claim needs a visit from our appointed surveyor before any repair starts, except work to make the building safe." }
+              - { id: "f-7", source: "Flood cover", score: 0.71,
+                  text: "Temporary accommodation is covered for up to 12 months while a flooded home is repaired." }
+              - { id: "f-8", source: "Flood cover", score: 0.66,
+                  text: "The flood excess is 1,000 pounds for each claim made under a standard home policy." }
+              - { id: "f-9", source: "Flood cover", score: 0.60,
+                  text: "Flood defences must be inspected once a year by an installer on our approved list." }
+              - { id: "cp-10", source: "Commercial property", score: 0.52,
+                  text: "Commercial property claims need a surveyor visit only when the loss is over 25,000 pounds." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)appointed surveyor" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: a_copy_further_down_the_list_is_still_a_copy
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How long is temporary accommodation covered after a flood?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=temporary accommodation after a flood)" }
+        - { match: { contains: "up to 12 months" },
+            reply: "Final Answer: For up to 12 months while the home is repaired [a-6]." }
+        - { match: "*", reply: "Final Answer: Our claims team arranges temporary accommodation for you [a-2]." }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "r-1", source: "Property cover", score: 0.89,
+                  text: "Property claims must be reported to us within 30 days of the loss. Late notification can reduce what we pay or void the claim." }
+              - { id: "a-2", source: "Flood cover", score: 0.88,
+                  text: "Temporary accommodation after a flood is arranged by our claims team, and the customer does not need to find it." }
+              - { id: "r-3", source: "Flood cover", score: 0.87,
+                  text: "Flood claims must be reported to us within 30 days of the loss. Late notification can reduce what we pay or void the claim." }
+              - { id: "a-4", source: "Flood cover", score: 0.85,
+                  text: "Pets are included in temporary accommodation wherever the property allows them." }
+              - { id: "r-5", source: "Contents cover", score: 0.84,
+                  text: "Contents claims must be reported to us within 30 days of the loss. Late notification can reduce what we pay or void the claim." }
+              - { id: "a-6", source: "Flood cover", score: 0.80,
+                  text: "Temporary accommodation is covered for up to 12 months while a flooded home is repaired." }
+              - { id: "a-7", source: "Flood cover", score: 0.74,
+                  text: "Receipts for meals and travel during temporary accommodation are repaid within 10 working days." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "12 months" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: two_facts_that_share_wording_are_both_kept
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How much is the flood excess, and is it lower when flood defences are fitted?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=flood excess and flood defences)" }
+        - { match: { all: [ { contains: "1,000 pounds" }, { contains: "250 pounds" } ] },
+            reply: "Final Answer: The flood excess is 1,000 pounds a claim [e-1], or 250 pounds with approved flood defences fitted [e-2]." }
+        - { match: { contains: "1,000 pounds" },
+            reply: "Final Answer: The flood excess is 1,000 pounds for each claim [e-1]." }
+        - { match: "*", reply: "Final Answer: I could not find the flood excess in the policy wording." }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "e-1", source: "Flood cover", score: 0.91,
+                  text: "The flood excess is 1,000 pounds for each claim made under a standard home policy." }
+              - { id: "e-2", source: "Flood cover", score: 0.87,
+                  text: "The flood excess is 250 pounds for each claim made under a home policy with approved flood defences fitted." }
+              - { id: "e-3", source: "Flood cover", score: 0.62,
+                  text: "Flood defences must be inspected once a year by an installer on our approved list." }
+              - { id: "e-4", source: "Storm cover", score: 0.55,
+                  text: "Storm damage to fences, gates and hedges is not covered." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "250 pounds" }
+        - { type: no_exception }
+        - { type: terminates }
+
+reference_md: |
+  Search scores every chunk against the query and never against the other
+  results, so it cannot know it is returning one paragraph five times. Each
+  copy matches the query as well as the others, the copies arrive together
+  at the top, and a context of five blocks spends all five on one fact. The
+  model then answers the question it has evidence for, which is a different
+  question from the one it was asked.
+
+  Order of operations is the first decision. Deduplicate and then take five.
+  Taking five and then deduplicating looks equivalent and leaves one block
+  where there were five, with the answer still at rank six. Dropping the cap
+  instead lets every chunk in, including the commercial property rule that
+  ranked tenth and contradicts the flood wording.
+
+  The second decision is what a candidate is compared with. Copies are
+  rarely neighbours in a real ranking, because something else scores between
+  them, and a check against the last kept block lets each of them back in.
+  Comparing with everything kept costs a few set operations over five
+  blocks.
+
+  The third is what counts as a copy, and it has two ways to be wrong. Exact
+  string equality misses copies that differ by a product name, which is how
+  syndicated paragraphs usually differ. Deduplicating by source is wrong in
+  both directions at once: the five copies come from five pages, and the
+  flood page alone holds several different facts. Wording is the signal, and
+  the threshold is published so a reviewer can argue with it.
+
+  The excess case is why the threshold sits high. The two excess sentences
+  share more than half their words and differ in the amount, which is the
+  part the broker asked about. A rule that merged them would pass every copy
+  test and answer the question wrongly. Word overlap has a limit worth
+  knowing here too: two long paragraphs that differ only in a number can
+  clear 0.8, so the next rule a production system adds is that chunks with
+  different numbers are never copies.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Your top five retrieved chunks are the same paragraph copied onto five pages. What do you change, and where in the pipeline?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
