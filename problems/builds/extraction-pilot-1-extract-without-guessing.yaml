@@ -1,0 +1,433 @@
+slug: extraction-pilot-1-extract-without-guessing
+title: Leave a field empty when the letter never says it
+artefact_type: code
+difficulty: easy
+track: builds
+est_minutes: 20
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+build: { id: extraction-pilot, title: "Rescue a document extraction pilot", stage: 1, of: 4 }
+
+brief_md: |
+  A regional home insurer is six weeks into a pilot that reads customers'
+  claim letters and fills the intake record an adjuster works from. None of
+  the rescue exists yet. You have just been asked to save the pilot, and this
+  is the first of four stages.
+
+  The adjusters have one complaint above the others. In a sample of 200
+  records, 17 held a value the letter never contained. A burst pipe claim
+  carried policy number HX-448821 although the customer had written that she
+  could not find her policy documents, and HX-448821 belongs to somebody
+  else. The claim sat on the wrong policy for two days.
+
+  The model fills every field because the prompt asks for every field. Build
+  the extraction that keeps a value only when the letter contains it, and
+  leaves the field empty when it does not.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the text of one claim letter. There are no tools.
+
+  Ask the model once for a JSON object with four fields: `policy_number`,
+  `claimant`, `incident_date` and `amount_claimed`. Ask for each value copied
+  exactly as the letter writes it, and for null when the letter does not
+  state it.
+
+  The reply is usually that object. It can also leave a field out, add a
+  field the record does not have, fill a field with a value the letter never
+  contains, or not be JSON at all.
+
+  Return a JSON string with exactly the four fields. Keep a value only when
+  the letter contains it, ignoring differences of case and whitespace. Every
+  other field is null. Never raise.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  FIELDS = ("policy_number", "claimant", "incident_date", "amount_claimed")
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      # TODO 1: ask for the four fields as one JSON object, each copied exactly
+      #         as the letter writes it, with null when the letter does not state it
+      prompt = f"Claim letter:\n{question}\n"
+      reply = llm(prompt)
+
+      # TODO 2: parse the reply, and treat anything that is not a JSON object as {}
+      extracted = {}
+
+      record = {}
+      for field in FIELDS:
+          value = extracted.get(field)
+          # TODO 3: keep the value only when the letter contains it, comparing
+          #         _normalise(value) with _normalise(question); otherwise None
+          record[field] = None
+
+      return json.dumps(record)
+
+
+  def _normalise(text: str) -> str:
+      # TODO 4: lower-case the text and collapse every run of whitespace to one
+      #         space, so a wrapped or capitalised value still matches
+      return text
+
+steps:
+  - id: s1
+    text: Ask for the four fields, copied exactly, with null when the letter is silent.
+    check_id: s1
+  - id: s2
+    text: Parse the reply, and treat anything that is not a JSON object as empty.
+    check_id: s2
+  - id: s3
+    text: Keep a value only when the letter contains it, and use null otherwise.
+    check_id: s3
+  - id: s4
+    text: Normalise case and whitespace so a wrapped or capitalised value still counts.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object,
+                      required: [policy_number, claimant, incident_date, amount_claimed] } }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+
+hints:
+  - The model's reply cannot tell you which of its values it made up. Something
+    else you already hold can.
+  - A value is grounded when its source contains it. The source here is the
+    letter, and it arrives as the question.
+  - Lower-case both sides and collapse runs of whitespace before you compare,
+    because letters arrive in capitals and wrapped across lines.
+  - "Build the record from the four field names: for each one, take the reply's
+    value, keep it when the normalised letter contains it, and use null for
+    everything else."
+  - Asking the model for null lowers the rate of guesses and does not end it.
+    The check after the reply is the part that makes the record true.
+
+scenario:
+  who: The head of claims operations at a regional home insurer
+  situation: >-
+    Six weeks into a pilot that reads claim letters and fills the intake
+    record. In a sample of 200 records, 17 held a value the letter never
+    contained.
+  stakes: >-
+    A burst pipe claim sat on another customer's policy for two days. The
+    adjusters have stopped trusting the records, and the sponsor is close to
+    ending the pilot.
+  metrics:
+    - { label: Records sampled, value: "200" }
+    - { label: Values not in the letter, value: "17" }
+    - { label: On the wrong policy, value: 2 days }
+
+diagram:
+  title: Where a guessed value reaches the claims system
+  caption: >-
+    The model fills every field it is asked for. The letter check between its
+    reply and the record is the only place a read value and a guess differ.
+  direction: lr
+  nodes:
+    - { id: letter, label: Claim letter, sub: the only source for a value, kind: doc, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: fills every field it is asked for, kind: model, tone: teal, at: [1, 0] }
+    - { id: extractor, label: Extractor, sub: asks for four fields, kind: agent, tone: purple, at: [1, 1] }
+    - { id: grounding, label: Letter check, sub: "is this value in the letter?", kind: guard, tone: green, at: [2, 1] }
+    - { id: claims, label: Claims system, sub: where the adjuster opens the record, kind: service, tone: orange, at: [3, 1] }
+  edges:
+    - { from: letter, to: extractor, label: letter text, step: 1 }
+    - { from: extractor, to: model, label: four fields or null, step: 2 }
+    - { from: model, to: extractor, label: "policy_number: HX-448821", step: 3 }
+    - { from: extractor, to: grounding, label: every value, step: 4 }
+    - { from: grounding, to: claims, label: only what the letter says, tone: success }
+    - { from: extractor, to: claims, label: a guess nobody checked, tone: danger }
+
+approach:
+  goal: Keep a value only when the letter actually contains it
+  branches:
+    - label: Ask for what the letter says
+      leaves: [each value copied exactly as written, null when the letter is silent]
+    - label: Read the reply defensively
+      leaves: [it may not be JSON, a key may be missing or extra]
+    - label: Check each value against the letter
+      detail: The reply cannot tell you which of its values the model made up. The letter can.
+      leaves: [compare after normalising case and spaces, a worked-out date was never written]
+    - label: Return the record, not the reply
+      leaves: [exactly four fields, null is an answer the next stage can use]
+
+coach:
+  opening: >-
+    Find the line where the model's reply becomes the record. Everything this
+    stage is about happens on that line.
+  signals:
+    - id: no-letter-check
+      when:
+        code_lacks: '\bin\s+[\w.(]*(?:letter|text|question|source|document|doc|body|haystack|original|content)|\.find\(|\.count\(|re\.search\('
+      say: >-
+        Nothing compares a value with the letter yet, so a policy number the
+        model made up reaches the record exactly like one it read. Where would
+        that comparison go?
+    - id: unguarded-parse
+      when: { code_matches: 'json\.loads\(', code_lacks: '\bexcept\b' }
+      say: >-
+        json.loads raises when the reply is not JSON, and one reply in this
+        problem is an apology. What should the record hold then?
+    - id: invented-value-kept
+      when: { test_failed: values_the_letter_never_wrote_are_left_empty }
+      say: >-
+        The model gave a policy number to a customer who wrote that she had
+        lost hers, and a date her letter never wrote. Check each value against
+        the letter before it goes into the record.
+    - id: real-value-dropped
+      when: { test_failed: case_and_line_breaks_do_not_hide_a_real_value }
+      say: >-
+        That letter does contain both values, one in capitals and one wrapped
+        across a line. Normalise case and whitespace on both sides of the
+        comparison.
+    - id: shape-leaked
+      when: { test_failed: only_the_four_fields_come_back }
+      say: >-
+        The reply left a field out and added one the record does not have.
+        Build the record from the four field names instead of from the reply.
+    - id: crashed-on-prose
+      when: { test_failed: a_reply_that_is_not_json_gives_an_empty_record }
+      say: >-
+        The model answered with a sentence. When the reply cannot be read, the
+        record is four nulls and the run carries on.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 2 and press Run. Once the reply parses, the first
+        public test shows you what the record should look like.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints narrow this one step at a time, and
+        the first one says where to look.
+  wrap_up: >-
+    A guessed value looks exactly like a read one, which is why extraction
+    fails quietly. Check every value against its source, and treat an empty
+    field as an answer the next stage can route.
+
+tests:
+  - name: extracts_the_four_fields_from_a_complete_letter
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          14 March 2026
+
+          Dear claims team,
+
+          I am writing to claim for storm damage to my garage roof on the
+          night of 9 March 2026. My policy number is HX-448812. The roofer has
+          quoted £1,240.50 for the repair, and a copy of his quote is enclosed.
+
+          Yours faithfully,
+          Priya Raman
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-448812", "claimant": "Priya Raman", "incident_date": "9 March 2026", "amount_claimed": "£1,240.50"}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object,
+                      required: [policy_number, claimant, incident_date, amount_claimed] } }
+        - { type: returns_matches, value: '"policy_number":\s*"HX-448812"' }
+        - { type: returns_matches, value: '1,240\.50' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_field_the_letter_does_not_state_stays_empty
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          2 April 2026
+
+          Dear claims team,
+
+          Water came through the kitchen ceiling on 31 March 2026 after the
+          bath upstairs overflowed. My policy number is HX-301977. The builder
+          is coming next week to look at the ceiling, and I will send his
+          invoice when I have it.
+
+          Kind regards,
+          Tom Okafor
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-301977", "claimant": "Tom Okafor", "incident_date": "31 March 2026", "amount_claimed": null}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"amount_claimed":\s*null' }
+        - { type: returns_matches, value: '"policy_number":\s*"HX-301977"' }
+        - { type: no_exception }
+
+  - name: values_the_letter_never_wrote_are_left_empty
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          24 March 2026
+
+          Dear claims team,
+
+          A pipe under the kitchen sink burst on Sunday night and flooded the
+          kitchen floor. I have looked everywhere for my policy documents and
+          cannot find them, so I do not have my policy number, but the policy
+          is in my name. The plumber charged £860.00 for the emergency repair.
+
+          Yours sincerely,
+          Joan Whitfield
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-448821", "claimant": "Joan Whitfield", "incident_date": "2026-03-22", "amount_claimed": "£860.00"}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"policy_number":\s*null' }
+        - { type: returns_matches, value: '"incident_date":\s*null' }
+        - { type: returns_matches, value: '"claimant":\s*"Joan Whitfield"' }
+
+  - name: case_and_line_breaks_do_not_hide_a_real_value
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          4 April 2026
+
+          To the claims department,
+
+          A delivery lorry reversed into our front wall on the morning of 3
+          April 2026 and brought down about two metres of it. Our policy
+          number is HX-770145. The builder's written quote to rebuild the wall
+          is £2,150.00.
+
+          Regards,
+
+          AISHA BEGUM
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-770145", "claimant": "Aisha Begum", "incident_date": "3 April 2026", "amount_claimed": "£2,150.00"}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"claimant":\s*"Aisha Begum"' }
+        - { type: returns_matches, value: '"incident_date":\s*"3 April 2026"' }
+        - { type: returns_matches, value: '"policy_number":\s*"HX-770145"' }
+
+  - name: only_the_four_fields_come_back
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          29 March 2026
+
+          Dear claims team,
+
+          On 28 March 2026 a delivery van reversed into my garden wall and
+          cracked the pillar by the gate. My policy number is HX-118204. The
+          builder says the repair will cost £640.00.
+
+          Yours faithfully,
+          Sam Doyle
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-118204", "claimant": "Sam Doyle", "amount_claimed": "£640.00", "cause": "a delivery van reversed into the garden wall"}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object,
+                      required: [policy_number, claimant, incident_date, amount_claimed],
+                      properties: { policy_number: {}, claimant: {}, incident_date: {},
+                                    amount_claimed: {} },
+                      additionalProperties: false } }
+        - { type: returns_matches, value: '"incident_date":\s*null' }
+        - { type: returns_matches, value: '"policy_number":\s*"HX-118204"' }
+
+  - name: a_reply_that_is_not_json_gives_an_empty_record
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          1 April 2026
+
+          Dear sirs,
+
+          Please find my claim for the stolen bicycle enclosed. The shed lock
+          was broken some time over the weekend.
+
+          Mr R. Lewis
+      llm_script:
+        - { match: "*",
+            reply: "I am sorry, but I cannot read this letter reliably enough to extract the fields." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object,
+                      required: [policy_number, claimant, incident_date, amount_claimed] } }
+        - { type: returns_matches, value: '"policy_number":\s*null' }
+        - { type: no_exception }
+
+reference_md: |
+  The model answers every field because every field was asked for, and its
+  reply looks the same whether a value was read or written. Asking for null
+  helps, and it is still a request: the model decides whether to honour it one
+  field at a time, and its reply never says which fields it decided on.
+
+  The letter settles it. A value the letter does not contain did not come from
+  the letter, so a membership test against the source is the cheapest
+  deterministic check in the whole pipeline, and it runs before anything
+  downstream spends effort on the record. HX-448821 fails it. So does
+  2026-03-22, which is the more instructive case: the model was being helpful
+  when it turned "Sunday night" into a date, and the adjuster reading the
+  record has no way to tell a date the customer gave from one the model
+  calculated.
+
+  Normalising case and whitespace keeps the check honest in the other
+  direction. Scanned letters and hard-wrapped email split values across lines
+  and print signatures in capitals, and a check that rejects "AISHA BEGUM" for
+  "Aisha Begum" teaches the adjusters that an empty field is noise. Normalise
+  exactly the differences that carry no meaning, and nothing else.
+
+  Building the record from the field list, instead of from the reply, is what
+  makes the output a contract. The next stage validates this record and routes
+  it, and it can only route a field that exists. A null is an answer that
+  stage can act on. A plausible wrong value gives it nothing to act on,
+  because nothing downstream will ever look at it twice.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    The claim letter never states the policy number. What does your extractor return, and how do you know it did not make one up?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I001.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
