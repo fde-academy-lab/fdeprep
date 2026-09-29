@@ -530,8 +530,10 @@ export function matchesSeed(rule: unknown, seeded: string): string | null {
   const [kind, value] = entries[0]!;
   if (kind === "contains") return seeded.includes(String(value)) ? String(value) : null;
   if (kind === "regex") {
+    // The runner matches with Python's re, where an inline (?i) is ordinary,
+    // so the pattern goes through the same translation the prompt rules use.
     try {
-      return new RegExp(String(value)).test(seeded) ? String(value) : null;
+      return compilePattern(String(value)).test(seeded) ? String(value) : null;
     } catch {
       return null;
     }

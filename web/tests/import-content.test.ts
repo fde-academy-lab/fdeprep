@@ -17,8 +17,12 @@ import { closeDb, db } from "../lib/db/pool.ts";
 import { importVoiceQuestion, VoiceImportRejected } from "../lib/voice/import.ts";
 import { publishedQuestionId, publishedQuestions } from "../lib/voice/question.ts";
 import { fixtureQuestionId } from "../lib/voice/fixture.ts";
+import path from "node:path";
 import { importAllContent } from "../scripts/import-content.ts";
+import { publishableYamlFiles } from "../lib/problems/source.ts";
 import { resetDatabase } from "./helpers.ts";
+
+const PROBLEMS = path.join(import.meta.dirname, "..", "..", "problems");
 
 const quiet = () => {};
 
@@ -36,12 +40,14 @@ async function count(table: string): Promise<number> {
 }
 
 describe("importing everything", () => {
-  it("loads the twenty-five problems and the twelve voice questions", async () => {
+  it("loads every catalogue problem and the twelve voice questions", async () => {
     const report = await importAllContent(quiet);
+    const catalogue = (await publishableYamlFiles(PROBLEMS)).length;
 
-    expect(report.problems).toBe(25);
+    expect(catalogue).toBeGreaterThanOrEqual(25);
+    expect(report.problems).toBe(catalogue);
     expect(report.voiceQuestions).toBe(12);
-    expect(await count("problem")).toBe(25);
+    expect(await count("problem")).toBe(catalogue);
     expect(await count("voice_question")).toBe(12);
   });
 
@@ -59,7 +65,7 @@ describe("importing everything", () => {
     const second = await importAllContent(quiet);
 
     expect(second.voiceQuestions).toBe(12);
-    expect(await count("problem")).toBe(25);
+    expect(await count("problem")).toBe((await publishableYamlFiles(PROBLEMS)).length);
     expect(await count("voice_question")).toBe(12);
   });
 });

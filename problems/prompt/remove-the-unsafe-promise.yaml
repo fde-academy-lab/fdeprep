@@ -61,7 +61,7 @@ prompt_rules:
   - { kind: must_keep, label: "the two working day promise",
       pattern: "(?i)always come back within" }
   - { kind: must_keep, label: "transit damage is still handled",
-      pattern: "(?i)damaged in transit" }
+      pattern: "(?i)damaged\\s+in\\s+transit" }
   - { kind: max_words, label: "under 300 words", numeric_value: 300 }
 
 probes:

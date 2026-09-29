@@ -256,6 +256,19 @@ exemplars:
     const report = validateProblemYaml(source, "a.yaml");
     expect(report.errors.some((e) => e.rule === "matcher_shadows_input")).toBe(true);
   });
+
+  it("reads a Python inline flag in a script regex, the way the runner does", () => {
+    // The runner matches with Python's re, where (?i) is ordinary. A validator
+    // that compiled the same text with new RegExp threw, treated the entry as
+    // matching nothing, and let a shadowing matcher through.
+    const source = withLine(
+      CODE,
+      `input: { question: "q" }\n      llm_script: [{ match: "*", reply: "Final Answer: x" }]\n      assertions: [{ type: returns_nonempty }]\n  - name: p2`,
+      `input: { question: "Where is ORDER 7" }\n      llm_script: [{ match: { regex: "(?i)order 7" }, reply: "a" }, { match: "*", reply: "Final Answer: x" }]\n      assertions: [{ type: returns_nonempty }]\n  - name: p2`,
+    );
+    const report = validateProblemYaml(source, "a.yaml");
+    expect(report.errors.some((e) => e.rule === "matcher_shadows_input")).toBe(true);
+  });
 });
 
 describe("malformed input", () => {
