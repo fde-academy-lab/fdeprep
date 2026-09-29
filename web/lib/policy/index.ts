@@ -11,22 +11,15 @@
 import type { Pool, PoolClient } from "pg";
 import { db } from "../db/pool.ts";
 import { allowanceFor, humanise, type Allowance } from "./caps.ts";
-import { LAYERS, tierFor, type Difficulty, type Layer, type Visibility } from "./tiers.ts";
+import {
+  LAYERS, SCREEN_CONDITIONS, tierFor, type Difficulty, type Layer, type Visibility,
+} from "./tiers.ts";
 import { degradedMessage, readDegradedMode, type DegradedMode } from "./settings.ts";
 
 export * from "./tiers.ts";
 export { readDegradedMode, setDegradedMode, degradedMessage, DEGRADED_MODE } from "./settings.ts";
 export type { DegradedMode } from "./settings.ts";
 
-/**
- * The tier a rehearsal borrows its rules from.
- *
- * docs/00 section 7.4: "runs them under Extreme rules regardless of their
- * native difficulty: no hints, no test names, no acceptance rates, one submit
- * each". Named here so the rehearsal reads the same tier table as everything
- * else rather than restating what Extreme means.
- */
-const REHEARSAL_TIER: Difficulty = "extreme";
 export { RateLimitError, consume, refund, allowanceFor, humanise } from "./caps.ts";
 export type { Allowance, Scope } from "./caps.ts";
 
@@ -95,7 +88,11 @@ export async function resolvePolicy(options: {
   const client = options.client ?? db();
   const state = await loadState(client, options.enrolmentId, options.problemId);
   const rehearsal = options.rehearsal === true;
-  const tier = tierFor(rehearsal ? REHEARSAL_TIER : state.difficulty);
+  // docs/00 section 7.4: a rehearsal runs under screen conditions whatever the
+  // native tier. Those used to be Extreme's rules; since the 29 September 2026
+  // amendment they are their own profile, so loosening Extreme's scaffolding
+  // for practice cannot loosen the rehearsal with it.
+  const tier = rehearsal ? SCREEN_CONDITIONS : tierFor(state.difficulty);
   const degraded = await readDegradedMode(client);
 
   // Sequential on purpose. When a PoolClient is passed in, this runs inside

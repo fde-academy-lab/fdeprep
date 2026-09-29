@@ -97,10 +97,18 @@ def clean_demand(problem, source: str) -> int:
     return max(inside, default=0)
 
 
-def test_the_launch_set_matches_the_prd_table():
+def test_the_launch_set_is_still_inside_the_catalogue():
+    """docs/00 section 9's launch table, now a floor rather than the whole set.
+
+    docs/09 section 2.4 launched on 25 reviewed problems and said not to treat
+    a count as a goal. On 29 September 2026 the product owner asked for a
+    larger, more incremental catalogue, so the launch mix is what the catalogue
+    must still contain rather than all it may contain.
+    """
     mix = collections.Counter((p["difficulty"], p["artefact_type"]) for p in parsed())
-    assert dict(mix) == EXPECTED_MIX
-    assert sum(mix.values()) == 25
+    for cell, launched in EXPECTED_MIX.items():
+        assert mix[cell] >= launched, cell
+    assert sum(mix.values()) >= 25
 
 
 def test_every_slug_is_unique():
@@ -108,9 +116,14 @@ def test_every_slug_is_unique():
     assert len(slugs) == len(set(slugs))
 
 
-def test_every_track_is_represented():
-    tracks = collections.Counter(p["track"] for p in parsed())
-    assert set(tracks) == {"agent-loop", "tool-creation", "memory", "rag", "evals", "prompt"}
+LAUNCH_TRACKS = {"agent-loop", "tool-creation", "memory", "rag", "evals", "prompt"}
+EXPANSION_TRACKS = {"structured-output", "guardrails", "production", "fde-practice", "builds"}
+
+
+def test_every_launch_track_is_represented_and_no_other_track_is_invented():
+    tracks = set(collections.Counter(p["track"] for p in parsed()))
+    assert LAUNCH_TRACKS <= tracks
+    assert tracks <= LAUNCH_TRACKS | EXPANSION_TRACKS
 
 
 def test_hard_and_extreme_code_problems_carry_a_defence_question():
@@ -119,10 +132,18 @@ def test_hard_and_extreme_code_problems_carry_a_defence_question():
             assert problem.get("defence_question", "").strip(), problem["slug"]
 
 
-def test_extreme_problems_carry_no_hints():
-    for problem in parsed():
-        if problem["difficulty"] == "extreme":
-            assert not problem.get("hints"), problem["slug"]
+@pytest.mark.parametrize("path", CODE, ids=IDS)
+def test_the_starter_code_does_not_already_pass(path):
+    """Starter code at every tier since the 29 September 2026 amendment.
+
+    A stub that passes its own battery hands the learner the answer and the
+    readiness signal a pass nobody earned. Depth may vary by tier; a pass never.
+    """
+    problem = load_problem(path)
+    stub = yaml.safe_load(path.read_text()).get("stub_code")
+    if not stub:
+        pytest.skip("no stub_code yet; the TypeScript validator requires one")
+    assert run_battery(problem, stub)["verdict"] != "pass", path.stem
 
 
 @pytest.mark.parametrize("path", CODE, ids=IDS)

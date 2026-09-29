@@ -11,23 +11,24 @@ import { LineCounter, parseDocument, type Document } from "yaml";
 import { compilePattern, PatternError, type PromptRule } from "../gate/index.ts";
 import { HEURISTICS, heuristicNames, isHeuristic } from "../eval/heuristics.ts";
 import {
-  ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, VISIBILITIES,
+  ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, TRACKS, VISIBILITIES,
 } from "./vocabulary.ts";
 import {
   COMPLEXITIES, defaultComplexity, isComplexity, panelFor,
 } from "../policy/complexity.ts";
+import { validateKit, type Kit, type KitRule } from "./kit.ts";
 
 export type Rule =
   | "yaml_syntax" | "schema" | "script_needs_fallback" | "unknown_competency"
   | "too_few_public_tests" | "too_few_hidden_tests" | "no_adversarial_fixture"
-  | "hints_on_extreme" | "step_without_check" | "too_few_exemplars"
+  | "step_without_check" | "too_few_exemplars"
   | "no_prompt_rules" | "no_probes" | "unknown_rule_kind" | "unknown_assertion_type"
   | "bad_pattern" | "rule_pattern_absent" | "no_adequate_exemplar"
   | "no_word_range" | "no_rubric" | "rubric_weights" | "no_defence_question"
   | "probe_pattern_absent" | "missing_call_budget" | "matcher_shadows_input"
   | "bad_complexity" | "panel_without_static" | "panel_mismatch"
   | "unknown_heuristic" | "heuristic_wrong_artefact"
-  | "no_complexity" | "no_interview_evidence";
+  | "no_complexity" | "no_interview_evidence" | "unknown_track" | KitRule;
 
 export interface ValidationError {
   rule: Rule;
@@ -91,7 +92,19 @@ export interface ParsedProblem {
   exemplars: Exemplar[];
   word_range?: [number, number];
   required_headings: string[];
+  /** Scenario, diagram, approach map, coach script and build stage. docs/04 section 2. */
+  kit: Kit;
   raw: Record<string, unknown>;
+}
+
+export interface ValidateOptions {
+  /**
+   * Hold the file to the catalogue's bar: a full kit, three to five hints and
+   * starter code at every tier. CI turns this on for everything outside
+   * problems/_fixtures, whose one-line stand-ins exist to exercise the
+   * pipeline rather than to teach.
+   */
+  requireKit?: boolean;
 }
 
 export interface ValidationReport {
@@ -112,7 +125,9 @@ const MEDIUM_AND_ABOVE = new Set(["medium", "hard", "extreme"]);
 const ADVERSARIAL_REQUIRED = new Set(["hard", "extreme"]);
 const DEFENCE_REQUIRED = new Set(["hard", "extreme"]);
 
-export function validateProblemYaml(source: string, file: string): ValidationReport {
+export function validateProblemYaml(
+  source: string, file: string, options: ValidateOptions = {},
+): ValidationReport {
   const counter = new LineCounter();
   const doc = parseDocument(source, { lineCounter: counter, keepSourceTokens: true });
   const errors: ValidationError[] = [];
@@ -152,6 +167,12 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
   if (level && !DIFFICULTIES.includes(level as never)) {
     add("schema", `difficulty ${level} is not one of ${DIFFICULTIES.join(", ")}`,
         lineOf(["difficulty"]));
+  }
+  const track = raw["track"] as string;
+  if (track && !TRACKS.includes(track as never)) {
+    add("unknown_track",
+        `track ${track} is not one of ${TRACKS.join(", ")}. An invented track becomes an ` +
+        "orphan group on the journey map", lineOf(["track"]));
   }
   if (errors.length) return { ok: false, file, errors };
 
@@ -204,12 +225,22 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
     }
   }
 
-  // Rule: hints present on an extreme problem.
-  if (level === "extreme" && hints.length > 0) {
-    add("hints_on_extreme",
-        "Extreme problems carry no hints at any point, which the tier exists to enforce",
-        lineOf(["hints", 0]));
-  }
+  // Extreme used to forbid hints outright. docs/00 section 3.2 as amended on
+  // 29 September 2026 gives every tier a hint ladder and gates Extreme's behind
+  // two failed runs and an approach note; screen conditions without any
+  // scaffolding moved to the rehearsal, which reads SCREEN_CONDITIONS.
+  const runNames = new Set<string>([
+    ...tests.map((t) => String(t["name"] ?? "")),
+    ...probes.map((pr) => String(pr?.name ?? "")),
+  ].filter(Boolean));
+  const kit = validateKit(raw, {
+    artefact,
+    requireKit: options.requireKit === true,
+    runNames,
+    hints,
+    add,
+    lineOf,
+  });
 
   // Rule: steps present without matching step_check entries.
   const checked = new Set(stepChecks.map((c) => c.step_id));
@@ -269,7 +300,10 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
   }
 
   if (errors.length) return { ok: false, file, errors };
-  return { ok: true, file, errors, problem: toParsed(raw, tests, steps, stepChecks, hints, competencies) };
+  return {
+    ok: true, file, errors,
+    problem: toParsed(raw, tests, steps, stepChecks, hints, competencies, kit),
+  };
 }
 
 function validateTests(
@@ -639,8 +673,10 @@ function toParsed(
   stepChecks: Array<{ step_id?: string; spec?: unknown }>,
   hints: string[],
   competencies: Array<{ slug?: string; weight?: number }>,
+  kit: Kit,
 ): ParsedProblem {
   return {
+    kit,
     slug: String(raw["slug"]),
     title: String(raw["title"] ?? raw["slug"]),
     artefact_type: raw["artefact_type"] as ParsedProblem["artefact_type"],

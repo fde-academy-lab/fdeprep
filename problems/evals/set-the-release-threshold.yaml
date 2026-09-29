@@ -151,6 +151,92 @@ hints:
   - The head of delivery is going to ask whether Friday is still possible.
     Having an answer to that is part of the job.
   - Three out of eight is a fraction, not a rate.
+  - Separate what blocks a release from what is reported. The overall number
+    can be reported without deciding anything.
+  - Close on Friday. Say what has to be true by when, and what ships instead
+    if it is not.
+
+scenario:
+  who: The head of delivery at a coursework grading service
+  situation: >-
+    The grading agent passes 116 of 120 eval cases, 96.7 percent, and they
+    want to launch on Friday in time for the next intake.
+  stakes: >-
+    Three failures sit in an eight-case slice added after a student was
+    emailed that their work was reviewed, with no grade attached.
+  metrics:
+    - { label: Overall pass rate, value: 96.7% }
+    - { label: Critical slice, value: 5 of 8 }
+    - { label: Launch, value: Friday }
+
+diagram:
+  title: One number hides the slice that matters
+  caption: >-
+    Gate on the slice you would apologise for, and report the rest. The
+    overall number decides nothing on its own.
+  direction: lr
+  nodes:
+    - { id: evalset, label: Eval set, sub: 120 cases, kind: store, tone: blue, at: [0, 1] }
+    - { id: overall, label: Overall 96.7%, sub: 116 of 120 pass, kind: output, tone: green, at: [1, 0] }
+    - { id: slice, label: Email slice, sub: 5 of 8 pass, kind: guard, tone: pink, at: [1, 2] }
+    - { id: gate, label: Release gate, sub: "one number or per slice?", kind: decision, tone: purple, at: [2, 1] }
+    - { id: ship, label: Ship Friday, sub: if one number decides, kind: output, tone: orange, at: [3, 0] }
+    - { id: hold, label: Hold the slice, sub: "fix, rerun, then ship", kind: output, tone: teal, at: [3, 2] }
+  edges:
+    - { from: evalset, to: overall, label: aggregate }
+    - { from: evalset, to: slice, label: the eight that matter }
+    - { from: overall, to: gate, label: reported }
+    - { from: slice, to: gate, label: blocks }
+    - { from: gate, to: ship, label: one threshold, tone: danger }
+    - { from: gate, to: hold, label: per-slice threshold, tone: success }
+
+approach:
+  goal: A threshold the head of delivery can act on
+  branches:
+    - label: Split what blocks from what reports
+      leaves: [a slice that harms a student blocks, the overall number is reported]
+    - label: Set a number per slice
+      leaves: [eight of eight on the email slice, a floor for everything else]
+    - label: Be honest about eight cases
+      detail: Three of eight is a fraction. It cannot measure a failure rate.
+      leaves: [say what eight cases can and cannot show]
+    - label: Answer the Friday question
+      leaves: [what must be true by when, what ships instead]
+
+coach:
+  opening: >-
+    Before you write, decide which failures should stop a launch whatever the
+    overall number says.
+  signals:
+    - id: one-number
+      when: { code_lacks: '(?i)\bslice' }
+      say: >-
+        You are arguing from one number over 120 cases. Which eight cases would
+        you refuse to ship with even at 99 percent?
+    - id: no-blocking-rule
+      when: { code_lacks: '(?i)\bblock|\bgate\b|must pass|zero failures' }
+      say: >-
+        Nothing in your answer stops a launch. Which result would block Friday
+        on its own?
+    - id: industry-standard
+      when: { code_matches: '(?i)industry standard' }
+      say: >-
+        There is no industry standard for this agent. Argue from what the slice
+        costs a student, not from a benchmark number.
+    - id: fraction-not-rate
+      when: { code_lacks: '(?i)three of (the )?eight|3 of 8|3/8|eight cases|8 cases' }
+      say: >-
+        Three failures in eight cases is a fraction, not a rate. What can eight
+        cases tell the head of delivery, and what can they not?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with two lines: the slice that blocks, and the number that is
+        only reported. The rest of the plan hangs off those.
+  wrap_up: >-
+    Aggregates hide the cases that hurt people. Gate on the slices you would
+    apologise for, report the rest, and say out loud what a small slice cannot
+    measure.
 
 reference_md: |
   The whole answer turns on noticing that the failures are not scattered.

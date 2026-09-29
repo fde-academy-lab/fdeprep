@@ -1,6 +1,14 @@
 /**
  * The scaffold ladder from docs/00 section 3.2, as data.
  *
+ * Amended 29 September 2026. The ladder used to withhold starter code on Hard
+ * and Extreme and every hint on Extreme, to imitate a screen. Learners read
+ * that as a blank page with nobody to ask. Every tier now gets starter code,
+ * whose depth the author sets per tier (a full scaffold on Easy, the signature
+ * and its contract on Extreme), and a hint ladder whose unlock tightens with
+ * the tier. Screen conditions did not go away: they are SCREEN_CONDITIONS
+ * below, which the rehearsal applies and nothing else.
+ *
  * This is the only place the four tiers are described. Everything else in the
  * product asks the policy engine, which reads this. A difficulty check written
  * anywhere else drifts out of step the first time a tier changes, which is the
@@ -68,7 +76,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     requiresDefence: false,
   },
   medium: {
-    layers: ["brief", "contract", "stub", "hints"],
+    layers: ["brief", "contract", "stub", "steps", "hints"],
     hints: { kind: "after_failed_runs", failedRuns: 1 },
     visibility: { publicNames: true, publicAssertions: false, hiddenCount: true, acceptanceRate: true },
     timed: false,
@@ -79,8 +87,8 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     requiresDefence: false,
   },
   hard: {
-    layers: ["brief", "contract", "hints"],
-    hints: { kind: "after_failed_runs_and_note", failedRuns: 2, noteChars: 200 },
+    layers: ["brief", "contract", "stub", "hints"],
+    hints: { kind: "after_failed_runs", failedRuns: 1 },
     visibility: { publicNames: false, publicAssertions: false, hiddenCount: true, acceptanceRate: false },
     timed: false,
     requiresLearnerTests: false,
@@ -90,9 +98,11 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     requiresDefence: true,
   },
   extreme: {
-    // L0 only, blank editor, and nothing about the batteries.
-    layers: ["brief"],
-    hints: { kind: "never" },
+    // The signature and its contract, and hints that cost a real attempt
+    // first: two failed runs and a written approach. Still nothing about the
+    // batteries, still timed, still one submit a day.
+    layers: ["brief", "contract", "stub", "hints"],
+    hints: { kind: "after_failed_runs_and_note", failedRuns: 2, noteChars: 200 },
     visibility: { publicNames: false, publicAssertions: false, hiddenCount: false, acceptanceRate: false },
     timed: true,
     requiresLearnerTests: true,
@@ -101,6 +111,27 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     rejectsDuplicateSubmissions: true,
     requiresDefence: true,
   },
+};
+
+/**
+ * A real screen: the brief, a blank editor, no hints, nothing about the tests.
+ *
+ * This is what Extreme meant before the 29 September 2026 amendment, kept
+ * whole so the rehearsal still reproduces the room a learner is preparing for.
+ * docs/00 section 7.4: a rehearsal runs its problems "under Extreme rules
+ * regardless of their native difficulty: no hints, no test names, no
+ * acceptance rates, one submit each".
+ */
+export const SCREEN_CONDITIONS: Tier = {
+  layers: ["brief"],
+  hints: { kind: "never" },
+  visibility: { publicNames: false, publicAssertions: false, hiddenCount: false, acceptanceRate: false },
+  timed: true,
+  requiresLearnerTests: true,
+  confirmBeforeSubmit: true,
+  adversarialAlwaysRuns: true,
+  rejectsDuplicateSubmissions: true,
+  requiresDefence: true,
 };
 
 /**

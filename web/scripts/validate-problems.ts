@@ -26,7 +26,9 @@ export async function validateAll(files?: string[]): Promise<ValidationError[]> 
   const failures: ValidationError[] = [];
   for (const file of targets) {
     const relative = path.relative(path.join(ROOT, ".."), file);
-    const report = validateProblemYaml(await readFile(file, "utf8"), relative);
+    // The catalogue carries the full kit; the fixtures are one-line stand-ins.
+    const requireKit = !relative.split(path.sep).includes("_fixtures");
+    const report = validateProblemYaml(await readFile(file, "utf8"), relative, { requireKit });
     if (report.ok) {
       console.log(`  ok    ${relative}`);
     } else {

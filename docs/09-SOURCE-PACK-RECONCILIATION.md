@@ -55,6 +55,8 @@ The source pack ships 120 authoring briefs and is explicit that they are briefs 
 
 Launch on the 25 in `docs/00-PRD.md` section 9, each solved by its author from the stub, each with a naive solution that provably fails a hidden test. Mine `docs/source-pack/05-problem-catalog.json` for topics. Do not treat the count as a goal.
 
+**Amended 29 September 2026.** The 25 launched, and the catalogue now grows past them on the stages and tracks in `docs/00-PRD.md` section 9. The count is still not a goal. Each added problem draws its topic from `05-problem-catalog.json` and nothing else from it: the briefs, tests, solutions and kit are written fresh, because the catalogue's source links point at an existing practice product whose problem text this repository does not copy. Each added problem clears the launch gates plus the kit gates in `docs/04-PROBLEM-AUTHORING.md` section 2.1, which is what stops a larger catalogue from being a thinner one.
+
 ### 2.5 Grading default: deterministic mock LLM, live model as the capped exception
 
 The source pack's default path is live generation through a budgeted broker with calibration to follow. That produces non-deterministic verdicts, appeals you cannot answer, and a token bill that scales with practice.
@@ -89,7 +91,7 @@ Reusable as-is or with light editing. None of it is superseded.
 | Asset | Use |
 |---|---|
 | `09-interview-bank.md` and `.json` | 36 interview prompts with answer signals and follow-ups. Feed these into voice question authoring in Phase 8. |
-| `05-problem-catalog.json` | 120 authoring briefs. Use as a topic backlog to draw the 25 launch problems from. |
+| `05-problem-catalog.json` | 120 authoring briefs. Use as a topic backlog: the 25 launch problems came from it, and so does every problem added after launch. Topics only; section 2.4 says why. |
 | `exercises/` | Four runnable deterministic examples with starters, reference solutions and tests. Useful as contract fixtures while building the runner. Never import them as an execution path for learner code. |
 | `06-example-challenge-specifications.md` | Eight worked challenge specifications across both tracks and all four difficulties. |
 | `01-reference-audit.md` | The record of what was observed and what remains unknown. |

@@ -146,13 +146,14 @@ describe("docs/04 section 1 rules", () => {
     }
   });
 
-  it("rejects hints on an extreme problem", () => {
+  it("lets an extreme problem carry hints, which the policy gates instead", () => {
+    // docs/00 section 3.2 as amended on 29 September 2026: Extreme hints unlock
+    // after two failed runs and an approach note, and the rehearsal's screen
+    // conditions are what withhold them entirely. The file may carry them.
     const source = withLine(CODE, "difficulty: medium", "difficulty: extreme") +
       "\nhints:\n  - Look at the body.\n";
     const report = validateProblemYaml(source, "a.yaml");
-    const error = report.errors.find((e) => e.rule === "hints_on_extreme");
-    expect(error).toBeDefined();
-    expect(error!.line).toBe(lineOf(source, "Look at the body."));
+    expect(report.errors.map((e) => e.rule)).not.toContain("hints_on_extreme");
   });
 
   it("rejects steps with no matching step_check entry", () => {

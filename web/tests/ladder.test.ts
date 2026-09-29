@@ -95,15 +95,29 @@ describe("acceptance 1: four difficulties render four different left panes", () 
     const easy = await layersAt("easy");
     expect([easy.brief, easy.contract, easy.stub, easy.steps]).toEqual([true, true, true, true]);
 
+    // docs/00 section 3.2 as amended on 29 September 2026: starter code at
+    // every tier, steps through Medium, hints everywhere with a tightening gate.
     const medium = await layersAt("medium");
-    expect([medium.contract, medium.stub, medium.steps]).toEqual([true, true, false]);
+    expect([medium.contract, medium.stub, medium.steps]).toEqual([true, true, true]);
 
     const hard = await layersAt("hard");
-    expect([hard.contract, hard.stub, hard.steps]).toEqual([true, false, false]);
+    expect([hard.contract, hard.stub, hard.steps]).toEqual([true, true, false]);
 
     const extreme = await layersAt("extreme");
     expect([extreme.brief, extreme.contract, extreme.stub, extreme.hints])
-      .toEqual([true, false, false, false]);
+      .toEqual([true, true, true, true]);
+  });
+
+  it("keeps screen conditions for the rehearsal, whatever the native tier", async () => {
+    // The amendment loosened practice, not the room a learner rehearses for.
+    for (const d of ["easy", "extreme"] as Difficulty[]) {
+      const policy = await resolvePolicy({
+        enrolmentId: learner.enrolmentId, problemId: await problemAt(d), rehearsal: true });
+      expect([policy.layers.brief, policy.layers.contract, policy.layers.stub,
+              policy.layers.steps, policy.layers.hints], d)
+        .toEqual([true, false, false, false, false]);
+      expect(policy.hints.allowed, d).toBe(false);
+    }
   });
 
   it("hides the hidden count and the acceptance rate as the tier rises", async () => {
@@ -159,9 +173,21 @@ describe("acceptance 2: Medium hints stay locked until one failed run", () => {
   });
 });
 
-describe("acceptance 3: Hard refuses hints until the note reaches 200 characters", () => {
-  it("names the shortfall and refuses the reveal", async () => {
+describe("acceptance 3: Extreme refuses hints until the note reaches 200 characters", () => {
+  // Moved from Hard on 29 September 2026. Hard unlocks after one failed run;
+  // the written approach is now what Extreme asks before it helps.
+  it("unlocks Hard hints after one failed run, with no note", async () => {
     const problemId = await problemAt("hard");
+    let policy = await resolvePolicy({ enrolmentId: learner.enrolmentId, problemId });
+    expect(policy.hints.allowed).toBe(false);
+    const s = await createSubmission({ ...ctx(problemId), kind: "run", body: "x" });
+    await settle(s.id, resultWith());
+    policy = await resolvePolicy({ enrolmentId: learner.enrolmentId, problemId });
+    expect(policy.hints.allowed).toBe(true);
+  });
+
+  it("names the shortfall and refuses the reveal", async () => {
+    const problemId = await problemAt("extreme");
     for (let i = 0; i < 2; i += 1) {
       const s = await createSubmission({ ...ctx(problemId), kind: "run", body: `x${i}` });
       await settle(s.id, resultWith());
@@ -184,7 +210,7 @@ describe("acceptance 3: Hard refuses hints until the note reaches 200 characters
   });
 
   it("still refuses at 200 characters when the failed runs are short", async () => {
-    const problemId = await problemAt("hard");
+    const problemId = await problemAt("extreme");
     await saveAttemptNote({ ...ctx(problemId), note: "a".repeat(400) });
     const policy = await resolvePolicy({ enrolmentId: learner.enrolmentId, problemId });
     expect(policy.hints.allowed).toBe(false);

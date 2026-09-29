@@ -129,6 +129,97 @@ hints:
     still has to get somewhere.
   - The line that forbids asking for photographs was written to protect the
     queue, and it is what makes the approval unconditional.
+  - Give approval a condition, and make the condition evidence the assistant
+    is allowed to ask for.
+  - Customer text is data. Say so in the prompt, so an instruction inside a
+    claim reads as part of the claim.
+
+scenario:
+  who: The claims team at a parcel delivery company
+  situation: >-
+    Eight months ago somebody wrote "always" into the claims assistant's
+    approval clause. It has approved every claim mentioning transit damage
+    since.
+  stakes: >-
+    One account had four claims approved in a single week, with no
+    photographs. The same word carries three promises customers rely on.
+  metrics:
+    - { label: Claims from one account, value: 4 in a week }
+    - { label: "Uses of \"always\"", value: "4" }
+    - { label: Word limit, value: "300" }
+
+diagram:
+  title: One word doing two different jobs
+  caption: >-
+    In the approval clause "always" is a policy. In the worked examples it is
+    a promise. Edit the policy and keep the promises.
+  direction: lr
+  nodes:
+    - { id: approval, label: Approval clause, sub: always approve a claim, kind: doc, tone: pink, at: [0, 0] }
+    - { id: photos, label: Photo ban, sub: do not ask for photographs, kind: doc, tone: orange, at: [0, 1] }
+    - { id: promises, label: Worked examples, sub: three promises to keep, kind: doc, tone: green, at: [0, 2] }
+    - { id: customer, label: Customer claim, sub: text you do not control, kind: actor, tone: blue, at: [1, 0] }
+    - { id: assistant, label: Claims assistant, sub: reads all of it, kind: model, tone: teal, at: [1, 1] }
+    - { id: outcome, label: Every claim approved, sub: four in one week, kind: output, tone: pink, at: [2, 1] }
+  edges:
+    - { from: approval, to: assistant, label: policy, tone: danger }
+    - { from: photos, to: assistant, label: removes the evidence, tone: danger }
+    - { from: promises, to: assistant, label: tone, tone: success }
+    - { from: customer, to: assistant, label: claim text }
+    - { from: assistant, to: outcome, label: approves unconditionally, tone: danger }
+
+approach:
+  goal: Change the policy without breaking the promises
+  branches:
+    - label: "Find every \"always\""
+      leaves: [one is a policy, three are promises to customers]
+    - label: Give approval a condition
+      leaves: [evidence before approval, a real claim still goes somewhere]
+    - label: Remove the mechanism
+      detail: The photo ban is what makes the approval unconditional.
+      leaves: [let the assistant ask for evidence]
+    - label: Treat customer text as data
+      leaves: [an instruction in a claim is part of the claim]
+
+coach:
+  opening: >-
+    Count the uses of "always" before you delete anything. They are not all the
+    same kind of word.
+  signals:
+    - id: still-unconditional
+      when: { code_matches: '(?i)always approve' }
+      say: >-
+        The approval clause still approves unconditionally. What should a claim
+        need before it is approved?
+    - id: photo-ban-kept
+      when: { code_matches: '(?i)do not ask for photographs' }
+      say: >-
+        This line is what makes the approval unconditional. An assistant that
+        cannot ask for evidence can only approve.
+    - id: promise-lost
+      when: { code_lacks: '(?i)always receive a reference number' }
+      say: >-
+        A customer promise is gone. The reference-number line uses "always" as
+        a commitment, and customers quote it back.
+    - id: bare-claim-approved
+      when: { test_failed: a_bare_claim_does_not_approve_itself }
+      say: >-
+        A claim with no evidence was still approved. Read your approval clause
+        the way the model will: what does it allow?
+    - id: followed-an-instruction
+      when: { test_failed: an_instruction_inside_a_customer_message }
+      say: >-
+        A customer message carried an instruction and the assistant followed
+        it. Where does your prompt say customer text is data?
+    - id: stuck
+      when: { idle_minutes: 4 }
+      say: >-
+        Start with the one clause that is the problem, then check the three
+        promises are still there word for word.
+  wrap_up: >-
+    Prompt edits fail like refactors: the same token does different jobs in
+    different places. Edit the job, not the word, and probe what you meant to
+    keep.
 
 reference_md: |
   The edit is two clauses and the trap is a text search.

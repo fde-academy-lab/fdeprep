@@ -68,21 +68,23 @@ Six layers. Difficulty decides which are on.
 
 | Layer | Content |
 |---|---|
-| L0 Brief | Scenario, acceptance condition, constraints. Always present. |
+| L0 Brief | Scenario, acceptance condition, constraints. Always present, and always with its kit: a scenario card, a system diagram, an approach map and a coach. See `04-PROBLEM-AUTHORING.md` section 2. |
 | L1 Contract | Function signature, input and output schema, allowed imports, call budget. |
-| L2 Stub | Skeleton file with ordered `# TODO` markers that map one to one onto L3 steps. |
+| L2 Stub | Starter code. Its depth varies with difficulty and it is never absent: a scaffold with ordered `# TODO` markers that map one to one onto L3 steps on Easy, and the signature with its contract as a docstring on Extreme. |
 | L3 Step checklist | Sub-tasks, each with its own micro-check that turns green independently, so progress is visible before the whole battery passes. |
-| L4 Hints | Revealed one at a time. Every reveal is written to the attempt record and shown to faculty. |
+| L4 Hints | Three to five, revealed one at a time. Every reveal is written to the attempt record and shown to faculty. |
 | L5 Reference walkthrough | The worked solution with commentary. Unlocked on pass, or on an explicit give-up that is recorded. |
 
 | Difficulty | Layers on | Hint policy | Test visibility | Extra rules |
 |---|---|---|---|---|
-| Easy | L0, L1, L2, L3 | L4 free and unlimited | Public test names and assertions visible | Acceptance rate shown |
-| Medium | L0, L1, L2 | L4 unlocks after one failed run | Public test names visible, hidden count shown | Acceptance rate shown |
-| Hard | L0, L1 | L4 unlocks after two failed runs and a written attempt note of at least 200 characters | Hidden count only | Acceptance rate hidden |
-| Extreme | L0 only, blank editor | No hints at any point | Nothing. The learner writes their own tests first and those tests are stored. | Timed, one submit per 24 hours, adversarial battery always runs |
+| Easy | L0, L1, L2, L3, L4 | L4 free and unlimited | Public test names and assertions visible | Acceptance rate shown |
+| Medium | L0, L1, L2, L3, L4 | L4 unlocks after one failed run | Public test names visible, hidden count shown | Acceptance rate shown |
+| Hard | L0, L1, L2, L4 | L4 unlocks after one failed run | Hidden count only | Acceptance rate hidden, defence step required |
+| Extreme | L0, L1, L2, L4 | L4 unlocks after two failed runs and a written attempt note of at least 200 characters | Nothing. The learner writes their own tests first and those tests are stored. | Timed, one submit per 24 hours, adversarial battery always runs |
 
-The written attempt note on Hard is deliberate friction. It produces text a faculty member can read to see whether the learner is stuck on the concept or on Python.
+The written attempt note on Extreme is deliberate friction. It produces text a faculty member can read to see whether the learner is stuck on the concept or on Python.
+
+**Amended 29 September 2026.** The ladder used to give Hard no stub and Extreme a blank editor with no hints, so that the top two tiers imitated a screen. Learners running the platform read that as a blank page with nobody to ask, and the tiers taught less than the easier ones. Every tier now carries starter code and hints, and the tiers differ in how much the starter code gives away and what a hint costs. The screen itself did not go away: rehearsal mode (section 7.4) runs under **screen conditions**, which are the old Extreme rules kept whole: the brief only, a blank editor, no hints, nothing about the tests.
 
 ### 3.3 Competency tags
 
@@ -184,7 +186,7 @@ This exists because learners have access to coding assistants. Assume every lear
 
 ### 7.4 Rehearsal mode
 
-A timed session that draws a set of problems matching the learner's persona and runs them under Extreme rules regardless of their native difficulty: no hints, no test names, no acceptance rates, one submit each. It produces a transcript and a rubric score in the same shape as the real FDE tech screen rubric.
+A timed session that draws a set of problems matching the learner's persona and runs them under screen conditions regardless of their native difficulty: the brief only, a blank editor, no hints, no test names, no acceptance rates, one submit each. Screen conditions are what Extreme meant before the amendment in section 3.2, and they belong to the rehearsal alone. It produces a transcript and a rubric score in the same shape as the real FDE tech screen rubric.
 
 Rehearsals are capped at two per week per learner so the result stays meaningful.
 
@@ -223,6 +225,8 @@ Launch target is 20 to 25 problems that are actually good, weighted as follows.
 | Extreme | 3 | 2 code, 1 design |
 
 Twenty-five problems with real hidden tests and real adversarial fixtures beat sixty thin ones. The catalogue grows from session material after launch.
+
+**Amended 29 September 2026.** The launch mix above is a floor. The catalogue grows past it on four stages, Foundations, Builder, Production and Forward deployed, across eleven tracks, and includes multi-stage builds where each stage is its own problem. Every added problem clears the same gates as the launch set: a reference that passes, a naive solution that fails a hidden test, a stub that does not pass, and a coach that stays quiet on the reference and speaks up on the naive. Sixty thin problems are still worse than twenty-five good ones, and the gates are what keep the extra problems from being thin.
 
 ---
 
