@@ -185,18 +185,40 @@ exemplars:
       83 percent for v14, a gain of 9 points, and it fixes the refund problem
       that has been costing the airline money every week.
 
+      Our test set is the 200 cases the prompt writers worked from while they
+      wrote v15, so v15 has been checked against every one of them many times.
+      A gain of 9 points on cases the team knows that well shows that v15 does
+      what we need.
+
       I recommend we release it to all passengers on Monday as planned. We have
       tested it thoroughly and the numbers speak for themselves.
+
+      Every day that v14 stays live, it keeps offering refunds that the fare
+      rules do not allow, and each of those offers costs the airline money.
+      Releasing v15 to everyone at once stops that for every passenger from the
+      first day. A partial release would leave some passengers on the old
+      prompt for no clear benefit.
 
       After launch we will monitor it closely for the first few days. If
       customers complain or the support team sees problems, we will roll back
       to v14, which we can do quickly because the old prompt is saved in the
       repository.
 
+      The support team will keep an eye on escalations and complaints, and the
+      prompt writers will read through a selection of conversations each
+      morning. If anything looks wrong, we will meet with your team to agree
+      whether to roll back, so that nobody changes the assistant without the
+      airline's approval. An engineer can then restore v14 from the repository
+      and redeploy it.
+
       There was a small drop on one of the other test sets, from 88 to 85
       percent, but that is within normal variation and the overall picture is
-      strongly positive. We can look into it after launch if it turns out to
-      matter.
+      strongly positive. Three points on 150 cases is four or five cases,
+      which is the kind of movement any prompt change produces.
+      We can look into it after launch if it turns out to matter.
+
+      You can tell your director that the refund fix will be live for every
+      passenger on Monday, as promised.
 
       In short, v15 is ready, and Monday is achievable.
 
