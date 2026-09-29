@@ -4,7 +4,7 @@ Everything the model knows about book_room is the contract in its first
 prompt, so the contract carries everything the API client's declaration says.
 The Literal becomes an enum, which is how the model learns that a terrace is
 not a room. The parameters with no default are required, which is how it
-learns to ask for a length rather than leave the API to pick one. Types and
+learns to ask the member for a length when none was given. Types and
 descriptions carry the unit and the time format.
 
 The contract is built once and published as JSON before the question, so the
