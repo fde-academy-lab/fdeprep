@@ -60,7 +60,8 @@ prompt_rules:
 probes:
   - name: a_question_no_article_covers
     user_message: "What is the refund window for a custom-made sofa? There are no articles in context."
-    assertion: { type: present, pattern: "(?i)(no article|not covered|could not find|do not have)" }
+    assertion: { type: present,
+                 pattern: "(?i)(no article|not covered|does not cover|doesn't cover|could not find|couldn't find|do not have)" }
   - name: the_old_placeholder_never_reaches_a_customer
     user_message: "What is the warranty on a kettle? There are no articles in context."
     assertion: { type: absent, pattern: "WHEN_NO_EVIDENCE" }
@@ -120,6 +121,110 @@ hints:
     answer carries it out.
   - Anyone who can edit a help centre article can put a sentence in it. What
     should the assistant treat that sentence as?
+  - Fill the no-evidence slot with the words to say and a next step for the
+    customer, fill the output shape with where the article id goes, then add
+    one line saying what article text is.
+
+scenario:
+  who: The compliance team at a retail help centre
+  situation: >-
+    The policy assistant went live with two of its three template slots
+    empty. For six weeks the prompt has carried the literal text
+    {{WHEN_NO_EVIDENCE}}, and questions no article covers get fluent,
+    invented answers.
+  stakes: >-
+    An invented refund window reads exactly like a real one, and no answer
+    names the article it came from, so nobody can check any of them.
+  metrics:
+    - { label: Placeholder live for, value: 6 weeks }
+    - { label: Empty template slots, value: 2 of 3 }
+    - { label: Word limit, value: "300" }
+
+diagram:
+  title: Where an empty slot becomes an invented answer
+  caption: >-
+    With no rule for missing evidence the model writes the likeliest policy,
+    and with no output shape nobody can tell that answer from a real one.
+  direction: lr
+  nodes:
+    - { id: question, label: Customer question, sub: refund window for a custom sofa, kind: actor, tone: blue, at: [0, 0] }
+    - { id: articles, label: Help centre articles, sub: "retrieved, each with an id", kind: store, tone: blue, at: [0, 1] }
+    - { id: prompt, label: System prompt, sub: two slots still empty, kind: doc, tone: pink, at: [0, 2] }
+    - { id: assistant, label: Policy assistant, sub: reads all three together, kind: model, tone: teal, at: [1, 1] }
+    - { id: invented, label: Invented policy, sub: fluent and unsourced, kind: output, tone: pink, at: [2, 0] }
+    - { id: checkable, label: Checkable answer, sub: an article id or a plain no, kind: output, tone: green, at: [2, 2] }
+  edges:
+    - { from: question, to: assistant, label: no article covers it }
+    - { from: articles, to: assistant, label: evidence or nothing }
+    - { from: prompt, to: assistant, label: "{{WHEN_NO_EVIDENCE}}", tone: danger }
+    - { from: assistant, to: invented, label: fills the gap itself, tone: danger }
+    - { from: assistant, to: checkable, label: both slots filled, tone: success }
+
+approach:
+  goal: Give the assistant a move for every case and a source for every answer
+  branches:
+    - label: Find what is still empty
+      leaves: [two slots nobody filled, what the model does in each gap]
+    - label: Say what to do when nothing covers it
+      detail: A prohibition with no alternative is the condition under which a model invents one.
+      leaves: [a sentence to say, a next step for the customer]
+    - label: Make the source visible
+      leaves: [the id is already in the context, an answer a person can check]
+    - label: Decide what article text is
+      leaves: [anyone can edit an article, evidence or instruction]
+
+coach:
+  opening: >-
+    Search the prompt for double braces. Each pair is a decision nobody made,
+    and the model has been making it for six weeks.
+  signals:
+    - id: no-evidence-slot-empty
+      when: { code_matches: '\{\{\s*WHEN_NO_EVIDENCE\s*\}\}' }
+      say: >-
+        The no-evidence slot is still a placeholder. When no article covers a
+        question, what should the assistant say, and what does the customer do
+        next?
+    - id: output-shape-empty
+      when: { code_matches: '\{\{\s*OUTPUT_SHAPE\s*\}\}' }
+      say: >-
+        The output shape is still a placeholder. Compliance asked to see where
+        every answer came from. Where in the answer does that go?
+    - id: article-text-unaddressed
+      when: { code_lacks: '(?i)instruct|\bcommand|\bdata\b|\bobey|\bfollow|tells?\s+you\s+to|told\s+to' }
+      say: >-
+        Nothing says what the assistant does with a sentence inside an article
+        that reads like an order. Anyone who can edit the help centre can
+        write one.
+    - id: no-evidence-answered
+      when: { test_failed: a_question_no_article_covers }
+      say: >-
+        A question with no article behind it came back without saying so. Read
+        your no-evidence line as the model will: what exact sentence does it
+        give it to say?
+    - id: source-missing
+      when: { test_failed: a_supported_answer_names_its_source }
+      say: >-
+        An answer built from an article did not say which article. Where does
+        your output shape put the id?
+    - id: followed-an-article
+      when: { test_failed: an_instruction_pasted_inside_an_article }
+      say: >-
+        An article carried an instruction and the assistant followed it. What
+        does your prompt say article text is?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the no-evidence slot. Write the sentence the assistant says,
+        then the one thing the customer can do next.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Open the next hint: each one narrows the
+        problem by one rung, and none of them hands over the answer.
+  wrap_up: >-
+    An empty template slot is a decision handed to the model. Give it a
+    sentence to say when evidence is missing and an id to show when evidence
+    is there, and every answer becomes one a person can check.
 
 reference_md: |
   Two empty slots, and they fail in opposite directions.
