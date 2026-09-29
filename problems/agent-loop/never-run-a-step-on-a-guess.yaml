@@ -191,13 +191,6 @@ coach:
       say: >-
         Nothing in your executor ever marks a step as blocked. What does it do
         with a step whose input never arrived?
-    - id: status-only-success
-      when:
-        code_matches: 'status["'']?\)?\s*==\s*200'
-        code_lacks: '["'']error["'']'
-      say: >-
-        Your executor counts a 200 as done. A 200 can carry an error key in its
-        body. What happens downstream of a step whose response says both?
     - id: one-pass-in-listed-order
       when:
         code_matches: '^\s*for\s+\w+\s+in\s+(plan|steps)\b[^\n]*:'
@@ -213,8 +206,9 @@ coach:
     - id: hidden-only-dependents
       when: { test_failed: a_failed_collection_holds_only_the_email }
       say: >-
-        In that run one step failed partway through the plan. Check which steps
-        your executor held back, and whether it held back more than it had to.
+        In that run one step answered 200 with an error in its body, partway
+        through the plan. Did your executor count it as done, and did it hold
+        back more steps than depended on it?
     - id: hidden-out-of-order
       when: { test_failed: a_plan_listed_out_of_order_still_waits_for_its_inputs }
       say: >-
