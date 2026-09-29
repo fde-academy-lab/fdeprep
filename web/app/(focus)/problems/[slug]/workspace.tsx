@@ -11,10 +11,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import CodeMirror from "@uiw/react-codemirror";
 import { python } from "@codemirror/lang-python";
-import { Play, RotateCcw, Send } from "lucide-react";
+import { Check, Play, RotateCcw, Send } from "lucide-react";
 import type { Decision } from "@/lib/policy";
 import type { PaletteProblem } from "@/lib/problems/catalogue";
 import type { AttemptHistory, PastSubmission, WorkspaceProblem } from "@/lib/problems/workspace";
+import type { StepView } from "@/lib/submissions/view";
 import type { PalettePage } from "@/components/shell/command-palette";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
@@ -54,6 +55,7 @@ export default function Workspace(props: Props) {
   const [code, setCode] = useState(problem.stubCode ?? "");
   const [settledKey, setSettledKey] = useState(0);
   const [past, setPast] = useState<PastSubmission[]>(props.history.submissions);
+  const [stepStatus, setStepStatus] = useState<StepView[]>(props.history.steps);
 
   const refreshPolicy = useCallback(async () => {
     const response = await fetch(`/api/problems/${problem.id}/policy`);
@@ -67,9 +69,10 @@ export default function Workspace(props: Props) {
 
   const { view, running, notice, send } = useSubmission(problem.id, onSettled);
 
-  // Keep the attempts tab current without a reload.
+  // Keep the attempts tab and the checklist current without a reload.
   useEffect(() => {
     if (!view || view.status !== "terminal") return;
+    if (view.kind === "run" || view.kind === "submit") setStepStatus(view.steps);
     setPast((prior) => [{
       id: view.id, kind: view.kind, verdict: view.verdict, score: view.score,
       queuedAt: view.queuedAt,
@@ -173,7 +176,7 @@ export default function Workspace(props: Props) {
               </Section>
             ) : null}
 
-            {problem.steps.length ? <Steps problemId={problem.id} steps={problem.steps} /> : null}
+            {problem.steps.length ? <Steps steps={problem.steps} status={stepStatus} /> : null}
 
             {policy.learnerTests.required ? (
               <Section title="Write your tests first"
@@ -324,37 +327,45 @@ export default function Workspace(props: Props) {
   );
 }
 
-function Steps({ problemId, steps }: { problemId: number; steps: Array<{ id: string; text: string }> }) {
-  const key = `fdeprep.steps.${problemId}`;
-  const [done, setDone] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(key);
-      if (saved) setDone(new Set(JSON.parse(saved) as string[]));
-    } catch { /* blocked */ }
-  }, [key]);
-  const toggle = (id: string) => setDone((prior) => {
-    const next = new Set(prior);
-    if (next.has(id)) next.delete(id); else next.add(id);
-    try { localStorage.setItem(key, JSON.stringify([...next])); } catch { /* blocked */ }
-    return next;
-  });
+/**
+ * docs/01 S4: each step has its own check, run on every Run against the public
+ * tests, and turns green on its own. The status comes from the last run's
+ * result, so the list shows what the code did rather than what the learner
+ * ticked.
+ */
+function Steps({ steps, status }: {
+  steps: Array<{ id: string; text: string }>;
+  status: StepView[];
+}) {
+  const byId = new Map(status.map((s) => [s.id, s.status]));
+  const green = steps.filter((step) => byId.get(step.id) === "pass").length;
+  const aside = status.length
+    ? `${green} of ${steps.length} green on the last run`
+    : "Run to check each step";
   return (
-    <Section title="Steps" aside={`${done.size} of ${steps.length} ticked`}>
-      <ol className="space-y-1.5">
-        {steps.map((step, index) => (
-          <li key={step.id}>
-            <label className="flex cursor-pointer items-start gap-3 rounded-control px-2 py-1.5
-                              hover:bg-surface">
-              <input type="checkbox" checked={done.has(step.id)} onChange={() => toggle(step.id)}
-                     className="mt-1 size-4 shrink-0 accent-[var(--color-accent)]" />
-              <span className={cn(done.has(step.id) ? "text-text-dim line-through" : "text-text")}>
-                <span className="mr-2 font-mono text-meta text-text-faint">{index + 1}</span>
-                {step.text}
+    <Section title="Steps" aside={aside}>
+      <ol className="space-y-0.5">
+        {steps.map((step, index) => {
+          const state = byId.get(step.id);
+          return (
+            <li key={step.id} className="flex items-start gap-3 rounded-control px-2 py-1.5">
+              <span aria-hidden
+                    className={cn("mt-px grid size-5 shrink-0 place-items-center rounded-full border",
+                                  "font-mono text-[11px] leading-none",
+                                  state === "pass" ? "border-pass/50 bg-pass-soft text-pass"
+                                    : "border-border-strong text-text-faint")}>
+                {state === "pass" ? <Check className="size-3" strokeWidth={2.5} /> : index + 1}
               </span>
-            </label>
-          </li>
-        ))}
+              <span className={state === "pass" ? "text-text-dim" : "text-text"}>
+                {step.text}
+                <span className="sr-only">
+                  {state === "pass" ? ", done on the last run"
+                    : state === "fail" ? ", not done on the last run" : ", not checked yet"}
+                </span>
+              </span>
+            </li>
+          );
+        })}
       </ol>
     </Section>
   );

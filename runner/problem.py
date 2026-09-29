@@ -39,6 +39,9 @@ class Problem:
     tests: tuple[TestCase, ...]
     competencies: tuple[dict[str, Any], ...] = ()
     hints: tuple[str, ...] = ()
+    # docs/01 S4: one micro-check per step, each a list of assertions read
+    # against the public cases of a run.
+    step_checks: tuple[dict[str, Any], ...] = ()
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     def cases(self, visibility: str) -> tuple[TestCase, ...]:
@@ -107,6 +110,11 @@ def from_dict(data: dict[str, Any], source: str = "<dict>") -> Problem:
         tests=tuple(cases),
         competencies=tuple(data.get("competencies") or ()),
         hints=tuple(data.get("hints") or ()),
+        step_checks=tuple(
+            {"step_id": str(check["step_id"]),
+             "assertions": list((check.get("spec") or {}).get("assertions") or [])}
+            for check in (data.get("step_checks") or ())
+        ),
         raw=data,
     )
 

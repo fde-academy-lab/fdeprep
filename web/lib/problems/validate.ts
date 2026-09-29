@@ -251,6 +251,21 @@ export function validateProblemYaml(
     lineOf,
   });
 
+  // Rule: a step check naming an assertion the runner does not evaluate. The
+  // checks run on every Run, so a typo here fails in front of the learner.
+  stepChecks.forEach((check, index) => {
+    const spec = ((check as { spec?: unknown }).spec ?? {}) as { assertions?: unknown };
+    const assertions = Array.isArray(spec.assertions) ? spec.assertions : [];
+    assertions.forEach((entry, position) => {
+      const type = (entry as { type?: unknown } | null)?.type;
+      if (typeof type === "string" && CODE_ASSERTIONS.has(type)) return;
+      add("unknown_assertion_type",
+          `${String(type)} in the check for step ${String(check.step_id ?? index)} is not an ` +
+          `assertion the runner evaluates. Known types: ${[...CODE_ASSERTIONS].join(", ")}`,
+          lineOf(["step_checks", index, "spec", "assertions", position]));
+    });
+  });
+
   // Rule: steps present without matching step_check entries.
   const checked = new Set(stepChecks.map((c) => c.step_id));
   steps.forEach((step, index) => {

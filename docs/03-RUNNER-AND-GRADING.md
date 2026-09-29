@@ -315,6 +315,7 @@ Every submission writes this object into `submission.result`. The front end rend
     "hidden":      {"status": "fail", "passed": 5, "total": 7, "cases": []},
     "adversarial": {"status": "skipped", "passed": 0, "total": 3, "cases": []}
   },
+  "steps": [{"id": "s1", "status": "pass"}, {"id": "s2", "status": "fail"}],
   "budget": {"llm_calls": 9, "tool_calls": 11, "wall_ms": 1412,
              "max_llm_calls": 6, "within_budget": false},
   "trace_ref": "s3://fde-prep-traces/2026/09/sub-38191.json.gz",
@@ -327,6 +328,7 @@ Rules the front end relies on:
 - `cases` is empty for hidden and adversarial gates unless the learner has already passed the problem.
 - A gate that never ran has status `skipped`, never `fail`.
 - `score` is null until every gate has run or been skipped by a prior failure.
+- `steps` lists every step of the problem in order once the public cases have run, and is empty when they did not. Added 29 September 2026, for the checklist docs/01 S4 specifies. A step is `pass` when any public case satisfied its `step_check` assertions. The spec never said which case a check reads: read against every public case, 16 of 43 reference solutions left a step red, and read against any case, none did, so authors had written them for the second reading. Hidden and adversarial cases never count, so a step never reports on a case the learner cannot see. CI requires the reference to turn every step green and the stub to leave at least one red.
 
 ### Scoring
 

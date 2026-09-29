@@ -155,6 +155,23 @@ def test_the_starter_code_does_not_already_pass(path):
 
 
 @pytest.mark.parametrize("path", CODE, ids=IDS)
+def test_the_reference_turns_every_step_green_and_the_stub_does_not(path):
+    """docs/01 S4: each step's micro-check turns green on its own. A reference
+    that leaves a step red makes the checklist lie about a correct solution,
+    and a stub that is already all green tells the learner every step is done
+    before they start."""
+    document = yaml.safe_load(path.read_text())
+    if not document.get("step_checks"):
+        pytest.skip("no steps on this problem")
+    problem = load_problem(path)
+    reference, _ = solutions(path)
+    red = [s["id"] for s in run_battery(problem, reference)["steps"] if s["status"] != "pass"]
+    assert not red, (path.stem, "the reference leaves these steps red", red)
+    stub = run_battery(problem, document["stub_code"])["steps"]
+    assert any(s["status"] != "pass" for s in stub), (path.stem, "the stub turns every step green")
+
+
+@pytest.mark.parametrize("path", CODE, ids=IDS)
 def test_the_reference_solution_passes_every_gate(path):
     problem = load_problem(path)
     reference, _ = solutions(path)

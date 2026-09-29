@@ -8,6 +8,7 @@
  */
 import { db } from "../db/pool.ts";
 import type { Difficulty } from "../policy/tiers.ts";
+import { trimSteps, type StepView } from "../submissions/view.ts";
 import type { Approach, Build, Diagram, Kit, Scenario } from "./kit.ts";
 
 export interface WorkspaceKit {
@@ -68,6 +69,8 @@ export interface AttemptHistory {
   note: string;
   hints: Array<{ ordinal: number; bodyMd: string }>;
   submissions: PastSubmission[];
+  /** The checklist as the last finished run or submit left it. */
+  steps: StepView[];
 }
 
 export async function loadWorkspaceProblem(
@@ -144,7 +147,7 @@ export async function attemptHistory(
     "select id, attempt_note from attempt where enrolment_id = $1 and problem_id = $2",
     [enrolmentId, problemId]);
   const row = attempt.rows[0];
-  if (!row) return { note: "", hints: [], submissions: [] };
+  if (!row) return { note: "", hints: [], submissions: [], steps: [] };
 
   // Only hints from the version on screen. A hint revealed on an earlier
   // version stays on the record for faculty and is not the text this problem
@@ -164,8 +167,17 @@ export async function attemptHistory(
        from submission where attempt_id = $1
       order by queued_at desc, id desc limit 20`, [row.id]);
 
+  // The checklist shows what the last finished run said, and a run that never
+  // reached the public tests says nothing about any step.
+  const lastRun = await db().query<{ steps: unknown }>(
+    `select result->'steps' as steps
+       from submission
+      where attempt_id = $1 and status = 'terminal' and kind in ('run', 'submit')
+      order by queued_at desc, id desc limit 1`, [row.id]);
+
   return {
     note: row.attempt_note ?? "",
+    steps: trimSteps(lastRun.rows[0]?.steps),
     hints: hints.rows.map((h) => ({ ordinal: h.ordinal, bodyMd: h.body_md })),
     submissions: submissions.rows.map((s) => ({
       id: Number(s["id"]),

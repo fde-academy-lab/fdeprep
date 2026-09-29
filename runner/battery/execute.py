@@ -59,7 +59,8 @@ SANDBOX_RESULT_SCHEMA = {
 
 def run_single_case(name: str, spec: dict[str, Any], source: str, *,
                     allowed_imports, time_limit_s: int,
-                    stage_observer: StageObserver | None = None) -> dict[str, Any]:
+                    stage_observer: StageObserver | None = None,
+                    step_checks=()) -> dict[str, Any]:
     budget = spec.get("budget") or {}
     wall_ms = int(budget.get("wall_ms", time_limit_s * 1000))
     trace = Trace()
@@ -101,7 +102,7 @@ def run_single_case(name: str, spec: dict[str, Any], source: str, *,
         )
         document = _read_result(result_path, exchange, wall_ms)
         _close_trace(trace, document)
-        return _judge(name, spec, document, exchange, trace)
+        return _judge(name, spec, document, exchange, trace, step_checks)
     finally:
         shutil.rmtree(root, ignore_errors=True)
 
@@ -187,7 +188,7 @@ def _synthetic_timeout(wall_ms: int) -> dict[str, Any]:
 
 
 def _judge(name: str, spec: dict, document: dict, exchange: Exchange,
-           recorded: Trace) -> dict[str, Any]:
+           recorded: Trace, step_checks=()) -> dict[str, Any]:
     steps = tuple(recorded.steps)
 
     # Counts come from the steps the runner recorded while answering calls.
@@ -222,7 +223,13 @@ def _judge(name: str, spec: dict, document: dict, exchange: Exchange,
     reported = document.get("wall_ms")
     wall = min(reported, exchange.wall_ms) if isinstance(reported, int) else exchange.wall_ms
 
+    held = {
+        check["step_id"]: all(evaluate(a, observed)["status"] == "pass" for a in check["assertions"])
+        for check in step_checks
+    }
+
     return {
+        "_steps": held,
         "name": name,
         "status": "fail" if failed else "pass",
         "message": _message(observed, failed),
@@ -275,21 +282,31 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
     }
 
     all_cases: list[dict] = []
+    held: dict[str, bool] = {}
+    public_ran = False
     if static.status == "pass":
         previous_passed = True
         for visibility in ("public", "hidden", "adversarial"):
             cases = problem.cases(visibility)
             if not previous_passed or not cases:
                 continue
+            # Steps read public cases only, so a step never reports on a case
+            # the learner cannot see.
+            checks = problem.step_checks if visibility == "public" else ()
             ran = [
                 run_single_case(
                     case.name, case.spec, source,
                     allowed_imports=problem.allowed_imports,
                     time_limit_s=problem.time_limit_s,
                     stage_observer=stage_observer,
+                    step_checks=checks,
                 )
                 for case in cases
             ]
+            for case in ran:
+                for step_id, ok in case.pop("_steps", {}).items():
+                    held[step_id] = held.get(step_id, False) or ok
+            public_ran = public_ran or visibility == "public"
             all_cases += ran
             reveal = visibility == "public" or already_passed
             gates[visibility] = contract.gate_from_cases(ran, reveal=reveal)
@@ -307,6 +324,12 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
             hints_revealed=hints_revealed, within_budget=within_budget,
         ),
         "gates": gates,
+        # docs/01 S4: a step is green when any public case satisfied its
+        # micro-check. Empty when the public cases did not run.
+        "steps": [
+            {"id": check["step_id"], "status": "pass" if held.get(check["step_id"]) else "fail"}
+            for check in problem.step_checks
+        ] if public_ran else [],
         "budget": {
             "llm_calls": worst_llm,
             "tool_calls": worst_tool,
