@@ -152,19 +152,31 @@ exemplars:
   - band: weak
     score: 28
     body_md: |
-      A second agent is a good idea and follows the multi-agent pattern that
-      many teams now use for high-stakes work. Having one agent check another
-      adds a layer of safety, similar to the four-eyes principle for payments.
+      The pilot showed that the intake agent sometimes decides a check is
+      unnecessary, and some duplicate claims were paid twice as a result. A
+      second agent is a good idea and follows the multi-agent pattern that many
+      teams now use for high-stakes work. Having one agent check another adds a
+      layer of safety, similar to the four-eyes principle for payments.
 
       I would build the reviewer agent with a prompt that lists every check
       the intake agent must perform, and ask it to send back any claim where
-      a check is missing. We could also improve the intake agent's prompt to
-      stress that the duplicate check is mandatory, for example by writing it
-      in capitals and repeating it at the end.
+      a check is missing. The reviewer would read the intake agent's notes on
+      each claim and confirm that every check was done properly before the
+      claim reaches a handler. Because it is a separate agent with its own
+      instructions, it will not be fooled by a description that looks new the
+      way the intake agent was. We could also improve the intake agent's prompt
+      to stress that the duplicate check is mandatory, for example by writing
+      it in capitals and repeating it at the end.
 
       The extra nine seconds should be acceptable because claims are not
       handled in real time, and the cost is small compared with paying
-      duplicate claims.
+      duplicate claims. Model prices also keep falling, so the extra spend will
+      matter less each year.
+
+      Once the reviewer is live, we should monitor how often it sends claims
+      back and keep improving both prompts based on what it finds. If the
+      results look good after a while, we can roll it out to the rest of the
+      claims team.
 
       Over time we could add more specialist agents, for example one for
       fraud and one for estimates, and have them coordinate through a
