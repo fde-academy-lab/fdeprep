@@ -128,3 +128,62 @@ ALLOWED_PRIVATE = [
 def test_legitimate_private_names_still_pass(what, source):
     outcome = check(source, ALLOWED)
     assert outcome.status == "pass", (what, outcome.reasons)
+
+
+# Found by a content author on 29 September 2026: attribute access that never
+# appears as an ast.Attribute. str.format resolves "{0._script}" with a real
+# getattr at run time, and a class pattern in a match statement binds
+# attributes by keyword. Both read the scripted model the rule above exists to
+# keep private, so both are closed here rather than left to the sandbox.
+TRAVERSAL = [
+    ("a format string that reads the script",
+     "def run_agent(q, llm, tools):\n    return '{0._script}'.format(llm)", "format"),
+    ("a format string built at run time",
+     "def run_agent(q, llm, tools):\n    fmt = '{0._scr' + 'ipt}'\n    return fmt.format(llm)",
+     "format"),
+    ("str.format called on the class",
+     "def run_agent(q, llm, tools):\n    return str.format('{0._script}', llm)", "format"),
+    ("format bound first and called later",
+     "def run_agent(q, llm, tools):\n    render = '{0._trace}'.format\n    return render(llm)",
+     "format"),
+    ("format_map with the model in a mapping",
+     "def run_agent(q, llm, tools):\n    return '{m._script}'.format_map({'m': llm})", "format_map"),
+    ("a public-looking traversal that could reach a private one",
+     "def run_agent(q, llm, tools):\n    return '{0.calls}'.format(llm)", "format"),
+    ("a class pattern that binds the script",
+     "def run_agent(q, llm, tools):\n    match llm:\n        case object(_script=s):\n"
+     "            return str(s)\n    return 'x'", "_script"),
+]
+
+
+@pytest.mark.parametrize("what, source, needle", TRAVERSAL, ids=[case[0] for case in TRAVERSAL])
+def test_attribute_access_that_is_not_an_attribute_node_is_rejected(what, source, needle):
+    outcome = check(source, ALLOWED)
+    assert outcome.status == "fail", what
+    assert any(needle in reason for reason in outcome.reasons), outcome.reasons
+
+
+@pytest.mark.parametrize("module", ["gc", "inspect"])
+def test_introspection_modules_stay_closed_even_if_a_problem_allows_them(module):
+    outcome = check(f"import {module}\ndef run_agent(q, llm, tools):\n    return 'x'",
+                    [*ALLOWED, module])
+    assert outcome.status == "fail"
+    assert any(module in reason for reason in outcome.reasons)
+
+
+PLAIN_FORMATTING = [
+    ("positional fields", "def run_agent(q, llm, tools):\n    return '{} and {}'.format(q, 1)"),
+    ("numbered fields with a spec",
+     "def run_agent(q, llm, tools):\n    return '{0:>8} {1:.2f}'.format(q, 3.14159)"),
+    ("named fields", "def run_agent(q, llm, tools):\n    return '{name}'.format(name=q)"),
+    ("an f-string", "def run_agent(q, llm, tools):\n    n = 3\n    return f'{q} took {n} calls'"),
+    ("a match on a value",
+     "def run_agent(q, llm, tools):\n    match q:\n        case 'x':\n            return 'y'\n"
+     "    return 'z'"),
+]
+
+
+@pytest.mark.parametrize("what, source", PLAIN_FORMATTING, ids=[case[0] for case in PLAIN_FORMATTING])
+def test_ordinary_formatting_still_passes(what, source):
+    outcome = check(source, ALLOWED)
+    assert outcome.status == "pass", (what, outcome.reasons)

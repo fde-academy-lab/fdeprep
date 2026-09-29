@@ -7,6 +7,7 @@ and generates a support message.
 from __future__ import annotations
 
 import ast
+import string
 from dataclasses import dataclass, field
 
 from runner.problem import ALWAYS_ALLOWED_IMPORTS
@@ -22,6 +23,10 @@ FORBIDDEN_MODULES = (
     "subprocess", "socket", "ctypes", "importlib", "os", "sys", "shutil",
     "multiprocessing", "threading", "signal", "resource", "pickle", "marshal",
     "urllib", "http", "requests", "ssl", "asyncio", "pty", "code", "builtins",
+    # Both hand back an object's private state without an attribute access
+    # the rule below could see: gc.get_referents(llm) returns its __dict__.
+    # Closed whatever a problem's allowed_imports says.
+    "gc", "inspect",
 )
 
 FORBIDDEN_ATTRS = ("system", "popen", "spawn", "fork", "__subclasses__", "__globals__")
@@ -47,6 +52,12 @@ PRIVATE_BASES = ("self", "cls")
 # collide with a field. Rejecting `_asdict()` would fail correct code for a
 # reason the learner could do nothing about.
 NAMEDTUPLE_API = ("_asdict", "_replace", "_fields", "_field_defaults", "_make")
+
+# str.format resolves "{0._script}" with a real getattr at run time, so a
+# format string is an attribute access the walk never sees as one. A format
+# string written as a literal is checked field by field; one built at run time
+# cannot be, and an f-string does everything a learner needs, so it wins.
+FORMAT_ATTRS = ("format", "format_map")
 
 
 @dataclass
@@ -87,6 +98,14 @@ def check(source: str, allowed_imports) -> StaticResult:
             reasons.append(f"line {node.lineno}: {node.id} is not available in the sandbox")
         elif isinstance(node, ast.Attribute):
             reasons += _check_attribute(node)
+        elif isinstance(node, ast.MatchClass):
+            # case object(_script=s) binds s to obj._script by keyword.
+            for name in node.kwd_attrs:
+                if name.startswith("_"):
+                    reasons.append(
+                        f"line {node.lineno}: a class pattern that binds {name} reads a private "
+                        "attribute of another object, which the sandbox does not allow"
+                    )
 
     if not _defines_run_agent(tree):
         reasons.append("the solution defines no run_agent function at module level")
@@ -109,9 +128,54 @@ def _check_attribute(node: ast.Attribute) -> list[str]:
             "and the sandbox does not allow reading one. Everything this problem gives you "
             "is reachable without it: call llm(prompt) and the callables in tools"
         ]
+    if node.attr in FORMAT_ATTRS:
+        return _check_format(node)
     if node.attr in FORBIDDEN_ATTRS:
         return [f"line {node.lineno}: the {node.attr} attribute is not reachable"]
     return []
+
+
+def _check_format(node: ast.Attribute) -> list[str]:
+    """str.format and format_map, which read attributes named inside a string."""
+    if node.attr == "format_map":
+        return [
+            f"line {node.lineno}: format_map looks up attributes at run time, which the "
+            "sandbox does not allow. Use an f-string"
+        ]
+    base = node.value
+    if not (isinstance(base, ast.Constant) and isinstance(base.value, str)):
+        return [
+            f"line {node.lineno}: str.format on a string built at run time can read attributes "
+            "the sandbox keeps private. Use an f-string"
+        ]
+    field_name = _traversing_field(base.value)
+    if field_name:
+        return [
+            f"line {node.lineno}: the format field {{{field_name}}} reads an attribute or an "
+            "item through str.format, which the sandbox does not allow. Use an f-string"
+        ]
+    return []
+
+
+def _traversing_field(text: str, depth: int = 0) -> str | None:
+    """The first replacement field that walks into an object, if any.
+
+    A field such as {0.name} or {0[key]} makes str.format call getattr or
+    __getitem__. Nested fields inside a format spec are read too. A string the
+    parser rejects is left alone, because str.format rejects it the same way
+    at run time and reads nothing.
+    """
+    try:
+        for _literal, field_name, spec, _conversion in string.Formatter().parse(text):
+            if field_name and ("." in field_name or "[" in field_name):
+                return field_name
+            if spec and depth < 2:
+                inner = _traversing_field(spec, depth + 1)
+                if inner:
+                    return inner
+    except ValueError:
+        return None
+    return None
 
 
 def _private_is_the_learners_own(node: ast.Attribute) -> bool:
