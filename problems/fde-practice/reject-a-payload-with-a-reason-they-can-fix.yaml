@@ -1,0 +1,380 @@
+slug: reject-a-payload-with-a-reason-they-can-fix
+title: Reject a bad request with a reason their engineer can fix
+artefact_type: code
+difficulty: easy
+track: fde-practice
+est_minutes: 20
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: client-communication, weight: 0.5 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  You built the intake for a property management company's repairs agent.
+  Their ticketing system posts each repair request to it as JSON. The intake
+  asks the model for a one-line summary, and `create_case` files the request
+  in the repairs queue.
+
+  Their ticketing system was upgraded on Tuesday night. It now sends
+  `"priority": "P1"` where it used to send `"urgent"`, and the intake passed
+  the value straight through. The model summarised every request without
+  complaint and `create_case` filed all fourteen urgent jobs in the normal
+  queue, a burst pipe among them. The same night a request arrived with
+  `"tenant": null`, because the tenant had moved out, and the intake crashed
+  with an `AttributeError`. Their system got a 500 with no body and retried it
+  forty times.
+
+  Their engineer is good and fixes whatever you name. Write the intake that
+  names it: every field that breaks the contract, what the contract expects,
+  and what arrived, before the model or the queue sees anything.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the request body their system posted, as a JSON string. The
+  contract both companies signed says it holds:
+
+  | Field | Rule |
+  |---|---|
+  | `request_id` | a non-empty string |
+  | `priority` | one of `low`, `normal`, `urgent` |
+  | `tenant` | an object holding `name` and `unit`, both non-empty strings |
+  | `description` | a non-empty string |
+
+  A request that meets the contract gets one model call, `llm(prompt)`, which
+  returns `Summary: <one line>`, and one call to
+  `tools["create_case"](request_id=..., priority=..., unit=..., summary=...)`,
+  which returns `{"status": 201, "case_id": "<id>"}`. Return
+  `{"accepted": true, "case_id": "<id>"}` as a JSON string.
+
+  A request that breaks the contract gets neither call. Return
+  `{"accepted": false, "errors": [...]}` with one entry for every problem in
+  the request, each shaped
+  `{"field": "<full path, like tenant.unit>", "problem": "<what the contract expects, and what arrived>"}`.
+
+  Budget: at most 2 model calls, and a rejected request spends none. Allowed
+  imports: json, re.
+
+stub_code: |
+  import json
+
+  PRIORITIES = ("low", "normal", "urgent")
+  REQUIRED = ("request_id", "priority", "tenant", "description")
+
+
+  def is_text(value) -> bool:
+      """True for a string with something in it."""
+      return isinstance(value, str) and value.strip() != ""
+
+
+  def contract_problems(request: dict) -> list:
+      """Every way this request breaks the contract, each as {"field", "problem"}."""
+      problems = []
+
+      # TODO 1: request_id and description must be text. Add a problem for
+      #         each one that is missing or empty; is_text answers both
+      # TODO 2: add a problem when priority is none of the three values that
+      #         PRIORITIES lists, naming all three and the value that arrived
+      # TODO 3: tenant must be an object. Find out what kind of value arrived
+      #         before reading inside it, then check tenant.name and
+      #         tenant.unit, naming each by its full path
+
+      return problems
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      request = json.loads(question)
+
+      # TODO 4: when contract_problems finds anything, return every problem
+      #         in one rejection, before the model or create_case sees it
+
+      reply = llm(f"Summarise this repair request in one line: {request['description']}")
+      case = tools["create_case"](
+          request_id=request["request_id"],
+          priority=request["priority"],
+          unit=request["tenant"]["unit"],
+          summary=reply.replace("Summary:", "").strip(),
+      )
+      return json.dumps({"accepted": True, "case_id": case["case_id"]})
+
+steps:
+  - id: s1
+    text: Name request_id or description when either one is missing or empty.
+    check_id: s1
+  - id: s2
+    text: Reject a priority outside the three allowed values, naming them and what arrived.
+    check_id: s2
+  - id: s3
+    text: Find out whether tenant is an object before you read tenant.name and tenant.unit.
+    check_id: s3
+  - id: s4
+    text: Return every problem in one rejection, before the model call and create_case.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_matches, value: "description" }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: does_not_call_tool, name: create_case }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: llm_calls_at_most, value: 0 }
+
+hints:
+  - Being present is one check. For a field that is present, the contract also
+    asks for the right kind of value, and for priority, one of three exact
+    words.
+  - '`request.get("tenant", {})` only covers a key that is missing. A key that
+    is present with null hands you None, and None has no unit.'
+  - Collect problems in a list and return once, at the end. Their engineer
+    fixes everything you name in one deploy, and anything you leave out costs
+    them another.
+  - "Write each problem for the person reading it at their desk: the full path
+    such as tenant.unit, what the contract expects, and what actually arrived."
+  - The model call and create_case both belong below the rejection. A request
+    that fails the contract should cost nothing.
+
+scenario:
+  who: The integration team at a property management company
+  situation: >-
+    Their ticketing system was upgraded overnight. It now sends priority P1
+    where it used to send urgent, and one request arrived with tenant set to
+    null because the tenant had moved out.
+  stakes: >-
+    Fourteen urgent repairs, a burst pipe among them, waited in the normal
+    queue. The null request crashed the intake and was retried forty times.
+  metrics:
+    - { label: Urgent jobs misfiled, value: "14" }
+    - { label: Retries of one crash, value: "40" }
+    - { label: Allowed priorities, value: "3" }
+
+diagram:
+  title: Where a bad request should stop, and where it went
+  caption: >-
+    The contract check belongs at the door. Past it, the model summarises
+    anything and create_case files anything, so nothing downstream will object.
+  direction: lr
+  nodes:
+    - { id: ticketing, label: Their ticketing system, sub: "posts JSON, upgraded on Tuesday", kind: actor, tone: blue, at: [0, 1] }
+    - { id: intake, label: Intake, sub: checks the contract first, kind: guard, tone: green, at: [1, 1] }
+    - { id: model, label: Model, sub: summarises whatever it is given, kind: model, tone: teal, at: [2, 0] }
+    - { id: create, label: create_case, sub: files it in a queue, kind: tool, tone: neutral, at: [3, 0] }
+    - { id: misfiled, label: Normal queue, sub: a burst pipe waits a day, kind: output, tone: pink, at: [4, 0] }
+    - { id: rejection, label: Rejection, sub: "the path, the rule, what arrived", kind: output, tone: orange, at: [2, 2] }
+  edges:
+    - { from: ticketing, to: intake, label: "priority P1, tenant null", step: 1 }
+    - { from: intake, to: model, label: passed straight through, tone: danger, step: 2 }
+    - { from: model, to: create, label: a confident summary, tone: danger, step: 3 }
+    - { from: create, to: misfiled, label: unknown priority, tone: danger }
+    - { from: intake, to: rejection, label: every problem at once, tone: success }
+    - { from: rejection, to: ticketing, label: their engineer fixes it, tone: success }
+
+approach:
+  goal: Stop a bad request at the door with a reason a person can act on
+  branches:
+    - label: Check before anything spends
+      leaves: [no model call for a rejected request, no case either]
+    - label: Read the contract literally
+      detail: >-
+        Present, the right kind of value, and an allowed value are three
+        separate checks.
+      leaves: [a key present with null is not an object, "an unknown priority is an error, never a default"]
+    - label: Write the rejection for a person
+      leaves: ["the full path, like tenant.unit", what was expected and what arrived]
+    - label: Name everything at once
+      leaves: [one reply lists every problem, one fix and one deploy on their side]
+
+coach:
+  opening: >-
+    Read the contract table before the code. Every row is a check, and two of
+    the rows are more than one check each.
+  signals:
+    - id: nothing-collected
+      when: { code_lacks: '\.append\(|\.extend\(|\+=\s*\[' }
+      say: >-
+        Nothing adds a problem to the list yet, so every request is accepted.
+        What does the contract say about a request with no description?
+    - id: priority-unchecked
+      when: { code_lacks: '(?i)\bin\s+(\w*priorit\w*|allowed\w*|valid\w*)\b|\bin\s+[\(\[\{]\s*["'']low' }
+      say: >-
+        Nothing compares priority with the three values the contract allows.
+        Follow a request carrying P1 through your code. Where does it end up?
+    - id: no-type-check
+      when: { code_lacks: 'isinstance\([^)]*\b(dict|Mapping)\b|\bis None\b|\bis not None\b|==\s*None|type\([^)]*\)\s*(is|==|!=)|except\s*\(?\s*(TypeError|AttributeError)' }
+      say: >-
+        Nothing asks what kind of value tenant holds before reading inside it.
+        It arrived as null once already. What does your code do on that line?
+    - id: hidden-null-tenant
+      when: { test_failed: a_null_tenant_is_rejected_not_crashed }
+      say: >-
+        That request had the tenant key with null in it. Trace your code from
+        the first line that touches tenant and follow the None.
+    - id: hidden-unknown-priority
+      when: { test_failed: an_unknown_priority_is_rejected_with_the_allowed_values }
+      say: >-
+        That request used a priority the contract does not list. Does your
+        rejection tell their engineer which values would have worked, and
+        what they sent?
+    - id: hidden-every-problem
+      when: { test_failed: every_problem_is_named_in_one_reply }
+      say: >-
+        That request broke the contract in two places, one of them inside
+        tenant. Their engineer fixes what you name and redeploys. How many
+        deploys does your reply cost them?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write TODO 1 and press Run. The case with no description turns green on
+        its own, and one green test is a foothold.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hints are free on this problem, and the
+        second one names the trap most people fall into here.
+  wrap_up: >-
+    At an integration boundary the rejection is a message to another engineer.
+    Name the field, the rule and what arrived, and they fix it in one deploy
+    instead of opening a ticket with you.
+
+tests:
+  - name: a_complete_request_becomes_a_case
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: '{"request_id": "R-2291", "priority": "urgent", "tenant": {"name": "Ada Okafor", "unit": "4B"}, "description": "Water coming through the kitchen ceiling"}'
+      llm_script:
+        - { match: "*", reply: "Summary: Leak through the kitchen ceiling in flat 4B." }
+      tools:
+        create_case: { returns: { status: 201, case_id: "C-5512" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: create_case }
+        - { type: returns_matches, value: '"accepted":\s*true' }
+        - { type: returns_matches, value: "C-5512" }
+
+  - name: a_request_with_no_description_is_rejected
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: '{"request_id": "R-2292", "priority": "normal", "tenant": {"name": "Sam Reid", "unit": "12"}}'
+      llm_script:
+        - { match: "*", reply: "Summary: A repair request with no details." }
+      tools:
+        create_case: { returns: { status: 201, case_id: "C-5513" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"accepted":\s*false' }
+        - { type: returns_matches, value: '"field":\s*"description"' }
+        - { type: does_not_call_tool, name: create_case }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: a_null_tenant_is_rejected_not_crashed
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: '{"request_id": "R-2293", "priority": "urgent", "tenant": null, "description": "No heating anywhere in the flat"}'
+      llm_script:
+        - { match: "*", reply: "Summary: No heating in the flat." }
+      tools:
+        create_case: { returns: { status: 201, case_id: "C-5514" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"accepted":\s*false' }
+        - { type: returns_matches, value: '"field":\s*"tenant' }
+        - { type: returns_matches, value: '(?i)\bnull\b|\bnone\b' }
+        - { type: does_not_call_tool, name: create_case }
+
+  - name: an_unknown_priority_is_rejected_with_the_allowed_values
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: '{"request_id": "R-2294", "priority": "P1", "tenant": {"name": "Ada Okafor", "unit": "4B"}, "description": "Burst pipe under the bathroom floor"}'
+      llm_script:
+        - { match: "*", reply: "Summary: Burst pipe under the bathroom floor in flat 4B." }
+      tools:
+        create_case: { returns: { status: 201, case_id: "C-5515" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"accepted":\s*false' }
+        - { type: returns_matches, value: '"field":\s*"priority"' }
+        - { type: returns_matches, value: "P1" }
+        - { type: returns_matches, value: '\blow\b' }
+        - { type: returns_matches, value: '\bnormal\b' }
+        - { type: returns_matches, value: '\burgent\b' }
+        - { type: does_not_call_tool, name: create_case }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: every_problem_is_named_in_one_reply
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: '{"request_id": "R-2295", "priority": "normal", "tenant": {"name": "Sam Reid"}, "description": ""}'
+      llm_script:
+        - { match: "*", reply: "Summary: A repair request with no details." }
+      tools:
+        create_case: { returns: { status: 201, case_id: "C-5516" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"accepted":\s*false' }
+        - { type: returns_matches, value: '"field":\s*"tenant\.unit"' }
+        - { type: returns_matches, value: '"field":\s*"description"' }
+        - { type: does_not_call_tool, name: create_case }
+
+reference_md: |
+  The four-minute version checks that every key is present, and every failure
+  in the brief got past that check.
+
+  Present is the weakest thing a contract says about a field. `"tenant": null`
+  is present. `"priority": "P1"` is present. `"description": ""` is present.
+  The contract asks for an object, one of three words, and some text, and each
+  of those is a separate question about the value rather than the key. The
+  null case is worth remembering on its own, because the idiom most people
+  reach for, `request.get("tenant", {})`, only covers a missing key. A key
+  that is there with null hands back None, and the next line raises.
+
+  The check sits before the model call for a reason that is specific to this
+  kind of system. The model is the most forgiving component in the pipeline:
+  handed P1, it writes a fluent summary of an urgent-sounding job, and
+  everything downstream of a confident summary looks fine. It cannot be the
+  validator, so it must not see the request until something that can has
+  passed it.
+
+  The rejection is written for a person at another company. A 500 with no
+  body taught their system to retry forty times. "Invalid payload" would have
+  taught their engineer to open a ticket with you. The field's full path, the
+  rule and the value that arrived is a message they can act on alone, and
+  collecting every problem before replying means they act on it once. Round
+  trips between two engineering teams cost days, and the reply is the only
+  part of the intake the customer ever reads.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    The customer's request parses as valid JSON. Why can it still be one you must reject, and what does your rejection tell their engineer?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I004.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
