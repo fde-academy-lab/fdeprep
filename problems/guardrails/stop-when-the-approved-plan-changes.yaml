@@ -1,0 +1,467 @@
+slug: stop-when-the-approved-plan-changes
+title: Stop the run when the plan moves past the version that was approved
+artefact_type: code
+difficulty: hard
+track: guardrails
+est_minutes: 35
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 4
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A travel booking platform runs database maintenance through an agent. The
+  change board approves a plan by version number, and the agent carries it out
+  one step at a time, asking its planner before each step whether to go on.
+
+  Last month the board approved version 3 of a kernel patch for replica db-7:
+  drain it, patch it, put it back. After the drain, the planner saw
+  replication lag on db-9 and re-planned: patch db-9 as well, and promote it
+  while db-7 was out. The agent carried on with the new plan. Promoting db-9
+  in the evening peak failed checkouts for 22 minutes, and every log line said
+  the change was approved. Version 3 was.
+
+  A re-plan is a new version, and nothing in a new version has been approved.
+  Carry out the approved plan, stop at the step where the plan moves, and hand
+  the new version back to the board with an exact record of what already ran.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `tools["approval"]()` returns the change board's record:
+
+      {"status": 200, "change": "CHG-3318", "approved": true, "version": 3,
+       "steps": [{"tool": "drain_node", "args": {"node": "db-7"}}, ...]}
+
+  `approved` can be false, and the record can fail to arrive at all.
+
+  Each step runs as `tools[step["tool"]](**step["args"])` and returns
+  `{"status": 200, "ok": true}` when it worked. A step can also raise, or
+  return something without `"ok": true`.
+
+  Before each step, call `llm(prompt)` once. The planner replies with one of:
+
+      Continue                 run the next step of the current plan
+      Replan: [<steps>]        these steps replace every step not yet run
+
+  A Replan makes the plan version + 1, and nothing in a version the board has
+  not approved may run. Send it with
+  `tools["request_approval"](version=<n>, steps=[...], ran=[...])` and stop.
+  Any other reply stops the run too.
+
+  Return a JSON string with these keys:
+
+  | Key | Value |
+  |---|---|
+  | `outcome` | `completed`, `awaiting_approval`, `not_approved` or `halted` |
+  | `ran` | tool names of the steps that ran and reported success, in order |
+  | `unknown` | tool names of steps that were called and whose outcome nobody knows |
+  | `approved_version` | the version the board approved, or null |
+  | `current_version` | the plan's version when the run stopped, or null |
+
+  Budget: at most 4 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your executor stops at the re-plan and sends version 4 to the board. The
+  board rejects it. db-7 is drained and patched, and nothing is putting it
+  back into service. What should happen next, who decides it, and what would
+  you change in how plans are written so that this state is rarer?
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Run the approved plan, and stop the moment the plan moves.
+
+      tools["approval"]() -> {"approved": bool, "version": int, "steps": [...]}
+          The change board's record. It can be declined, and it can fail to arrive.
+      Before each step, llm(prompt) replies with one of:
+          Continue                  run the next step of the current plan
+          Replan: [<steps>]         these steps replace every step not yet run
+      A Replan makes version + 1. Nothing in an unapproved version runs:
+      call tools["request_approval"](version=..., steps=[...], ran=[...]) and stop.
+      Each step is tools[step["tool"]](**step["args"]), and a step can fail.
+
+      Return json.dumps({"outcome": "completed" | "awaiting_approval"
+                                    | "not_approved" | "halted",
+                         "ran": [<tool names that ran and succeeded, in order>],
+                         "unknown": [<tool names whose outcome nobody knows>],
+                         "approved_version": <int or None>,
+                         "current_version": <int or None>}).
+      At most 4 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"outcome": "halted", "ran": [], "unknown": [],
+                         "approved_version": None, "current_version": None})
+
+
+  def parse_replan(reply: str):
+      """The steps a Replan carries, or None when the reply is not a Replan."""
+      raise NotImplementedError
+
+
+  def run_step(step: dict, tools: dict) -> bool:
+      """Run one step. Decide what a step that raises or reports failure means."""
+      raise NotImplementedError
+
+hints:
+  - Ask what the board's approval was a signature over. The incident says
+    version 3, and version 3 was a whole plan of three steps.
+  - A Replan does not edit the approved plan. It makes a new one, and a new
+    version has no approval until the board gives it one.
+  - Check before every step whether the plan is still the approved version.
+    The moment it is not, send the new version and the list of what ran to
+    request_approval, and stop.
+  - Steps depend on each other, which is why the board judged them together. A
+    step that looks unchanged in version 4 is still a step of version 4.
+  - Two facts end the run before any step runs, a declined approval and one
+    that never arrives. One fact ends it partway, a step that fails or never
+    answers, and then you cannot claim to know what it did.
+
+scenario:
+  who: Database operations at a travel booking platform
+  situation: >-
+    The board approved version 3: drain db-7, patch it, put it back. After the
+    drain the planner re-planned to promote db-9 as well, and the agent carried
+    on without asking anyone.
+  stakes: >-
+    Promoting db-9 in the evening peak failed checkouts for 22 minutes, and
+    every log line said the change was approved.
+  metrics:
+    - { label: Checkouts failing, value: 22 min }
+    - { label: Version approved, value: "3" }
+    - { label: Version executed, value: "4" }
+
+diagram:
+  title: Where an approval for version 3 ends
+  caption: >-
+    The version check runs before every step. A re-plan stops the run at that
+    step and goes back to the board with what already ran.
+  direction: lr
+  nodes:
+    - { id: board, label: Change board, sub: approves version 3, kind: actor, tone: blue, at: [0, 0] }
+    - { id: approval, label: approval(), sub: version 3 and its steps, kind: store, tone: orange, at: [1, 0] }
+    - { id: planner, label: Planner, sub: Continue or Replan, kind: model, tone: teal, at: [0, 2] }
+    - { id: executor, label: Executor, sub: one step at a time, kind: agent, tone: purple, at: [1, 1] }
+    - { id: check, label: Version check, sub: before every step, kind: guard, tone: green, at: [2, 1] }
+    - { id: steps, label: Step tools, sub: "drain, patch, restore", kind: tool, tone: neutral, at: [3, 1] }
+    - { id: request, label: request_approval(), sub: version 4 goes to the board, kind: service, tone: green, at: [3, 0] }
+    - { id: promote, label: promote db-9, sub: ran under version 3's approval, kind: output, tone: pink, at: [3, 2] }
+  edges:
+    - { from: board, to: approval, label: approves version 3, step: 1 }
+    - { from: approval, to: executor, label: the approved steps, step: 2 }
+    - { from: planner, to: executor, label: Replan after the drain, step: 3 }
+    - { from: executor, to: check, label: next step, step: 4 }
+    - { from: check, to: steps, label: still version 3, tone: success }
+    - { from: check, to: request, label: "version 4, so stop", tone: success }
+    - { from: executor, to: promote, label: carried on with version 4, tone: danger }
+
+approach:
+  goal: Run only what the board approved, and stop the moment the plan moves
+  branches:
+    - label: What the approval covers
+      detail: One version of the whole plan, never each step on its own.
+      leaves: [the steps as the board saw them, version 3 and nothing after it]
+    - label: What a re-plan is
+      leaves: [version 4, even when the next step looks the same, approved by nobody yet]
+    - label: Stop cleanly
+      leaves: [send version 4 to the board, "record what ran, and what nobody can know"]
+    - label: Fail closed
+      leaves: [no readable approval means nothing runs, a step that never answers ends the run]
+
+coach:
+  opening: >-
+    Before you type, write down what the board's approval covers. Then find
+    the planner reply that has to end the run.
+  signals:
+    - id: replan-carries-on
+      when: { code_lacks: 'request_approval' }
+      say: >-
+        Nothing in your code sends a new version back to the board. What does
+        your executor do with a Replan?
+    - id: no-failure-path
+      when: { code_lacks: '\bexcept\b' }
+      say: >-
+        A step can fail halfway through the plan. What does your executor report
+        when the patch never answers?
+    - id: new-target
+      when: { test_failed: a_replan_after_the_drain_waits_for_approval }
+      say: >-
+        The planner re-planned after the drain, and the new plan patched a
+        different replica. What did your executor run next, and under which
+        version's approval?
+    - id: same-looking-step
+      when: { test_failed: a_step_that_did_not_change_still_waits_for_the_new_version }
+      say: >-
+        The step after that re-plan was identical in both versions. The board
+        approved version 3 as a whole. Which version would that step be running
+        under?
+    - id: timed-out
+      when: { test_failed: adversarial_the_patch_never_answers }
+      say: >-
+        The patch never answered. Is db-7 patched? Your report has to separate
+        what you know ran from what nobody can know.
+    - id: empty-approval
+      when: { test_failed: adversarial_the_approval_record_is_empty }
+      say: >-
+        The approval record came back empty. What does your executor treat a
+        missing approval as?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the two public cases. Run every step on Continue, and run
+        nothing when the board declined. The re-plan comes after that.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hints start from what the approval
+        actually covers.
+  wrap_up: >-
+    An approval covers one version of a whole plan. When the plan moves, every
+    step not yet run is unapproved however familiar it looks, and the honest
+    report says what ran, what did not, and what nobody can be sure of.
+
+tests:
+  - name: runs_the_approved_plan_to_the_end
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Carry out change CHG-3318." }
+      llm_script:
+        - { match: "*", reply: "Continue" }
+      tools:
+        approval:
+          returns:
+            status: 200
+            change: "CHG-3318"
+            approved: true
+            version: 3
+            steps:
+              - { tool: drain_node, args: { node: db-7 } }
+              - { tool: patch_kernel, args: { node: db-7 } }
+              - { tool: restore_node, args: { node: db-7 } }
+        drain_node: { returns: { status: 200, ok: true } }
+        patch_kernel: { returns: { status: 200, ok: true } }
+        restore_node: { returns: { status: 200, ok: true } }
+        promote_replica: { returns: { status: 200, ok: true } }
+        request_approval: { returns: { status: 200, queued: true, ticket: "CAB-2291" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, ran, unknown, approved_version, current_version] } }
+        - { type: returns_matches, value: '"outcome":\s*"completed"' }
+        - { type: calls_tool, name: restore_node }
+
+  - name: a_declined_change_runs_nothing
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Carry out change CHG-3320." }
+      llm_script:
+        - { match: "*", reply: "Continue" }
+      tools:
+        approval:
+          returns:
+            status: 200
+            change: "CHG-3320"
+            approved: false
+            version: 2
+            steps:
+              - { tool: drain_node, args: { node: db-4 } }
+              - { tool: patch_kernel, args: { node: db-4 } }
+        drain_node: { returns: { status: 200, ok: true } }
+        patch_kernel: { returns: { status: 200, ok: true } }
+        restore_node: { returns: { status: 200, ok: true } }
+        promote_replica: { returns: { status: 200, ok: true } }
+        request_approval: { returns: { status: 200, queued: true, ticket: "CAB-2292" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"not_approved"' }
+        - { type: does_not_call_tool, name: drain_node }
+        - { type: terminates }
+
+  - name: a_replan_after_the_drain_waits_for_approval
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Carry out change CHG-3318." }
+      llm_script:
+        - { match: { call_index: 2 },
+            reply: 'Replan: [{"tool": "patch_kernel", "args": {"node": "db-9"}}, {"tool": "promote_replica", "args": {"node": "db-9"}}, {"tool": "restore_node", "args": {"node": "db-7"}}]' }
+        - { match: "*", reply: "Continue" }
+      tools:
+        approval:
+          returns:
+            status: 200
+            change: "CHG-3318"
+            approved: true
+            version: 3
+            steps:
+              - { tool: drain_node, args: { node: db-7 } }
+              - { tool: patch_kernel, args: { node: db-7 } }
+              - { tool: restore_node, args: { node: db-7 } }
+        drain_node: { returns: { status: 200, ok: true } }
+        patch_kernel: { returns: { status: 200, ok: true } }
+        restore_node: { returns: { status: 200, ok: true } }
+        promote_replica: { returns: { status: 200, ok: true } }
+        request_approval: { returns: { status: 200, queued: true, ticket: "CAB-2293" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: patch_kernel }
+        - { type: does_not_call_tool, name: promote_replica }
+        - { type: calls_tool, name: request_approval }
+        - { type: returns_matches, value: '"outcome":\s*"awaiting_approval"' }
+        - { type: returns_matches, value: '"ran":\s*\[\s*"drain_node"\s*\]' }
+        - { type: returns_matches, value: '"current_version":\s*4\b' }
+
+  - name: a_step_that_did_not_change_still_waits_for_the_new_version
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Carry out change CHG-3321." }
+      llm_script:
+        - { match: { call_index: 3 },
+            reply: 'Replan: [{"tool": "restore_node", "args": {"node": "db-7"}}, {"tool": "promote_replica", "args": {"node": "db-9"}}]' }
+        - { match: "*", reply: "Continue" }
+      tools:
+        approval:
+          returns:
+            status: 200
+            change: "CHG-3321"
+            approved: true
+            version: 3
+            steps:
+              - { tool: drain_node, args: { node: db-7 } }
+              - { tool: patch_kernel, args: { node: db-7 } }
+              - { tool: restore_node, args: { node: db-7 } }
+        drain_node: { returns: { status: 200, ok: true } }
+        patch_kernel: { returns: { status: 200, ok: true } }
+        restore_node: { returns: { status: 200, ok: true } }
+        promote_replica: { returns: { status: 200, ok: true } }
+        request_approval: { returns: { status: 200, queued: true, ticket: "CAB-2294" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: restore_node }
+        - { type: does_not_call_tool, name: promote_replica }
+        - { type: returns_matches, value: '"outcome":\s*"awaiting_approval"' }
+        - { type: returns_matches, value: '"ran":\s*\[\s*"drain_node",\s*"patch_kernel"\s*\]' }
+
+  - name: adversarial_the_patch_never_answers
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      The patch step raised a timeout instead of answering. Nobody knows
+      whether db-7 is patched: the call may have landed and the answer been
+      lost, or it may never have started.
+
+      An executor that lets the exception escape leaves the board with a
+      stack trace and no record of the drain. One that carries on to the
+      restore step puts back a node in a state nobody checked. One that lists
+      the patch under ran, or leaves it out entirely, sends the next person
+      to the wrong fix. The report says what ran, and puts the patch under
+      unknown.
+    spec:
+      kind: agent_run
+      input: { question: "Carry out change CHG-3322." }
+      llm_script:
+        - { match: "*", reply: "Continue" }
+      tools:
+        approval:
+          returns:
+            status: 200
+            change: "CHG-3322"
+            approved: true
+            version: 3
+            steps:
+              - { tool: drain_node, args: { node: db-7 } }
+              - { tool: patch_kernel, args: { node: db-7 } }
+              - { tool: restore_node, args: { node: db-7 } }
+        drain_node: { returns: { status: 200, ok: true } }
+        patch_kernel: { fixture: slow_then_timeout, params: { succeeds: 0 } }
+        restore_node: { returns: { status: 200, ok: true } }
+        promote_replica: { returns: { status: 200, ok: true } }
+        request_approval: { returns: { status: 200, queued: true, ticket: "CAB-2295" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: does_not_call_tool, name: restore_node }
+        - { type: returns_matches, value: '"outcome":\s*"halted"' }
+        - { type: returns_matches, value: '"ran":\s*\[\s*"drain_node"\s*\]' }
+        - { type: returns_matches, value: '"unknown":\s*\[\s*"patch_kernel"\s*\]' }
+
+  - name: adversarial_the_approval_record_is_empty
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The approval service answered with nothing at all. An executor that
+      reads a missing record as "no objection" runs the whole plan on an
+      approval nobody gave, and one that indexes into it raises before it can
+      say why it stopped.
+
+      A missing approval and a declined one lead to the same place: nothing
+      runs, and the report says not_approved.
+    spec:
+      kind: agent_run
+      input: { question: "Carry out change CHG-3323." }
+      llm_script:
+        - { match: "*", reply: "Continue" }
+      tools:
+        approval: { fixture: empty_tool_result }
+        drain_node: { returns: { status: 200, ok: true } }
+        patch_kernel: { returns: { status: 200, ok: true } }
+        restore_node: { returns: { status: 200, ok: true } }
+        promote_replica: { returns: { status: 200, ok: true } }
+        request_approval: { returns: { status: 200, queued: true, ticket: "CAB-2296" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: does_not_call_tool, name: drain_node }
+        - { type: returns_matches, value: '"outcome":\s*"not_approved"' }
+
+reference_md: |
+  An approval is a signature over something, and here the something was
+  version 3 of a plan: drain db-7, patch it, put it back. The board judged
+  those three steps together, because each one only makes sense next to the
+  others. Draining a node you are not going to restore is an outage with a
+  change number on it.
+
+  The binding problem in the agent-loop track settles what one approval
+  covers for one action. This one is what happens across a plan when it moves
+  partway through. What has run stays run. What has not run belongs to a
+  version nobody approved, so the executor's job at a re-plan is to stop at
+  that step boundary and say so precisely.
+
+  Every Replan is a new version, and the executor does not judge whether the
+  change matters. That judgement is exactly the one the approval exists to
+  take away from it. An executor that runs the steps of version 4 that look
+  like version 3 is approving version 4 itself, one step at a time, and the
+  step that looked unchanged is the one whose meaning changed: restoring db-7
+  in version 3 ended the change, and in version 4 it happens alongside a
+  promotion the board never saw.
+
+  Stopping is only half of it. The board deciding version 4 needs to know
+  that db-7 is drained and patched, so request_approval carries the list of
+  what ran along with the new steps. The same list goes in the report, which
+  is what the on-call engineer reads first.
+
+  Both ends fail closed. An approval that does not arrive is treated the way
+  a declined one is. A step that times out has an outcome nobody knows, and
+  the report says unknown rather than guessing either way, because a wrong
+  guess in either direction sends somebody to the wrong fix.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Approval was given for version 3 of the plan. Two steps in, the agent re-planned and is now on version 4. What does it do next?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I020.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
