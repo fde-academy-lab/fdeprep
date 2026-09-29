@@ -383,7 +383,9 @@ tests:
               - { tool: patch_kernel, args: { node: db-7 } }
               - { tool: restore_node, args: { node: db-7 } }
         drain_node: { returns: { status: 200, ok: true } }
-        patch_kernel: { fixture: slow_then_timeout, params: { succeeds: 0 } }
+        patch_kernel:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the kernel patch on db-7 timed out before the node reported back" }
         restore_node: { returns: { status: 200, ok: true } }
         promote_replica: { returns: { status: 200, ok: true } }
         request_approval: { returns: { status: 200, queued: true, ticket: "CAB-2295" } }
