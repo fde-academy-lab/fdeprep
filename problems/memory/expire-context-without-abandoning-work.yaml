@@ -56,20 +56,174 @@ contract_md: |
   | 5 | otherwise | kept |
 
   An active task whose records were all removed is blocked. When there is at
-  least one, ask the model for an operator message and put it in `note`. When
-  there is none, do not spend the call.
+  least one, ask the model for an operator message and put it in `note`. Name
+  the blocked tasks in that prompt the way this line does:
+
+      These tasks are blocked: task-3. Write one line for the operator.
+
+  When there is none, do not spend the call.
 
   Return a JSON string with the keys `kept`, `removed`, `blocked_tasks` and
   `note`.
 
   Budget: at most 3 model calls. Allowed imports: json, re.
 
+stub_code: |
+  import json
+  import re
+
+  MAX_AGE_DAYS = 30
+
+
+  def decide(record: dict, active_tasks: set) -> str:
+      """Return "removed" or "kept" for one record.
+
+      The rules in the contract's table are checked in order, and the first
+      one that matches decides.
+      """
+      raise NotImplementedError
+
+
+  def blocked(kept: list, active_tasks: set) -> list:
+      """The active tasks with no kept record left, sorted."""
+      raise NotImplementedError
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Run one nightly sweep and report what it did.
+
+      llm(prompt) replies "Action: records()" to the first prompt, and with a
+      one-line operator message when you ask for one.
+
+      tools["records"]() returns
+          {"status": 200, "active_tasks": ["task-1"],
+           "records": [{"id": "r-1", "deletion_requested": False,
+                        "needed_by": ["task-1"], "pinned": False,
+                        "age_days": 12}]}
+      and may return something else entirely.
+
+      Return json.dumps({"kept": [...], "removed": [...],
+                         "blocked_tasks": [...], "note": "..."}).
+      Ask the model for the note only when a task is blocked, with a prompt
+      such as "These tasks are blocked: task-3. Write one line for the
+      operator."
+      At most 3 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"kept": [], "removed": [], "blocked_tasks": [], "note": ""})
+
 hints:
-  - Both incidents are the same bug. The rules did not change, their order did.
-  - A right to erasure is not a retention preference, and nothing in the table
-    outranks it.
-  - Not spending a model call is a feature of the nightly sweeper, which runs
-    over every case every night.
+  - Both incidents come from the same place. Look at the order the rules are
+    checked in before you look at any one rule.
+  - "The first rule that matches decides a record, so a rule checked early wins
+    even when a later one matters more: a pin checked before erasure keeps the
+    record, and age checked before dependency removes it."
+  - Give each record one decision, taken by the first matching rule in the
+    table's order, and keep count of which active tasks still have a kept
+    record.
+  - A right to erasure is a legal obligation with a deadline, and no rule in
+    the table outranks it, a pin included.
+  - Ask the model only when a task is blocked. The sweep runs every night over
+    every case, so a call spent saying nothing was blocked is spent every
+    night.
+
+scenario:
+  who: The platform team that runs the case store's nightly sweeper
+  situation: >-
+    The sweeper expires records after thirty days. In one month it removed the
+    only record an open task still needed, and it kept a pinned record the
+    customer had asked to erase.
+  stakes: >-
+    The open task planned around a shipment nobody could find. The erasure
+    failure is reportable to the regulator.
+  metrics:
+    - { label: Incidents in a month, value: "2" }
+    - { label: Expiry age, value: 30 days }
+    - { label: Rules in the table, value: "5" }
+
+diagram:
+  title: Two rules checked in the wrong order
+  caption: >-
+    The first rule that matches decides a record. Checked too early, a pin
+    beats an erasure request and age beats an open task.
+  direction: lr
+  nodes:
+    - { id: store, label: Case store, sub: "records with age, pin and erasure flag", kind: store, tone: blue, at: [0, 1] }
+    - { id: sweeper, label: Nightly sweeper, sub: one decision per record, kind: agent, tone: purple, at: [1, 1] }
+    - { id: order, label: Rule order, sub: the first match decides, kind: decision, tone: orange, at: [2, 1] }
+    - { id: erase, label: Pinned record kept, sub: the customer asked to erase it, kind: output, tone: pink, at: [3, 0] }
+    - { id: operator, label: Operator, sub: hears which tasks are blocked, kind: actor, tone: green, at: [3, 1] }
+    - { id: gone, label: Needed record removed, sub: the open task plans around a gap, kind: output, tone: pink, at: [3, 2] }
+  edges:
+    - { from: store, to: sweeper, label: every record, step: 1 }
+    - { from: sweeper, to: order, label: one record at a time, step: 2 }
+    - { from: order, to: erase, label: pin checked first, tone: danger }
+    - { from: order, to: gone, label: age checked first, tone: danger }
+    - { from: order, to: operator, label: blocked tasks named, tone: success, step: 3 }
+
+approach:
+  goal: Decide every record once, in an order you can defend
+  branches:
+    - label: Rank the rules
+      detail: The first rule that matches decides, so the order is the policy.
+      leaves: ["which rule is not this team's to change?", "which rule is only a guess?"]
+    - label: Let evidence beat a proxy
+      leaves: [age guesses that nobody needs a record, an open task says somebody does]
+    - label: Say what the sweep broke
+      leaves: [a task with no kept record is blocked, the operator hears about it]
+    - label: Fail in the safe direction
+      leaves: [an unreadable store is not an empty one, say so in the note]
+
+coach:
+  opening: >-
+    Read the five rules as a ranking. Before you write code, decide which rule
+    can never be outranked, and which one is only a guess.
+  signals:
+    - id: pin-before-erasure
+      when: { code_matches: '\b(?:el)?if\b[^\n]*pinned[\s\S]*\b(?:el)?if\b[^\n]*deletion_requested' }
+      say: >-
+        Your sweep asks about the pin before it asks about erasure, so a pinned
+        record survives a deletion request. Which of those two rules is not
+        this team's to relax?
+    - id: no-dependency-check
+      when: { code_lacks: 'needed_by' }
+      say: >-
+        Nothing in your sweep reads needed_by. The February record was the only
+        evidence for an open task, and age alone removed it.
+    - id: unreadable-store-as-empty
+      when: { code_matches: 'get\(\s*["'']records["'']\s*\)\s*or\s*\[\s*\]' }
+      say: >-
+        Reading a missing record list as an empty one sweeps nothing and
+        reports success. What should the operator hear when the store answers
+        in the wrong shape?
+    - id: hidden-age-and-task
+      when: { test_failed: an_active_task_outranks_the_age }
+      say: >-
+        That store held two records of the same age, and only one was named by
+        an active task. Which of your rules looked at that record first?
+    - id: hidden-erasure-and-pin
+      when: { test_failed: erasure_outranks_a_pin_and_blocks_the_task }
+      say: >-
+        That record was pinned, under a deletion request and needed by an
+        active task. Walk it through your rules in order, then ask what the
+        task has left.
+    - id: adversarial-shape-change
+      when: { test_failed: adversarial_the_case_store_changes_shape_mid_sweep }
+      say: >-
+        The store answered without a record list. What does your sweep do when
+        it cannot read the thing it was asked to sweep?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write decide() first: one record in, kept or removed out, with the
+        rules in the table's order. The sweep is a loop around it.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Hints open after one failed run on this tier,
+        and the first one says where both incidents came from.
+  wrap_up: >-
+    Rule order is policy. Put the obligation you did not choose first, let
+    evidence outrank a proxy, and make every sweep say out loud what it broke.
 
 defence_question: |
   An operator asks you to add a sixth rule: a record under a deletion request

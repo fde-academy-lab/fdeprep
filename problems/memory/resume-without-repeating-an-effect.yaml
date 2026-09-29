@@ -42,7 +42,13 @@ brief_md: |
   something with no `observed` in it at all.
 
   Return a JSON string with the keys `ran`, `skipped`, `reconciled`, `blocked`
-  and `note`.
+  and `note`. They hold the steps you ran, the steps the checkpoint already
+  had, the steps you found had already happened, the steps you could not
+  decide about, and a one-line operator message, or an empty string when there
+  is nothing to tell an operator. When you ask the model for that message,
+  list the steps the way this prompt does:
+
+      Steps reconciled: s2. Steps blocked: none. Write one line for the operator.
 
   Budget: at most 3 model calls. Allowed imports: json, re.
 
@@ -54,6 +60,151 @@ defence_question: |
   rare and the ledger call is paid on every run. Make the argument for your
   design in a way that does not rely on the word "correctness", and say what
   you would measure to find out who is right.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Resume one customer's onboarding without repeating an effect.
+
+      llm(prompt) replies "Action: checkpoint()" to the first prompt, and with
+      a one-line operator message when you ask for one.
+
+      tools["checkpoint"]()    -> {"status": 200, "completed_steps": ["s1"],
+                                   "plan": [{"id": "s1",
+                                             "tool": "create_account",
+                                             "idempotent": True}, ...]}
+      tools["ledger"](step=id) -> {"status": 200, "observed": True}
+                                  the outside record of what actually
+                                  happened, which may come back with no
+                                  "observed" at all
+      tools["run"](step=id)    -> {"status": 200, "ran": True}
+
+      Return json.dumps({"ran": [...], "skipped": [...], "reconciled": [...],
+                         "blocked": [...], "note": "..."}).
+      Ask for the note only when there is something to tell an operator, with
+      a prompt such as "Steps reconciled: s2. Steps blocked: none. Write one
+      line for the operator."
+      At most 3 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"ran": [], "skipped": [], "reconciled": [],
+                         "blocked": [], "note": ""})
+
+hints:
+  - Two systems disagree about the welcome email. Ask which of them was there
+    when it was sent.
+  - Writing a checkpoint and performing the step it records can never be one
+    atomic act, so a crash between them always leaves the checkpoint behind
+    the world.
+  - Before running a step the checkpoint does not list, ask the system that
+    performs its effect, and ask only for a step that costs something when
+    repeated.
+  - Silence from the ledger is neither yes nor no. Decide what your resume
+    does with a step it cannot decide about, and who hears about it.
+  - The note is the only model call after the first. A resume with nothing
+    reconciled and nothing blocked has nothing to tell an operator.
+
+scenario:
+  who: The onboarding team behind an eight-step signup agent
+  situation: >-
+    On Sunday a deploy restarted the worker partway through one customer's
+    onboarding. It resumed from its checkpoint and sent the welcome email a
+    second time.
+  stakes: >-
+    Each welcome email carries a single-use discount code. The customer
+    received two, and the second code was spent.
+  metrics:
+    - { label: Steps per customer, value: "8" }
+    - { label: Welcome emails sent, value: "2" }
+    - { label: Discount codes issued, value: "2" }
+
+diagram:
+  title: The checkpoint and the world disagree
+  caption: >-
+    The email step finished and the process died before the checkpoint was
+    written. Only the mail ledger saw the email go.
+  direction: lr
+  nodes:
+    - { id: checkpoint, label: Checkpoint, sub: written after each step returns, kind: store, tone: blue, at: [0, 0] }
+    - { id: ledger, label: Mail ledger, sub: what the provider actually sent, kind: store, tone: green, at: [0, 2] }
+    - { id: worker, label: Onboarding worker, sub: resumes after a restart, kind: agent, tone: purple, at: [1, 1] }
+    - { id: run, label: run(step), sub: sends the welcome email, kind: tool, tone: orange, at: [2, 1] }
+    - { id: customer, label: Customer, sub: receives two discount codes, kind: actor, tone: pink, at: [3, 1] }
+    - { id: operator, label: Operator, sub: told which step is blocked, kind: actor, tone: teal, at: [2, 2] }
+  edges:
+    - { from: checkpoint, to: worker, label: email not listed, step: 1 }
+    - { from: worker, to: run, label: run it again, tone: danger, step: 2 }
+    - { from: run, to: customer, label: a second code, tone: danger, step: 3 }
+    - { from: worker, to: ledger, label: "was it sent?", tone: success }
+    - { from: ledger, to: worker, label: "observed: true", tone: success }
+    - { from: worker, to: operator, label: "ledger silent: stop", tone: success }
+
+approach:
+  goal: Resume without repeating anything that cannot be repeated
+  branches:
+    - label: Two records of one run
+      leaves: ["the checkpoint: what this process believed", "the ledger: what the world observed"]
+    - label: Price a repeat
+      detail: Creating an account that exists costs nothing. A second single-use code costs money.
+      leaves: [idempotent steps can simply run again, the rest need evidence first]
+    - label: Silence is not an answer
+      leaves: [a missing field decides nothing, "stop, name the step, say why"]
+    - label: Spend calls where the risk is
+      leaves: [the ledger is the slowest service you call, the model only for the operator note]
+
+coach:
+  opening: >-
+    Before you write anything, say in one sentence which system knows whether
+    the welcome email went out.
+  signals:
+    - id: never-asks-the-ledger
+      when: { code_lacks: 'ledger' }
+      say: >-
+        Your resume trusts the checkpoint alone. The checkpoint said the email
+        had not gone and the mail provider said it had. Which of the two sent
+        it?
+    - id: every-step-alike
+      when: { code_lacks: 'idempotent' }
+      say: >-
+        Every step is treated the same way. Which steps cost something when
+        they run twice, and which are free to repeat?
+    - id: silence-read-as-no
+      when: { code_matches: 'get\(\s*["'']observed["'']\s*,\s*(?:False|0)\s*\)|get\(\s*["'']observed["'']\s*\)\s*or\b|\bnot\s+[\w.]+\.get\(\s*["'']observed' }
+      say: >-
+        A ledger that answers with no observed field has not said the step
+        did not happen. What does your code do with silence?
+    - id: hidden-unrecorded-email
+      when: { test_failed: the_email_the_checkpoint_never_recorded }
+      say: >-
+        In that run the checkpoint had not recorded the welcome email and the
+        ledger had. Follow the email step through your code and see which
+        record it believed.
+    - id: hidden-idempotent-steps
+      when: { test_failed: an_idempotent_step_needs_no_ledger_call }
+      say: >-
+        Both steps in that plan are safe to repeat. Count the ledger calls
+        your resume made for them, and what each one bought.
+    - id: adversarial-silent-ledger
+      when: { test_failed: adversarial_the_ledger_answers_with_nothing }
+      say: >-
+        The ledger answered with nothing at all. Which way does your code
+        guess, and who pays if the guess is wrong?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write down, before any code, what the checkpoint knows and what the
+        mail provider knows. The design comes out of the difference.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Write your approach note and the hints open;
+        the first one says where the two records disagree.
+  wrap_up: >-
+    A checkpoint records what your process believed, and a ledger records what
+    the world saw. Ask the world before repeating anything that cannot be
+    repeated, and stop when it will not answer.
 
 tests:
   - name: resumes_the_steps_after_the_checkpoint
