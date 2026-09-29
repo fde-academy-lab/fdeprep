@@ -127,7 +127,10 @@ exemplars:
       Connections. The prompt writers fix the connecting-flight behaviour
       against new cases, and v15.1 reaches connections only when it matches
       v14 on the holdout slice and passes the same canary. I expect that in
-      about two weeks.
+      about two weeks. That is the trade-off in this plan: passengers with a
+      connection keep v14's refund behaviour for two more weeks, which costs
+      the airline some forbidden refunds, in exchange for nobody being
+      stranded at a connection by the fix.
 
       What you can tell your director: the refund fix is live on Monday for
       most passengers, the rest follow once it stops stranding people at
@@ -313,8 +316,11 @@ reference_md: |
   Scoping is what keeps Monday. v15 is better where the refund problem lives
   and worse on connections, so the release follows that line: single flights
   get v15, connections keep v14, and the airline gets its refund fix without
-  trading it for stranded passengers. The version is a setting, because a
-  release that needs a redeploy to undo is one nobody undoes at 2am.
+  trading it for stranded passengers. The trade-off it does accept, some
+  forbidden refunds on connections for two more weeks, belongs in the plan in
+  plain words, because the client is the one paying it. The version is a
+  setting, because a release that needs a redeploy to undo is one nobody
+  undoes at 2am.
 
   A rollback rule is three numbers written down before launch. The metric has
   to be something the canary produces within hours. The threshold has to be
