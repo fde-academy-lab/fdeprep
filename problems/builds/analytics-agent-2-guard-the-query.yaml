@@ -1,0 +1,546 @@
+slug: analytics-agent-2-guard-the-query
+title: Run only a single read over the tables that were picked
+artefact_type: code
+difficulty: medium
+complexity: C2
+track: builds
+est_minutes: 30
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+build: { id: analytics-agent, title: Ship a read-only analytics agent, stage: 2, of: 4 }
+
+brief_md: |
+  Stage 2 of 4. The table picker from stage 1 names only tables the schema
+  describes and still uses. Now the agent writes a query over those tables
+  and runs it.
+
+  The query tool runs on the reporting service's database connection, which
+  can write, because the reporting service maintains its own summary tables.
+  Last Thursday a manager asked the agent to clear the test sales for store 99
+  out of `order_lines`. The model wrote `DELETE FROM order_lines WHERE
+  store_id = 99`, and the agent ran it.
+
+  Somebody has since added a check that the query starts with SELECT. That
+  check lets through a DELETE chained after a SELECT, a SELECT that creates a
+  table, and a join to a table nobody picked. Write the guard that stops all
+  three.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  Stage 1's `read_schema()` and `pick_tables()` are in the starter code and
+  work, and so is `write_sql()`, which asks the model for one query over the
+  picked tables.
+
+  Before `tools["run_query"](sql=...)` sees a query, the query must pass all
+  of these:
+
+  - It is one statement. A semicolon is allowed only at the very end.
+  - It only reads. It starts with SELECT or WITH and contains none of the
+    words INSERT, UPDATE, DELETE, MERGE, DROP, ALTER, CREATE, TRUNCATE, GRANT,
+    REVOKE, COPY, CALL or INTO, in any case.
+  - Every table named after FROM or JOIN is one stage 1 picked.
+
+  `run_query` returns `{"status": 200, "columns": [...], "rows": [[...], ...]}`.
+
+  Return `json.dumps` of:
+
+  | Field | Value |
+  |---|---|
+  | `status` | `answered` when the query ran. `refused` when the guard stopped it or stage 1 picked nothing. |
+  | `tables` | Stage 1's pick. |
+  | `sql` | The query that ran, or `null`. |
+  | `columns`, `rows` | From the result, or `null`. |
+  | `reason` | Why the question was refused, in a sentence, or `null`. |
+
+  A refused query never reaches `run_query`.
+
+  Budget: at most 3 model calls. A query needs two. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  PICK_PROMPT = (
+      "You help a garden-centre chain's managers query their sales database.\n"
+      'Reply with one JSON object and nothing else: {"tables": ["<name>", ...]}\n'
+      "List only the tables the question needs. The schema is below.\n"
+  )
+
+  SQL_PROMPT = (
+      "Write one PostgreSQL SELECT statement that answers the question, using only "
+      "the tables below. Reply with the SQL and nothing else.\n"
+  )
+
+
+  # Stage 1, working: keep only tables the schema lists and does not deprecate.
+
+  def read_schema(tools: dict) -> dict:
+      reply = tools["describe"]()
+      tables = reply.get("tables") if isinstance(reply, dict) else None
+      if not isinstance(tables, list):
+          return {}
+      return {
+          table["name"]: table
+          for table in tables
+          if isinstance(table, dict) and isinstance(table.get("name"), str)
+      }
+
+
+  def schema_text(schema: dict) -> str:
+      return "\n".join(
+          f"{name}: {table.get('description', '')} Columns: {', '.join(table.get('columns') or [])}."
+          for name, table in schema.items()
+      )
+
+
+  def pick_tables(question: str, schema: dict, llm) -> list:
+      reply = llm(
+          f"{PICK_PROMPT}<schema>\n{schema_text(schema)}\n</schema>\n"
+          f"<question>\n{question}\n</question>"
+      )
+      try:
+          data = json.loads(reply)
+      except ValueError:
+          return []
+      names = data.get("tables") if isinstance(data, dict) else None
+      if not isinstance(names, list):
+          return []
+      kept = []
+      for name in names:
+          table = schema.get(name) if isinstance(name, str) else None
+          if table is not None and not table.get("deprecated") and name not in kept:
+              kept.append(name)
+      return kept
+
+
+  def write_sql(question: str, tables: list, schema: dict, llm) -> str:
+      listing = "\n".join(
+          f"{name}({', '.join(schema[name].get('columns') or [])})" for name in tables
+      )
+      return llm(
+          f"{SQL_PROMPT}<tables>\n{listing}\n</tables>\n<question>\n{question}\n</question>"
+      ).strip()
+
+
+  # Stage 2: yours.
+
+  def guard(sql: str, allowed: list):
+      """None when the query may run, otherwise the reason it may not."""
+      # TODO 1: refuse anything that is more than one statement.
+      # TODO 2: refuse a query that does not start with SELECT or WITH, or
+      #         that uses any of the words in the contract that write.
+      # TODO 3: refuse a query that names a table after FROM or JOIN which is
+      #         not in allowed.
+      return None
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      schema = read_schema(tools)
+      tables = pick_tables(question, schema, llm)
+      out = {"status": "refused", "tables": tables, "sql": None,
+             "columns": None, "rows": None, "reason": None}
+      if not tables:
+          out["reason"] = "no described, current table answers this question"
+          return json.dumps(out)
+
+      sql = write_sql(question, tables, schema, llm)
+      # TODO 4: run the query only when guard() allows it, and fill in the
+      #         result. Otherwise record the guard's reason and return.
+      return json.dumps(out)
+
+steps:
+  - id: s1
+    text: Refuse anything that is more than one statement.
+    check_id: s1
+  - id: s2
+    text: Refuse a query that does not start with SELECT or WITH, or that writes.
+    check_id: s2
+  - id: s3
+    text: Refuse a query naming a table stage 1 did not pick.
+    check_id: s3
+  - id: s4
+    text: Run what the guard allows, and record the reason for what it refuses.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"status":\s*"(answered|refused)"' }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, tables, sql, columns, rows, reason] } }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: calls_tool, name: run_query }
+
+hints:
+  - Starting with SELECT is a claim about the first word of the query. The
+    write this guard exists to stop can sit anywhere after it.
+  - Three separate properties make a query safe to run here. It is one
+    statement, nothing in it writes, and every table it reads was picked for
+    this question.
+  - A semicolon before the end means a second statement. A writing word such
+    as DELETE, CREATE or INTO anywhere in the text means a write, even after
+    SELECT.
+  - Tables are named after FROM and JOIN. Compare each one with stage 1's
+    pick, which is the allowlist for this question.
+  - A refusal is an answer. Record the reason and return without calling
+    run_query at all.
+
+scenario:
+  who: The data team at a garden-centre chain
+  situation: >-
+    The agent now writes and runs its own SQL, on a database connection it
+    shares with the reporting service, which can write. Last Thursday a manager
+    asked it to clear the test sales for store 99, and it ran DELETE FROM
+    order_lines.
+  stakes: >-
+    Restoring the deleted lines took the data team a day. The same connection
+    can read the staff table, which holds salaries.
+  metrics:
+    - { label: Till lines deleted, value: "4,112" }
+    - { label: Statements allowed, value: 1 SELECT }
+    - { label: Tables it may read, value: the picked ones }
+
+diagram:
+  title: Where a SELECT carries a DELETE into the database
+  caption: >-
+    The guard stands between the model's SQL and a connection that can write.
+    One statement, no writing words, and only the tables stage 1 picked.
+  direction: lr
+  nodes:
+    - { id: manager, label: Store manager, sub: "asks, sometimes to delete", kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: "picks tables, writes SQL", kind: model, tone: teal, at: [1, 0] }
+    - { id: agent, label: Analytics agent, sub: passes the query on, kind: agent, tone: purple, at: [1, 1] }
+    - { id: pick, label: Pick check, sub: "stage 1: the allowlist", kind: guard, tone: green, at: [2, 0] }
+    - { id: guard, label: Query guard, sub: one read over picked tables, kind: guard, tone: green, at: [2, 1] }
+    - { id: db, label: Sales database, sub: the connection can write, kind: store, tone: orange, at: [3, 1] }
+    - { id: result, label: Result, sub: columns and rows, kind: output, tone: blue, at: [4, 1] }
+    - { id: refused, label: Refused, sub: never reaches the database, kind: output, tone: orange, at: [3, 2] }
+  edges:
+    - { from: manager, to: agent, label: question, step: 1 }
+    - { from: agent, to: pick, label: picked tables, step: 2, tone: muted }
+    - { from: agent, to: model, label: tables and question, step: 3 }
+    - { from: model, to: agent, label: "SELECT ...; DELETE ...", step: 4 }
+    - { from: agent, to: guard, label: the query, step: 5 }
+    - { from: guard, to: db, label: one SELECT, tone: success }
+    - { from: db, to: result, label: rows, tone: success }
+    - { from: guard, to: refused, label: writes or strays }
+    - { from: agent, to: db, label: starts with SELECT, tone: danger }
+
+approach:
+  goal: Let only a single read over the picked tables reach the database
+  branches:
+    - label: One statement
+      leaves: [a semicolon means a second query, only a trailing one is allowed]
+    - label: Reads only
+      detail: >-
+        A write can hide after SELECT, inside a WITH clause, or behind INTO.
+      leaves: [starts with SELECT or WITH, no word that writes anywhere]
+    - label: Picked tables only
+      leaves: [the names after FROM and JOIN, stage 1's pick is the allowlist]
+    - label: Refuse before running
+      leaves: [run_query never sees it, the reason goes back to the manager]
+
+coach:
+  opening: >-
+    The query tool will run whatever you hand it, on a connection that can
+    write. Decide what a query must prove before it gets there, then write
+    those checks one at a time.
+  signals:
+    - id: one-statement-unchecked
+      when: { code_lacks: '["''][^"''\n]*;[^"''\n]*["'']' }
+      say: >-
+        Nothing in the guard looks for a semicolon. What does your guard do
+        with a SELECT followed by a second statement that deletes?
+    - id: writes-unchecked
+      when: { code_lacks: '(?i)["''][^"''\n]*\binto\b' }
+      say: >-
+        A query can start with SELECT and still write. SELECT ... INTO creates
+        a table. Which words does your guard treat as writes?
+    - id: tables-unchecked
+      when: { code_lacks: '(?i)\bfrom\s*\|\s*join\b|\bjoin\s*\|\s*from\b|["''](from|join)["'']' }
+      say: >-
+        The guard never reads which tables the query names. Tables follow FROM
+        and JOIN, and stage 1's pick says which ones this question may read.
+    - id: hidden-chained
+      when: { test_failed: a_second_statement_after_the_select_is_refused }
+      say: >-
+        That query started with a perfectly good SELECT. Read the whole string
+        before you decide it is one statement.
+    - id: hidden-select-into
+      when: { test_failed: a_select_that_creates_a_table_is_refused }
+      say: >-
+        That query started with SELECT and still wrote to the database. Look
+        for the word that did it.
+    - id: hidden-unpicked-table
+      when: { test_failed: a_join_to_a_table_nobody_picked_is_refused }
+      say: >-
+        That query joined a table stage 1 never picked. Compare every table
+        name after FROM and JOIN with the pick.
+    - id: hidden-archive
+      when: { test_failed: the_archive_cannot_come_back_through_the_query }
+      say: >-
+        Stage 1 dropped the archive from the pick, and the model's query read
+        it anyway. The pick is only an allowlist if the guard enforces it.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Fill in TODO 4 first, running the query only when guard() returns None,
+        and press Run. Then add one check to guard() at a time.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three failed runs in. The hints list the three properties a safe query
+        has, and the hidden cases test each one on its own.
+  wrap_up: >-
+    A guard in front of a tool is only as good as its weakest assumption about
+    what the model will write. Check the whole statement, and remember that a
+    read-only database role is the boundary this guard backs up.
+
+tests:
+  - name: a_select_over_the_picked_tables_runs
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What was revenue by region from April to June?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores"]}' }
+        - { match: "*",
+            reply: "SELECT s.region, SUM(l.net_gbp) AS revenue_gbp FROM order_lines l JOIN stores s ON s.store_id = l.store_id WHERE l.sold_on >= '2026-04-01' AND l.sold_on < '2026-07-01' GROUP BY s.region ORDER BY revenue_gbp DESC" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query:
+          returns:
+            status: 200
+            columns: [region, revenue_gbp]
+            rows: [[North, 1184220], [South, 973410], [East, 861095], [West, 702330]]
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: run_query }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, tables, sql, columns, rows, reason],
+                      properties: { status: { const: answered },
+                                    sql: { type: string, pattern: '(?i)^select' },
+                                    rows: { type: array, minItems: 4 } } } }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: a_delete_never_reaches_the_database
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Clear the test sales for store 99 out of order_lines, they are skewing the totals." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines"]}' }
+        - { match: "*", reply: "DELETE FROM order_lines WHERE store_id = 99" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 200, columns: [deleted], rows: [[4112]] } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: run_query }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql, reason],
+                      properties: { status: { const: refused }, sql: { type: "null" },
+                                    reason: { type: string, minLength: 1 } } } }
+
+  - name: a_second_statement_after_the_select_is_refused
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How many till lines did store 12 ring up in June? Also remove the duplicate test lines from store 99 while you are there." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines"]}' }
+        - { match: "*",
+            reply: "SELECT COUNT(*) AS till_lines FROM order_lines WHERE store_id = 12 AND sold_on >= '2026-06-01' AND sold_on < '2026-07-01'; DELETE FROM order_lines WHERE store_id = 99" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 200, columns: [till_lines], rows: [[2210]] } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: run_query }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql],
+                      properties: { status: { const: refused }, sql: { type: "null" } } } }
+
+  - name: a_select_that_creates_a_table_is_refused
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Save revenue by region for April to June somewhere I can reuse it next week." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores"]}' }
+        - { match: "*",
+            reply: "SELECT s.region, SUM(l.net_gbp) AS revenue_gbp INTO revenue_q2_snapshot FROM order_lines l JOIN stores s ON s.store_id = l.store_id WHERE l.sold_on >= '2026-04-01' AND l.sold_on < '2026-07-01' GROUP BY s.region" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 200, columns: [], rows: [] } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: run_query }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql],
+                      properties: { status: { const: refused }, sql: { type: "null" } } } }
+
+  - name: a_join_to_a_table_nobody_picked_is_refused
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which member of staff sold the most from April to June?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines"]}' }
+        - { match: "*",
+            reply: "SELECT st.full_name, SUM(l.net_gbp) AS revenue_gbp FROM order_lines l JOIN staff st ON st.staff_id = l.served_by WHERE l.sold_on >= '2026-04-01' AND l.sold_on < '2026-07-01' GROUP BY st.full_name ORDER BY revenue_gbp DESC LIMIT 1" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 200, columns: [full_name, revenue_gbp], rows: [[Staff member 118, 96400]] } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: run_query }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql],
+                      properties: { status: { const: refused }, sql: { type: "null" } } } }
+
+  - name: the_archive_cannot_come_back_through_the_query
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How did North region revenue from April to June compare with the same months in 2024?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "sales_2023_archive", "stores"]}' }
+        - { match: "*",
+            reply: "SELECT 'archive' AS source, SUM(value_gbp) AS revenue_gbp FROM sales_2023_archive WHERE sale_date >= '2024-04-01' AND sale_date < '2024-07-01' UNION ALL SELECT 'current', SUM(l.net_gbp) FROM order_lines l JOIN stores s ON s.store_id = l.store_id WHERE s.region = 'North' AND l.sold_on >= '2026-04-01' AND l.sold_on < '2026-07-01'" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 200, columns: [source, revenue_gbp], rows: [[archive, 0], [current, 1184220]] } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: run_query }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, tables, sql],
+                      properties: { status: { const: refused }, sql: { type: "null" },
+                                    tables: { not: { contains: { const: sales_2023_archive } } } } } }
+
+reference_md: |
+  "Starts with SELECT" is a check on the first word of a string whose danger
+  can sit anywhere in it. The guard has to say something about the whole
+  statement, and three properties together are enough here.
+
+  One statement comes first because it is the cheapest to state and the
+  easiest to get wrong. A semicolon before the end means the database will
+  run a second statement, whatever the first one was. A trailing semicolon is
+  harmless and models write one often, so it is stripped before the check.
+
+  Reads only is a list of words, and INTO is the one people forget. `SELECT
+  ... INTO revenue_q2_snapshot` creates a table in PostgreSQL, and a manager
+  asking to "save this somewhere" is exactly the request that produces it.
+  The list is deliberately blunt: a column called `update_note` survives it
+  because the check matches whole words, and a string literal that happens to
+  contain the word delete gets refused, which is the right way round for a
+  guard.
+
+  Picked tables only is what makes stage 1 more than advice. The pick is the
+  allowlist for this question. A join to `staff` fails it because nobody
+  picked staff, and the archive fails it because stage 1 dropped it. Without
+  this check the model can reach any table the connection can, and the
+  connection can reach salaries.
+
+  This guard is the second line, and it should be described as one. The first
+  line is a database role that cannot write and cannot see `staff`, and a
+  regular expression is no substitute for a SQL parser when the queries get
+  more complicated than these. What the guard adds is a refusal that happens
+  before the database is touched, with a reason written in words a manager
+  can read.
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    The answer is correct but the agent used an unauthorized tool. Did it pass?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I019.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat. Topic from the problem
+    catalogue, docs/source-pack/05-problem-catalog.csv A060.
