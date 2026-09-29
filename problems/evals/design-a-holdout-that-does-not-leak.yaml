@@ -1,0 +1,329 @@
+slug: design-a-holdout-that-does-not-leak
+title: Design a holdout the next release can be judged on
+artefact_type: design
+difficulty: extreme
+track: evals
+est_minutes: 45
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: client-communication, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+
+brief_md: |
+  A telecoms client's billing assistant scores 94 percent on its eval set. In
+  its first week on live tickets it resolved 71 percent without a human, and
+  the head of customer operations wants to know which number to believe
+  before the next release goes out.
+
+  You find out how both were built. The prompt carries 24 worked examples
+  taken from 300 tickets pulled in March. The 150 eval cases were written from
+  the same 300 tickets, by the same two people, in the same week. Forty of
+  those tickets are one complaint about a roaming charge, sent from a template
+  the billing system emails to customers, so they differ by little more than a
+  name and an amount.
+
+  Write the holdout design you would put in front of the head of customer
+  operations: how you would split the cases, what you would keep out of whose
+  sight, how you would know before a release that nothing crossed the line,
+  and what you would say about the 94 percent.
+
+contract_md: |
+  Write the design as you would send it. It goes to the head of customer
+  operations, who runs the contact centre and is not an engineer.
+
+  Between 350 and 600 words. There is no template and no required structure.
+
+  Say how the next number gets made so that it means something. Rebuilding
+  the whole eval set this week is out of scope.
+
+word_range: [350, 600]
+required_headings: []
+
+rubric:
+  - label: Names the leak and how it works
+    weight: 25
+    descriptor_md: |
+      Strong answers say the eval cases and the prompt examples came from the
+      same 300 tickets, so the eval asks about tickets whose answers sit in
+      the prompt, and a case can pass because its near-copy is one of the 24
+      examples. They connect that to the gap between 94 and 71. An answer
+      that calls it overfitting has named the wrong mechanism: nothing was
+      trained, and a fix aimed at training leaves this leak where it is.
+  - label: Splits on the unit that carries the leak
+    weight: 25
+    descriptor_md: |
+      Strong answers split by where a case came from: the source ticket, the
+      customer thread and the template family, so the forty roaming tickets
+      land on one side together. Many hold back a later month whole, which
+      nobody tuning the prompt has read. A random split over rows is the
+      answer this criterion exists to catch, because it puts copies of one
+      template on both sides and reports the same 94 percent with extra steps.
+  - label: Keeps the holdout out of sight
+    weight: 20
+    descriptor_md: |
+      A holdout stays one only while the people writing the prompt cannot
+      read it, and only until it is used to choose between prompts. Strong
+      answers say who can open it, where it lives, that it is scored for
+      release decisions and nothing else, and that it is replaced once it has
+      been used to tune.
+  - label: Checks the boundary mechanically
+    weight: 15
+    descriptor_md: |
+      Strong answers add a check that runs before every release and fails
+      when a holdout case shares a source ticket, a template or near-identical
+      wording with any prompt example or development case. An instruction to
+      be careful is a hope, and it fails silently.
+  - label: Tells the client what the 94 means
+    weight: 15
+    descriptor_md: |
+      Strong answers say plainly that the 94 is a development number, that the
+      71 is closer to what customers get, and what a clean holdout is likely
+      to show, without blaming the two people who wrote the cases. The head of
+      customer operations is planning staffing and needs to know which number
+      to plan on.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      The 94 percent is real, and it measures something narrower than it
+      looks. The 24 examples in the assistant's prompt and the 150 eval cases
+      were written from the same 300 March tickets, by the same two people, in
+      the same week. When the eval asks about a roaming charge, one of the
+      prompt's examples is very likely a roaming charge from the same
+      template, with a different name and amount. Part of what the eval
+      checks is whether the assistant can copy an answer it was shown. Live
+      tickets have nothing to copy, which is most of the gap between 94 and
+      71.
+
+      Here is how I would build a holdout that measures the assistant itself.
+
+      Split by where a case came from. Every case gets tagged with its source
+      ticket, its customer thread, and its template family where it has one.
+      All forty roaming tickets are one family and go to one side together. A
+      random split of the 150 would put copies of the same complaint on both
+      sides and hand us the same 94 with extra steps.
+
+      Hold back a month nobody has read. The cleanest holdout is tickets from
+      after the prompt was written, drawn by someone who did not write it: 150
+      tickets from May, sampled across the queues in proportion to real
+      volume, with each template family capped at five cases so no single
+      email dominates the score.
+
+      Keep it out of sight. The holdout lives in a separate store that the two
+      prompt authors cannot open. It is scored only when a release is being
+      decided, and the only things that leave it are the score and the
+      breakdown by queue. The day anyone uses it to choose between two
+      prompts, it becomes development data and we draw a new month.
+
+      Check the line before every release. A script compares each holdout
+      case with the prompt examples and the development set on source ticket,
+      template and near-identical wording. If anything matches, the release
+      run fails and the case moves to development. It is a script with a
+      failure condition, so it does not depend on anyone remembering.
+
+      On the numbers: I would plan staffing on the 71. My expectation is that
+      a clean holdout lands in the low to mid seventies, and the gap between
+      that and the development score is the thing to watch from one release
+      to the next. The 94 keeps a use, catching regressions while the prompt
+      is being changed, and it stops being the number that decides a release.
+  - band: adequate
+    score: 62
+    body_md: |
+      The 94 percent is inflated because the eval cases were written from the
+      same tickets as the prompt examples. The assistant has in effect seen
+      the answers to many of the questions it is tested on, which explains why
+      live performance is closer to 71 percent.
+
+      To fix this I would create a proper holdout set. First, I would remove
+      any eval case that came from the same ticket as one of the 24 prompt
+      examples. Second, I would add new cases from a later month so the
+      holdout reflects current traffic. Third, I would make sure the people
+      writing the prompt do not look at the holdout cases, and only use the
+      holdout for the final check before a release.
+
+      I would also look at the roaming charge tickets on their own, because
+      forty near-identical cases will skew the score in whichever direction
+      the assistant handles that template. Those should be deduplicated so
+      the template counts once or a small number of times.
+
+      Going forward, the eval set should be versioned and the holdout
+      refreshed every quarter.
+
+      For the head of customer operations, the honest answer is that the 71
+      percent is the better guide to what customers experience today, and the
+      94 percent should not be used for planning. Once the holdout is in
+      place, the release decision should be based on its score.
+  - band: weak
+    score: 30
+    body_md: |
+      The 94 percent is likely inflated due to overfitting, since the model
+      has seen similar examples during development. To get a more reliable
+      estimate I would recommend a standard 80/20 random split of the eval set
+      into development and test sets, and only use the test set for final
+      evaluation.
+
+      We should also grow the eval set to at least 500 cases so that the
+      results are statistically significant. Cross-validation across several
+      random splits would give a more reliable estimate of real performance.
+
+      Finally, I would recommend monitoring production metrics closely, since
+      live performance is the ultimate measure. If the live resolution rate
+      stays around 71 percent, we should investigate which ticket types are
+      failing and add more examples of those to the prompt.
+
+hints:
+  - Ask where the 150 eval cases came from, and where the 24 prompt examples
+    came from.
+  - Forty tickets from one template are one case written forty times. A split
+    over rows puts copies of it on both sides.
+  - Split on what carries the leak, the source ticket, the thread and the
+    template, and hold a later month back whole.
+  - A holdout stays one only while the people tuning the prompt cannot read
+    it, and only until it is used to choose between prompts.
+  - Say what the 94 percent is now, and which number to plan staffing on,
+    before anyone asks.
+
+scenario:
+  who: The head of customer operations at a telecoms client
+  situation: >-
+    The billing assistant scores 94 percent on its eval set, and resolved 71
+    percent of live tickets without a human in its first week.
+  stakes: >-
+    The next release is decided on the eval number. The eval cases and the
+    prompt's worked examples came from the same 300 tickets.
+  metrics:
+    - { label: Eval score, value: 94% }
+    - { label: Resolved live, value: 71% }
+    - { label: Tickets behind both, value: "300" }
+
+diagram:
+  title: How one pull of tickets became both the lesson and the exam
+  caption: >-
+    The eval asks about tickets the prompt already answers. Split by source
+    and template, and hold back tickets nobody tuning the prompt has read.
+  direction: lr
+  nodes:
+    - { id: pull, label: March pull, sub: "300 tickets, one week", kind: store, tone: blue, at: [0, 1] }
+    - { id: template, label: Roaming template, sub: "40 tickets, one wording", kind: doc, tone: orange, at: [0, 2] }
+    - { id: examples, label: Prompt examples, sub: 24 taken from the pull, kind: doc, tone: neutral, at: [1, 0] }
+    - { id: evalset, label: Eval set, sub: 150 cases from the same pull, kind: store, tone: neutral, at: [1, 2] }
+    - { id: assistant, label: Billing assistant, sub: sees the 24 examples every time, kind: model, tone: teal, at: [2, 0] }
+    - { id: later, label: A later month, sub: tickets nobody tuning has read, kind: store, tone: blue, at: [2, 1] }
+    - { id: score, label: 94 percent, sub: asks about tickets it was shown, kind: output, tone: pink, at: [2, 2] }
+    - { id: holdout, label: Holdout, sub: "whole families, one side only", kind: guard, tone: green, at: [3, 1] }
+  edges:
+    - { from: pull, to: examples, label: 24 picked }
+    - { from: pull, to: evalset, label: 150 written }
+    - { from: template, to: examples, label: copies, tone: danger }
+    - { from: template, to: evalset, label: more copies, tone: danger }
+    - { from: examples, to: assistant, label: in every prompt }
+    - { from: evalset, to: score, label: twins of the examples, tone: danger }
+    - { from: later, to: holdout, label: held back whole, tone: success }
+    - { from: holdout, to: assistant, label: scores a release, tone: success }
+
+approach:
+  goal: A holdout number the next release can be judged on
+  branches:
+    - label: Trace where every case came from
+      leaves: [which tickets fed the prompt, which fed the eval, which share a template]
+    - label: Split on the unit that leaks
+      detail: Forty rows from one template are one case, and they move together.
+      leaves: [source ticket, customer thread, template family, calendar month]
+    - label: Guard the line
+      detail: A holdout lasts while nobody tuning the prompt can read it.
+      leaves: [who may open it, used to decide releases and nothing else, a shared source or template fails the run]
+    - label: Say what 94 means now
+      leaves: [a development number, which number to plan staffing on]
+
+coach:
+  opening: >-
+    Before you design anything, write one sentence on why the eval says 94 and
+    the queue says 71. The split follows from that sentence.
+  signals:
+    - id: row-level-split
+      when:
+        code_matches: '(?i)random(ly)?\s+split|\b80\s*/\s*20\b|shuffl|cross[- ]validat'
+        code_lacks: '(?i)template|source ticket|same tickets?|thread|famil'
+      say: >-
+        A random split over cases puts copies of one roaming complaint on both
+        sides. What would you split on so a family of near-copies stays
+        together?
+    - id: no-source-unit
+      when: { code_lacks: '(?i)template|source ticket|same tickets?|by ticket|ticket id|thread|famil' }
+      say: >-
+        Nothing in your design says where a case came from. Which cases share a
+        ticket or a template with a prompt example, and which side of the line
+        do they go on?
+    - id: wrong-mechanism
+      when:
+        code_matches: '(?i)overfit'
+        code_lacks: '(?i)prompt examples?|worked examples?|examples in the prompt|same tickets?'
+      say: >-
+        Nobody trained this model. The prompt carries 24 examples and the eval
+        asks about the same tickets. What is the 94 percent measuring?
+    - id: no-access-rule
+      when: { code_lacks: '(?i)access|can(not|''t| not) (open|read|see)|out of sight|nobody (who|tuning)|kept from|only when a release|separate store' }
+      say: >-
+        Who is allowed to read the holdout? It stops being one the first time
+        someone tuning the prompt looks at it.
+    - id: no-boundary-check
+      when: { code_lacks: '(?i)near[- ]?(identical|duplicate|cop)|duplicat|overlap|shares? (a )?(source|template)|match(es)? (on|against)|compares? each' }
+      say: >-
+        How would you know, before a release, that no holdout case has a twin
+        among the prompt examples? An instruction to be careful fails silently.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with where the 150 cases and the 24 examples came from. Write
+        that down in two lines and the split follows.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hint ladder is open, and its first rung
+        narrows where to look.
+  wrap_up: >-
+    An eval written from the same material as the prompt measures how well
+    the assistant recalls its prompt. Split on where cases came from, keep the
+    holdout out of the tuners' sight, and check the line before every release.
+
+reference_md: |
+  The two numbers are both honest, and they measure different things. The
+  eval asks about tickets from the same March pull the prompt's examples were
+  cut from, often from the same template, sometimes nearly word for word. A
+  case whose twin sits in the prompt tests whether the assistant can copy,
+  and it can. Live tickets have no twin, which is the gap between 94 and 71,
+  and nobody did anything unusual to create it. Writing the eval from the
+  tickets you already have, in the week you wrote the prompt, is what every
+  team does first.
+
+  Calling it overfitting sends the fix the wrong way. Nothing was trained.
+  The leak is in how the cases were sourced, so the fix is in how they are
+  split, and a random split over rows is the fix that looks right and changes
+  nothing. Forty tickets from one template are one case written forty times,
+  and a row-level split puts copies on both sides of the line and reports the
+  same number with more ceremony. The unit of the split has to be the thing
+  that carries the leak: the source ticket, the thread, the template family,
+  and most simply a later month that nobody tuning the prompt has read.
+
+  A holdout is a social arrangement as much as a technical one. It stays a
+  holdout while the people writing the prompt cannot see it and while nobody
+  uses it to choose between two prompts, and it ends the first time either
+  happens, quietly, with nothing in any log to say so. That is why the strong
+  answers say where it lives, who can open it, what leaves it and when it is
+  replaced, and why they add a check that runs before every release instead
+  of trusting that nothing crossed.
+
+  The last paragraph matters as much as the design. The head of customer
+  operations is planning staffing and needs to hear which number to plan on,
+  plainly, without anyone being blamed for the 94. The two people who wrote
+  the cases did the reasonable thing with the tickets they had.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your eval cases and your prompt's examples came from the same tickets. How would you build a holdout you could trust?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

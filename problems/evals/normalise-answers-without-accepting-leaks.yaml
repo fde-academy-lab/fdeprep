@@ -1,0 +1,367 @@
+slug: normalise-answers-without-accepting-leaks
+title: Forgive the formatting and nothing else
+artefact_type: code
+difficulty: easy
+track: evals
+est_minutes: 15
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A home insurer's policy assistant answers short factual questions: how long
+  a customer has to report an escape of water, what the excess is on a glass
+  claim, which cover includes accidental damage. Every night an eval asks it
+  200 of those questions and compares each reply with the expected answer,
+  character by character.
+
+  Last night it scored 41 percent, and almost none of the failures were wrong
+  answers. The model writes `Answer: **30 Days.**` where the key says `30 days`,
+  and the comparison cannot tell formatting from a wrong answer. The eval team
+  has written down five differences a grader may forgive, and the call centre
+  is waiting on this number before it takes the assistant.
+
+  Write the grader for one case. It forgives those five differences and
+  nothing else, because a grader that forgives more makes the number go up
+  while the assistant stays exactly as good as it was.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is a case id. `tools["case"](id=question)` returns
+
+      {"status": 200, "question": "...", "expected": "..."}
+
+  Ask the model the case's question with `llm(case["question"])`, and send
+  nothing else. Its reply is the answer you are grading.
+
+  The eval team's five rules, applied to the reply and to `expected`, in this
+  order:
+
+  1. Lower-case the text.
+  2. Remove every `**` and every double quote.
+  3. Collapse each run of whitespace to one space, and trim both ends.
+  4. Remove one leading `answer:` label and any space after it.
+  5. Remove one trailing full stop.
+
+  Nothing else is removed. Return a JSON string with the keys `verdict`,
+  which is `"pass"` or `"fail"`, and `normalised`, the reply after the five
+  rules.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+
+  def normalise(text: str) -> str:
+      """The eval team's five rules, in order. Nothing else is removed."""
+      # TODO 1: lower-case, remove every ** and double quote, collapse each
+      #         run of whitespace to one space and trim both ends
+      # TODO 2: remove one leading "answer:" label, then one trailing full stop
+      return text
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      case = tools["case"](id=question) or {}
+      reply = llm(case.get("question", ""))
+
+      # TODO 3: normalise the reply and the expected answer with the same rules
+      # TODO 4: decide whether they match, and return the verdict and the
+      #         normalised reply as JSON
+      return json.dumps({"verdict": "fail", "normalised": reply})
+
+steps:
+  - id: s1
+    text: Lower-case, remove ** and double quotes, and collapse whitespace.
+    check_id: s1
+  - id: s2
+    text: Remove one leading answer label, then one trailing full stop.
+    check_id: s2
+  - id: s3
+    text: Put the reply and the expected answer through the same function.
+    check_id: s3
+  - id: s4
+    text: Decide whether they match and return the verdict as JSON.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: calls_tool, name: case }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [verdict, normalised] } }
+
+hints:
+  - Two of the replies that should fail have the right answer somewhere inside
+    them.
+  - A check for the answer appearing inside the reply forgives everything
+    around it, including a list of wrong options and a pasted transcript. The
+    five rules forgive five named things.
+  - Put both sides through the same function, then ask whether the two results
+    are the same string.
+  - Apply the rules in the contract's order. Take out the markdown before you
+    look for the label, or a bold label survives.
+  - Send the model the question and nothing else. A prompt that carries the
+    expected answer lets the model copy it.
+
+scenario:
+  who: The eval owner for a home insurer's policy assistant
+  situation: >-
+    Every night the assistant answers 200 short policy questions, and a grader
+    compares each reply with the expected answer character by character. Last
+    night it scored 41 percent.
+  stakes: >-
+    Almost none of the failures were wrong answers. The call centre takes the
+    assistant on this number, so it has to be right, and a higher number is a
+    different thing.
+  metrics:
+    - { label: Last night's score, value: 41% }
+    - { label: Questions each night, value: "200" }
+    - { label: Differences to forgive, value: "5" }
+
+diagram:
+  title: Where formatting gets forgiven, and where a wrong reply slips through
+  caption: >-
+    The five rules make two strings comparable. A substring check skips them
+    and accepts any reply the right answer appears in.
+  direction: lr
+  nodes:
+    - { id: case, label: Eval case, sub: question and expected answer, kind: store, tone: blue, at: [0, 1] }
+    - { id: assistant, label: Policy assistant, sub: the model being graded, kind: model, tone: teal, at: [1, 0] }
+    - { id: grader, label: Your grader, sub: one case at a time, kind: agent, tone: purple, at: [1, 1] }
+    - { id: rules, label: The five rules, sub: "case, markdown, spaces, label, full stop", kind: guard, tone: green, at: [2, 1] }
+    - { id: contains, label: "Answer inside the reply?", sub: a substring check, kind: decision, tone: pink, at: [2, 2] }
+    - { id: verdict, label: Verdict, sub: pass or fail with what was compared, kind: output, tone: orange, at: [3, 1] }
+  edges:
+    - { from: case, to: assistant, label: the question only, step: 1 }
+    - { from: assistant, to: grader, label: "Answer: **30 Days.**", step: 2 }
+    - { from: case, to: grader, label: expected answer, step: 3 }
+    - { from: grader, to: rules, label: both sides, step: 4 }
+    - { from: rules, to: verdict, label: equal or not, tone: success }
+    - { from: grader, to: contains, label: shortcut, tone: danger }
+    - { from: contains, to: verdict, label: passes a wrong reply, tone: danger }
+
+approach:
+  goal: A grader that forgives formatting and nothing else
+  branches:
+    - label: Name what may differ
+      leaves: [case and spacing, markdown and quotes, a leading label and a full stop]
+    - label: Treat both sides alike
+      detail: The expected answer goes through the same rules as the reply.
+      leaves: [one function, applied to both]
+    - label: Decide what counts as a match
+      leaves: [a reply that names every option, a reply with a transcript pasted in]
+    - label: Keep the key away from the model
+      leaves: [send the question and nothing else]
+
+coach:
+  opening: >-
+    Read the five rules in the contract before you write the comparison. Your
+    grader may forgive exactly those differences and nothing else.
+  signals:
+    - id: contains-not-equals
+      when: { code_matches: '(?i)expect[\w.()\[\]''"]*\s+in\s|__contains__|\.find\(' }
+      say: >-
+        You check whether the expected answer appears somewhere in the reply.
+        What does that line say about a reply that names every option?
+    - id: no-lower-case
+      when: { code_lacks: '\.lower\(\)|\.casefold\(\)' }
+      say: >-
+        Nothing lower-cases the text yet, so Premier and premier are two
+        different answers to your grader. That is rule one.
+    - id: key-in-the-prompt
+      when: { code_matches: 'llm\([^)\n]*(expected|json\.dumps)' }
+      say: >-
+        Your prompt to the model carries more than the question. If the
+        expected answer is in it, the model can copy it, and your grader will
+        pass a case the assistant fails.
+    - id: hidden-every-option
+      when: { test_failed: an_answer_that_lists_every_option_fails }
+      say: >-
+        That reply named every option on offer, so it contains the right one.
+        Would a customer reading it know which cover includes the damage?
+    - id: hidden-leaked-transcript
+      when: { test_failed: a_right_answer_inside_a_leaked_tool_transcript_fails }
+      say: >-
+        That reply ends with the right answer and pastes the policy tool's raw
+        output above it, all of which the customer would read. Which of the
+        five rules removes a transcript?
+    - id: hidden-comma
+      when: { test_failed: an_answer_with_a_comma_in_it_still_passes }
+      say: >-
+        That answer is right and has a comma in it. What in your grader
+        objects to a comma, and which rule says it may?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write normalise first and work it by hand on Answer: **30 Days.** When
+        it gives 30 days, the first public test is close.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. Open the first hint: it narrows where to
+        look and gives nothing away.
+  wrap_up: >-
+    An exact-match grader forgives a written list of differences and nothing
+    else. Every rule you add raises the score, so each one has to be something
+    you would defend to the person who reads the number.
+
+tests:
+  - name: formatting_the_eval_team_listed_is_forgiven
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "escape-of-water-deadline" }
+      llm_script:
+        - { match: "*", reply: "Answer: **30 Days.**" }
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "How long do I have to report an escape of water?"
+            expected: "30 days"
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [verdict, normalised],
+                      properties: { verdict: { enum: [pass, fail] } } } }
+        - { type: returns_matches, value: "\"verdict\":\\s*\"pass\"" }
+        - { type: calls_tool, name: case }
+
+  - name: a_wrong_answer_still_fails
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "escape-of-water-deadline-retest" }
+      llm_script:
+        - { match: { contains: "30 days" }, reply: "30 days." }
+        - { match: "*", reply: "14 days." }
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "How long do I have to report an escape of water?"
+            expected: "30 days"
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [verdict, normalised],
+                      properties: { verdict: { enum: [pass, fail] } } } }
+        - { type: returns_matches, value: "\"verdict\":\\s*\"fail\"" }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: an_answer_that_lists_every_option_fails
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "accidental-damage-cover" }
+      llm_script:
+        - { match: "*", reply: "Standard, Plus or Premier." }
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "Which cover includes accidental damage: Standard, Plus or Premier?"
+            expected: "Premier"
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [verdict, normalised] } }
+        - { type: returns_matches, value: "\"verdict\":\\s*\"fail\"" }
+
+  - name: a_right_answer_inside_a_leaked_tool_transcript_fails
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "glass-excess" }
+      llm_script:
+        - match: "*"
+          reply: |-
+            Action: policy_lookup(section="glass")
+            Observation: {"excess": "100 pounds", "source": "policy wording v7"}
+            Answer: 100 pounds
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "What is the excess on a glass claim?"
+            expected: "100 pounds"
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [verdict, normalised] } }
+        - { type: returns_matches, value: "\"verdict\":\\s*\"fail\"" }
+
+  - name: an_answer_with_a_comma_in_it_still_passes
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "claims-line-hours" }
+      llm_script:
+        - { match: "*", reply: "**Monday to Friday, 8am to 8pm.**" }
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "When is the claims line open?"
+            expected: "Monday to Friday, 8am to 8pm"
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "\"verdict\":\\s*\"pass\"" }
+        - { type: no_exception }
+
+reference_md: |
+  An exact-match grader can be wrong in two directions, and the fixes pull
+  against each other. Too strict, and it fails right answers for their
+  formatting, which is last night's 41 percent. Too loose, and it passes wrong
+  answers for containing the right one, and nobody complains about that
+  direction, because the number went up.
+
+  A substring check is the loose fix that feels like a careful one. It
+  forgives the markdown, the label and the full stop in one line, and it also
+  forgives "Standard, Plus or Premier" and a pasted tool transcript, because
+  the right answer is inside both. The customer who read the first reply
+  learned nothing about their cover. The customer who read the second was
+  shown the insurer's internal tool output. The grader marked both correct.
+
+  The five rules are a closed list on purpose. Each one is a difference the
+  eval team decided a customer would never notice, written down where somebody
+  can argue with it. Normalising both sides and then asking for equality
+  forgives exactly that list, so forgiving something new means adding a sixth
+  rule in review, where someone has to defend it. A comparison that forgives
+  things as a side effect never gets that review.
+
+  The prompt is the other place a grader leaks. Sending the model the whole
+  case puts the expected answer in front of the thing being graded, and a
+  model that repeats what it was shown scores perfectly on a question it
+  cannot answer. The grader sends the question and keeps the key.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Why are deterministic tests useful in an AI application?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I022.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
