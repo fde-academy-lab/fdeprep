@@ -1,0 +1,469 @@
+slug: extraction-pilot-2-validate-repair-and-route
+title: Repair a rejected record once, then hand it to a person
+artefact_type: code
+difficulty: medium
+track: builds
+est_minutes: 25
+competencies:
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: tool-schema-design, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+build: { id: extraction-pilot, title: "Rescue a document extraction pilot", stage: 2, of: 4 }
+
+brief_md: |
+  Stage 1 is live at the insurer. Every value in a record now comes from the
+  letter, and the adjusters have stopped finding policy numbers that belong
+  to other customers.
+
+  The next complaint came from the claims system. Last week it rejected 23
+  records at intake. Each one held a real value from the letter in a field
+  where it did not belong, most often the claim reference printed at the top
+  of the insurer's own acknowledgement, CLM-20931, in the policy number
+  field. Rejected records land in an error folder that nobody owns, and four
+  customers waited nine days for their first call.
+
+  The claims system's intake rules are in the stub. Build the step between
+  extraction and intake: validate the record, repair it once when it fails,
+  and route whatever still fails to an adjuster instead of the error folder.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the claim letter. The stub carries stage 1 as working code:
+  `_ground(reply, letter)` turns a model reply into a record whose values are
+  all in the letter, or null.
+
+  `_validate(record)` holds the claims system's intake rules and returns one
+  error line per failed rule:
+
+      <field>: missing                      a field is null
+      policy_number: not a policy number    not two capitals, a hyphen, six digits
+      amount_claimed: not an amount         not a pound amount such as £1,240.50
+
+  When the first record has errors, repair it once. Send a prompt that
+  carries your previous reply and every error line, ground the new reply, and
+  validate it again. There is no second repair.
+
+  `tools["submit"](record=...)` sends a record to the claims system and
+  returns `{"status": 200, "claim": "<id>"}`.
+  `tools["human_queue"](record=..., errors=[...])` puts a record in front of
+  an adjuster and returns `{"status": 200, "ticket": "<id>"}`. A record with
+  errors is never submitted.
+
+  Return `json.dumps({"status": "submitted" | "queued", "record": {...},
+  "errors": [...]})`.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  FIELDS = ("policy_number", "claimant", "incident_date", "amount_claimed")
+  POLICY_NUMBER = re.compile(r"^[A-Z]{2}-\d{6}$")
+  AMOUNT = re.compile(r"^£\d[\d,]*(?:\.\d{2})?$")
+
+  EXTRACT = (
+      "Read the claim letter below. Reply with one JSON object and nothing else, "
+      "with exactly these keys: policy_number, claimant, incident_date, "
+      "amount_claimed.\n"
+      "Copy each value exactly as the letter writes it. When the letter does not "
+      "state a value, use null. Do not work a value out from other information.\n\n"
+      "<letter>\n{letter}\n</letter>\n"
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      prompt = EXTRACT.format(letter=question)
+      reply = llm(prompt)
+      record = _ground(reply, question)
+      errors = _validate(record)
+
+      # TODO 1: when errors is not empty, send ONE repair prompt that carries
+      #         the previous reply and every error line. Ground the repaired
+      #         reply with _ground and validate it again.
+
+      # TODO 2: submit a record with no errors with tools["submit"](record=record),
+      #         and send any other record to
+      #         tools["human_queue"](record=record, errors=errors)
+
+      # TODO 3: return json.dumps({"status": "submitted" or "queued",
+      #                            "record": record, "errors": errors})
+      return json.dumps({"status": "submitted", "record": record, "errors": errors})
+
+
+  def _ground(reply: str, letter: str) -> dict:
+      """Stage 1, working: a value survives only when the letter contains it."""
+      try:
+          extracted = json.loads(reply)
+      except ValueError:
+          extracted = {}
+      if not isinstance(extracted, dict):
+          extracted = {}
+      source = _normalise(letter)
+      record = {}
+      for field in FIELDS:
+          value = extracted.get(field)
+          if isinstance(value, str) and value.strip() and _normalise(value) in source:
+              record[field] = value.strip()
+          else:
+              record[field] = None
+      return record
+
+
+  def _normalise(text: str) -> str:
+      return re.sub(r"\s+", " ", text).strip().casefold()
+
+
+  def _validate(record: dict) -> list:
+      """The claims system's intake rules, one error line per failed rule."""
+      errors = [f"{field}: missing" for field in FIELDS if record.get(field) is None]
+      policy = record.get("policy_number")
+      if policy is not None and not POLICY_NUMBER.match(policy):
+          errors.append("policy_number: not a policy number")
+      amount = record.get("amount_claimed")
+      if amount is not None and not AMOUNT.match(amount):
+          errors.append("amount_claimed: not an amount")
+      return errors
+
+steps:
+  - id: s1
+    text: Repair once, carrying the previous reply and every error line, and ground the new reply.
+    check_id: s1
+  - id: s2
+    text: Submit a clean record, and queue anything that still fails together with its errors.
+    check_id: s2
+  - id: s3
+    text: Return the status, the record and the errors as JSON.
+    check_id: s3
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: llm_calls_at_most, value: 2 }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: calls_tool, name: submit }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, record, errors] } }
+
+hints:
+  - Compare your second prompt with your first. If it adds nothing, the model
+    has no reason to answer differently.
+  - The validator already names each failure in words the model can act on.
+    The repair prompt is where those words belong.
+  - A repaired reply is a new model reply. Everything stage 1 checked about the
+    first reply has to be checked again on the second.
+  - "The shape: extract, ground and validate; on errors, one repair carrying the
+    previous reply and the error lines; ground and validate again; then submit
+    a clean record or queue the rest with its errors."
+  - Queueing a record finishes this stage's job for that letter. An adjuster
+    who keys it in a day beats an error folder that holds it for nine.
+
+scenario:
+  who: The head of claims operations at a regional home insurer
+  situation: >-
+    Stage 1 stopped the invented values. Last week the claims system still
+    rejected 23 records, each holding a value from the letter in a field
+    where it does not belong.
+  stakes: >-
+    Rejected records land in an error folder nobody owns. Four customers
+    waited nine days for their first call about a claim.
+  metrics:
+    - { label: Rejected last week, value: "23" }
+    - { label: Longest wait, value: 9 days }
+    - { label: Repairs allowed, value: "1" }
+
+diagram:
+  title: Where a grounded record still gets rejected
+  caption: >-
+    Stage 1 proves each value is in the letter and says nothing about its
+    field. Validate, repair once with the reasons, and route what still fails.
+  direction: lr
+  nodes:
+    - { id: letter, label: Claim letter, sub: the only source for a value, kind: doc, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: fills every field it is asked for, kind: model, tone: teal, at: [1, 0] }
+    - { id: extractor, label: Extractor, sub: "asks, then repairs once", kind: agent, tone: purple, at: [1, 1] }
+    - { id: grounding, label: Letter check, sub: "is this value in the letter?", kind: guard, tone: green, at: [2, 1] }
+    - { id: validator, label: Validator, sub: the claims system's intake rules, kind: guard, tone: blue, at: [3, 1] }
+    - { id: claims, label: Claims system, sub: where the adjuster opens the record, kind: service, tone: orange, at: [4, 1] }
+    - { id: queue, label: Human queue, sub: an adjuster keys it by hand, kind: queue, tone: neutral, at: [4, 2] }
+  edges:
+    - { from: letter, to: extractor, label: letter text, step: 1 }
+    - { from: extractor, to: model, label: four fields or null, step: 2 }
+    - { from: model, to: extractor, label: "policy_number: CLM-20931", step: 3 }
+    - { from: extractor, to: grounding, label: every value, step: 4 }
+    - { from: grounding, to: validator, label: a grounded record, step: 5 }
+    - { from: validator, to: extractor, label: one repair with the reasons, tone: success }
+    - { from: validator, to: claims, label: passes every rule, tone: success }
+    - { from: validator, to: queue, label: still failing after repair }
+    - { from: grounding, to: claims, label: rejected at intake, tone: danger }
+
+approach:
+  goal: Every record ends in the claims system or with an adjuster
+  branches:
+    - label: Validate what was grounded
+      leaves: [a real value can sit in the wrong field, each failed rule is one error line]
+    - label: Repair once, with the reasons
+      detail: The same prompt gets the same reply. The error lines are the only new information.
+      leaves: [send the previous reply and every error line, ground the repaired reply again]
+    - label: Route every record
+      leaves: [clean goes to the claims system, still failing goes to the human queue]
+    - label: Bound the spend
+      leaves: [one repair and then a person, at most two model calls a letter]
+
+coach:
+  opening: >-
+    Read the three error lines _validate can return. Your repair is only as
+    good as what it tells the model about them.
+  signals:
+    - id: repair-without-reasons
+      when: { code_lacks: 'join\(\s*errors\b|\bin\s+errors\b|\{errors\}|str\(errors\)' }
+      say: >-
+        None of the error lines reach a prompt yet, so a repair would ask the
+        model the same question twice. What does the validator know that the
+        model does not?
+    - id: repairs-in-a-loop
+      when: { code_matches: 'while\s+(?:errors|not\s+valid)\s*:' }
+      say: >-
+        A loop that repairs until the record passes spends a model call per
+        attempt on a letter that may never contain the field. One repair, then
+        the human queue.
+    - id: nothing-queued
+      when: { code_lacks: 'human_queue' }
+      say: >-
+        Nothing reaches the human queue yet, so a record that fails has
+        nowhere to go but the claims system that will reject it.
+    - id: same-question-twice
+      when: { test_failed: a_claim_reference_in_the_policy_field_is_repaired }
+      say: >-
+        That letter holds the right policy number one sentence after the claim
+        reference. The model finds it only when your repair says what was
+        wrong with the first answer.
+    - id: repair-invented-a-value
+      when: { test_failed: a_repair_that_invents_a_policy_number_is_still_queued }
+      say: >-
+        Asked to fill a missing policy number, the model filled one that is
+        not in the letter. Treat the repaired reply exactly as stage 1 treats
+        the first one.
+    - id: kept-repairing
+      when: { test_failed: one_repair_then_the_queue_when_the_model_keeps_failing }
+      say: >-
+        The model gave the same unusable amount every time. Count your repairs:
+        after one, the record belongs to an adjuster.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 2, routing on the errors you already have, and press
+        Run. The public tests pass without a repair at all.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints narrow this one step at a time, and
+        the first compares your two prompts.
+  wrap_up: >-
+    A retry is worth what it adds to the prompt. Carry the reason for the
+    failure, check the repaired answer as hard as the first one, and give
+    every record an owner when the repair runs out.
+
+tests:
+  - name: a_clean_letter_goes_straight_to_the_claims_system
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          2 April 2026
+
+          Dear claims team,
+
+          Water came through the kitchen ceiling on 31 March 2026 after the
+          bath upstairs overflowed. My policy number is HX-301977. The builder
+          has quoted £1,480.00 to replace the ceiling, and his quote is
+          enclosed.
+
+          Kind regards,
+          Tom Okafor
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-301977", "claimant": "Tom Okafor", "incident_date": "31 March 2026", "amount_claimed": "£1,480.00"}' }
+      tools:
+        submit: { returns: { status: 200, claim: "C-5581" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-3107" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: submit }
+        - { type: does_not_call_tool, name: human_queue }
+        - { type: returns_matches, value: '"status":\s*"submitted"' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_record_that_stays_invalid_goes_to_the_human_queue
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          24 March 2026
+
+          Dear claims team,
+
+          A pipe under the kitchen sink burst on 22 March 2026 and flooded the
+          kitchen floor. I have looked everywhere for my policy documents and
+          cannot find them, so I do not have my policy number. The plumber
+          charged £860.00 for the emergency repair.
+
+          Yours sincerely,
+          Joan Whitfield
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": null, "claimant": "Joan Whitfield", "incident_date": "22 March 2026", "amount_claimed": "£860.00"}' }
+      tools:
+        submit: { returns: { status: 200, claim: "C-5582" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-3108" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: human_queue }
+        - { type: does_not_call_tool, name: submit }
+        - { type: returns_matches, value: '"status":\s*"queued"' }
+        - { type: returns_matches, value: 'policy_number: missing' }
+
+  - name: a_claim_reference_in_the_policy_field_is_repaired
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          Re: your letter of 2 April 2026, claim reference CLM-20931
+
+          Dear claims team,
+
+          Thank you for your letter. As you asked, here are the details again.
+          The storm on 9 March 2026 damaged my garage roof. My policy number
+          is HX-448812, and the roofer's quote for the repair is £1,240.50.
+
+          Yours faithfully,
+          Priya Raman
+      llm_script:
+        - { match: { contains: "not a policy number" },
+            reply: '{"policy_number": "HX-448812", "claimant": "Priya Raman", "incident_date": "9 March 2026", "amount_claimed": "£1,240.50"}' }
+        - { match: "*",
+            reply: '{"policy_number": "CLM-20931", "claimant": "Priya Raman", "incident_date": "9 March 2026", "amount_claimed": "£1,240.50"}' }
+      tools:
+        submit: { returns: { status: 200, claim: "C-5583" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-3109" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: submit }
+        - { type: does_not_call_tool, name: human_queue }
+        - { type: returns_matches, value: '"policy_number":\s*"HX-448812"' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_repair_that_invents_a_policy_number_is_still_queued
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          16 March 2026
+
+          Dear claims team,
+
+          The storm on 14 March 2026 blew three ridge tiles off our roof, and
+          rain has come through the bedroom ceiling. I cannot find my policy
+          documents, so I do not have the policy number, but the policy is in
+          my name. The roofer charged £385.00 to make it watertight.
+
+          Yours faithfully,
+          Dev Malhotra
+      llm_script:
+        - { match: { contains: "policy_number: missing" },
+            reply: '{"policy_number": "HX-448821", "claimant": "Dev Malhotra", "incident_date": "14 March 2026", "amount_claimed": "£385.00"}' }
+        - { match: "*",
+            reply: '{"policy_number": null, "claimant": "Dev Malhotra", "incident_date": "14 March 2026", "amount_claimed": "£385.00"}' }
+      tools:
+        submit: { returns: { status: 200, claim: "C-5584" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-3110" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: submit }
+        - { type: calls_tool, name: human_queue }
+        - { type: returns_matches, value: '"policy_number":\s*null' }
+
+  - name: one_repair_then_the_queue_when_the_model_keeps_failing
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: |
+          6 April 2026
+
+          Dear claims team,
+
+          Our garden fence came down in the wind on 5 April 2026 and landed on
+          the neighbour's car. My policy number is HX-620334. The fencing
+          company says the new panels and posts will come to about twelve
+          hundred pounds.
+
+          Regards,
+          Nadia Kowalski
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-620334", "claimant": "Nadia Kowalski", "incident_date": "5 April 2026", "amount_claimed": "about twelve hundred pounds"}' }
+      tools:
+        submit: { returns: { status: 200, claim: "C-5585" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-3111" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: does_not_call_tool, name: submit }
+        - { type: calls_tool, name: human_queue }
+        - { type: returns_matches, value: 'amount_claimed: not an amount' }
+
+reference_md: |
+  Grounded and valid are two different checks, and stage 1 only did the
+  first. CLM-20931 is in the letter, so the letter check keeps it, and it is a
+  claim reference sitting in the policy number field. Validation is where the
+  record meets the rules of the system it is going into, and each rule that
+  fails becomes a line that says why.
+
+  The repair is worth exactly as much as the information it adds. A model at
+  temperature zero, given the same prompt, gives the same reply, so asking
+  again is a way of paying twice for one answer. The validator's error line is
+  the one thing the first prompt did not contain, and "policy_number: not a
+  policy number" is enough for the model to look again and find HX-448812 in
+  the next sentence.
+
+  The repaired reply is a new reply from the same model, and it earns the same
+  suspicion as the first. Asked to fill a missing policy number, it filled
+  one: HX-448821 matches the pattern exactly and appears nowhere in the
+  letter. Grounding the repair again is what stops a request for correction
+  from becoming a request for invention, and it is why stage 1 had to be a
+  function rather than a line inside the loop.
+
+  One repair, then a decision, because a letter that does not contain a
+  policy number will not grow one on the third attempt. The human queue is the
+  designed outcome for that letter: an adjuster rings the customer, and the
+  claim moves that day. The error folder the pilot had was an undesigned
+  outcome, which is why nobody owned it.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    The extraction parses as valid JSON and the claims system still rejects it. What does your service do next?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I004.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
