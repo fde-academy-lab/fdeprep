@@ -1,0 +1,324 @@
+slug: choose-a-workflow-before-another-agent
+title: Argue for a workflow step before a second agent
+artefact_type: design
+difficulty: medium
+track: agent-loop
+est_minutes: 30
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: agent-loop, weight: 0.5 }
+  - { slug: client-communication, weight: 0.5 }
+
+brief_md: |
+  A regional insurer's home-claims team runs an intake agent. It reads a new
+  claim, checks that the policy covers the peril, checks the claims system for
+  a duplicate, drafts an estimate from the photos and the description, and
+  routes the claim to a handler. Every valid claim goes through those four
+  checks in that order.
+
+  In the pilot the agent skipped the duplicate check on 23 of 400 claims. Two
+  of the 23 were duplicates, and both were paid twice, 3,900 pounds in all.
+  The trace for each skip shows the agent deciding the check was unnecessary
+  because the description "clearly looked new".
+
+  The head of claims wants a second agent: a reviewer that reads the intake
+  agent's work before a claim is routed and sends it back when a check is
+  missing. The platform team estimates it adds about nine seconds and doubles
+  the model spend on every claim.
+
+  Write the recommendation you would send to the head of claims.
+
+contract_md: |
+  Write the recommendation as you would send it. It goes to the head of
+  claims, who knows the claims process well and does not write code.
+
+  Between 250 and 500 words. There is no template and no required structure.
+
+  Say what you would build before the pilot goes wider, what a second agent
+  would and would not fix, and how the head of claims will know the fix
+  worked.
+
+word_range: [250, 500]
+required_headings: []
+
+rubric:
+  - label: Separates the fixed sequence from the judgement inside it
+    weight: 25
+    descriptor_md: |
+      Strong answers observe that every valid claim runs the same checks in
+      the same order, so the order is a workflow and only the judgement inside
+      a step, reading a description or estimating from photos, needs a model.
+      Answers that leave "which step runs next" to the model have missed why
+      the check could be skipped at all.
+  - label: Makes the duplicate check a step that cannot be skipped
+    weight: 25
+    descriptor_md: |
+      Strong answers move the duplicate check into code that runs on every
+      claim, say what it queries (the policy, the address, the date of loss,
+      the peril), and note that skips fall to zero by construction. A reviewer
+      agent lowers the skip rate; a workflow step removes the decision that
+      produced it.
+  - label: Says what a second agent would and would not fix
+    weight: 20
+    descriptor_md: |
+      Strong answers name the cost in the brief's numbers, nine seconds and
+      double the spend on every claim, say that a reviewer is a second
+      judgement over the same evidence that can be persuaded the same way,
+      and name a failure the client does not have today, such as two agents
+      disagreeing with nobody sure which to believe.
+  - label: Keeps the model where judgement is needed
+    weight: 15
+    descriptor_md: |
+      Strong answers keep the model for reading free text and drafting the
+      estimate, and do not overcorrect into removing it. When they concede a
+      second model anywhere, they point it at the estimate, where two careful
+      readers of the same photos can differ.
+  - label: Gives the head of claims a result they can check
+    weight: 15
+    descriptor_md: |
+      Strong answers propose replaying the 400 pilot claims through the new
+      workflow and reporting duplicates caught (the two known ones at least),
+      the skip rate, time per claim and cost per claim, with a date. An answer
+      that says "monitor it" gives the reader nothing to check.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      The pilot failure is a bookkeeping failure. The agent was allowed to
+      decide whether to run a check that has one right answer and has to run
+      on every claim, and it decided wrongly 23 times in 400.
+
+      Every valid claim goes through the same four checks in the same order:
+      cover, duplicate, estimate, route. The order never changes, so it should
+      not be something a model chooses. I would build it as a fixed workflow
+      in code, and call the model only inside the steps that need judgement:
+      reading the customer's description, and drafting the estimate from the
+      photos.
+
+      The duplicate check becomes a database query that runs on every claim
+      before anything else happens: same policy, same address, a date of loss
+      within 30 days, same peril. It cannot be skipped, because nothing
+      decides whether to run it. That takes the skip rate from 23 in 400 to
+      zero by construction, and a match goes to a handler rather than back to
+      the agent.
+
+      A second agent would catch many of the 23 skips, because it would read
+      the same claim and would usually notice the missing check. Usually is
+      the problem. It is a second judgement over the same evidence, it can be
+      persuaded by the same description that clearly looked new, and when the
+      two agents disagree somebody has to decide which one to believe. It also
+      adds nine seconds and doubles the model spend on every claim, including
+      the 377 where nothing was wrong.
+
+      If you want a second model somewhere, point it at the estimate. Two
+      reasonable readers of the same photos can differ there, so a second
+      opinion has something to add.
+
+      How you will know it worked: before we widen the pilot, we replay all
+      400 pilot claims through the new workflow. It should flag the two
+      duplicates we paid twice, plus any we have not found yet, and I will
+      report the skip rate, which should be zero, with the time and model cost
+      per claim next to today's figures. The replay takes about three days and
+      gives you a before-and-after measured on your own claims.
+  - band: adequate
+    score: 62
+    body_md: |
+      I would not add a second agent yet. The problem in the pilot is that the
+      duplicate check was optional, and it should never have been. The agent
+      decided on its own that some claims did not need it, and two of those
+      claims cost us 3,900 pounds.
+
+      We should make the duplicate check a required step. The agent must call
+      the claims system before it routes any claim, and the routing step
+      should refuse a claim that arrives without a duplicate-check result
+      attached. That is a rule in code, so it holds on every claim whatever
+      the model thinks of the description.
+
+      A second reviewing agent would probably catch most of the skipped
+      checks, but it doubles the cost of every claim and adds nine seconds,
+      and it is still a model deciding whether a check happened. The rule is
+      cheaper and more reliable, and it fixes the problem where it started.
+
+      The rest of the agent's work, reading the claim and drafting the
+      estimate, is where the model is useful, and I would leave it as it is.
+      Those are the parts where a person would also need to use judgement.
+
+      Once the check is required, we should watch the next few hundred claims
+      and confirm that no more duplicates are paid twice, and I will send you
+      a short summary each week until the pilot widens. If something else
+      starts going wrong, we can come back to the idea of a second agent then,
+      with better evidence about where it would help.
+  - band: weak
+    score: 28
+    body_md: |
+      A second agent is a good idea and follows the multi-agent pattern that
+      many teams now use for high-stakes work. Having one agent check another
+      adds a layer of safety, similar to the four-eyes principle for payments.
+
+      I would build the reviewer agent with a prompt that lists every check
+      the intake agent must perform, and ask it to send back any claim where
+      a check is missing. We could also improve the intake agent's prompt to
+      stress that the duplicate check is mandatory, for example by writing it
+      in capitals and repeating it at the end.
+
+      The extra nine seconds should be acceptable because claims are not
+      handled in real time, and the cost is small compared with paying
+      duplicate claims.
+
+      Over time we could add more specialist agents, for example one for
+      fraud and one for estimates, and have them coordinate through a
+      supervisor agent. This would make the system more scalable as the pilot
+      grows.
+
+hints:
+  - List the steps every valid claim goes through, in order. Then list the
+    places where two careful people could disagree. The two lists are not the
+    same length.
+  - The pilot failed because a model decided whether to run a check that has
+    one right answer. A second model can make the same decision the same way.
+  - A step that must run on every claim belongs in code that runs it on every
+    claim. Keep the model inside the steps that need judgement.
+  - The head of claims will ask how you know it worked. You have 400 pilot
+    claims with two known duplicates in them.
+  - If you concede a second model anywhere, say where one would earn its
+    nine seconds and its spend.
+
+scenario:
+  who: The head of claims at a regional home insurer
+  situation: >-
+    The intake agent skipped the duplicate check on 23 of 400 pilot claims.
+    The head of claims wants a second agent to review the first one's work
+    before any claim is routed.
+  stakes: >-
+    Two of the skipped claims were duplicates and were paid twice. The
+    reviewer would add nine seconds and double the model spend on every claim.
+  metrics:
+    - { label: Duplicate checks skipped, value: 23 of 400 }
+    - { label: Paid twice, value: "£3,900" }
+    - { label: Reviewer cost per claim, value: "2x spend, +9 s" }
+
+diagram:
+  title: Where a check that must always run became optional
+  caption: >-
+    The model chooses which step runs next, so a check with one right answer
+    can be skipped. A workflow step runs it on every claim.
+  direction: lr
+  nodes:
+    - { id: claim, label: New claim, sub: photos and a description, kind: actor, tone: blue, at: [0, 1] }
+    - { id: agent, label: Intake agent, sub: decides which step runs next, kind: agent, tone: purple, at: [1, 1] }
+    - { id: reviewer, label: Reviewer agent, sub: a second judgement at twice the spend, kind: agent, tone: orange, at: [1, 0] }
+    - { id: estimate, label: Estimate, sub: judgement from the photos, kind: model, tone: teal, at: [2, 0] }
+    - { id: dup, label: Duplicate check, sub: one right answer on every claim, kind: guard, tone: green, at: [2, 1] }
+    - { id: paid, label: Paid twice, sub: "two duplicates and 3,900 pounds", kind: output, tone: pink, at: [2, 2] }
+    - { id: route, label: Route to a handler, sub: the last step, kind: service, tone: neutral, at: [3, 1] }
+  edges:
+    - { from: claim, to: agent, label: a new claim, step: 1 }
+    - { from: agent, to: dup, label: "skip it, it looks new", tone: danger }
+    - { from: agent, to: paid, label: routed unchecked, tone: danger }
+    - { from: agent, to: reviewer, label: the proposed fix, tone: muted }
+    - { from: agent, to: estimate, label: judgement stays here, tone: success }
+    - { from: dup, to: route, label: as a workflow step, tone: success }
+
+approach:
+  goal: Put the fixed parts in code and the judgement in the model
+  branches:
+    - label: Find what never varies
+      leaves: ["four checks, one order, every valid claim", a check with one right answer]
+    - label: Name what a reviewer changes
+      detail: >-
+        A second judgement over the same evidence lowers the skip rate. It
+        cannot take it to zero.
+      leaves: [nine seconds and double spend per claim, two agents that can disagree]
+    - label: Keep judgement where it earns its cost
+      leaves: [reading the description, the estimate from the photos]
+    - label: Show it worked on real claims
+      leaves: [replay the 400 pilot claims, "report skips, duplicates, time and cost"]
+
+coach:
+  opening: >-
+    Before you argue for or against a second agent, list the steps every valid
+    claim goes through and say which of them involve a decision.
+  signals:
+    - id: check-still-optional
+      when: { code_lacks: '(?i)workflow|in code|code that|deterministic|pipeline|state machine|hard-?coded|fixed (order|sequence|step)|\bquery\b|\blookup\b|database|cannot be skipped|can''t be skipped|no path|never have been optional|not optional|needs no model|no model at all|system controls|run it first|runs? (on|for) every claim' }
+      say: >-
+        Your answer still has the duplicate check as something a model decides
+        to do. What would make it run on every claim, with nothing deciding
+        whether it runs?
+    - id: louder-prompt
+      when: { code_matches: '(?i)in capitals|capital letters|all caps|in caps|prompt[^.]*\bstress\b|\bstress\b[^.]*prompt|repeat(ing)? it (at the end|twice|in the prompt)|more emphatic' }
+      say: >-
+        Capitals and repetition make the model more likely to run the check.
+        More likely is what the pilot already had. What makes it certain?
+    - id: more-agents
+      when: { code_matches: '(?i)supervisor agent|multi-agent pattern|add (more|further) (specialist )?agents' }
+      say: >-
+        Each agent you add is another judgement that can disagree, and another
+        thing to debug. Which step here needs more judgement than it has?
+    - id: no-replay
+      when: { code_lacks: '(?i)\b400\b|replay|re-?run the pilot|pilot claims|back-?test' }
+      say: >-
+        How will the head of claims know the fix worked? There are already 400
+        pilot claims with two known duplicates in them.
+    - id: cost-unpriced
+      when: { code_lacks: '(?i)nine seconds|9 seconds|double|spend|cost per claim|latency' }
+      say: >-
+        The brief prices the second agent in seconds and spend on every claim.
+        Does your recommendation say what that buys, and on how many claims?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with two lists: the steps every valid claim goes through in the
+        same order, and the parts of the work where two careful people could
+        disagree.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three attempts have not passed. The hints open after one on this tier,
+        and the first one narrows where to look.
+  wrap_up: >-
+    When every valid case runs the same steps in the same order, the order is
+    a workflow and a model should not be choosing it. Spend models on
+    judgement, and make the checks with one right answer run in code.
+
+reference_md: |
+  The pilot failure has a precise shape. A check with one right answer, which
+  has to run on every claim, was left to a model to decide on, and the model
+  decided wrongly 23 times in 400. The fix follows from the shape: take the
+  decision away. The duplicate check becomes a query that runs on every claim
+  because the workflow runs it, and the skip rate goes to zero by
+  construction.
+
+  The second agent is a reasonable instinct aimed at the wrong layer. A
+  reviewer reading the intake agent's work is a second judgement over the
+  same evidence, and it can be persuaded by the same description that
+  clearly looked new. It would lower the skip rate. It cannot remove it, it
+  charges nine seconds and double the spend on the 377 claims where nothing
+  was wrong, and it adds a failure the client has never had: two agents that
+  disagree, with nobody sure which to believe.
+
+  Strong answers keep the model. Reading a customer's description and
+  estimating from photos are judgements, and a model earns its place there.
+  The distinction the head of claims needs is between the order of the work,
+  which never varies, and the judgement inside a step, which does. If the
+  client still wants a second model, the estimate is where a second opinion
+  has something to add.
+
+  The replay is what turns a recommendation into a decision. Four hundred
+  pilot claims with two known duplicates is a test set the client already
+  owns. Running them through the workflow before the pilot widens gives the
+  head of claims a before-and-after on their own claims, which is worth more
+  to them than any argument about architecture.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    What is the minimum useful difference between an agent and a fixed workflow, and what do you build when every valid task follows the same steps?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I010
+    and its follow-up, with the second-agent framing from I012. That bank labels
+    every entry "Original interview-style practice; actual employer frequency
+    unverified", and this inherits the caveat.
