@@ -300,7 +300,9 @@ tests:
       llm_script:
         - { match: "*", reply: "Action: usage(number=07700900321)" }
       tools:
-        account_api: { fixture: slow_then_timeout, params: { succeeds: 0 } }
+        account_api:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "account_api did not answer before the request timed out" }
         staff_console: { returns: { status: 200, used_gb: 7.9 } }
       budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:

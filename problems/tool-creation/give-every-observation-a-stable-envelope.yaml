@@ -331,7 +331,9 @@ tests:
             reply: "Final Answer: The delivery system is not answering right now. Your slot has not changed, and I will not guess it." }
         - { match: "*", reply: "Final Answer: Order G-5512 has no delivery slot." }
       tools:
-        delivery_slot: { fixture: slow_then_timeout, params: { succeeds: 0 } }
+        delivery_slot:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the slots database did not answer within 3000 ms" }
       budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: no_exception }
