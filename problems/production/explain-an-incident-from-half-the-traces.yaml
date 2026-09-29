@@ -212,18 +212,48 @@ exemplars:
       rolled the gateway back at 12:10. This is clear from our traces, which
       show the empty responses.
 
+      The timing leaves no doubt about this. The gateway went live at 09:35,
+      the first confirmation of the incident went out five minutes later at
+      09:40, and the confirmations without bookings stopped at 12:10, the
+      minute the gateway was rolled back. A problem that starts and stops with
+      one release has one cause.
+
+      We looked at the other events around the incident and ruled them out.
+      Our tool-calling library was upgraded on Monday evening, many hours
+      before the first confirmation without a booking, so it cannot explain a
+      problem that began on Tuesday morning. The model provider's slowdown from 10:05 to 10:30
+      lasted only 25 minutes and was outside our control, so it has no bearing
+      on the result either. Neither event needs any further investigation.
+
       Based on the traces, 64 of 106 conversations were affected, which is 60
       percent. Applying that to all 212 confirmations sent in the window,
-      around 128 patients were affected.
+      around 128 patients were affected. The hospital's reconciliation found a
+      similar number, which confirms our figure, so we suggest the board uses
+      128 as the number of affected patients. The other 84 patients were
+      booked as normal.
 
       Our assistant behaved correctly given the responses it received. It got
       a success code from the gateway and passed the confirmation on to the
-      patient, which is what it is designed to do.
+      patient, which is what it is designed to do. A success code tells the
+      assistant that the booking exists, and the assistant cannot be expected
+      to second-guess a success code from the hospital's own systems.
+
+      Some patients arrived at clinics this morning for appointments that did
+      not exist, and we regret the inconvenience to them and to clinic staff.
+      That inconvenience came from the gateway release.
+
+      The decision on notifying the regulator belongs to the hospital, because
+      the fault sits with the hospital's own release. Nothing in our service
+      needs to be reported, and we would ask that any notification describes
+      the incident as a gateway failure.
 
       Recommended actions:
 
       - The hospital IT team should review their release process and test the
         gateway properly before deploying changes.
+      - The hospital IT team should send us the gateway logs when they are
+        ready, so that we can attach them to this report as further proof of
+        the root cause.
       - The hospital should contact the affected patients.
 
       No changes are needed on our side. We consider this incident closed from
