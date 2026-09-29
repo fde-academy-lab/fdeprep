@@ -127,6 +127,8 @@ exemplars:
       that and the development score is the thing to watch from one release
       to the next. The 94 keeps a use, catching regressions while the prompt
       is being changed, and it stops being the number that decides a release.
+      What this design costs is speed: a release waits for a month nobody has
+      read and a passing check, in exchange for a score we can plan against.
   - band: adequate
     score: 62
     body_md: |
@@ -317,7 +319,9 @@ reference_md: |
   The last paragraph matters as much as the design. The head of customer
   operations is planning staffing and needs to hear which number to plan on,
   plainly, without anyone being blamed for the 94. The two people who wrote
-  the cases did the reasonable thing with the tickets they had.
+  the cases did the reasonable thing with the tickets they had. The strong
+  answers also name what the holdout costs: a release waits for a month
+  nobody has read, in exchange for a number the staffing plan can rest on.
 
 complexity: C4
 
