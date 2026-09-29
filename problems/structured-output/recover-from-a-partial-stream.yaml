@@ -1,0 +1,401 @@
+slug: recover-from-a-partial-stream
+title: Keep a stream that stopped halfway from turning into a quote
+artefact_type: code
+difficulty: medium
+track: structured-output
+est_minutes: 25
+competencies:
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+  - { slug: state-and-memory, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A freight broker's quoting assistant streams each quote onto the sales
+  desk's screen, so the lane and the pallet count appear while the model is
+  still writing the price. The screen's parser was built to be forgiving: when
+  a stream stopped, it closed whatever brackets were open and showed what it
+  had.
+
+  Last Wednesday a stream stopped one digit short. The model had got as far
+  as `"price_pence": 18450`, on its way to `184500`, when the connection
+  dropped. The screen closed the brackets and showed a finished-looking quote
+  of £184.50 for a job priced at £1,845.00. The rep sent it, the customer
+  accepted within four minutes, and the broker honoured the price.
+
+  The service behind the screen is being rebuilt so that the screen only ever
+  receives a quote from a stream that finished. When a stream breaks, the
+  screen shows what arrived as unfinished, and the service asks once more.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the job to quote. `llm(prompt)` returns the transcript of one
+  streamed reply as it arrived, one event per line:
+
+      data: {"text": "{\"lane\": \"Leeds to Rot"}
+      data: {"text": "terdam\", \"pallets\": 4, \"price_pence\": 184500, "}
+      data: {"text": "\"valid_until\": \"2026-10-15\"}"}
+      data: [DONE]
+
+  The `text` pieces joined in order spell out one JSON object with the keys
+  `lane`, `pallets`, `price_pence` and `valid_until`. `data: [DONE]` is the
+  last line of a stream that ended normally. A connection can close anywhere,
+  including partway through a line, and then there is no `[DONE]`. A stream
+  can also reach `[DONE]` with its object unfinished, when the model runs out
+  of room.
+
+  A stream is a quote when it reached `[DONE]` and its joined text parses to
+  an object with all four keys. Return it as
+
+      {"status": "complete", "quote": {...}}
+
+  When a stream is not a quote, request it once more, starting from nothing.
+  After a second stream that is not a quote, stop and return
+
+      {"status": "interrupted", "quote": null, "received": "..."}
+
+  where `received` is the joined text of the last stream as far as it got,
+  from complete event lines only. Never build a quote out of a stream that is
+  not one. There are no tools.
+
+  Budget: at most 3 model calls, and a correct solution never needs more than
+  2. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  KEYS = ("lane", "pallets", "price_pence", "valid_until")
+
+
+  def build_prompt(job: str) -> str:
+      return (
+          "Quote this freight job. Reply with one JSON object with the keys "
+          "lane, pallets, price_pence and valid_until.\n\n"
+          f"Job: {job}\n"
+      )
+
+
+  def read_stream(transcript: str):
+      """Join the pieces of one stream. Returns (text, finished)."""
+      pieces = []
+      finished = False
+      for line in transcript.splitlines():
+          # TODO 1: for each "data: " line, either note that the stream
+          #         finished or add the event's text to pieces. The connection
+          #         can close anywhere, including partway through a line.
+          pass
+      return "".join(pieces), finished
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      received = ""
+
+      for attempt in range(5):
+          text, finished = read_stream(llm(build_prompt(question)))
+          # TODO 2: a stream is a quote only when it finished and its text
+          #         parses to an object with every key in KEYS
+          # TODO 3: otherwise keep what arrived in received and ask once more.
+          #         After the second stream that is not a quote, stop.
+
+      return json.dumps({"status": "interrupted", "quote": None, "received": received})
+
+steps:
+  - id: s1
+    text: Read one stream, joining the event texts and noting whether it finished.
+    check_id: s1
+  - id: s2
+    text: Accept a quote only from a finished stream that parses with every key.
+    check_id: s2
+  - id: s3
+    text: Ask once more after a stream that is not a quote, then stop.
+    check_id: s3
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"status"\s*:\s*"complete"' }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: llm_calls_at_most, value: 2 }
+
+hints:
+  - The parser is the wrong judge of whether a stream finished. Look at the
+    last line of each public transcript.
+  - Only the [DONE] line says the stream ended on purpose. Everything before
+    it is text in transit, and even after it the object may still be open.
+  - Parse each data line on its own and be ready for it to fail. The last line
+    of a cut stream is whatever the connection closed on.
+  - Give every request its own buffer. The pieces of a stream that broke do not
+    belong in front of the stream that replaced it.
+
+scenario:
+  who: The sales desk at a freight broker
+  situation: >-
+    Quotes stream onto the screen so the lane shows while the price is still
+    being written. A stream cut one digit short was shown as a finished quote.
+  stakes: >-
+    A customer accepted a quote of £184.50 on a job priced at £1,845.00, and
+    the broker honoured it.
+  metrics:
+    - { label: Quote sent, value: £184.50 }
+    - { label: Job priced at, value: "£1,845.00" }
+    - { label: Accepted within, value: 4 min }
+
+diagram:
+  title: Where a cut stream became a finished quote
+  caption: >-
+    The quote service reads how the stream ended before it reads the quote. A
+    cut stream is asked for again once and then shown as unfinished.
+  direction: lr
+  nodes:
+    - { id: model, label: Quoting model, sub: writes the quote in pieces, kind: model, tone: teal, at: [0, 1] }
+    - { id: link, label: Connection, sub: can close in the middle of a line, kind: service, tone: neutral, at: [1, 0] }
+    - { id: service, label: Quote service, sub: "joins pieces, waits for [DONE]", kind: agent, tone: purple, at: [1, 1] }
+    - { id: check, label: "Finished and whole?", sub: "[DONE] and all four keys", kind: guard, tone: green, at: [2, 1] }
+    - { id: screen, label: Sales desk screen, sub: complete quotes only, kind: output, tone: blue, at: [3, 1] }
+    - { id: partial, label: Shown as unfinished, sub: what arrived and nothing more, kind: output, tone: orange, at: [3, 0] }
+    - { id: wrong, label: "£184.50 quote", sub: brackets closed by guesswork, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: model, to: link, label: pieces, step: 1 }
+    - { from: link, to: service, label: events, step: 2 }
+    - { from: service, to: check, label: joined text, step: 3 }
+    - { from: check, to: screen, label: complete, tone: success }
+    - { from: check, to: partial, label: cut twice }
+    - { from: service, to: model, label: ask once more, step: 4, tone: muted }
+    - { from: service, to: wrong, label: closed the brackets, tone: danger }
+
+approach:
+  goal: Show a quote only when the stream that carried it finished
+  branches:
+    - label: The stream says how it ended
+      leaves: ["[DONE] means the model finished", "no [DONE] means the connection closed"]
+    - label: A finished stream can still be short
+      detail: A model that runs out of room sends [DONE] with the object still open.
+      leaves: ["parse after [DONE]", check all four keys]
+    - label: The last line may be half a line
+      leaves: [read each line on its own, stop at the first that does not parse]
+    - label: Ask again from nothing
+      leaves: [a fresh buffer per request, one retry and then report what arrived]
+
+coach:
+  opening: >-
+    Read the last line of each public transcript first. How does a stream tell
+    you that it ended on purpose?
+  signals:
+    - id: never-checks-how-it-ended
+      when:
+        code_lacks: '==\s*["\x27](data:\s*)?\[DONE\]|\[DONE\]["\x27]\s*(==|in\b)|(startswith|endswith)\(\s*["\x27](data:\s*)?\[DONE|==\s*DONE\b|\bDONE\s*=='
+      say: >-
+        Your code joins the pieces and never looks at how the stream ended.
+        Which line tells you the model finished, as opposed to the connection
+        closing?
+    - id: parse-unguarded
+      when:
+        code_matches: 'json\.loads\('
+        code_lacks: '\btry\s*:'
+      say: >-
+        json.loads raises on half an object and on half a line, and nothing
+        here catches it. What should a stream that broke produce instead of an
+        exception?
+    - id: cut-inside-a-string
+      when: { test_failed: a_stream_cut_inside_a_string_is_not_a_quote }
+      say: >-
+        Both streams in that case stopped in the middle of a quoted value. What
+        did your code return, and what did it keep of what arrived?
+    - id: second-stream-lost
+      when: { test_failed: a_cut_stream_is_asked_for_again_from_scratch }
+      say: >-
+        The first stream broke and the second one finished. Print the text you
+        parsed on the second attempt. Does it start where that stream started?
+    - id: half-a-line
+      when: { test_failed: a_line_cut_partway_is_not_an_event }
+      say: >-
+        The connection closed in the middle of an event line. What does your
+        reader do with a line that is not whole?
+    - id: done-but-open
+      when: { test_failed: a_finished_stream_can_still_hold_half_a_quote }
+      say: >-
+        That stream reached [DONE], and its object never closed. Does [DONE]
+        alone make something a quote in your code?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write read_stream first and print what it returns for the first public
+        transcript: the joined text, and whether the stream finished.
+    - id: see-the-hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints are unlocked and walk from where to
+        look to the shape of the fix.
+  wrap_up: >-
+    A stream reports its own ending, and a parser that fills one in is
+    guessing. Wait for the stream to say it finished, check what it built, and
+    show anything less as unfinished.
+
+tests:
+  - name: a_finished_stream_becomes_a_quote
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Quote 4 pallets from Leeds to Rotterdam, collecting on Monday." }
+      llm_script:
+        - match: "*"
+          reply: |
+            data: {"text": "{\"lane\": \"Leeds to Rot"}
+            data: {"text": "terdam\", \"pallets\": 4, \"price_"}
+            data: {"text": "pence\": 184500, \"valid_until\": \"2026-10-15\"}"}
+            data: [DONE]
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, quote],
+                      properties: { status: { const: complete },
+                                    quote: { type: object,
+                                             required: [lane, pallets, price_pence, valid_until] } } } }
+        - { type: returns_matches, value: '"price_pence"\s*:\s*184500\b' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: pieces_split_mid_word_still_join_up
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Quote 2 pallets from Hull to Zeebrugge for next week." }
+      llm_script:
+        - match: "*"
+          reply: |
+            data: {"text": "{\"la"}
+            data: {"text": "ne\": \"Hull to Zeebrugge\", \"pal"}
+            data: {"text": "lets\": 2, \"price_pence\": 96"}
+            data: {"text": "400, \"valid_until\": \"2026-10-20\"}"}
+            data: [DONE]
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"status"\s*:\s*"complete"' }
+        - { type: returns_matches, value: '"lane"\s*:\s*"Hull to Zeebrugge"' }
+        - { type: returns_matches, value: '"price_pence"\s*:\s*96400\b' }
+
+  - name: a_stream_cut_inside_a_string_is_not_a_quote
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Quote 6 pallets from Felixstowe to Gdansk." }
+      llm_script:
+        - match: "*"
+          reply: |
+            data: {"text": "{\"lane\": \"Felixstowe to Gdansk\", "}
+            data: {"text": "\"pallets\": 6, \"price_pence\": 312000, \"valid_un"}
+            data: {"text": "til\": \"2026-1"}
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, quote, received],
+                      properties: { status: { const: interrupted },
+                                    quote: { type: "null" },
+                                    received: { type: string } } } }
+        - { type: returns_matches,
+            value: '"received"\s*:\s*"\{\\"lane\\": \\"Felixstowe to Gdansk\\", \\"pallets\\": 6, \\"price_pence\\": 312000, \\"valid_until\\": \\"2026-1"\s*[,}]' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_cut_stream_is_asked_for_again_from_scratch
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Quote 3 pallets from Tilbury to Antwerp, collecting Thursday." }
+      llm_script:
+        - match: { call_index: 1 }
+          reply: |
+            data: {"text": "{\"lane\": \"Tilbury to Antwerp\", \"pallets\": 3, "}
+            data: {"text": "\"price_pence\": 1428"}
+        - match: "*"
+          reply: |
+            data: {"text": "{\"lane\": \"Tilbury to Antwerp\", \"pallets\": 3, "}
+            data: {"text": "\"price_pence\": 142800, \"valid_until\": \"2026-10-22\"}"}
+            data: [DONE]
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"status"\s*:\s*"complete"' }
+        - { type: returns_matches, value: '"price_pence"\s*:\s*142800\b' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_line_cut_partway_is_not_an_event
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Quote 1 pallet from Dover to Calais today." }
+      llm_script:
+        - match: "*"
+          reply: |-
+            data: {"text": "{\"lane\": \"Dover to Calais\", \"pallets\": 1, "}
+            data: {"text": "\"price_pence\": 386
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches,
+            value: '"received"\s*:\s*"\{\\"lane\\": \\"Dover to Calais\\", \\"pallets\\": 1, "\s*[,}]' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_finished_stream_can_still_hold_half_a_quote
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Quote 8 pallets from Harwich to the Hook of Holland." }
+      llm_script:
+        - match: "*"
+          reply: |
+            data: {"text": "{\"lane\": \"Harwich to Hook\", \"pallets\": 8, "}
+            data: {"text": "\"price_pence\": 264000, \"valid_un"}
+            data: [DONE]
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"status"\s*:\s*"interrupted"' }
+        - { type: returns_matches, value: '"quote"\s*:\s*null' }
+
+reference_md: |
+  The forgiving parser was the bug. Closing open brackets turns every cut into
+  a valid-looking object, and a valid-looking object is exactly what the
+  screen was built to trust. `18450` is a well-formed number. Nothing about it
+  says a digit is missing, and nothing downstream of the parser can tell.
+
+  The stream itself says whether it finished. `[DONE]` is the one line that
+  means the model stopped on purpose, and everything before it is text in
+  transit. So the service reads completion from the transport first and parses
+  second. A parse that succeeds proves the text is JSON. It cannot prove the
+  text is all of it.
+
+  `[DONE]` is necessary and still not enough. A model that runs out of room
+  ends its stream normally with the object open, so the joined text is parsed
+  and checked for every key after `[DONE]` arrives. Either check alone lets
+  one kind of half quote through.
+
+  A line the connection closed on is only text. Reading each line on its own,
+  and stopping at the first that does not parse, keeps one broken line from
+  taking the request down with an exception, which would have turned a
+  network blip into a crash on the sales desk.
+
+  The retry starts from nothing. The second request is a new stream from its
+  first byte, and gluing it onto the pieces of the first produces text that
+  is neither. One retry covers the common case, a dropped connection. After a
+  second failure the screen gets what arrived, marked unfinished, and a quote
+  marked unfinished is one nobody sends to a customer.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Your structured output streams to the screen and the connection drops halfway through the object. What does the user see, and what does the service keep?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
