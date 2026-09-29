@@ -226,29 +226,29 @@ coach:
     say to yourself why that one.
   signals:
     - id: no-workflow
-      when: { code_lacks: '(?i)claim status|where (a|their|the) claim|status of (a|their|the) claim|second repl|already sent|one (type|kind|category) of|\b(40|forty|31|thirty-one) (percent|%)|\bslice\b|start with' }
+      when: { code_lacks: '(?i)claim\s+status|where\s+(a|their|the)\s+claim|status\s+of\s+(a|their|the)\s+claim|second\s+repl|already\s+sent|one\s+(type|kind|category)\s+of|\b(40|forty|31|thirty-one)\s*(percent|%)|\bslice\b|start\s+with' }
       say: >-
         Your outcome covers all of support. Which one kind of email would you
         start with, and what makes it a good first slice?
     - id: activity-metric
       when:
-        code_matches: '(?i)ai[- ]assisted|(tickets?|emails?) (handled|touched|drafted) by (the )?(ai|assistant)'
-        code_lacks: '(?i)time to|time from|\bhours?\b|resolved|second repl|usage'
+        code_matches: '(?i)ai[-\s]assisted|(tickets?|emails?)\s+(handled|touched|drafted)\s+by\s+(the\s+)?(ai|assistant)'
+        code_lacks: '(?i)time\s+to|time\s+from|\bhours?\b|resolved|second\s+repl|usage'
       say: >-
         You are counting what the AI did. Would that number fall if customers
         waited longer for worse replies?
     - id: no-baseline
-      when: { code_lacks: '(?i)baseline|today|currently|at the moment|before anything changes|starting point|19 hours|measured? (it|them|this) (over|from|for)' }
+      when: { code_lacks: '(?i)baseline|today|currently|at\s+the\s+moment|before\s+anything\s+changes|starting\s+point|19\s+hours|measured?\s+(it|them|this)\s+(over|from|for)' }
       say: >-
         Your target has nothing to be compared with. What is the number today,
         and where will that figure come from?
     - id: no-date
-      when: { code_lacks: '(?i)\bweeks?\s+(\d+|one|two|three|four|five|six)\b|\b(\d+|two|three|four|five|six|eight)\s+weeks\b|\bby (the )?(review|end of|thursday|friday|monday)|\bdeadline\b|\bdays?\s+\d+|\b\d+\s+days\b' }
+      when: { code_lacks: '(?i)\bweeks?\s+(\d+|one|two|three|four|five|six)\b|\b(\d+|two|three|four|five|six|eight)\s+weeks\b|\bby\s+(the\s+)?(review|end\s+of|thursday|friday|monday)|\bdeadline\b|\bdays?\s+\d+|\b\d+\s+days\b' }
       say: >-
         There is no date in your outcome. When will the COO know whether it
         worked, and is that before the review?
     - id: no-non-goal
-      when: { code_lacks: '(?i)will not|won''t|not (in|part of) (the )?(scope|this)|out of scope|non-goal|not going to|does not (include|cover)|is not a' }
+      when: { code_lacks: '(?i)will\s+not|won''t|not\s+(in|part\s+of)\s+(the\s+)?(scope|this)|out\s+of\s+scope|non-goal|not\s+going\s+to|does\s+not\s+(include|cover)|is\s+not\s+a\b' }
       say: >-
         Nothing says what this first piece of work will not do. What is the
         COO most likely to assume it covers?
