@@ -83,13 +83,21 @@ exemplars:
       that slice has eight cases in it. Within the thing we said we would
       never do again, we are failing more than a third of the time.
 
+      Raising the overall bar does not fix this. A 99 percent bar over 120
+      cases still allows one failure anywhere, including in this slice, and
+      two unrelated failures anywhere else would stop Friday.
+
       Here is what I would gate on.
 
       Blocking, both of them: zero failures on the emailed-without-a-grade
       slice, and no email sent by the agent in any case where the grade is
-      absent or unparsed. Those two are the incident. Everything else is
-      reported and none of it blocks, including the overall number, because a
-      single overall threshold is what let this through.
+      absent or unparsed. Those two are the incident. The second is checked
+      on all 120 cases, because a grade can go missing from any of them.
+      Everything else is reported and none of it blocks, including the
+      overall number, because a single overall threshold is what let this
+      through. You see the overall rate and the result for every slice at
+      each release, and a drop in any of them starts a conversation without
+      stopping the launch.
 
       One thing the gate cannot tell us. Eight cases cannot measure a failure
       rate. Three of eight means the real rate is somewhere between about 10
@@ -101,7 +109,13 @@ exemplars:
       Friday is still available. The path is to hold the email capability and
       launch grading with a human sending results, which removes the failure
       mode entirely and keeps the intake date. That is a smaller launch and it
-      is a real one.
+      is a real one. The agent still grades and writes the feedback, and a
+      person on your team sends each result with the grade in front of them.
+
+      The decision is yours, and I would ask you to make it on Wednesday. If
+      the forty-case slice has come back with zero failures by then, email
+      goes out on Friday with everything else. If it has not, Friday goes
+      ahead without it, and email switches on the day the slice passes.
 
       If we launch as-is: an unknown but plausibly large share of the students
       in this intake get an email saying their work has been reviewed, with no
@@ -112,38 +126,71 @@ exemplars:
     body_md: |
       96.7 percent is not enough to launch on. I would want 99 percent on the
       full eval set before we ship, which means fixing the four failing cases
-      rather than accepting them.
+      rather than accepting them. That is the level I would expect from
+      anything that sends results straight to students, and it gives the
+      team one clear number to work toward.
 
       The four failures matter more than the number suggests because three of
       them are in the email slice, which is the one we added after the pilot
       incident. That slice should pass completely. Sending a student an email
       with no grade in it is exactly the thing we said would not happen again.
+      I would ask the team to look at the three failures together first. If
+      they share a cause, one fix may clear all of them, and that is worth
+      knowing before anyone promises a date. If the causes are different,
+      each one should be understood before it is fixed, so the same failure
+      does not come back in a later release.
 
       I would also report the per-slice numbers in the launch review rather
       than just the headline, so that a failure concentrated in one area is
       visible. A single overall percentage hides this kind of clustering and
-      it nearly did.
+      it nearly did. The review should list every slice with its pass count
+      next to it, so anyone reading it can see where the failures sit without
+      asking an engineer. After launch I would keep adding cases to the email
+      slice, so it covers more of the ways a grade can go missing.
 
       On the date: I do not think Friday works unless the three cases are
       fixed and re-run. If they are fixed by Wednesday there is time. If they
       are not, I would move the launch rather than accept the slice, because
       the cost of getting this wrong is paid by students who cannot tell a bug
-      from a mark.
+      from a mark. Either way I would confirm the decision on Wednesday, so
+      the next intake hears about any change with a few days of notice
+      rather than on the morning itself.
   - band: weak
     score: 28
     body_md: |
       The agent is at 96.7 percent which is quite good but not production
       ready. Industry standard for this kind of system is usually 99 percent
-      or above, so we should aim for that before launch.
+      or above, so we should aim for that before launch. Other automated
+      grading tools aim for similar levels, and the client's students will
+      expect the same. Going live below that level would also reflect badly
+      on the client. At 96.7 percent, roughly one submission in thirty could
+      come back with the wrong result, and for coursework that is too many
+      students affected.
 
       I would suggest we fix the four failing test cases and then re-run the
-      full suite. If everything passes we are good to go. We should also add
-      more test cases over time to improve coverage, and set up monitoring so
-      we can see if anything goes wrong in production.
+      full suite. If everything passes we are good to go. The four failures
+      look like edge cases, so they should not take long to fix. We should
+      also add more test cases over time to improve coverage, and set up
+      monitoring so we can see if anything goes wrong in production.
+
+      The new test cases could cover more subjects and more types of
+      assignment, so the pass rate reflects a wider range of work. For
+      monitoring, a dashboard with the daily pass rate and the number of
+      results sent would let the team react quickly, and any drop below 95
+      percent after launch should trigger a review.
+
+      The problem from the pilot also needs to stay fixed. With 116 of 120
+      cases passing, most of the email handling is clearly working, and the
+      remaining failures should be covered by the fixes above. If a student
+      does get an email without a grade, the delivery team can resend it
+      with the grade attached. Once the full suite is green there is no need
+      to treat the email feature separately.
 
       Friday might be tight but it depends how quickly the fixes land. I would
       recommend we aim for the following week to be safe and use the extra
-      time for more testing.
+      time for more testing. A week's delay should make little difference to
+      the intake, and the extra testing will be worth it. Once the suite
+      passes and everyone has signed off, we can confirm the new launch date.
 
 hints:
   - One number over 120 cases and one number over 8 cases are not the same
