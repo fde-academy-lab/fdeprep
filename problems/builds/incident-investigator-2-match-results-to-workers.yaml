@@ -1,0 +1,470 @@
+slug: incident-investigator-2-match-results-to-workers
+title: Put every worker's result on the line of the job that produced it
+artefact_type: code
+difficulty: medium
+track: builds
+est_minutes: 30
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: agent-loop, weight: 0.5 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+build: { id: incident-investigator, title: "Build an incident investigator for the on-call team", stage: 2, of: 4 }
+
+brief_md: |
+  Stage 1 is live: the investigator works through the runbook one check at a
+  time and stops at the cause. On Saturday an incident touched checkout-api
+  and payments-api at once, and six checks in a row took eleven minutes to
+  reach a finding.
+
+  The platform team moved the checks onto workers. `dispatch` starts a check
+  on a worker and returns at once. `collect` returns the results the workers
+  have posted, in the order they finished, from a results queue that every
+  running investigation shares. In the first trial the finding arrived in
+  ninety seconds and named the wrong service. The payments database had run
+  out of connections, and the finding told the checkout team, because each
+  result was paired with the job dispatched in the same position.
+
+  Build the fan-out. Every result carries the id of the job that produced it,
+  and that id is the only thing that says which worker it came from.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the alert as JSON:
+  `{"incident": "INC-8130", "services": ["checkout-api", "payments-api"]}`.
+
+  For each service in order, dispatch each runbook check in order
+  (`deploys`, `logs`, `metrics`) as
+  `tools["dispatch"](job=<id>, check=<check>, service=<service>)`. The job id
+  is `<incident>/<check>/<service>`, such as `INC-8130/logs/payments-api`.
+
+  `tools["collect"]()` returns `{"status": 200, "results": [...]}`. Each
+  result is stage 1's shape plus the id it was dispatched with:
+  `{"job": "<id>", "verdict": ..., "finding": ..., "next": [...]}`. Results
+  arrive in the order the workers finished. The queue also holds results from
+  other investigations, and a worker can die without posting anything.
+
+  Write one line per job you dispatched, in dispatch order:
+  `<check> <service>: <verdict>: <finding>`, or `<check> <service>: no result`
+  when the job has no result.
+
+  Stage 1's rules still hold, and the stub carries its follow-up loop as
+  working code. When any result is definitive, nothing more runs. Otherwise
+  the leads' next checks are followed up, front first, until one is
+  definitive. Then ask the model once for the finding, with every line.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  RUNBOOK = ("deploys", "logs", "metrics")
+
+  FINDING = (
+      "Incident {incident}. One line per check, in the order they were started:\n"
+      "{lines}\n"
+      "Write the finding for the on-call engineer in two sentences: the cause "
+      "and the service it is on if a check found one, otherwise the strongest "
+      "lead. Say which checks did not report.\n"
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      alert = json.loads(question)
+      incident = alert["incident"]
+
+      jobs = []
+      for service in alert["services"]:
+          for check in RUNBOOK:
+              # TODO 1: give the job its id, f"{incident}/{check}/{service}", and
+              #         start it with tools["dispatch"](job=..., check=..., service=...)
+              jobs.append((check, service))
+
+      results = tools["collect"]().get("results", [])
+
+      # TODO 2: match each result to the job that produced it, using the job
+      #         id the result carries. A result for a job this run did not
+      #         dispatch belongs to another investigation.
+
+      evidence, follow_ups, definitive = [], [], False
+      for check, service in jobs:
+          # TODO 3: add "<check> <service>: <verdict>: <finding>" for this job's
+          #         own result, or "<check> <service>: no result". Note a
+          #         definitive verdict, and add a lead's next checks to follow_ups
+          #         as (check, args) pairs.
+          pass
+
+      if not definitive:
+          _follow_up(follow_ups, tools, evidence)
+
+      return llm(FINDING.format(incident=incident, lines="\n".join(evidence)))
+
+
+  def _follow_up(queue, tools, evidence):
+      """Stage 1, working: run follow-ups front first, stop on the first definitive one."""
+      while queue:
+          check, args = queue.pop(0)
+          if check not in tools:
+              evidence.append(f"{check}: skipped: no such check")
+              continue
+          result = tools[check](**args) or {}
+          verdict = result.get("verdict", "clear")
+          evidence.append(f"{check}: {verdict}: {result.get('finding', '')}")
+          if verdict == "definitive":
+              return True
+          queue[0:0] = [(step["check"], step.get("args") or {})
+                        for step in result.get("next") or []]
+      return False
+
+steps:
+  - id: s1
+    text: Dispatch every job with its id, one per check and service.
+    check_id: s1
+  - id: s2
+    text: Match each collected result to its job by the id it carries.
+    check_id: s2
+  - id: s3
+    text: Write one line per dispatched job, in dispatch order, including no result.
+    check_id: s3
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: dispatch }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: calls_tool, name: collect }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+
+hints:
+  - In stage 1 a result came back from the call that asked for it. Ask what
+    connects a result to its job now that a worker produces it.
+  - The queue returns results in the order workers finished, and some belong
+    to another investigation. Only the job id says whose a result is.
+  - Index the results by job id, then walk your own jobs in dispatch order and
+    look each one up. A job with no entry still gets a line.
+  - "The shape: dispatch every job with its id, collect once, build a dict from
+    job id to result for the ids you dispatched, write one line per job, then
+    stop on definitive or follow the leads with the stage 1 loop."
+
+scenario:
+  who: The on-call team at an online grocery
+  situation: >-
+    The investigator's checks now run on parallel workers. In the first trial
+    the finding arrived in ninety seconds instead of eleven minutes, and named
+    the wrong service.
+  stakes: >-
+    The payments database had run out of connections, and the finding told
+    the checkout team, because each result was paired with the job dispatched
+    in the same position.
+  metrics:
+    - { label: One check at a time, value: 11 min }
+    - { label: On parallel workers, value: 90 s }
+    - { label: Checks per incident, value: "6" }
+
+diagram:
+  title: Where a worker's result lands on another job's line
+  caption: >-
+    Workers finish in any order and the results queue is shared. The job id
+    each result carries is the only link back to the job that produced it.
+  direction: lr
+  nodes:
+    - { id: alert, label: Alert, sub: one incident on two services, kind: service, tone: pink, at: [0, 1] }
+    - { id: investigator, label: Investigator, sub: dispatches every job, kind: agent, tone: purple, at: [1, 1] }
+    - { id: deploys, label: deploys, sub: on a worker, kind: tool, tone: blue, at: [2, 0] }
+    - { id: logs, label: logs, sub: on a worker, kind: tool, tone: blue, at: [2, 1] }
+    - { id: metrics, label: metrics, sub: on a worker, kind: tool, tone: blue, at: [2, 2] }
+    - { id: results, label: Results queue, sub: "finishing order, shared", kind: queue, tone: neutral, at: [3, 1] }
+    - { id: matcher, label: Job id match, sub: one line per job dispatched, kind: guard, tone: green, at: [3, 2] }
+    - { id: diff, label: diff, sub: a lead's follow-up, kind: tool, tone: blue, at: [4, 2] }
+    - { id: model, label: Model, sub: writes the finding from the lines, kind: model, tone: teal, at: [4, 1] }
+    - { id: finding, label: Finding, sub: what the on-call engineer reads, kind: output, tone: green, at: [5, 1] }
+  edges:
+    - { from: alert, to: investigator, label: incident and services, step: 1 }
+    - { from: investigator, to: deploys, label: dispatch, step: 2 }
+    - { from: investigator, to: logs, label: dispatch }
+    - { from: investigator, to: metrics, label: dispatch }
+    - { from: deploys, to: results, label: posts when done }
+    - { from: logs, to: results, label: posts when done }
+    - { from: metrics, to: results, label: posts when done }
+    - { from: results, to: matcher, label: by job id, step: 3, tone: success }
+    - { from: matcher, to: diff, label: "a lead's next check", step: 4 }
+    - { from: matcher, to: model, label: one line per job, step: 5, tone: success }
+    - { from: model, to: finding, label: the right service, tone: success }
+    - { from: results, to: model, label: paired by position, tone: danger }
+
+approach:
+  goal: Fan the checks out and put every result on the right line
+  branches:
+    - label: Name every job
+      leaves: [incident, check and service in one id, the id travels with the result]
+    - label: Match by id
+      detail: Workers finish in any order, and the queue holds other investigations' results.
+      leaves: [a dict keyed by job id, only the jobs this run dispatched]
+    - label: Account for every job
+      leaves: [one line per job in dispatch order, no result is a line too]
+    - label: Keep stage 1's rules
+      leaves: [a definitive result ends the run, a lead is followed up]
+
+coach:
+  opening: >-
+    Stage 1 never had to say which check a result belonged to. Before you
+    write code, find what in a collected result says it now.
+  signals:
+    - id: paired-by-position
+      when: { code_matches: 'zip\(\s*jobs|zip\([^)]*results|results\[\s*\w+\s*\]|enumerate\(\s*results' }
+      say: >-
+        You pair results with jobs by position. Workers post results in the
+        order they finish, so position says nothing about which job a result
+        came from.
+    - id: job-id-unread
+      when: { code_lacks: '\[\s*["'']job["'']\s*\]|\.get\(\s*["'']job["'']' }
+      say: >-
+        Nothing reads the job id a result carries. It is the only field that
+        says which worker produced the result.
+    - id: wrong-service
+      when: { test_failed: results_that_arrive_out_of_order_keep_their_service }
+      say: >-
+        The workers finished in a different order from your dispatches, and
+        the definitive finding landed on another service's line. What should
+        decide which line a result goes on?
+    - id: another-investigations-result
+      when: { test_failed: a_result_left_by_another_investigation_is_not_used }
+      say: >-
+        One result in that queue came from last night's investigation of the
+        same check on the same service. What in its id says it is not yours?
+    - id: silent-worker
+      when: { test_failed: a_worker_that_never_reports_is_named_in_the_finding }
+      say: >-
+        One worker never posted a result. Walk the jobs you dispatched rather
+        than the results you received, and give that job its own line.
+    - id: follow-ups-lost
+      when: { test_failed: a_lead_is_still_followed_up_after_the_fan_out }
+      say: >-
+        Nothing in that fan-out was definitive, and one lead named a deploy to
+        diff. Stage 1's follow-up loop is still in the stub. Does anything
+        reach it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and press Run. The trace shows every dispatch and the
+        results collect sends back, with their job ids.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints narrow this from what links a result
+        to its job, to the shape of the loop.
+  wrap_up: >-
+    Parallel work breaks every assumption that order used to carry. Give each
+    job an id, match on the whole id, and walk the jobs you started so a
+    silent worker is still accounted for.
+
+tests:
+  - name: every_result_lands_on_its_own_line
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8130", "services": ["checkout-api", "payments-api"]}' }
+      llm_script:
+        - { match: { regex: '(?i)logs\W+checkout-api\W+definitive' },
+            reply: "checkout-api's database connection pool is exhausted. Tell the checkout team." }
+        - { match: { regex: '(?i)logs\W+payments-api\W+definitive' },
+            reply: "The payments database has been out of connections since 02:21 and checkout is waiting on it. Tell the payments team." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8130/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - { job: "INC-8130/logs/checkout-api", verdict: lead, finding: "checkout requests waiting on payments-api since 02:21", next: [] }
+              - { job: "INC-8130/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+              - { job: "INC-8130/deploys/payments-api", verdict: clear, finding: "no deploys to payments-api in the last two hours", next: [] }
+              - { job: "INC-8130/logs/payments-api", verdict: definitive, finding: "the payments database connection pool has been exhausted since 02:21", next: [] }
+              - { job: "INC-8130/metrics/payments-api", verdict: lead, finding: "payments-api latency up tenfold", next: [] }
+      budget: { max_llm_calls: 2, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: dispatch }
+        - { type: calls_tool, name: collect }
+        - { type: returns_matches, value: '(?i)payments team' }
+
+  - name: a_definitive_result_means_no_follow_ups
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8132", "services": ["checkout-api", "payments-api"]}' }
+      llm_script:
+        - { match: { contains: "out of memory" },
+            reply: "payments-api is restarting every 90 seconds because it runs out of memory. Raise its memory limit and tell the payments team." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8132/deploys/checkout-api", verdict: lead, finding: "checkout-api deploy d-5510 at 01:40", next: [{ check: diff, args: { deploy: "d-5510" } }] }
+              - { job: "INC-8132/logs/checkout-api", verdict: clear, finding: "error lines match the usual background rate", next: [] }
+              - { job: "INC-8132/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+              - { job: "INC-8132/deploys/payments-api", verdict: clear, finding: "no deploys to payments-api in the last two hours", next: [] }
+              - { job: "INC-8132/logs/payments-api", verdict: clear, finding: "no errors above the background rate", next: [] }
+              - { job: "INC-8132/metrics/payments-api", verdict: definitive, finding: "payments-api pods restarting every 90 seconds after running out of memory", next: [] }
+        diff: { returns: { status: 200, verdict: clear, finding: "d-5510 changed only a log message", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: diff }
+        - { type: returns_matches, value: '(?i)memory limit' }
+
+  - name: results_that_arrive_out_of_order_keep_their_service
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8131", "services": ["checkout-api", "payments-api"]}' }
+      llm_script:
+        - { match: { regex: '(?i)logs\W+checkout-api\W+definitive' },
+            reply: "checkout-api's database connection pool is exhausted. Tell the checkout team." }
+        - { match: { regex: '(?i)logs\W+payments-api\W+definitive' },
+            reply: "The payments database has been out of connections since 02:21 and checkout is waiting on it. Tell the payments team." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8131/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - { job: "INC-8131/logs/payments-api", verdict: definitive, finding: "the payments database connection pool has been exhausted since 02:21", next: [] }
+              - { job: "INC-8131/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+              - { job: "INC-8131/deploys/payments-api", verdict: clear, finding: "no deploys to payments-api in the last two hours", next: [] }
+              - { job: "INC-8131/logs/checkout-api", verdict: lead, finding: "checkout requests waiting on payments-api since 02:21", next: [] }
+              - { job: "INC-8131/metrics/payments-api", verdict: lead, finding: "payments-api latency up tenfold", next: [] }
+      budget: { max_llm_calls: 2, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '(?i)payments team' }
+        - { type: no_exception }
+
+  - name: a_result_left_by_another_investigation_is_not_used
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8133", "services": ["checkout-api", "payments-api"]}' }
+      llm_script:
+        - { match: { contains: "search index" },
+            reply: "A search index rebuild is blocking basket reads on checkout-api. Stop the rebuild." }
+        - { match: { contains: "out of memory" },
+            reply: "payments-api is restarting every 90 seconds because it runs out of memory. Raise its memory limit and tell the payments team." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8133/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - { job: "INC-8133/logs/checkout-api", verdict: clear, finding: "error lines match the usual background rate", next: [] }
+              - { job: "INC-8127/logs/checkout-api", verdict: definitive, finding: "a search index rebuild blocked every basket read", next: [] }
+              - { job: "INC-8133/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+              - { job: "INC-8133/deploys/payments-api", verdict: clear, finding: "no deploys to payments-api in the last two hours", next: [] }
+              - { job: "INC-8133/logs/payments-api", verdict: lead, finding: "payment requests failing with 503", next: [] }
+              - { job: "INC-8133/metrics/payments-api", verdict: definitive, finding: "payments-api pods restarting every 90 seconds after running out of memory", next: [] }
+      budget: { max_llm_calls: 2, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '(?i)memory limit' }
+        - { type: no_exception }
+
+  - name: a_worker_that_never_reports_is_named_in_the_finding
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8134", "services": ["checkout-api", "payments-api"]}' }
+      llm_script:
+        - { match: { regex: '(?i)metrics\W+payments-api\W+(?:no result|no report|missing|did not report|not reported)' },
+            reply: "No cause found yet. The payments-api metrics check never reported, so payments-api is still unchecked." }
+        - { match: "*", reply: "No cause found. Every check came back clear." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8134/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - { job: "INC-8134/logs/payments-api", verdict: clear, finding: "no errors above the background rate", next: [] }
+              - { job: "INC-8134/logs/checkout-api", verdict: clear, finding: "error lines match the usual background rate", next: [] }
+              - { job: "INC-8134/deploys/payments-api", verdict: clear, finding: "no deploys to payments-api in the last two hours", next: [] }
+              - { job: "INC-8134/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+      budget: { max_llm_calls: 2, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '(?i)unchecked' }
+        - { type: no_exception }
+
+  - name: a_lead_is_still_followed_up_after_the_fan_out
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8135", "services": ["checkout-api", "payments-api"]}' }
+      llm_script:
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8135/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - { job: "INC-8135/logs/checkout-api", verdict: lead, finding: "checkout requests timing out on payments-api", next: [] }
+              - { job: "INC-8135/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+              - { job: "INC-8135/deploys/payments-api", verdict: lead, finding: "payments-api deploy d-5520 at 00:55", next: [{ check: diff, args: { deploy: "d-5520" } }] }
+              - { job: "INC-8135/logs/payments-api", verdict: lead, finding: "connection timeouts to the payments database", next: [] }
+              - { job: "INC-8135/metrics/payments-api", verdict: clear, finding: "payments-api CPU and memory normal", next: [] }
+        diff: { returns: { status: 200, verdict: definitive, finding: "d-5520 cut the database connection pool from 50 to 5", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: diff }
+        - { type: returns_matches, value: '(?i)roll it back' }
+
+reference_md: |
+  The stage 1 code paired each result with the check that produced it
+  without ever saying so, because the result came back from the call.
+  Moving the checks onto workers removed that guarantee and left the
+  assumption in place. A list in finishing order, paired with a list in
+  dispatch order, put the payments database's exhausted connection pool on
+  checkout-api's line, and the finding went to the wrong team.
+
+  The job id is the whole fix, and the rest follows from it. It names the
+  incident, the check and the service, it travels with the result, and it is
+  the only field in a result that says which worker produced it. Keying on
+  part of it fails more quietly. The check alone merges two services. The
+  check and the service together accept last night's result from the shared
+  queue, because another investigation ran the same check on the same
+  service.
+
+  Walking your own jobs, instead of the results, is what makes the evidence
+  complete. Every dispatched job gets exactly one line, a result nobody here
+  asked for gets none, and a worker that never reported gets a line that says
+  so. That last line changes the finding. "No cause found" over five checks
+  is a different statement from "no cause found, and payments-api's metrics
+  never reported", and only the second tells the engineer where to look.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    You fan an investigation out to six workers. Results come back in whatever order they finish, some of them from another run. How does each result find the worker that produced it?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
