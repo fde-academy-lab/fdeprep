@@ -8,8 +8,12 @@
  * the copy here says rather than implying it is optional.
  */
 import { useMemo, useState } from "react";
+import { Lock, Send } from "lucide-react";
 import { wordCount } from "@/lib/gate";
 import type { Decision } from "@/lib/policy";
+import { Button } from "@/components/ui/button";
+import { StatusBadge } from "@/components/ui/status";
+import { cn } from "@/components/ui/cn";
 import { useSubmission } from "./use-submission";
 
 const WORD_CAP = 120;
@@ -31,51 +35,58 @@ export default function Defence(props: Props) {
 
   if (!props.defence.open) {
     return (
-      <section className="border-t border-border p-3">
-        <h2 className="mb-1 text-text-dim">Defence</h2>
-        <p className="text-text-dim">{props.defence.reason}</p>
+      <section className="space-y-2">
+        <h2 className="text-lead font-semibold text-text">Defence</h2>
+        <p className="flex items-start gap-2 text-text-dim">
+          <Lock aria-hidden className="mt-0.5 size-4 shrink-0" />
+          {props.defence.reason}
+        </p>
       </section>
     );
   }
 
   return (
-    <section className="border-t border-border p-3">
-      <h2 className="mb-1">Defence</h2>
-      <p className="mb-2 text-text-dim">
-        {props.question} Answer in {WORD_CAP} words or fewer. The attempt is not complete
-        until this is submitted.
-      </p>
+    <section className="space-y-3 rounded-panel border border-accent/50 bg-surface p-4">
+      <div>
+        <h2 className="text-lead font-semibold text-text">Defend the design</h2>
+        <p className="mt-1 text-meta text-text-faint">
+          The attempt is not complete until this is submitted. {WORD_CAP} words or fewer.
+        </p>
+      </div>
+      <p className="leading-relaxed text-text">{props.question}</p>
 
       <textarea value={body} onChange={(event) => setBody(event.target.value)}
                 aria-label="Your defence" rows={5}
-                className="w-full resize-y rounded border border-border bg-bg p-2 leading-6 outline-none focus:border-accent" />
+                className="w-full resize-y rounded-control border border-border-control bg-bg p-3
+                           leading-relaxed text-text outline-none focus:border-accent" />
 
-      <div className="mt-2 flex items-center gap-3">
-        <span className={`tnum ${over ? "text-warn" : "text-text-dim"}`}>
+      <div className="flex flex-wrap items-center gap-3">
+        <span className={cn("tnum text-meta", over ? "text-warn" : "text-text-dim")}>
           {words} of {WORD_CAP} words
         </span>
-        <button type="button" disabled={running || over || words === 0}
-                onClick={() => send("defence", body)}
-                className="ml-auto rounded bg-accent px-3 py-1 text-bg disabled:opacity-40">
-          {running ? "Judging" : "Submit defence"}
-        </button>
+        <Button variant="primary" size="sm" className="ml-auto"
+                disabled={running || over || words === 0} onClick={() => send("defence", body)}>
+          <Send aria-hidden /> {running ? "Judging" : "Submit defence"}
+        </Button>
       </div>
 
       {over ? (
-        <p className="mt-2 text-warn">
+        <p className="text-meta text-warn">
           Cut {words - WORD_CAP} words. A defence over the cap is refused before it is judged.
         </p>
       ) : null}
-      {notice ? <p className="mt-2 text-warn">{notice}</p> : null}
+      {notice ? <StatusBadge kind="error">{notice}</StatusBadge> : null}
 
       {view?.status === "terminal" ? (
         view.verdict === "error" ? (
-          <p className="mt-2 text-warn">{view.message ?? "The judge did not complete."}</p>
+          <StatusBadge kind="error">{view.message ?? "The judge did not complete. Try again."}</StatusBadge>
         ) : (
-          <div className="mt-2">
-            <p className="tnum">Defence scored {view.score}.</p>
+          <div className="space-y-2 border-t border-border pt-3">
+            <p className="tnum font-medium text-text">Defence scored {view.score}.</p>
             {view.rubric.criteria.map((criterion) => (
-              <p key={criterion.label} className="text-text-dim">{criterion.evidenceQuote}</p>
+              <blockquote key={criterion.label} className="border-l-2 border-border-control pl-3 text-text-dim">
+                {criterion.evidenceQuote}
+              </blockquote>
             ))}
           </div>
         )

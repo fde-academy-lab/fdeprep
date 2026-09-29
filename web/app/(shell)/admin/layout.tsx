@@ -6,9 +6,9 @@
  * added under this directory is closed by default rather than open by
  * oversight.
  */
-import Link from "next/link";
 import { notFound } from "next/navigation";
 import { currentLearner } from "@/lib/session/current";
+import { AdminTabs } from "./admin-tabs";
 
 export const dynamic = "force-dynamic";
 
@@ -27,17 +27,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const visible = TABS.filter((tab) => learner.role === "admin" || tab.faculty);
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <nav className="flex items-center gap-4 border-b border-border px-4 py-2">
-        <Link href="/" className="text-text-dim hover:text-text">&lt; FDE Prep</Link>
-        {visible.map((tab) => (
-          <Link key={tab.href} href={tab.href} className="text-text-dim hover:text-text">
-            {tab.label}
-          </Link>
-        ))}
-        <span className="ml-auto text-text-faint">{learner.displayName} | {learner.role}</span>
-      </nav>
-      {children}
+    <div className="mx-auto max-w-[1280px] px-4 pb-16 pt-8 sm:px-6">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <h1 className="text-display font-semibold tracking-[-0.02em] text-text">Faculty admin</h1>
+        <span className="text-meta capitalize text-text-faint">
+          {learner.displayName}, {learner.role}
+        </span>
+      </div>
+      <div className="mt-5">
+        <AdminTabs tabs={visible.map((tab) => ({ href: tab.href, label: tab.label }))} />
+      </div>
+      <div className="mt-6 [&_h1]:text-title [&_h1]:font-semibold [&_h1]:text-text">{children}</div>
     </div>
   );
 }
