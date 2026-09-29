@@ -110,24 +110,38 @@ exemplars:
     body_md: |
       Forty hand-written conversations is not enough evidence to launch on,
       and 95 percent is not as reassuring as it sounds because we do not know
-      what the two failures were.
+      what the two failures were. The first thing I would do is read those
+      two conversations. If either of them involved a refund, that matters
+      more than the percentage.
 
       I would want to see a few things before launch. First, a larger test set
       drawn from real conversations rather than written by the team, because
-      hand-written cases tend to cover what the author expected. Second, a set
-      of adversarial cases specifically targeting the refund path, since that
-      is where the money is. Third, a breakdown of the 95 percent by category
-      rather than one overall number, so we can see whether the failures
-      cluster.
+      hand-written cases tend to cover what the author expected. A few
+      hundred conversations from the support inbox over recent months would
+      be a good start. Second, a set of adversarial cases specifically
+      targeting the refund path, since that is where the money is. A customer
+      asking for a refund on an order that is not theirs is the obvious case,
+      along with a request above the 200 dollar limit. Third, a breakdown of
+      the 95 percent by category rather than one overall number, so we can
+      see whether the failures cluster. Refunds, order questions and account
+      changes would be enough categories to start with.
 
       For gates, I would say no unauthorised refunds at all, and a minimum
-      overall pass rate of 98 percent on the expanded set. I would also want
-      monitoring in place before launch so we can catch problems quickly, and
-      a way to turn the refund capability off without a deploy.
+      overall pass rate of 98 percent on the expanded set. On a few hundred
+      conversations that allows only a handful of failures, which seems the
+      right level for something customers will use directly. I would also
+      want monitoring in place before launch so we can catch problems
+      quickly, and a way to turn the refund capability off without a deploy.
+      For the first week, someone on the support team should read a sample
+      of the refund conversations every day.
 
       Two weeks is tight for all of this. If the date cannot move I would
       prioritise the adversarial refund cases, because that is the highest
-      cost failure, and accept less coverage elsewhere.
+      cost failure, and accept less coverage elsewhere. The real
+      conversations could then be run in the weeks after launch. I would be
+      clear with the head of support that keeping the date means launching
+      on less evidence, and leave that decision with them once the refund
+      results are in.
   - band: weak
     score: 31
     body_md: |
@@ -141,13 +155,32 @@ exemplars:
       robust. We should also implement comprehensive monitoring and logging so
       that any issues in production can be identified quickly.
 
+      The team that built the agent understands its capabilities best, so
+      they are well placed to write the new cases. Writing them in the same
+      style as the original forty will keep the suite consistent. The cases
+      should cover simple questions, complex queries, long conversations and
+      unusual requests, so that testing is as thorough as possible. Each new
+      case should be reviewed by a second person to check that it is
+      realistic and that the expected answer is correct.
+
       Before launch I would want to see a higher pass rate, ideally 99 percent
-      or above, along with sign-off from stakeholders. A phased rollout would
-      also reduce risk, starting with a small percentage of traffic and
-      increasing gradually as confidence grows.
+      or above, along with sign-off from stakeholders. Support, engineering
+      and finance should all review the results, since each of them has a
+      stake in the launch going well. A phased rollout would also reduce
+      risk, starting with a small percentage of traffic and increasing
+      gradually as confidence grows. The team can widen the rollout once
+      they are comfortable with how the agent is performing.
+
+      It would also be sensible to run a security review of the refund
+      feature before launch, to make sure it follows best practices. After
+      launch, the pass rate should be tracked every week and shared with
+      stakeholders, so everyone can see whether quality is improving.
 
       Two weeks is likely not enough time to do this properly and I would
-      recommend pushing the date to ensure quality.
+      recommend pushing the date to ensure quality. A delay of three or four
+      weeks would give the team time to write the new cases, reach the
+      target pass rate and plan the rollout. In my experience a delay is
+      easier to explain than a problem in production.
 
 hints:
   - Ask who wrote the forty conversations, and what that means for the cases

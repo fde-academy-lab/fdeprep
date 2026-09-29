@@ -139,40 +139,81 @@ exemplars:
 
       To fix this I would create a proper holdout set. First, I would remove
       any eval case that came from the same ticket as one of the 24 prompt
-      examples. Second, I would add new cases from a later month so the
-      holdout reflects current traffic. Third, I would make sure the people
-      writing the prompt do not look at the holdout cases, and only use the
-      holdout for the final check before a release.
+      examples. Each case was written from a known ticket, so this is quick
+      to do. Second, I would add new cases from a later month so the
+      holdout reflects current traffic. Around 100 tickets from the most
+      recent month would be enough, picked from the live queue, with the
+      correct outcome for each written up by someone on the billing team.
+      Third, I would make sure the people writing the prompt do not look at
+      the holdout cases, and only use the holdout for the final check before
+      a release. I would ask the two people who wrote the prompt not to open
+      it, and keep its results out of the weekly tuning meetings.
 
       I would also look at the roaming charge tickets on their own, because
       forty near-identical cases will skew the score in whichever direction
       the assistant handles that template. Those should be deduplicated so
-      the template counts once or a small number of times.
+      the template counts once or a small number of times. I would keep
+      three or four of them, with different amounts, so the assistant is
+      still tested on roaming charges, and drop the rest.
 
       Going forward, the eval set should be versioned and the holdout
-      refreshed every quarter.
+      refreshed every quarter. Versioning means every score can be traced to
+      the exact cases it was measured on, so two releases are compared on
+      the same set. A quarterly refresh keeps the holdout close to what
+      customers are sending as tariffs and bundles change.
 
       For the head of customer operations, the honest answer is that the 71
       percent is the better guide to what customers experience today, and the
       94 percent should not be used for planning. Once the holdout is in
-      place, the release decision should be based on its score.
+      place, the release decision should be based on its score. I would
+      expect that score to come in below 94, though I would not want to put
+      a number on it before the holdout has been run. Until then, staffing
+      should be planned on the 71.
   - band: weak
     score: 30
     body_md: |
       The 94 percent is likely inflated due to overfitting, since the model
-      has seen similar examples during development. To get a more reliable
-      estimate I would recommend a standard 80/20 random split of the eval set
-      into development and test sets, and only use the test set for final
-      evaluation.
+      has seen similar examples during development. This is a common problem
+      with machine learning systems. When a model is tuned for too long
+      against the same data, it learns the quirks of that data and does less
+      well on anything new, which is what the drop to 71 percent on live
+      tickets looks like. The gap of 23 points between the two numbers is too
+      large to ignore.
+
+      To get a more reliable estimate I would recommend a standard 80/20
+      random split of the eval set into development and test sets, and only
+      use the test set for final evaluation. The cases should be shuffled
+      before the split, and the split can be stratified so the test set keeps
+      the same mix of billing issues as the development set. That leaves 120
+      cases to work with and 30 to report on.
 
       We should also grow the eval set to at least 500 cases so that the
-      results are statistically significant. Cross-validation across several
-      random splits would give a more reliable estimate of real performance.
+      results are statistically significant. With only 150 cases, a few
+      results either way can move the score by several points.
+      Cross-validation across several random splits would give a more
+      reliable estimate of real performance. The two people who wrote the
+      original cases know the billing system best, so they are the right
+      people to write the new ones over the next few weeks, using more of
+      the March tickets as a starting point.
+
+      If the overfitting turns out to be serious, it may also be worth
+      retraining the model on a larger and more varied dataset so that it
+      generalises better to new tickets. This is standard practice for a
+      model that does well in testing and worse on live traffic. A newer
+      model version would be worth testing at the same time, since newer
+      models are usually better at handling new kinds of ticket.
 
       Finally, I would recommend monitoring production metrics closely, since
       live performance is the ultimate measure. If the live resolution rate
       stays around 71 percent, we should investigate which ticket types are
-      failing and add more examples of those to the prompt.
+      failing and add more examples of those to the prompt. Each time new
+      examples go in, matching cases can be added to the eval set so the new
+      areas are covered.
+
+      For the head of customer operations, I would say that both numbers are
+      useful and the real figure is probably somewhere between them, at
+      around 80 percent. The next release should bring the two closer
+      together.
 
 hints:
   - Ask where the 150 eval cases came from, and where the 24 prompt examples
