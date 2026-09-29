@@ -130,9 +130,11 @@ exemplars:
 
       What we have done. Since 14:30, no reference means no confirmation: the
       assistant tells the patient their request is received and that a
-      confirmation text will follow once the booking exists. Your bookings
-      team has the list of 131 patients, and our team is helping them call
-      every one today, starting with appointments this week.
+      confirmation text will follow once the booking exists. Patients wait a
+      few minutes longer, and we accept that rather than risk one more patient
+      arriving for an appointment that does not exist. Your bookings team has
+      the list of 131 patients, and our team is helping them call every one
+      today, starting with appointments this week.
 
       What happens next.
 
@@ -372,8 +374,10 @@ reference_md: |
 
   The telemetry gap is itself a finding. Sampling half the conversations at
   their start is a reasonable default for chat and the wrong one for a call
-  that creates a booking. Recording every booking call belongs on the list of
-  next checks with the same weight as the gateway logs.
+  that creates a booking. Recording every booking call costs storage, and it
+  is far cheaper than another investigation that starts with half the
+  evidence, so it belongs on the list of next checks with the same weight as
+  the gateway logs.
 
 complexity: C4
 
