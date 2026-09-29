@@ -165,10 +165,119 @@ exemplars:
       to the deletion process. We can document this so it is not forgotten.
 
 hints:
-  - The four stores are the symptom. What does the architecture not know?
-  - One of the artefacts cannot have a fact removed from it at any price, and
-    the design has to say so out loud rather than hoping.
-  - The data protection officer will ask how you know it worked.
+  - The four stores are the symptom. Ask what the architecture did not know
+    about the April summary.
+  - Deletion found the primary record because something pointed at it.
+    Nothing pointed from the summary, the index entry or the fixture back to
+    the record each was built from.
+  - "Sort the artefacts by what can be done to them: rebuilt, dropped, or
+    neither. One of them cannot have a fact removed at any price, and the
+    design has to say so out loud."
+  - The data protection officer will ask, six weeks later, how you know it
+    worked. A log line saying a job ran does not answer that.
+  - The confirmation email said done. Say what it should have said, and when
+    each class of artefact is actually clear.
+
+scenario:
+  who: The platform team and data protection officer behind a support assistant
+  situation: >-
+    A customer's deletion request removed their primary record in twenty
+    minutes, and the confirmation email said it was done. Six weeks later the
+    assistant quoted their old address to another agent.
+  stakes: >-
+    The customer was told the deletion was complete. The same fact still sat
+    in a summary, a vector index, a response cache and an exported eval
+    fixture.
+  metrics:
+    - { label: Primary record deleted in, value: 20 min }
+    - { label: Old address quoted after, value: 6 weeks }
+    - { label: Derived copies, value: "4" }
+
+diagram:
+  title: Deletion reached the record and none of its copies
+  caption: >-
+    Each derived store knew where its input came from. Nothing recorded where
+    the record went, so deletion stopped at the primary store.
+  direction: lr
+  nodes:
+    - { id: request, label: Deletion request, sub: confirmed as done, kind: actor, tone: blue, at: [0, 1] }
+    - { id: primary, label: Primary record, sub: deleted in 20 minutes, kind: store, tone: green, at: [1, 1] }
+    - { id: summary, label: Nightly summary, sub: built in April, kind: doc, tone: orange, at: [2, 0] }
+    - { id: index, label: Vector index, sub: rebuilt from the summaries, kind: store, tone: orange, at: [3, 0] }
+    - { id: cache, label: Response cache, sub: keyed on the question, kind: store, tone: orange, at: [2, 1] }
+    - { id: fixture, label: Eval fixture, sub: exported to debug a bug, kind: doc, tone: orange, at: [2, 2] }
+    - { id: assistant, label: Assistant, sub: quotes the old address, kind: model, tone: pink, at: [4, 1] }
+  edges:
+    - { from: request, to: primary, label: delete, tone: success, step: 1 }
+    - { from: primary, to: summary, label: summarised in April, tone: muted }
+    - { from: summary, to: index, label: embedded from, tone: muted }
+    - { from: primary, to: cache, label: an answer cached, tone: muted }
+    - { from: primary, to: fixture, label: exported by hand, tone: muted }
+    - { from: index, to: assistant, label: "old address, six weeks on", tone: danger }
+
+approach:
+  goal: Make deletion find every copy of a fact, including the unlisted ones
+  branches:
+    - label: Ask what each artefact is made of
+      leaves: ["who records it, and when?", deletion as a query over artefacts]
+    - label: Sort artefacts by remedy
+      leaves: [rebuild, drop, "neither: then what?"]
+    - label: Prove it afterwards
+      leaves: [something the data protection officer can check, a search that should come back empty]
+    - label: Guard the next store
+      detail: The eval fixture was never designed. Somebody exported it to debug a bug.
+      leaves: ["where are artefacts created?"]
+    - label: Say what is true meanwhile
+      leaves: [the window, what the email claims]
+
+coach:
+  opening: >-
+    Before you name a single store, decide what the architecture would need
+    to know for deletion to find a store nobody listed.
+  signals:
+    - id: store-by-store
+      when: { code_lacks: '(?i)provenance|built from|derived from|lineage|record ids?\b|source ids?\b' }
+      say: >-
+        Your design names stores. The eval fixture was a fifth store nobody
+        listed. What would let deletion find a store it was never told about?
+    - id: no-frozen-class
+      when: { code_lacks: '(?i)fine-?tun|frozen|retrain|retire|cannot (?:be )?(?:edit|repair|change|remove)' }
+      say: >-
+        One kind of artefact cannot have a fact removed at any price. Where
+        does your design say what happens to it?
+    - id: no-proof
+      when: { code_lacks: '(?i)\bproof\b|\bprove|provabl|deletion record|\baudit|come back empty|returns? nothing' }
+      say: >-
+        The data protection officer will ask, six weeks from now, how you know
+        it worked. What would you show them besides a log line saying a job
+        ran?
+    - id: list-will-go-stale
+      when:
+        code_matches: '(?i)added to the (?:deletion|list|register|process|checklist)|document (?:this|it)\b|review checklist'
+        code_lacks: '(?i)provenance|declar|lineage|built from|derived from|record ids?\b'
+      say: >-
+        A list of stores starts going out of date the day it is written. Where
+        would the control sit so a new store cannot appear without saying what
+        it was built from?
+    - id: says-done
+      when: { code_lacks: '(?i)\bwithin\b|\bwindow\b|\bhours?\b|\bdays?\b|confirmation|\bemail' }
+      say: >-
+        Deletion across derived copies takes time. What does the customer's
+        confirmation email claim, and when does that claim become true?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one sentence: what would deletion have to know about the
+        April summary to find it? Build the design out from that.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three drafts have not landed. The first hint asks what the
+        architecture did not know, which is where the strongest answers start.
+  wrap_up: >-
+    Deletion reaches every copy of a fact only when every artefact records
+    what it was built from. Put that control where artefacts are created, and
+    prove the result with something a person can check.
 
 reference_md: |
   The four named stores are a trap and most answers walk into it.
