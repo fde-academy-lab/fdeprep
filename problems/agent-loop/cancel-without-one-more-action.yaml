@@ -1,0 +1,401 @@
+slug: cancel-without-one-more-action
+title: Cancel a run without it taking one more action
+artefact_type: code
+difficulty: medium
+track: agent-loop
+est_minutes: 30
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 4
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The collections team at a regional water utility runs an agent that texts
+  customers about overdue bills and adds late fees to their accounts. On
+  Monday at 14:02 the billing lead pressed Cancel in the operations console,
+  because a meter-reading fault had inflated 1,900 bills.
+
+  The agent sent 37 more texts and added 12 more late fees. The loop did
+  check the run state, once per turn, before asking the model for the next
+  batch. That model call took twenty seconds, the cancel landed in the middle
+  of it, and the reply that came back planned 37 texts and 12 fees. The loop
+  dispatched every one.
+
+  The console stamps the run state on everything it relays: every model reply
+  and every tool response. Write the loop that reads the stamp before anything
+  else goes out.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  The operations console relays everything and stamps each response with the
+  run state as it stood when that response arrived.
+
+  `llm(prompt)` returns a reply whose first line is `Run: live` or
+  `Run: cancelled`. The lines after it are either one or more
+  `Action: <tool>(<key>=<value>, ...)` lines, dispatched in the order written,
+  or one `Final Answer: <text>` line.
+
+  Every tool response is a dict carrying `run` the same way, for example
+  `{"status": 200, "run": "live", "sent": true}`. The tools are
+  `lookup(account=...)`, `send_text(account=...)` and
+  `apply_late_fee(account=...)`.
+
+  The run is live only while the latest reply or response says `live`.
+  Anything else, including a response with no `run` in it at all, means it is
+  not, and from then on nothing else goes out: no tool call and no model call.
+
+  Return a JSON string with four keys:
+
+  - `outcome`: `finished`, `cancelled` when the loop stopped because the run
+    was not live, or `unfinished` when the model calls ran out first
+  - `dispatched`: the actions that went out, in order
+  - `held`: the actions the model planned that did not go out, in order
+  - `note`: the Final Answer text, or one sentence of your own
+
+  Write each action as the model wrote it after `Action: `, for example
+  `send_text(account=A-7)`.
+
+  Budget: at most 4 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  ACTION = re.compile(r"^Action:\s*(\w+)\((.*)\)\s*$", re.MULTILINE)
+  FINAL = re.compile(r"^Final Answer:\s*(.*)$", re.MULTILINE)
+  RUN = re.compile(r"^Run:\s*(\w+)", re.MULTILINE)
+
+
+  def arguments(raw: str) -> dict:
+      """Turn 'account=A-7' into {'account': 'A-7'}."""
+      args = {}
+      for pair in raw.split(","):
+          if "=" in pair:
+              key, value = pair.split("=", 1)
+              args[key.strip()] = value.strip()
+      return args
+
+
+  def report(outcome: str, dispatched: list, held: list, note: str) -> str:
+      return json.dumps({"outcome": outcome, "dispatched": dispatched,
+                         "held": held, "note": note})
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Task: {question}\n"
+      dispatched = []
+
+      for _ in range(4):
+          reply = llm(scratchpad)
+          planned = [f"{name}({raw.strip()})" for name, raw in ACTION.findall(reply)]
+
+          # TODO 1: the Run line says what the run state was when this reply
+          #         arrived. Decide what its planned actions are worth when it
+          #         does not say live.
+
+          final = FINAL.search(reply)
+          if final and not planned:
+              return report("finished", dispatched, [], final.group(1).strip())
+
+          for position, (name, raw) in enumerate(ACTION.findall(reply)):
+              result = tools[name](**arguments(raw))
+              dispatched.append(planned[position])
+              # TODO 2: this response carries the run state too. Decide what
+              #         happens to the rest of planned, and to the next turn,
+              #         when it does not say live.
+              scratchpad += (f"Action: {planned[position]}\n"
+                             f"Observation: {json.dumps(result)}\n")
+
+      # TODO 3: the model calls ran out. Say so in the report.
+      return report("finished", dispatched, [], "")
+
+steps:
+  - id: s1
+    text: Read the Run line of each reply before any of its actions go out.
+    check_id: s1
+  - id: s2
+    text: Read the run state on each tool response before the next action and the next turn.
+    check_id: s2
+  - id: s3
+    text: Report what went out, what was held, and why the run ended.
+    check_id: s3
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: terminates }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, dispatched, held, note] } }
+
+hints:
+  - List every point where something leaves your loop, each model call and
+    each tool call. The run state has to be read at each of them.
+  - A reply is a plan, made while the run was live. A cancel that lands while
+    the first of its actions is in flight has to stop the second.
+  - Keep the latest run state you have seen, from a reply or a response, and
+    check it immediately before each dispatch and before each model call. Only
+    the exact word live lets anything through.
+  - When you stop, everything the reply planned that did not go out belongs in
+    held, in the order the model wrote it. Then return without asking the
+    model for anything else.
+
+scenario:
+  who: The collections team at a regional water utility
+  situation: >-
+    The billing lead pressed Cancel at 14:02. The model was mid-call, and the
+    reply that came back planned 37 texts and 12 late fees. The loop
+    dispatched every one.
+  stakes: >-
+    The texts quoted bills a meter fault had inflated, and each late fee has
+    to be reversed by hand, account by account.
+  metrics:
+    - { label: Texts after the cancel, value: "37" }
+    - { label: Late fees after the cancel, value: "12" }
+    - { label: Model calls allowed, value: "4" }
+
+diagram:
+  title: Where a cancel loses the race with a plan
+  caption: >-
+    The cancel landed while the first text was in flight. The loop held the
+    whole plan and dispatched the fee without reading the stamp.
+  direction: lr
+  nodes:
+    - { id: lead, label: Billing lead, sub: presses Cancel at 14:02, kind: actor, tone: blue, at: [2, 0] }
+    - { id: console, label: Operations console, sub: stamps every response, kind: guard, tone: green, at: [3, 0] }
+    - { id: model, label: Model, sub: plans a text and a fee, kind: model, tone: teal, at: [0, 1] }
+    - { id: loop, label: Agent loop, sub: holds the whole plan, kind: agent, tone: purple, at: [1, 1] }
+    - { id: text, label: send_text(), sub: in flight when Cancel lands, kind: tool, tone: orange, at: [2, 1] }
+    - { id: fee, label: apply_late_fee(), sub: the second planned action, kind: tool, tone: pink, at: [3, 1] }
+    - { id: held, label: Held, sub: planned and never dispatched, kind: output, tone: green, at: [1, 2] }
+  edges:
+    - { from: model, to: loop, label: "Run: live, text and fee", step: 1 }
+    - { from: loop, to: text, label: dispatch A-7, step: 2 }
+    - { from: lead, to: console, label: Cancel, step: 3 }
+    - { from: console, to: text, label: stamps the response }
+    - { from: text, to: loop, label: "run: cancelled", step: 4 }
+    - { from: loop, to: fee, label: dispatched without reading, tone: danger }
+    - { from: loop, to: held, label: stamp read first, tone: success }
+
+approach:
+  goal: Nothing else goes out once the run is not live
+  branches:
+    - label: Find every stamp
+      leaves: [the Run line on each reply, the run field on each tool response]
+    - label: Check before each thing that goes out
+      detail: >-
+        A reply is a plan made while the run was live. It gives no permission
+        to act after the run stops being live.
+      leaves: [before each action, including the second in a reply, before each model call]
+    - label: Only live means live
+      leaves: [a cancelled stamp stops the run, a missing stamp stops it too]
+    - label: Report for the operator
+      leaves: [dispatched is what went out, held is what somebody must decide on]
+
+coach:
+  opening: >-
+    List every point where something leaves your loop, each model call and
+    each tool call. A cancel can land between any two of them.
+  signals:
+    - id: never-checks-live
+      when: { code_lacks: '(?i)live["'']' }
+      say: >-
+        Nothing in your loop compares the run state with live yet. Which line
+        reads a reply's Run line before its actions go out?
+    - id: response-state-ignored
+      when: { code_lacks: '["'']run["'']' }
+      say: >-
+        Your loop reads the stamp on each reply. Every tool response carries
+        the run state too. Where does your loop read it before the next action
+        goes out?
+    - id: hidden-fee
+      when: { test_failed: a_cancel_during_the_text_holds_the_fee_planned_with_it }
+      say: >-
+        In that run one reply planned a text and a late fee, and the cancel
+        landed while the text was going out. Trace what your loop does between
+        the two dispatches.
+    - id: hidden-no-more-turns
+      when: { test_failed: a_cancelled_run_asks_the_model_nothing_more }
+      say: >-
+        In that run the cancel arrived on the response to the first text, and
+        your loop then asked the model for another turn. What could that turn
+        be for?
+    - id: adversarial-missing-state
+      when: { test_failed: adversarial_the_gateway_answers_with_nothing }
+      say: >-
+        One response arrived with no run state in it at all. Does your loop
+        read a missing state as live?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and the public case where a reply arrives already
+        cancelled. Nothing in that reply should go out.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints open after one failed run on this
+        tier, and the second one names the mechanism.
+  wrap_up: >-
+    Cancellation is a check the loop makes at every point where work leaves
+    it. A plan made before the cancel carries no permission after it, and a
+    state you cannot read is not a yes.
+
+tests:
+  - name: finishes_a_live_run
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Remind account A-1 about its overdue bill" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Run: live\nAction: lookup(account=A-1)" }
+        - { match: { call_index: 2 }, reply: "Run: live\nAction: send_text(account=A-1)" }
+        - { match: "*", reply: "Run: live\nFinal Answer: A-1 has been reminded about its overdue bill." }
+      tools:
+        lookup: { returns: { status: 200, run: live, balance_cents: 8420, days_overdue: 34 } }
+        send_text: { returns: { status: 200, run: live, sent: true } }
+        apply_late_fee: { returns: { status: 200, run: live, applied: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, dispatched, held, note] } }
+        - { type: returns_matches, value: '"outcome": "finished"' }
+        - { type: calls_tool, name: send_text }
+        - { type: returns_matches, value: '(?i)reminded' }
+
+  - name: a_reply_that_arrives_cancelled_is_not_acted_on
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Remind account A-2 about its overdue bill" }
+      llm_script:
+        - { match: "*", reply: "Run: cancelled\nAction: send_text(account=A-2)" }
+      tools:
+        lookup: { returns: { status: 200, run: cancelled, balance_cents: 3100, days_overdue: 12 } }
+        send_text: { returns: { status: 200, run: cancelled, sent: true } }
+        apply_late_fee: { returns: { status: 200, run: cancelled, applied: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: send_text }
+        - { type: returns_matches, value: '"outcome": "cancelled"' }
+        - { type: returns_matches, value: '"held": \[\s*"send_text\(account=A-2\)"' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_cancel_during_the_text_holds_the_fee_planned_with_it
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Work through the overdue list, starting with A-7" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: "Run: live\nAction: send_text(account=A-7)\nAction: apply_late_fee(account=A-7)" }
+        - { match: "*", reply: "Run: cancelled\nAction: send_text(account=A-8)" }
+      tools:
+        lookup: { returns: { status: 200, run: cancelled, balance_cents: 5600, days_overdue: 40 } }
+        send_text: { returns: { status: 200, run: cancelled, sent: true } }
+        apply_late_fee: { returns: { status: 200, run: cancelled, applied: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: send_text }
+        - { type: does_not_call_tool, name: apply_late_fee }
+        - { type: returns_matches, value: '"held": \[\s*"apply_late_fee\(account=A-7\)"\s*\]' }
+        - { type: returns_matches, value: '"outcome": "cancelled"' }
+
+  - name: a_cancelled_run_asks_the_model_nothing_more
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Work through the overdue list, starting with A-3" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Run: live\nAction: send_text(account=A-3)" }
+        - { match: "*", reply: "Run: cancelled\nAction: send_text(account=A-4)" }
+      tools:
+        lookup: { returns: { status: 200, run: cancelled, balance_cents: 2200, days_overdue: 19 } }
+        send_text: { returns: { status: 200, run: cancelled, sent: true } }
+        apply_late_fee: { returns: { status: 200, run: cancelled, applied: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: returns_matches, value: '"dispatched": \[\s*"send_text\(account=A-3\)"\s*\]' }
+        - { type: returns_matches, value: '"outcome": "cancelled"' }
+
+  - name: adversarial_the_gateway_answers_with_nothing
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The gateway took the text and answered with nothing at all: no status,
+      no body and no run state. Whether the run was still live when it
+      answered is unknown.
+
+      A loop that reads a missing run state as live applies the late fee to a
+      run that may have been cancelled a second earlier. A loop that lets only
+      the word live through holds the fee, says why, and leaves the decision
+      to a person. The contract said a missing `run` is not live; this is the
+      case where that sentence costs somebody money.
+    spec:
+      kind: agent_run
+      input: { question: "Work through the overdue list, starting with A-9" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: "Run: live\nAction: send_text(account=A-9)\nAction: apply_late_fee(account=A-9)" }
+        - { match: "*", reply: "Run: live\nFinal Answer: A-9 has been reminded and charged the late fee." }
+      tools:
+        lookup: { returns: { status: 200, run: live, balance_cents: 7700, days_overdue: 51 } }
+        send_text: { fixture: empty_tool_result }
+        apply_late_fee: { returns: { status: 200, run: live, applied: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: does_not_call_tool, name: apply_late_fee }
+        - { type: returns_matches, value: '"outcome": "cancelled"' }
+
+reference_md: |
+  The incident loop did check the run state. It checked once per turn, before
+  the model call, and the model call is where the time goes: twenty seconds in
+  which the billing lead pressed Cancel and the model finished planning 49
+  actions. The loop held a fresh plan and a stale answer to the only question
+  that mattered.
+
+  The fix is to ask the question where the answer is used. Every point where
+  something leaves the loop is a point where the run state has to be read
+  fresh: before the first action of a reply, before each later action of the
+  same reply, and before the next model call. The console makes that cheap by
+  stamping every response. A system without stamps pays for a call to the
+  console at each of those points, and it is still the right trade, because
+  one extra read costs milliseconds and one missed read cost 12 late fees.
+
+  A reply that plans several actions is where this goes wrong in practice,
+  because it reads like one decision. It was one decision, made while the run
+  was live. A cancel that lands after the first action applies to the second
+  whether or not they were planned together.
+
+  Only live means live. A response with no run state came from a gateway that
+  could not say, and reading silence as permission is how a fee lands on an
+  account the operator was trying to protect. Holding the rest of the plan and
+  naming it in `held` turns that uncertainty into a decision a person can
+  make.
+
+  Stopping also means not asking the model for a summary. The run is over, a
+  model call now costs money, and its reply would carry more actions that the
+  loop would then have to refuse.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    An operator cancels an agent's run while it is mid-task. How do you make sure it does not take one more action?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
