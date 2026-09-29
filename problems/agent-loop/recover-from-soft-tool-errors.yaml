@@ -40,25 +40,200 @@ stub_code: |
   import json
   import re
 
+  ACTION = re.compile(r"^Action:\s*(\w+)\((.*)\)\s*$")
+
+
+  def parse_action(reply: str):
+      """(tool name, arguments) from an Action line, or None."""
+      found = ACTION.match(reply.strip())
+      if found is None:
+          return None
+      args = {}
+      for pair in found.group(2).split(","):
+          if "=" in pair:
+              key, value = pair.split("=", 1)
+              args[key.strip()] = value.strip()
+      return found.group(1), args
+
+
+  def failed(result) -> bool:
+      """True when the tool call failed, whatever its status code says."""
+      # TODO 1: this tool reports a failure as an error key inside a 200 body
+      return False
+
 
   def run_agent(question: str, llm, tools: dict) -> str:
       scratchpad = f"Question: {question}\n"
 
       for _ in range(3):
-          output = llm(scratchpad)
-          # TODO 1: return the text when output is a Final Answer
-          # TODO 2: parse the tool name and arguments from an Action
-          # TODO 3: call the tool and detect an error inside a successful body
-          # TODO 4: on a detected error, change the prompt before retrying
-          pass
+          reply = llm(scratchpad)
+          # TODO 2: return the text after "Final Answer:" when the reply has one
+
+          action = parse_action(reply)
+          if action is None or action[0] not in tools:
+              scratchpad += f"{reply}\nThat was not a valid action.\n"
+              continue
+
+          name, args = action
+          result = tools[name](**args)
+
+          # TODO 3: when failed(result), change the prompt before the retry by
+          #         saying what failed. Allow one retry, and when that fails
+          #         too, return a sentence saying the status is unconfirmed.
+          # TODO 4: the result is data from outside your system. Decide what
+          #         of it reaches the prompt, since its text can read like an
+          #         instruction.
+          scratchpad += f"{reply}\nObservation: {json.dumps(result)}\n"
 
       return "I could not complete this request."
 
+steps:
+  - id: s1
+    text: Decide what counts as a failure, whatever the status code says.
+    check_id: s1
+  - id: s2
+    text: Return the text of a Final Answer.
+    check_id: s2
+  - id: s3
+    text: Say what failed before the one retry, and return a sentence after a second failure.
+    check_id: s3
+  - id: s4
+    text: Keep text from the tool that reads like an instruction out of the prompt.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: handles_error }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: terminates }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: no_exception }
+
 hints:
-  - The status code is not where the failure is. Look inside the body.
-  - Retrying with an unchanged scratchpad produces an unchanged reply, so the
-    retry has to add something the model can see.
-  - Degrading gracefully means returning a sentence, not raising.
+  - Look at what the tool returns when it fails, and ignore the status code
+    while you do.
+  - An identical prompt gets an identical reply. A retry only helps when the
+    prompt now carries something new, such as which call failed and what the
+    body said.
+  - Keep one flag for whether you have already retried. The first failure sets
+    it and asks again; the second returns a sentence saying the status could
+    not be confirmed.
+  - Tool output reaches the prompt as data. Paste only the fields you need, or
+    remove text that reads like an instruction before it goes in.
+
+scenario:
+  who: The support team behind an order-status assistant
+  situation: >-
+    The shipping-status tool answers 200 even when a lookup fails, and puts
+    the failure in an error key inside the body. The loop branched on the
+    status code.
+  stakes: >-
+    Failed lookups read as answers. The loop kept calling the tool until its
+    budget ran out, and the customer still had no status.
+  metrics:
+    - { label: Status on a failed lookup, value: "200" }
+    - { label: Retries allowed, value: "1" }
+    - { label: Model calls allowed, value: "3" }
+
+diagram:
+  title: Where a failure hides inside a success
+  caption: >-
+    The status says 200 and the body says error. Read the body, say what
+    failed before the one retry, and degrade after it.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: asks where order 9 is, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: asks for track(id=9), kind: model, tone: teal, at: [1, 0] }
+    - { id: loop, label: Agent loop, sub: reads the reply, kind: agent, tone: purple, at: [1, 1] }
+    - { id: track, label: track(), sub: answers 200 with an error, kind: tool, tone: orange, at: [2, 1] }
+    - { id: check, label: Body check, sub: an error key inside a 200, kind: guard, tone: green, at: [3, 1] }
+    - { id: retry, label: One retry, sub: the prompt says what failed, kind: decision, tone: blue, at: [3, 0] }
+    - { id: degrade, label: Degraded answer, sub: status could not be confirmed, kind: output, tone: green, at: [3, 2] }
+  edges:
+    - { from: customer, to: loop, label: where is order 9, step: 1 }
+    - { from: loop, to: model, label: scratchpad, step: 2 }
+    - { from: model, to: loop, label: "Action: track(id=9)", step: 3 }
+    - { from: loop, to: track, label: call, step: 4 }
+    - { from: track, to: loop, label: 200 read as success, tone: danger }
+    - { from: track, to: check, label: read the body, tone: success }
+    - { from: check, to: retry, label: first failure }
+    - { from: retry, to: model, label: changed prompt }
+    - { from: check, to: degrade, label: second failure, tone: success }
+
+approach:
+  goal: Notice a failure the status code hides, and recover from it once
+  branches:
+    - label: Read the body
+      leaves: [an error key inside a 200 is a failure, an empty body is a failure too]
+    - label: Change the prompt before the retry
+      detail: An identical prompt gets an identical reply, so the retry has to carry what failed.
+      leaves: [say which call failed and why]
+    - label: Bound the recovery
+      leaves: [one retry, the second failure ends the run with a sentence]
+    - label: Treat tool text as data
+      leaves: [paste the fields you need, remove text that reads like an instruction]
+
+coach:
+  opening: >-
+    Find the line where your loop decides a tool call worked. With this tool
+    the status code cannot make that decision.
+  signals:
+    - id: status-only
+      when: { code_lacks: '["'']error["'']' }
+      say: >-
+        Nothing in your code looks inside the body yet. This tool answers 200
+        when it fails and puts the failure in an error key.
+    - id: no-retry-memory
+      when: { code_lacks: '(?i)\b(retr\w*|\w*tr(y|ied|ies)\w*|attempt\w*|\w*fail\w*|\w*error\w*|count\w*|second\w*)\s*(\+=|=)' }
+      say: >-
+        Your loop keeps no record of whether it has already retried. How will
+        it know that a failure is the second one?
+    - id: raw-observation
+      when:
+        code_matches: 'Observation:\s*\{json\.dumps\((result|res|out|obs|observation|response)\)\}'
+        code_lacks: '(?i)\.sub\(|\.replace\(|instruction'
+      say: >-
+        The tool's raw output goes into the prompt as it arrived. If that text
+        holds an instruction, the model reads it as one.
+    - id: hidden-soft-error
+      when: { test_failed: detects_error_in_success_body }
+      say: >-
+        In that run the tool answered 200 with an error in the body. Did your
+        loop notice, and did the prompt it sent next say what went wrong?
+    - id: hidden-degrade
+      when: { test_failed: degrades_after_failed_retry }
+      say: >-
+        In that run every call to the tool fails. After one retry, what does
+        your loop return, and does it stop asking?
+    - id: adversarial-instruction
+      when: { test_failed: adversarial_injection_in_observation }
+      say: >-
+        The tool's reply carried an instruction addressed to the model. Which
+        parts of the tool's output does your loop paste into the prompt?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with failed(): return True when the body carries an error key.
+        Then write TODO 2 and press Run.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints open after one failed run on this
+        tier, and the second one names the mechanism.
+  wrap_up: >-
+    A status code describes the transport and the body describes the outcome.
+    Read the body, change the prompt before a retry, and bound the retries so
+    a broken tool costs a sentence and never a loop.
 
 tests:
   - name: returns_final_answer
