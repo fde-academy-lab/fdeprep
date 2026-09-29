@@ -35,8 +35,9 @@ contract_md: |
   `question`. There are no tools.
 
   Return the JSON as a string. You get one repair attempt: when the first
-  reply does not parse, say what was wrong with it and ask once more. Do not
-  fill in a field the model did not give you.
+  reply does not parse, tell the model that it did not parse, say what was
+  wrong with it, and ask once more. Do not fill in a field the model did not
+  give you.
 
   Budget: at most 3 model calls. Allowed imports: json, re.
 
@@ -98,6 +99,120 @@ hints:
     client's workflow engine.
   - Telling the model the reply did not parse is a different prompt from
     asking the same question again.
+  - Unwrapping and parsing are two separate steps. A reply can be fenced and
+    still broken inside the fence, so the repair runs whenever the parse fails,
+    whatever the reply was wrapped in.
+  - "In order: take off a fence if there is one, try json.loads, return the
+    object as a JSON string when it parses, and when it does not, append the
+    reply and the parser's message, say it did not parse, and go round once
+    more."
+
+scenario:
+  who: The team running a ticket triage service for a client's workflow engine
+  situation: >-
+    The engine calls JSON.parse on whatever the service sends. Since Tuesday
+    the model has wrapped some replies in a code fence and left a trailing
+    comma in others, and the engine rejects both.
+  stakes: >-
+    About one ticket in six fails with a 500 and reaches no queue. Both
+    replies look right to a person reading the trace, which is why it took two
+    days to spot.
+  metrics:
+    - { label: Tickets failing, value: 1 in 6 }
+    - { label: Days before anyone noticed, value: "2" }
+    - { label: Repair attempts allowed, value: "1" }
+
+diagram:
+  title: Where a reply that looks right fails to parse
+  caption: >-
+    The repair sits between the model and the engine. Without it, a reply a
+    person would accept goes straight to JSON.parse and fails there.
+  direction: lr
+  nodes:
+    - { id: ticket, label: Ticket, sub: customer text, kind: doc, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: asked for one JSON object, kind: model, tone: teal, at: [1, 0] }
+    - { id: service, label: Triage service, sub: your code, kind: agent, tone: purple, at: [1, 1] }
+    - { id: repair, label: Parse and repair, sub: "unwrap, parse, ask once more", kind: guard, tone: green, at: [2, 1] }
+    - { id: engine, label: Workflow engine, sub: JSON.parse and nothing else, kind: service, tone: orange, at: [3, 1] }
+    - { id: failure, label: 500 from the engine, sub: the ticket reaches no queue, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: ticket, to: service, label: ticket text, step: 1 }
+    - { from: service, to: model, label: prompt, step: 2 }
+    - { from: model, to: service, label: "fenced, or a trailing comma", step: 3 }
+    - { from: service, to: repair, label: every reply, step: 4 }
+    - { from: repair, to: engine, label: an object that parses, tone: success }
+    - { from: service, to: failure, label: raw reply sent on, tone: danger }
+
+approach:
+  goal: Send the engine JSON it can parse on every ticket
+  branches:
+    - label: Unwrap before you parse
+      leaves: [a fence is not JSON, the object inside may still be fine]
+    - label: Catch the parse failure
+      leaves: [json.loads raises, the engine must never see the raise]
+    - label: Repair once, with a different prompt
+      detail: The same prompt gets the same reply, so the retry has to say what failed.
+      leaves: [one retry that carries the parser's message, then stop]
+    - label: Invent nothing
+      leaves: [a missing order_id stays null, a JSON fallback when both attempts fail]
+
+coach:
+  opening: >-
+    Take one of the failing replies, a fenced block with an object inside, and
+    follow it through your code line by line until something parses it or
+    something raises.
+  signals:
+    - id: unguarded-parse
+      when: { code_matches: 'json\.loads\(', code_lacks: '\bexcept\b' }
+      say: >-
+        json.loads raises on anything that is not JSON, and nothing in your
+        code catches it. Where should that failure go, if not to the client's
+        engine?
+    - id: no-fence-handling
+      when: { code_lacks: '`|chr\(96\)|\\x60|find\(\s*["'']\{|index\(\s*["'']\{|\\\{' }
+      say: >-
+        Nothing in your code deals with a fence. What does json.loads make of a
+        reply that starts with three backticks and the word json?
+    - id: returns-the-raw-reply
+      when: { code_matches: 'return\s+(reply|output|raw|text)\b' }
+      say: >-
+        You return the model's reply exactly as it came. The engine parses
+        what you return, so return what you parsed.
+    - id: same-prompt-retry
+      when: { code_matches: '\bexcept\b[^\n]*:\s*\n\s*continue\b' }
+      say: >-
+        Your retry sends the prompt that produced the broken reply. The model
+        will answer it the same way. What does the retry need to carry?
+    - id: hidden-fence
+      when: { test_failed: strips_a_fenced_block }
+      say: >-
+        That reply arrived inside a fenced code block. Trace what your code
+        hands to json.loads in that case.
+    - id: hidden-trailing-comma
+      when: { test_failed: repairs_a_trailing_comma_once }
+      say: >-
+        That first reply had a trailing comma, and the model sends a clean one
+        only once it is told its last reply did not parse. Does your retry tell
+        it that, and why?
+    - id: hidden-broken-inside-fence
+      when: { test_failed: a_fence_around_broken_json_is_still_broken }
+      say: >-
+        That reply was fenced and also broken inside the fence. Unwrapping it
+        is one step. What happens in your code after the parse fails?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and TODO 2: take off a fence, parse, and return
+        json.dumps of the object. Both public tests go green with that alone.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hints go in order, and the first one
+        says where to look.
+  wrap_up: >-
+    A model asked for JSON returns JSON most of the time, and most of the time
+    is the failure. The service that owns the client's contract owns the
+    repair: bounded, told what failed, and never inventing a field.
 
 tests:
   - name: parses_a_clean_reply
