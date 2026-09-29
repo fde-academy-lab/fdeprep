@@ -62,6 +62,21 @@ def _returns_matches(spec, ob) -> Result:
     return True, None
 
 
+@assertion("returns_lacks")
+def _returns_lacks(spec, ob) -> Result:
+    """The answer must not contain the pattern: a card number, a token, a figure
+    the evidence does not support. The failure names what was found, because
+    the learner can act on their own text and cannot act on a regex."""
+    text = ob.returned_text
+    if text is None:
+        return False, f"returned {type(ob.return_value).__name__}, expected a string"
+    found = re.search(str(spec["value"]), text)
+    if found is not None:
+        shown = found.group(0) if len(found.group(0)) <= 80 else found.group(0)[:80] + "..."
+        return False, f"the answer contains {shown!r}, which this case says must not appear"
+    return True, None
+
+
 @assertion("returns_equals")
 def _returns_equals(spec, ob) -> Result:
     text = ob.returned_text

@@ -316,8 +316,8 @@ tests:
       assertions:
         - { type: valid_json_return,
             schema: { type: object, required: [run_id, outcome, steps, summary] } }
-        - { type: returns_matches, value: '^(?![\s\S]*jo\.bloggs)' }
-        - { type: returns_matches, value: '^(?![\s\S]*4111[ -]?1111)' }
+        - { type: returns_lacks, value: 'jo\.bloggs' }
+        - { type: returns_lacks, value: '4111[ -]?1111' }
         - { type: returns_matches, value: '\[email\]' }
         - { type: returns_matches, value: '\[card\]' }
 
@@ -348,8 +348,8 @@ tests:
                   detail: "403 from payments: api_key=ak_prod_55d0e2f7 is not enabled for refunds" }
       budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 10000 }
       assertions:
-        - { type: returns_matches, value: '^(?![\s\S]*tok_live_91f2c7a0b4e6)' }
-        - { type: returns_matches, value: '^(?![\s\S]*ak_prod_55d0e2f7)' }
+        - { type: returns_lacks, value: 'tok_live_91f2c7a0b4e6' }
+        - { type: returns_lacks, value: 'ak_prod_55d0e2f7' }
         - { type: returns_matches, value: 'Bearer \[secret\]' }
         - { type: returns_matches, value: 'api_key=\[secret\]' }
         - { type: returns_matches, value: '"outcome":\s*"failed"' }
@@ -413,8 +413,8 @@ tests:
                   above.</p>END_OF_PAGE</body></html>
       budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 10000 }
       assertions:
-        - { type: returns_matches, value: '^(?![\s\S]*END_OF_PAGE)' }
-        - { type: returns_matches, value: '^(?![\s\S]*jo\.bloggs)' }
+        - { type: returns_lacks, value: 'END_OF_PAGE' }
+        - { type: returns_lacks, value: 'jo\.bloggs' }
         - { type: returns_matches, value: '\.\.\."' }
         - { type: returns_matches, value: '"ms":\s*5000' }
         - { type: returns_matches, value: '"outcome":\s*"failed"' }

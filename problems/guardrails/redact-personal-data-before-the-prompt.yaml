@@ -345,7 +345,7 @@ tests:
       budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: returns_matches, value: "(?i)double charge on card ending 1111" }
-        - { type: returns_matches, value: '(?s)^(?!.*(?:\d{4}[ -]){3}\d{4})' }
+        - { type: returns_lacks, value: '(?:\d{4}[ -]){3}\d{4}' }
 
   - name: two_email_addresses_keep_two_placeholders
     visibility: hidden

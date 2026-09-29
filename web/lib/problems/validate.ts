@@ -119,6 +119,14 @@ export interface ValidationReport {
 // the judge does not evaluate is rejected in CI rather than at run time in
 // front of a learner. judge/probes.py ASSERTIONS is the other half.
 const PROBE_ASSERTIONS = new Set(["absent", "present", "complies", "refuses", "valid_json"]);
+// The runner's assertion registry, runner/harness/assertions.py REGISTRY, for
+// the same reason. tests/test_assertion_vocabulary.py fails when the two drift.
+const CODE_ASSERTIONS = new Set([
+  "returns_nonempty", "returns_matches", "returns_lacks", "returns_equals", "terminates",
+  "llm_calls_at_most", "tool_calls_at_most", "calls_tool", "does_not_call_tool",
+  "no_repeated_identical_tool_call", "handles_error", "ignores_injection",
+  "valid_json_return", "no_exception",
+]);
 const RULE_KINDS = new Set(["must_remove", "must_keep", "max_words", "min_words"]);
 const RUBRIC_WEIGHT_TOTAL = 100;
 
@@ -330,6 +338,16 @@ function validateTests(
 
   tests.forEach((test, index) => {
     const spec = (test["spec"] ?? {}) as Record<string, unknown>;
+    const assertions = Array.isArray(spec["assertions"]) ? (spec["assertions"] as unknown[]) : [];
+    assertions.forEach((entry, position) => {
+      const type = (entry as { type?: unknown } | null)?.type;
+      if (typeof type === "string" && CODE_ASSERTIONS.has(type)) return;
+      add("unknown_assertion_type",
+          `${String(type)} in ${String(test["name"] ?? index)} is not an assertion the runner ` +
+          `evaluates. Known types: ${[...CODE_ASSERTIONS].join(", ")}`,
+          lineOf(["tests", index, "spec", "assertions", position]));
+    });
+
     const script = Array.isArray(spec["llm_script"])
       ? (spec["llm_script"] as Array<{ match?: unknown }>) : [];
     if (!script.length) return;

@@ -182,6 +182,22 @@ step_checks:
     expect(validateProblemYaml(source, "a.yaml").errors).toEqual([]);
   });
 
+  it("rejects a code assertion type the runner does not evaluate, naming the line", () => {
+    // The runner raises on an unknown type, which would reach a learner as an
+    // infrastructure error on the one case that uses it.
+    const report = validateProblemYaml(CODE.replace("type: returns_nonempty", "type: returns_vibes"),
+                                       "a.yaml");
+    const error = report.errors.find((e) => e.rule === "unknown_assertion_type");
+    expect(error?.message).toContain("returns_vibes");
+    expect(error?.line).toBeGreaterThan(1);
+  });
+
+  it("accepts returns_lacks, the absence check", () => {
+    const report = validateProblemYaml(
+      CODE.replace("type: returns_nonempty }", "type: returns_lacks, value: 'secret' }"), "a.yaml");
+    expect(report.errors.filter((e) => e.rule === "unknown_assertion_type")).toEqual([]);
+  });
+
   it("rejects a design problem with fewer than three exemplars", () => {
     const source = `
 slug: d

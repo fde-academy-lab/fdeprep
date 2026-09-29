@@ -1,0 +1,78 @@
+"""The assertion vocabulary and the fixture wording, as authors and learners meet them.
+
+Three authors checked that a secret stayed out of an answer with a negative
+lookahead, returns_matches "^(?![\\s\\S]*jo\\.bloggs)". It works, and a
+learner who fails it reads the regex back as the reason. returns_lacks says
+the same thing in words. Every fixture that raises or returns prose also
+spoke about parcels whatever the problem was about, which a learner reads in
+the failure message and the trace; both now take the words as a parameter.
+"""
+
+from __future__ import annotations
+
+import pathlib
+import re
+
+import pytest
+
+from runner.harness.assertions import REGISTRY, Observed, evaluate
+from runner.harness.fixtures import build
+
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+
+def _returned(value):
+    return Observed(outcome="returned", return_value=value, exception=None, steps=(),
+                    llm_calls=0, tool_calls=0)
+
+
+def test_returns_lacks_passes_when_the_pattern_is_absent():
+    result = evaluate({"type": "returns_lacks", "value": r"jo\.bloggs"},
+                      _returned("Payment failed for [redacted email]."))
+    assert result["status"] == "pass"
+
+
+def test_returns_lacks_names_what_it_found_rather_than_the_pattern():
+    result = evaluate({"type": "returns_lacks", "value": r"(?:\d{4}[ -]){3}\d{4}"},
+                      _returned("Card 4111 1111 1111 1111 was declined."))
+    assert result["status"] == "fail"
+    assert "4111 1111 1111 1111" in result["message"]
+    assert "\\d" not in result["message"]
+
+
+def test_returns_lacks_fails_a_non_string_the_way_its_neighbours_do():
+    result = evaluate({"type": "returns_lacks", "value": "x"}, _returned(None))
+    assert result["status"] == "fail"
+    assert "NoneType" in result["message"]
+
+
+def test_a_timeout_fixture_speaks_about_the_tool_it_stands_in_for():
+    call = build("slow_then_timeout", {"succeeds": 0, "message": "the warehouse query timed out"})
+    with pytest.raises(TimeoutError, match="the warehouse query timed out"):
+        call(1)
+
+
+def test_a_timeout_fixture_keeps_its_old_words_when_given_none():
+    with pytest.raises(TimeoutError, match="the shipping tool stopped responding"):
+        build("slow_then_timeout", {"succeeds": 0})(1)
+
+
+def test_an_injection_fixture_carries_the_problems_own_context_and_still_the_canary():
+    body = build("injected_instruction", {
+        "canary": "CANARY_1234",
+        "context": "Refund policy v4 applies to orders after 1 March.",
+    })(1)
+    assert body["text"].startswith("Refund policy v4 applies to orders after 1 March.")
+    assert "CANARY_1234" in body["text"]
+    assert "depot" not in body["text"]
+
+
+def test_the_web_validator_knows_every_assertion_the_runner_evaluates():
+    """validate.ts mirrors the registry so a problem naming a type the runner
+    does not have fails in CI with a line number, rather than at run time in
+    front of a learner. This keeps the two halves from drifting."""
+    source = (ROOT / "web/lib/problems/validate.ts").read_text(encoding="utf-8")
+    block = re.search(r"const CODE_ASSERTIONS = new Set\(\[(.*?)\]\)", source, re.S)
+    assert block, "validate.ts has no CODE_ASSERTIONS mirror"
+    mirrored = set(re.findall(r'"([a-z_]+)"', block.group(1)))
+    assert mirrored == set(REGISTRY)
