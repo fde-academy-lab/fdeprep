@@ -43,7 +43,7 @@ contract_md: |
   - Every turn whose kind is `requirement`, `approval` or `open_question`
     survives verbatim, whatever its age.
   - Turns whose kind is `chat` are replaced by one line saying how many were
-    dropped.
+    dropped, such as `(6 chat turns dropped)`.
   - Keep the surviving turns in their original order.
 
   Budget: at most 3 model calls. Allowed imports: json, re.
@@ -61,19 +61,157 @@ stub_code: |
       for _ in range(8):
           output = llm(scratchpad)
 
-          # TODO 1: return the text when the reply is a Final Answer
-          # TODO 2: call history when the reply is an Action
-          # TODO 3: keep every turn whose kind is in KEEP, verbatim and in order
-          # TODO 4: replace the chat turns with one line counting them
-          pass
+          if "Final Answer:" in output:
+              return output.split("Final Answer:", 1)[1].strip()
+
+          if "Action:" in output and "history" in tools:
+              turns = (tools["history"]() or {}).get("turns") or []
+              scratchpad += f"{output}\n<history>\n{compact(turns)}\n</history>\n"
+              continue
+
+          scratchpad += f"{output}\nThat was not a valid reply.\n"
 
       return "I could not rebook this."
 
+
+  def compact(turns: list) -> str:
+      """The history the model reads: short, and complete where it matters."""
+      lines = []
+      # TODO 1: decide, one turn at a time, whether the turn survives verbatim
+      # TODO 2: write each survivor in the order it was said, with its text
+      # TODO 3: add one line saying how many chat turns were dropped
+      return "\n".join(lines)
+
+steps:
+  - id: s1
+    text: Decide, one turn at a time, whether a turn survives compaction verbatim.
+    check_id: s1
+  - id: s2
+    text: Write the survivors in the order they were said, with their text.
+    check_id: s2
+  - id: s3
+    text: Add one line that counts the chat turns you dropped.
+    check_id: s3
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: no_exception }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: terminates }
+
 hints:
-  - Age is not the rule. Kind is the rule, and it is already on every turn.
-  - A summary that says "discussed delivery options" has thrown away the only
-    part of that turn anyone will be held to.
-  - Two turns of nine surviving is a fine outcome. Two of the wrong nine is not.
+  - Look at the fields each turn carries before you look at where it sits in
+    the list.
+  - Recency is a guess about what matters. A requirement stated in turn one is
+    the oldest thing in the thread and the part the agent will be held to.
+  - Make survival a property of the turn itself, decided one turn at a time,
+    and let the chat turns collapse into a count.
+  - Walk the turns in order. Keep a requirement, an approval or an open
+    question word for word, count every chat turn, and add the count as one
+    line.
+
+scenario:
+  who: The support team behind a delivery rebooking agent
+  situation: >-
+    A support chat ran to nine turns. In turn one the customer said the
+    delivery must reach a ground-floor entrance because they use a
+    wheelchair. Compaction kept the last four turns and summed up the rest as
+    "customer discussed delivery options".
+  stakes: >-
+    The redelivery was booked to a third-floor flat. The requirement was the
+    oldest turn in the thread, so it was the first thing compaction removed.
+  metrics:
+    - { label: Turns in the chat, value: "9" }
+    - { label: Turns kept, value: the last 4 }
+    - { label: Turn that mattered, value: "1" }
+
+diagram:
+  title: Where compaction drops the requirement
+  caption: >-
+    Compaction keyed on age keeps the newest turns. The requirement was said
+    first, so it went into a summary line that promises nothing.
+  direction: lr
+  nodes:
+    - { id: chat, label: Support chat, sub: "nine turns, oldest first", kind: store, tone: blue, at: [0, 1] }
+    - { id: req, label: "Turn 1: requirement", sub: ground-floor entrance only, kind: doc, tone: green, at: [0, 0] }
+    - { id: compactor, label: Compaction, sub: keeps the last four turns, kind: agent, tone: purple, at: [1, 1] }
+    - { id: summary, label: Summary line, sub: 'says "discussed delivery options"', kind: doc, tone: pink, at: [1, 2] }
+    - { id: model, label: Rebooking model, sub: books from what it reads, kind: model, tone: teal, at: [2, 1] }
+    - { id: booking, label: Redelivery, sub: booked to a third-floor flat, kind: output, tone: pink, at: [3, 1] }
+  edges:
+    - { from: chat, to: compactor, label: nine turns, step: 1 }
+    - { from: compactor, to: summary, label: turns 1 to 5, tone: danger, step: 2 }
+    - { from: compactor, to: model, label: turns 6 to 9, step: 3 }
+    - { from: summary, to: model, label: one vague line, tone: muted }
+    - { from: model, to: booking, label: no floor requirement, tone: danger, step: 4 }
+    - { from: req, to: model, label: kept for what it is, tone: success }
+
+approach:
+  goal: Compact the history without losing what the agent is held to
+  branches:
+    - label: Ask what the conversation is for
+      leaves: [requirements the customer stated, approvals somebody gave, questions still open]
+    - label: Key the filter on something stable
+      detail: A turn's position changes with every new message. What a turn is stays the same.
+      leaves: [age is a proxy, every turn is already labelled]
+    - label: Mark the gap
+      leaves: [count what you dropped, a model fills an unmarked gap]
+    - label: Keep the order
+      leaves: [survivors stay in the order they were said]
+
+coach:
+  opening: >-
+    Look at what the customer said in turn one, then find the line in your
+    code that decides whether it reaches the prompt.
+  signals:
+    - id: keeps-the-last-few
+      when: { code_matches: '\[\s*-\s*\w+\s*:\s*\]' }
+      say: >-
+        You keep the most recent turns. The wheelchair requirement was the
+        oldest turn in the thread. What rule would keep it?
+    - id: ignores-kind
+      when: { code_lacks: '["'']kind["'']' }
+      say: >-
+        Every turn already says what kind of turn it is, and nothing in your
+        code reads that field yet.
+    - id: no-dropped-line
+      when: { code_lacks: 'dropped' }
+      say: >-
+        The chat turns you remove need one line that counts them. A model
+        reading a gap with no marker fills it in.
+    - id: hidden-oldest-turn
+      when: { test_failed: the_oldest_turn_survives_when_it_is_the_requirement }
+      say: >-
+        In that conversation the requirement was the first of eight turns and
+        the other seven were chat. Check whether turn one reached the prompt.
+    - id: hidden-approval-and-question
+      when: { test_failed: an_approval_and_an_open_question_both_survive }
+      say: >-
+        That history held an open question in turn one and an approval in turn
+        five, with chat around both. Check that both reached the prompt word
+        for word.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one turn. Given a single turn, does it survive? Write that
+        as a small check and the loop in compact gets short.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Hints open after one failed run on this tier,
+        and the first one says where to look.
+  wrap_up: >-
+    Compaction is a filter, and its key decides what the agent can still be
+    held to. Key it on what a turn is, keep the obligations whole, and count
+    the rest out loud.
 
 tests:
   - name: keeps_a_short_history_intact
