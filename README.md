@@ -380,9 +380,11 @@ The repository is bind-mounted, so an edit on your machine is live in the contai
 | PostgreSQL | 16 | `psql --version` |
 | Git | Any recent version | `git --version` |
 
-On a Mac, PostgreSQL 16 comes from Homebrew. The `postgresql@16` formula is keg-only because it is a versioned formula, so its tools stay off your PATH until you add them, and `createdb` in step 3 fails with `command not found` until you do:
+On a Mac, zsh is the default shell, and it passes a trailing `# comment` to the command as extra arguments unless `interactivecomments` is set. Most command blocks in this README carry one, so the first two lines below turn that on for this shell and every later one. PostgreSQL 16 comes from Homebrew. The `postgresql@16` formula is keg-only because it is a versioned formula, so its tools stay off your PATH until you add them, and `createdb` in step 3 fails with `command not found` until you do:
 
 ```bash
+setopt interactivecomments
+echo 'setopt interactivecomments' >> ~/.zshrc
 brew install postgresql@16
 brew services start postgresql@16          # starts it now and at every login
 echo "export PATH=\"$(brew --prefix postgresql@16)/bin:\$PATH\"" >> ~/.zshrc
@@ -390,7 +392,7 @@ source ~/.zshrc
 pg_isready                                  # accepting connections
 ```
 
-The install runs `initdb` as you, so your macOS user is the database superuser and `postgres://localhost/fdeprep` needs no username or password. Checked against the Homebrew formula on 29 September 2026, when it was at 16.15.
+The install runs `initdb` as you, so your macOS user is the database superuser and `postgres://localhost/fdeprep` needs no username or password. Checked against the Homebrew formula on 29 September 2026, when it was at 16.15, and the comment behaviour against zsh 5.9.
 
 ## 2.3 Six commands, and an optional seventh
 
@@ -495,11 +497,15 @@ A five-minute path that shows the product's actual argument rather than its scre
 ## 2.7 Run the tests
 
 ```bash
-cd web   && npm test              # 543 tests
+createdb fdeprep_test
+export TEST_DATABASE_URL="postgres://localhost/fdeprep_test"
+cd web   && npm test              # 548 tests
 cd ../   && python -m pytest -q   # 262 tests: 3 skip without JUDGE_LIVE=1, 3 more without the model
 cd voice && npm test              # 26 tests
-cd infra && npm test              # 30 tests
+cd ../infra && npm test           # 30 tests
 ```
+
+The web suite truncates every table in the database it runs against. It uses `TEST_DATABASE_URL` when that is set, and it refuses any database whose name does not end in `_test`, so `fdeprep` and everything in it survive a test run.
 
 The three Bedrock tests skip unless `JUDGE_LIVE=1`, because each run spends money, and the three MiniLM tests skip until `scripts/fetch_embedding_model.py` has put the weights on disk. A skipped test is honest; a test that quietly passes without the thing it claims to test is not.
 

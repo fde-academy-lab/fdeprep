@@ -34,6 +34,16 @@ export default defineConfig({
      * lib/auth/config.ts refuses it whenever one is configured or NODE_ENV is
      * production, so it cannot follow the code into a deployment.
      */
-    env: { AUTH_DEV_LEARNER: "1" },
+    env: {
+      AUTH_DEV_LEARNER: "1",
+      // The suite's own database, when the environment names one. SETUP.md
+      // gives a cloud session TEST_DATABASE_URL for exactly this, and until
+      // this line nothing read it, so every run truncated the development
+      // database DATABASE_URL names. Where it is unset DATABASE_URL stands, and
+      // resetDatabase refuses any database whose name does not end in _test.
+      ...(process.env["TEST_DATABASE_URL"]
+        ? { DATABASE_URL: process.env["TEST_DATABASE_URL"] }
+        : {}),
+    },
   },
 });

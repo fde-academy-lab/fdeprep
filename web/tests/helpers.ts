@@ -1,5 +1,6 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
+import type { Pool, PoolClient } from "pg";
 import { db } from "../lib/db/pool.ts";
 import { migrate } from "../scripts/migrate.ts";
 import { seedRateLimitPolicies } from "../lib/db/seed.ts";
@@ -10,12 +11,36 @@ export const FIXTURES = path.join(import.meta.dirname, "..", "..", "problems", "
 
 let migrated = false;
 
-export async function resetDatabase(): Promise<void> {
+/**
+ * The only databases the suite may wipe.
+ *
+ * resetDatabase truncates every table, so pointed at a development database it
+ * deletes the catalogue, the users and every graded submission. The name is
+ * the check because it is already the convention everywhere a test database
+ * exists: CI's service database is fdeprep_test, and so is the one SETUP.md
+ * gives a cloud session.
+ */
+export function assertTestDatabase(name: string): void {
+  if (name.endsWith("_test")) return;
+  throw new Error(
+    `Refusing to reset "${name}". The web tests truncate every table in the ` +
+    "database they run against, so they only run against one whose name ends in " +
+    "_test. Create one with createdb fdeprep_test, then run the tests with " +
+    "TEST_DATABASE_URL=postgres://localhost/fdeprep_test npm test.");
+}
+
+export async function resetDatabase(client: Pool | PoolClient = db()): Promise<void> {
+  // Asked of the connection about to be truncated, before anything else runs
+  // on it, migrations included.
+  const { rows: [current] } = await client.query<{ name: string }>(
+    "select current_database() as name");
+  assertTestDatabase(current!.name);
+
   if (!migrated) {
     await migrate(() => {});
     migrated = true;
   }
-  await db().query(`
+  await client.query(`
     truncate outbox, queue_message, runner_event, hint_reveal, submission, attempt,
              step_check, problem_test, hint, problem_competency, problem_version,
              problem, rate_limit_counter, enrolment, cohort, app_user, audit_log,
@@ -26,8 +51,8 @@ export async function resetDatabase(): Promise<void> {
   // truncate cohort cascade takes rate_limit_policy with it, so put the seed
   // back. Without this every cap silently passes and the cap tests prove
   // nothing.
-  await seedRateLimitPolicies(db());
-  const { rows } = await db().query<{ count: string }>(
+  await seedRateLimitPolicies(client);
+  const { rows } = await client.query<{ count: string }>(
     "select count(*) from rate_limit_policy");
   if (Number(rows[0]!.count) === 0) {
     throw new Error("rate_limit_policy is empty after reset, so no cap would bind");
