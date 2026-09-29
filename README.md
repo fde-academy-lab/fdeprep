@@ -386,7 +386,7 @@ The repository is bind-mounted, so an edit on your machine is live in the contai
 git clone https://github.com/fde-academy-lab/fdeprep.git
 cd fdeprep
 
-# 1. Python, for the runner and the judge
+# 1. Python: the runner, the judge and panelist 2's runtime (about 120 MB)
 python3.12 -m venv .venv && source .venv/bin/activate
 pip install -r requirements-dev.txt
 
@@ -420,9 +420,13 @@ The worker refuses to start without it, because the published catalogue holds 8 
 The pretrained panelist cannot run here: model_missing. 8 of 25 published
 problems require it, and grading them without it would quietly drop most of
 the evidence behind every band.
-  Fix it:          python scripts/fetch_embedding_model.py
+  Fix it:          cd /path/to/fdeprep && .venv/bin/python scripts/fetch_embedding_model.py
   Or accept it:    EVAL_DEGRADED_PANELISTS=pretrained
 ```
+
+A host with the model and without the runtime reads `dependency_missing` instead, and its fix line is a pip install. Both lines name the interpreter the worker spawns, which is `RUNNER_PYTHON`, then `.venv/bin/python`, then `python3`. Activating a virtualenv in your shell changes none of those, so run the line as printed.
+
+`requirements-dev.txt` installs that runtime through `requirements-embed.txt`. onnxruntime 1.30.0 publishes Python 3.12 wheels for Apple Silicon on macOS 14 or newer, Linux x86_64 and aarch64, and Windows, and nothing else, so on an Intel Mac or an older macOS the install stops at onnxruntime. There, delete the `-r requirements-embed.txt` line from your local copy of `requirements-dev.txt`, install, and start the worker with `EVAL_DEGRADED_PANELISTS=pretrained`. The 17 code problems grade fully without panelist 2.
 
 `EVAL_DEGRADED_PANELISTS=pretrained` starts anyway and prints what you gave up. Use it for a demo or a box that only serves code problems; those evaluations carry `medium` confidence rather than `high` until the panelist runs. The script pins a model revision and verifies a SHA-256 before it writes, so a model that changed underneath you is a failure rather than a silent change to every band the panel assigns.
 
@@ -479,13 +483,13 @@ A five-minute path that shows the product's actual argument rather than its scre
 ## 2.7 Run the tests
 
 ```bash
-cd web   && npm test              # 459 tests
-cd ../   && python -m pytest -q   # 253 tests, 3 skipped without the embedding model
+cd web   && npm test              # 543 tests
+cd ../   && python -m pytest -q   # 262 tests: 3 skip without JUDGE_LIVE=1, 3 more without the model
 cd voice && npm test              # 26 tests
 cd infra && npm test              # 30 tests
 ```
 
-The three skips are the tests that read the real MiniLM weights. A skipped test is honest; a test that quietly passes without the thing it claims to test is not.
+The three Bedrock tests skip unless `JUDGE_LIVE=1`, because each run spends money, and the three MiniLM tests skip until `scripts/fetch_embedding_model.py` has put the weights on disk. A skipped test is honest; a test that quietly passes without the thing it claims to test is not.
 
 ---
 

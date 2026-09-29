@@ -33,20 +33,30 @@ export type EmbedResult =
   | { ok: true; vectors: number[][] }
   | { ok: false; reason: string };
 
-/** Same resolution the runner and judge workers use: the repo venv, then PATH. */
-function interpreter(): string {
+/**
+ * What the worker spawns to reach the encoder: which Python, from which
+ * directory.
+ *
+ * The same resolution the runner and judge workers use: RUNNER_PYTHON, then
+ * the repository's .venv, then python3 on PATH. Exported so the startup
+ * message names the interpreter the worker actually runs. Activating a
+ * virtualenv changes the shell's python and not this one, and a fix that
+ * installs into the wrong interpreter looks like a fix that did not work.
+ */
+export function encoderInvocation(): { cwd: string; python: string } {
   const explicit = process.env["RUNNER_PYTHON"];
-  if (explicit) return explicit;
+  if (explicit) return { cwd: REPO_ROOT, python: explicit };
   const venv = path.join(REPO_ROOT, ".venv", "bin", "python");
-  return existsSync(venv) ? venv : "python3";
+  return { cwd: REPO_ROOT, python: existsSync(venv) ? venv : "python3" };
 }
 
 export async function embed(texts: string[]): Promise<EmbedResult> {
   if (!texts.length) return { ok: true, vectors: [] };
 
   return new Promise<EmbedResult>((resolve) => {
-    const child = spawn(interpreter(), ["-m", "embed.cli"], {
-      cwd: REPO_ROOT,
+    const { cwd, python } = encoderInvocation();
+    const child = spawn(python, ["-m", "embed.cli"], {
+      cwd,
       env: { ...process.env, PYTHONPATH: REPO_ROOT },
       stdio: ["pipe", "pipe", "pipe"],
     });

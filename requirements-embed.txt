@@ -1,0 +1,22 @@
+# Panelist 2's runtime. embed/encoder.py loads MiniLM through ONNX Runtime and
+# imports all three of these inside a function, so a host without them imports
+# the package cleanly and fails at the first encode, which the worker reports
+# at boot as dependency_missing.
+#
+# The worker needs this file and nothing else does. It is kept out of
+# requirements.txt because the runner image installs that file, and 120 MB of
+# native libraries (docs/10 section 5) has no business in the image that
+# executes learner code. requirements-dev.txt includes it, so every documented
+# install gets it: README section 2, Route B, the compose init and CI.
+#
+# Pinned exactly, for the same reason the model revision is pinned by SHA-256:
+# vectors decide bands, and a runtime that floats underneath them moves them.
+#
+# Checked on PyPI on 29 September 2026: onnxruntime 1.30.0 publishes Python 3.12
+# wheels for Apple Silicon on macOS 14 or newer, Linux x86_64 and aarch64, and
+# Windows, and no source distribution. On an Intel Mac or older macOS this
+# install stops at onnxruntime; start the worker there with
+# EVAL_DEGRADED_PANELISTS=pretrained, and the code problems still grade fully.
+onnxruntime==1.30.0
+numpy==2.5.3
+tokenizers==0.23.2
