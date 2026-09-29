@@ -345,13 +345,14 @@ reference_md: |
   The four-minute version checks that every key is present, and every failure
   in the brief got past that check.
 
-  Present is the weakest thing a contract says about a field. `"tenant": null`
-  is present. `"priority": "P1"` is present. `"description": ""` is present.
-  The contract asks for an object, one of three words, and some text, and each
-  of those is a separate question about the value rather than the key. The
-  null case is worth remembering on its own, because the idiom most people
-  reach for, `request.get("tenant", {})`, only covers a missing key. A key
-  that is there with null hands back None, and the next line raises.
+  Present is the weakest thing a contract says about a field, and
+  `"tenant": null`, `"priority": "P1"` and `"description": ""` are all
+  present. The contract asks for an object, one of three words, and some
+  text, and each of those is a separate question about the value rather than
+  the key. The null case is worth remembering on its own, because the idiom
+  most people reach for, `request.get("tenant", {})`, only covers a missing
+  key. A key that is there with null hands back None, and the next line
+  raises.
 
   The check sits before the model call for a reason that is specific to this
   kind of system. The model is the most forgiving component in the pipeline:
