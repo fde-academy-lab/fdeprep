@@ -43,7 +43,8 @@ contract_md: |
        "records": [{"id": "r-1", "age_days": 12, "pinned": false,
                     "deletion_requested": false, "needed_by": ["task-1"]}]}
 
-  and may return something else entirely.
+  and may return something else entirely. When it does, remove nothing, and
+  say in `note` that nothing was swept.
 
   Apply these in order. The first one that matches decides the record.
 
@@ -100,7 +101,8 @@ stub_code: |
            "records": [{"id": "r-1", "deletion_requested": False,
                         "needed_by": ["task-1"], "pinned": False,
                         "age_days": 12}]}
-      and may return something else entirely.
+      and may return something else entirely. When it does, remove nothing,
+      and say in `note` that nothing was swept.
 
       Return json.dumps({"kept": [...], "removed": [...],
                          "blocked_tasks": [...], "note": "..."}).
