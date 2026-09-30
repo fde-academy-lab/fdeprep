@@ -34,9 +34,10 @@ contract_md: |
 
       {"status": 200, "chunks": [{"id": "a1", "score": 0.83, "text": "..."}]}
 
-  A chunk scoring below 0.55 is not evidence. Do not put it in the prompt,
-  and do not ask the model to write an answer without it. When nothing
-  reaches the threshold, return the sentence
+  A chunk scoring 0.55 or above is evidence, and that includes a chunk
+  scoring exactly 0.55. A chunk scoring below 0.55 is not evidence. Do not
+  put it in the prompt, and do not ask the model to write an answer without
+  it. When nothing reaches the threshold, return the sentence
 
       "I could not find anything in the help centre that answers this."
 
@@ -118,10 +119,29 @@ step_checks:
     spec:
       assertions:
         - { type: returns_nonempty }
+  # s4 carries its own case, because every public answer turned green once
+  # TODO 3 wrote the survivors, before anything abstained. Both chunks here
+  # score below 0.55, so the step holds only when the loop returns the
+  # sentence itself after the one model call that asked for search.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "Do you deliver to Norway?" }
+      llm_script:
+        - { match: { contains: "ship in 3 to 5 working days" },
+            reply: "Final Answer: Orders to Norway arrive in 3 to 5 working days." }
+        - { match: "*", reply: "Action: search(query=delivery to Norway)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "k1", score: 0.36, text: "Orders to the EU ship in 3 to 5 working days." }
+              - { id: "k2", score: 0.14, text: "Customs forms are printed on the dispatch note." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
+        - { type: returns_equals, value: "I could not find anything in the help centre that answers this." }
+        - { type: llm_calls_at_most, value: 1 }
 
 hints:
   - The score is already on every chunk. Nothing needs computing, only reading.
@@ -207,6 +227,11 @@ coach:
       say: >-
         That search returned one strong chunk and one weak chunk that
         contradicts it. Which of the two does your prompt contain?
+    - id: hidden-exact-threshold
+      when: { test_failed: a_chunk_scoring_exactly_the_threshold_is_evidence }
+      say: >-
+        In that run the only chunk that answers the question scored exactly
+        0.55. Check what your filter does with a score equal to the threshold.
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -311,6 +336,28 @@ tests:
       budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: returns_matches, value: "(?i)identical in-stock" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: a_chunk_scoring_exactly_the_threshold_is_evidence
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Do gift cards expire?" }
+      llm_script:
+        - { match: { contains: "expire 24 months after" },
+            reply: "Final Answer: Gift cards expire 24 months after the date of purchase." }
+        - { match: "*", reply: "Action: search(query=gift card expiry)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "g1", score: 0.55, text: "Gift cards expire 24 months after the date of purchase." }
+              - { id: "g2", score: 0.29, text: "Gift wrap is free on orders over 40 pounds." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)24 months" }
         - { type: no_exception }
         - { type: terminates }
 

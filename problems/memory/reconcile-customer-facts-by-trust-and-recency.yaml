@@ -244,6 +244,13 @@ coach:
       say: >-
         The customer typed their verified address again in chat, in lower case
         and with a stray space. Does your prompt treat that as a disagreement?
+    - id: hidden-older-account
+      when: { test_failed: an_account_older_than_the_call_back_is_dropped }
+      say: >-
+        In that run a support agent typed a different account in December,
+        three months before the call-back verified 4471. A record older than
+        the fact that beat it is dropped. Does your prompt still show the
+        December account as unconfirmed?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -376,6 +383,31 @@ tests:
       budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
         - { type: returns_matches, value: "^The documents go to 14 Mill Lane" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: an_account_older_than_the_call_back_is_dropped
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which account should the settlement go to?" }
+      llm_script:
+        - { match: { contains: "\nunconfirmed payout_account: ending 6158" },
+            reply: "Pay nothing until the customer confirms whether the account ends in 4471 or 6158." }
+        - { match: { contains: "\npayout_account: ending 4471" },
+            reply: "The settlement goes to the account ending 4471." }
+        - { match: "*", reply: "I do not have a payout account on file." }
+      tools:
+        facts:
+          returns:
+            status: 200
+            records:
+              - { field: payout_account, value: "ending 6158", source: agent, at: "2025-12-09" }
+              - { field: payout_account, value: "ending 4471", source: verified, at: "2026-03-02" }
+              - { field: address, value: "14 Mill Lane, Leeds", source: verified, at: "2026-03-02" }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "^The settlement goes to the account ending 4471" }
         - { type: no_exception }
         - { type: llm_calls_at_most, value: 1 }
 

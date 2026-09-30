@@ -148,10 +148,30 @@ step_checks:
       budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: returns_matches, value: "(?i)back to our warehouse" }
+  # s4 carries its own case, because the public case with no Action turned
+  # green on TODO 1 alone. The carrier for 61 never answers, and 61 is asked
+  # for last, so a lookup by position still gets 38 and 90 right and only
+  # the lines themselves decide the answer: one per id, and 61=unknown.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "Where are orders 38, 90 and 61?" }
+      llm_script:
+        - { match: { all: [ { contains: "38=awaiting_pickup" }, { contains: "90=delivered" }, { contains: "61=unknown" } ] },
+            reply: "Final Answer: Order 38 is waiting to be picked up and order 90 was delivered. The carrier for order 61 has not answered yet." }
+        - { match: { contains: "38=awaiting_pickup" },
+            reply: "Final Answer: Order 38 is waiting to be picked up and order 90 was delivered." }
+        - { match: "*", reply: "Action: batch(ids=38,90,61)" }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "38", state: "awaiting_pickup" }
+              - { ref: "90", state: "delivered" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
+        - { type: returns_matches, value: "(?i)carrier for order 61 has not answered" }
 
 hints:
   - Look at what each entry in results carries besides its state.
@@ -247,6 +267,12 @@ coach:
       say: >-
         One carrier never answered, so three ids came back as two results.
         Which line did your code write for the id with no result?
+    - id: hidden-line-order
+      when: { test_failed: the_lines_keep_the_order_the_ids_were_asked_in }
+      say: >-
+        In that run the ids went out as 27, 4 and 16, and the carriers
+        answered 16 first. The model takes the lines to be in the order the
+        customer listed the orders. Which order did your lines come out in?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -347,6 +373,31 @@ tests:
       budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: returns_matches, value: "(?i)could not reach the carrier" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: the_lines_keep_the_order_the_ids_were_asked_in
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Where are my three orders, 27, 4 and 16?" }
+      llm_script:
+        - { match: { regex: '27=in_transit\n4=delayed\n16=delivered' },
+            reply: "Final Answer: Order 27 is in transit, order 4 is delayed and order 16 has been delivered." }
+        - { match: { regex: '\b(?:27|4|16)=\w+' },
+            reply: "Final Answer: Order 27 has been delivered, order 4 is in transit and order 16 is delayed." }
+        - { match: "*", reply: "Action: batch(ids=27,4,16)" }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "16", state: "delivered" }
+              - { ref: "27", state: "in_transit" }
+              - { ref: "4", state: "delayed" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)order 27 is in transit, order 4 is delayed and order 16 has been delivered" }
         - { type: no_exception }
         - { type: terminates }
 

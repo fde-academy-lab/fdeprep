@@ -295,6 +295,13 @@ coach:
       say: >-
         Two chunks in that run share most of their wording and differ in the
         number. Work out their overlap by hand and compare it with 0.8.
+    - id: hidden-limits-worded-alike
+      when: { test_failed: two_limits_worded_alike_are_both_kept }
+      say: >-
+        Two chunks in that run differ in three words each and set different
+        theft limits. Divide the words they share by all the words either one
+        uses, and compare that with 0.8. Dividing by one text's words gives a
+        higher number.
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -478,6 +485,39 @@ tests:
       budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: returns_matches, value: "250 pounds" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: two_limits_worded_alike_are_both_kept
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Are tools covered if they are stolen from a van overnight?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=tools stolen from a van overnight)" }
+        - { match: { all: [ { contains: "up to 2,000 pounds" }, { contains: "up to 500 pounds" } ] },
+            reply: "Final Answer: Yes. Tools are covered up to 2,000 pounds when the van is parked in a garage [t-1], and up to 500 pounds when it is parked on the street [t-2]." }
+        - { match: { contains: "up to 2,000 pounds" },
+            reply: "Final Answer: Yes. Tools are covered up to 2,000 pounds when the van is parked in a garage [t-1]." }
+        - { match: "*", reply: "Final Answer: I could not find that in the policy wording." }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "t-1", source: "Tools cover", score: 0.94,
+                  text: "Tools left in a locked van overnight are covered for theft up to 2,000 pounds when the van is parked in a garage." }
+              - { id: "t-2", source: "Tools cover", score: 0.89,
+                  text: "Tools left in a locked van overnight are covered for theft up to 500 pounds when the van is parked on the street." }
+              - { id: "t-3", source: "Tools cover", score: 0.76,
+                  text: "Theft of tools from a van left open is not covered at any time of day." }
+              - { id: "t-4", source: "Tools cover", score: 0.66,
+                  text: "Every tool must be marked with the business postcode before a theft claim is paid." }
+              - { id: "t-5", source: "Commercial property", score: 0.57,
+                  text: "A police crime reference is needed for every theft claim." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)up to 500 pounds when it is parked on the street" }
         - { type: no_exception }
         - { type: terminates }
 

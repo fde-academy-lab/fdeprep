@@ -94,10 +94,36 @@ steps:
     check_id: s3
 
 step_checks:
+  # s1 carries its own case, because a public answer turned green on TODO 3's
+  # count line alone. The requirement is the oldest turn and a chat turn
+  # further down suggests something else, so the model follows the
+  # requirement only when it reaches the prompt word for word and the chat
+  # turn does not. Writing every turn keeps the chat turn in, so s1 needs the
+  # decision itself.
   - step_id: s1
     spec:
+      kind: agent_run
+      input: { question: "Arrange the second delivery attempt." }
+      llm_script:
+        - { match: { contains: "hold the button down" },
+            reply: "Final Answer: The driver will buzz flat 2B on the intercom." }
+        - { match: { contains: "Ring the bell for flat 2B" },
+            reply: "Final Answer: The driver will ring the bell for flat 2B, because the intercom is broken." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: requirement, text: "Ring the bell for flat 2B, because the intercom is broken." }
+              - { n: 2, kind: chat, text: "Hello, are you still there?" }
+              - { n: 3, kind: chat, text: "The intercom sometimes works if you hold the button down." }
+              - { n: 4, kind: chat, text: "Sorry, the line keeps cutting out." }
+              - { n: 5, kind: chat, text: "Thanks for your patience." }
+              - { n: 6, kind: chat, text: "Speak soon." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: returns_nonempty }
+        - { type: returns_matches, value: "(?i)ring the bell for flat 2B" }
   # s2 carries its own case, because no public history holds two survivors
   # and so none shows their order. The model books the collection from both
   # the requirement and the approval only when their text reaches it in the
@@ -124,10 +150,35 @@ step_checks:
       budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: returns_matches, value: "(?i)side door on Ferry Road" }
+  # s3 carries its own case, because the public answers turned green once
+  # TODO 2 wrote the survivors, before any count existed. Five of the seven
+  # turns are chat, and the handover says what was left out only when one
+  # line counts five dropped chat turns. Counting every turn says seven.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Write the handover note for the next shift." }
+      llm_script:
+        - { match: { regex: '\b5\b[^\n]*\bdropped\b|\bdropped\b[^\n]*\b5\b' },
+            reply: "Final Answer: Handover: the supervisor agreed to refund the delivery charge, and the new delivery date is still unconfirmed. Five chat turns were left out of this history." }
+        - { match: { contains: "refund the delivery charge" },
+            reply: "Final Answer: Handover: the supervisor agreed to refund the delivery charge, and the new delivery date is still unconfirmed. That is the whole conversation." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: chat, text: "Good afternoon." }
+              - { n: 2, kind: approval, text: "The supervisor agreed to refund the delivery charge." }
+              - { n: 3, kind: chat, text: "Thank you so much." }
+              - { n: 4, kind: chat, text: "Is there anything else you need from me?" }
+              - { n: 5, kind: open_question, text: "Nobody has confirmed the new delivery date yet." }
+              - { n: 6, kind: chat, text: "I will wait for the email." }
+              - { n: 7, kind: chat, text: "Bye for now." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
+        - { type: returns_matches, value: "(?i)five chat turns were left out" }
 
 hints:
   - Look at the fields each turn carries before you look at where it sits in
@@ -220,6 +271,19 @@ coach:
         That history held an open question in turn one and an approval in turn
         five, with chat around both. Check that both reached the prompt word
         for word.
+    - id: hidden-survivor-order
+      when: { test_failed: the_survivors_stay_in_the_order_they_were_said }
+      say: >-
+        In that conversation a requirement in turn six settled the open
+        question from turn three and replaced the requirement from turn one.
+        Check that the survivors reach the prompt in the order they were said.
+    - id: hidden-chat-replaced
+      when: { test_failed: chat_turns_are_replaced_by_one_line_that_counts_them }
+      say: >-
+        Four of the five turns in that conversation were chat, and one of them
+        mentioned a neighbour who takes parcels in. Check that no chat turn
+        reaches the prompt word for word, and that one line counts the four
+        you dropped.
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -341,6 +405,66 @@ tests:
         - { type: returns_matches, value: "(?i)return postage is unresolved" }
         - { type: no_exception }
         - { type: llm_calls_at_most, value: 3 }
+
+  - name: the_survivors_stay_in_the_order_they_were_said
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Book the Saturday collection for this customer." }
+      llm_script:
+        - { match: { regex: 'back office at 4 Quay Street[\s\S]*open on Saturdays[\s\S]*front reception instead' },
+            reply: "Final Answer: Booked the Saturday collection from the front reception at 4 Quay Street." }
+        - { match: { contains: "open on Saturdays" },
+            reply: "Final Answer: I need to know whether the back office is open on Saturdays before I book the collection." }
+        - { match: { contains: "front reception instead" },
+            reply: "Final Answer: Booked the Saturday collection from the front reception at 4 Quay Street." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: requirement, text: "Collect the return from the back office at 4 Quay Street." }
+              - { n: 2, kind: chat, text: "Thanks for calling back." }
+              - { n: 3, kind: open_question, text: "Nobody has said whether the back office is open on Saturdays." }
+              - { n: 4, kind: chat, text: "I will ask the building manager." }
+              - { n: 5, kind: chat, text: "Still waiting to hear back." }
+              - { n: 6, kind: requirement, text: "The back office is shut on Saturdays, so collect from the front reception instead." }
+              - { n: 7, kind: chat, text: "Thanks, that is everything." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)from the front reception" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: chat_turns_are_replaced_by_one_line_that_counts_them
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Write the redelivery ticket for the prescription parcel." }
+      llm_script:
+        - { match: { contains: "neighbour at number 9" },
+            reply: "Final Answer: Redelivery: if nobody answers, leave the parcel with the neighbour at number 9." }
+        - { match: { all: [ { contains: "hand it to me in person" }, { regex: '\b4\b[^\n]*\bdropped\b|\bdropped\b[^\n]*\b4\b' } ] },
+            reply: "Final Answer: Redelivery: hand the parcel over in person, because it holds medication. History: 4 chat turns were left out." }
+        - { match: { contains: "hand it to me in person" },
+            reply: "Final Answer: Redelivery: hand the parcel over in person, because it holds medication." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: requirement, text: "The parcel holds medication, so hand it to me in person." }
+              - { n: 2, kind: chat, text: "Morning." }
+              - { n: 3, kind: chat, text: "My neighbour at number 9 usually takes parcels in." }
+              - { n: 4, kind: chat, text: "Anyway, sorry for the fuss." }
+              - { n: 5, kind: chat, text: "Talk soon." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)in person[\\s\\S]*4 chat turns were left out" }
+        - { type: no_exception }
+        - { type: terminates }
 
 reference_md: |
   Compaction is a filter, and the argument is what the filter is keyed on.
