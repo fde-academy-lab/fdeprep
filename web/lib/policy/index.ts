@@ -16,6 +16,7 @@ import {
 } from "./tiers.ts";
 import { degradedMessage, readDegradedMode, type DegradedMode } from "./settings.ts";
 import { buildLock, type BuildLock } from "./build-lock.ts";
+import { trapsVisible } from "./traps.ts";
 
 export * from "./tiers.ts";
 export { readDegradedMode, setDegradedMode, degradedMessage, DEGRADED_MODE } from "./settings.ts";
@@ -57,6 +58,8 @@ export interface Decision {
   degraded: DegradedMode;
   /** Whether the live coach speaks, and whether it may read the code yet. */
   coach: { enabled: boolean; codeSignalsOpen: boolean };
+  /** Whether the page names the traps: before the attempt on some tiers, after it on all. */
+  traps: boolean;
   /** Set on a build stage whose previous stage has not passed. Nothing runs. */
   locked: BuildLock | null;
 }
@@ -164,6 +167,7 @@ export async function resolvePolicy(options: {
       codeSignalsOpen: tier.coach.enabled &&
         state.failedRuns >= tier.coach.codeSignalsAfterFailedRuns,
     },
+    traps: trapsVisible(tier, state),
     state: {
       solved: state.solved, gaveUp: state.gaveUp,
       failedRuns: state.failedRuns, hintsUsed: state.hintsUsed,

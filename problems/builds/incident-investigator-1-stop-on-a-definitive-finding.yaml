@@ -450,3 +450,36 @@ interview_evidence:
     Your investigation agent found the cause on its second check and ran two more. What should have stopped it, and what did the extra checks cost?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: deploys
+    args: service
+    returns: 'Recent deploys to the service: `status` 200, a `verdict` of definitive, lead or clear, a
+      one-line `finding`, and `next` follow-up checks.'
+  - name: logs
+    args: service
+    returns: The service's error logs, as a `verdict` (definitive, lead or clear), a one-line `finding`
+      and `next` follow-up checks.
+  - name: metrics
+    args: service
+    returns: The service's metrics, as a `verdict` (definitive, lead or clear), a one-line `finding` and
+      `next` follow-up checks.
+  - name: config
+    args: deploy
+    returns: A follow-up check a result can name in `next`, called with a `deploy` id. It returns a `verdict`,
+      a one-line `finding` and `next`.
+  - name: flags
+    args: deploy
+    returns: A follow-up check a result can name in `next`, called with a `deploy` id. It returns a `verdict`,
+      a one-line `finding` and `next`.
+example:
+  case: the_last_check_in_the_runbook_finds_the_cause
+  expect: Run `deploys`, `logs` and `metrics` in order, stop at the definitive `metrics` result, ask the
+    model once with the three lines, and return its finding that the database ran out of connections.
+traps:
+  - Running the rest of the runbook after a definitive verdict, so later evidence competes with the cause
+    in the model's prompt.
+  - Stopping on a lead or a clear result, when only a definitive verdict ends the run and the runbook
+    still has checks to run.
+  - Putting next checks on the back of the queue, or reversing their order, so follow-ups run late or
+    out of the listed order.

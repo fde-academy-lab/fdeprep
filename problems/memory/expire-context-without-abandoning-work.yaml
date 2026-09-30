@@ -407,3 +407,19 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I017.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: records
+    args: ''
+    returns: A status, the `active_tasks` ids and the `records`, each with `id`, `age_days`, `pinned`,
+      `deletion_requested` and `needed_by`. It may return another shape.
+example:
+  case: an_old_unneeded_record_is_removed
+  expect: Rule 4 removes r-9, which is 45 days old, unpinned and needed by no active task, so return JSON
+    listing r-9 under `removed`, with no blocked tasks.
+traps:
+  - Checking age before `needed_by`, which removes an old record that an open task still depends on.
+  - Checking the pin before the deletion request, so a pinned record survives an erasure request.
+  - Removing a task's last record without listing the task as blocked, or asking for the operator message
+    without naming it.
+  - Crashing on a reply with no record list, or returning without a note that says nothing was swept.

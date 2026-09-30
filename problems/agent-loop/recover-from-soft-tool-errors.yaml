@@ -463,3 +463,26 @@ interview_evidence:
     A tool returns two hundred with an error in the body. What does your loop do next, and how many times?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: track
+    args: id
+    returns: '`{"status": 200, "data": {"state": ...}}` with the parcel''s state, or a 200 whose body
+      carries an `error` key when the lookup failed.'
+  - name: carrier_status
+    args: order
+    returns: The carrier's view of the order. Its one scripted answer, in the check for step 3, is a 200
+      whose body carries an `error` key.
+example:
+  case: returns_final_answer
+  expect: The model asks for `track(id=7)`, which answers with the parcel in transit, so call it, add
+    the observation, and return the Final Answer text without its prefix, within 3 model calls.
+traps:
+  - Deciding a call worked from its status code, so a 200 whose body carries an `error` key is read as
+    an answer.
+  - Retrying with an unchanged prompt, which gets an unchanged reply; the retry prompt has to carry the
+    error the body reported.
+  - Stopping at the first failure, or refusing to call a tool that failed once, so an answer one retry
+    away is never fetched.
+  - Pasting the raw tool output into the prompt, so an instruction inside it reaches the model as if you
+    wrote it.

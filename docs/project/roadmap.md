@@ -14,7 +14,7 @@ The order you will see built is the one the product owner set on 30 September: t
 | Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
 |---|---|---|---|---|---|---|
 | S11 Beta launch | Four integrations have never made a live call, so without this the first learner to touch one becomes the test. | 26 | 6 (3 to 8) | 262 | 1 to 9 Oct 2026 | High |
-| S10 Delivery board | Management and non-technical teams need to see what was built, when, how big it was and what comes next. | 20 | 3 (2 to 4) | 63 | 30 Sep to 1 Oct 2026 | Low |
+| S10 Delivery board | Management and non-technical teams need to see what was built, when, how big it was and what comes next. | 21 | 3 (2 to 4) | 63 | 30 Sep to 1 Oct 2026 | Low |
 
 ### Next
 
@@ -54,6 +54,7 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S10.2 | Sync the backlog to GitHub issues and the Project board | Task | 8 | In progress | A sync creates one issue per stage and story, nests each story under its stage, and closes delivered work as completed.<br>A second sync with nothing changed writes nothing.<br>Every card shows Stage, Level, Area, Priority, Points, Start, Finish, Pull request, Found by, Risk and Sprint. |
 | S10.3 | Write the project pages for management | Task | 5 | Done | docs/project holds the summary, the delivery history, the roadmap, the estimation method, quality, risks, decisions and setup.<br>Every figure is marked as a fact from git or GitHub, or as an estimate. |
 | S10.4 | Add the token, run the first sync and create the views | Task | 2 | Planned | The repository secret PROJECT_TOKEN exists and the first sync run is green.<br>The five views that docs/project/board-setup.md describes exist on the Project. |
+| S10.5 | Retire the skill script that bypassed the reviewed allowlists | Task | 1 | Done | scripts/sync-skills.sh is gone, and SETUP.md points at bootstrap.sh --with-skills, whose allowlists and pins were reviewed. |
 | S11.1 | Deploy route C: the stack, the web host, DNS, GitHub sign-in and HTTPS | Task | 8 | Planned | README route C steps C0 to C10 are done and the site answers on its public address over HTTPS.<br>The first admin signs in through an invite minted on the host. |
 | S11.2 | Prove the Bedrock judge with one live submission | Task | 2 | Planned | One design submission comes back with a band from the live judge, and the judge's cost appears in the spend alarm's metric. |
 | S11.3 | Prove Transcribe, Polly and S3 with one real voice session | Task | 3 | Planned | A spoken answer is transcribed live, a pressure-mode follow-up plays aloud, and the recording can be fetched from the bucket afterwards. |
@@ -68,10 +69,10 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S12.3 | Mark the bare identifiers in 286 fields as code | Task | 5 | Done | A check fails on a snake_case name, a dotted call or an exception name outside backticks in any learner-facing field. |
 | S12.4 | Colour Python in code blocks | Feature | 3 | Done | Fenced Python in a brief, a contract or a walkthrough uses the editor's syntax colours, with no new dependency. |
 | S12.5 | Show the constraints: call budget, time limit, imports and Python version | Feature | 3 | Done | Every code problem shows its call budget, its time limit, the imports it allows and the Python version in one section. |
-| S12.6 | List the tools the agent has, with their arguments and returns | Feature | 5 | Planned | Every code problem that scripts tools lists each tool's name, arguments and what it returns, taken from the problem file. |
+| S12.6 | List the tools the agent has, with their arguments and returns | Feature | 5 | Done | Every code problem that scripts tools lists each tool's name, arguments and what it returns, and the validator checks the list against the public cases and step checks.<br>A tool that only the hidden cases use stays off the page unless the brief already names it. |
 | S12.7 | Say how each problem comes up in an interview | Feature | 2 | Done | The interview question each problem declares appears on its page. |
-| S12.8 | Add a worked example to every problem | Task | 13 | Planned | Every problem shows one input and the behaviour expected from it, taken from a public case, never a hidden one. |
-| S12.9 | Name the common traps on every problem | Task | 8 | Planned | Every problem lists the mistakes its hidden and adversarial cases exist to catch, in words that do not give the case away. |
+| S12.8 | Add a worked example to every problem | Task | 13 | Done | Every code problem shows one input and the behaviour expected from it, copied from a public case, never a hidden one.<br>Every prompt problem shows one ordinary message that repeats no probe; a design problem shows its rubric instead. |
+| S12.9 | Name the common traps on every problem | Task | 8 | Done | Every problem lists two to four mistakes its hidden and adversarial cases exist to catch, in words that do not give the case away, and CI refuses a trap that quotes one.<br>Easy and Medium show the traps from the start; Hard, Extreme and the rehearsal show them once the attempt closes, and the page does not send them before then. |
 | S13.1 | Move to the next question when an answer ends early | Feature | 2 | Planned | A Next question control ends the current answer, scores it on what was said, and starts the next question. |
 | S13.2 | Type the answer when the microphone or transcription fails | Feature | 5 | Planned | When the microphone or the transcription fails, the session offers a text box, and a typed answer is scored on content and structure but not pace. |
 | S13.3 | Pick a question instead of taking the first one | Feature | 3 | Planned | The voice screen lists every published question by track and interviewer, and a learner can start any of them. |

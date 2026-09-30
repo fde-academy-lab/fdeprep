@@ -534,3 +534,36 @@ interview_evidence:
     turned round: I014 asks whether the caller should retry, and this asks what the
     receiver of a retry must do. That bank labels every entry "Original interview-style
     practice; actual employer frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: lookup
+    args: key
+    returns: '`status` 200 and the key''s `state`: `absent`, `in_progress` or `done`. A read and nothing
+      more.'
+  - name: claim
+    args: key
+    returns: '`claimed` true when this delivery now holds the key, or `claimed` false with the holder''s
+      `state`, `in_progress` or `done`. One atomic step.'
+  - name: mark_done
+    args: key
+    returns: '`status` 200, and the key reads `done` from then on.'
+  - name: release
+    args: key
+    returns: '`status` 200, and the key reads `absent` again, so a retry can claim it.'
+  - name: post_reply
+    args: ticket, body
+    returns: '`status` 201 and a `reply_id` when the reply went out, or a status outside 2xx when it did
+      not.'
+example:
+  case: a_retry_while_the_first_is_drafting_gets_no_second_reply
+  expect: Claim on the `event_id`, find that another delivery holds it in progress, and answer 409 without
+    a model call, a `post_reply`, a `mark_done` or a `release`.
+traps:
+  - Answering 200 for an event another delivery is still drafting, which tells the help desk to stop retrying
+    before any reply is out.
+  - Acting on a `lookup` that reads `absent`, when only a `claim` can tell you that another delivery took
+    the key first.
+  - Marking the event done, or keeping its key, after `post_reply` fails, instead of releasing that key
+    and answering 503.
+  - Marking the delivery id done after the reply posts, which leaves the `event_id` key in progress so
+    every later retry gets a 409.

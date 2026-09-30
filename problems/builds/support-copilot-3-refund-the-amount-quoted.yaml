@@ -610,3 +610,25 @@ interview_evidence:
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat. Topic from the problem
     catalogue, docs/source-pack/05-problem-catalog.csv A060.
+
+tools:
+  - name: search
+    args: query
+    returns: '`status` 200 and `chunks`, each with an `id` such as P-3, a `score` and the policy `text`.'
+  - name: refund
+    args: order_id, amount_cents
+    returns: A receipt with `status` 200 and `data.state` set to `refunded`. It can also raise on a timeout,
+      or answer status 200 with an `error` in the body.
+example:
+  case: a_damaged_box_is_refunded_at_the_amount_quoted
+  expect: Split off the action line, check that the message's £23.50 equals 2350 pence, call `refund`
+    once, and return the message without the action line and `refund_cents` 2350.
+traps:
+  - Sending the action's `amount_cents` to the tool without checking that every pound amount in the message
+    equals it.
+  - Running an action on a ticket stage 1 did not route to `refund`, or for an order number stage 1 did
+    not keep from the ticket.
+  - Retrying a refund that raised, or telling the customer the money is on its way, when nobody knows
+    whether it moved.
+  - Treating status 200 as a confirmed refund without reading the body for an `error` or a state other
+    than `refunded`.

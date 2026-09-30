@@ -286,3 +286,18 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I008.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: article
+    args: id
+    returns: A status and the article's full `text`.
+example:
+  case: keeps_the_windows_in_article_order
+  expect: Cut 120 character windows every 80 characters, keep the one at offset 0, the only window that
+    shares a word with the question, write it as [start=0] <text>, and return that we pay postage on warranty
+    claims.
+traps:
+  - Stepping a whole window size each time, so the windows tile the article and a sentence that straddles
+    a seam is whole in none of them.
+  - Writing a window's place in your filtered list after `start=`, when the number a reader needs is its
+    character offset in the article.

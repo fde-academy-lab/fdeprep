@@ -450,3 +450,17 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I001.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+example:
+  case: an_email_with_no_phone_number_leaves_phone_empty
+  expect: The email gives order HW-20588 and `sam.okafor@example.org` and no phone number, so return a
+    ticket with exactly `order_id`, `email` and `phone`, holding those two values and `phone` null.
+traps:
+  - Copying the model's value onto the ticket without finding it in the email, which lets an invented
+    order number or a placeholder word through.
+  - Accepting a value that is not a string with text in it, such as a number or an empty string, because
+    its characters appear in the email.
+  - Taking the ticket's keys from the model's reply, so a field the model dropped goes missing and a field
+    it added stays on.
+  - Letting case matter when matching a value against the email, so a value written in different capitals
+    is thrown away.

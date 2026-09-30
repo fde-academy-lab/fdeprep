@@ -693,3 +693,26 @@ interview_evidence:
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat. Topic from the problem
     catalogue, docs/source-pack/05-problem-catalog.csv A025.
+
+tools:
+  - name: describe
+    args: ''
+    returns: 'The schema: `status` 200 and `tables`, each with its `name`, a `description`, its `columns`
+      and a `deprecated` flag.'
+  - name: run_query
+    args: sql
+    returns: A result with `columns` and `rows`, or a status with an `error` from the database. It can
+      also answer with no result at all, or raise on a timeout.
+example:
+  case: a_query_the_database_keeps_rejecting_ends_in_an_honest_failure
+  expect: Repair the rejected query once with the database's error, guard the repair, and when it fails
+    too, stop with `status` failed, the syntax error as `reason` and the repair as `sql`.
+traps:
+  - Running the repaired query without passing it through the guard again, as if the first query's pass
+    covered the repair.
+  - Asking for a repair without the failed query and the database's error word for word, so the model
+    has nothing new to go on.
+  - Sending a refused query, a timeout or an empty reply off for repair, when only a database error message
+    gives the model something to fix.
+  - Reporting a repair that ran as a failure, or leaving the first query in `sql` when it should name
+    the last query that ran.

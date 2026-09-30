@@ -458,3 +458,18 @@ interview_evidence:
     You put a response cache in front of a multi-tenant assistant. What goes into the cache key, and what happens when you get it wrong?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: requests
+    args: ''
+    returns: A status and the `requests` in arrival order, each with `id`, `tenant`, `scope`, `prompt_version`,
+      `model` and `question`.
+example:
+  case: the_same_question_asked_twice_reaches_the_model_once
+  expect: r2 differs from r1 only in case and spacing, so serve it r1's cached answer and return JSON
+    giving both the 26 weeks answer, after one model call.
+traps:
+  - Keying the cache on the question alone, which serves one company's policy to an employee of another.
+  - Leaving `scope` out of the key, so a manager's answer reaches a member of staff who may not read it.
+  - Leaving `prompt_version` or `model` out of the key, so answers written before a release are still
+    served after it.

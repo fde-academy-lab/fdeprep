@@ -494,3 +494,32 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I027.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: dispatch
+    args: job, check, service
+    returns: '`status` 202 with `accepted` true. The check runs on a worker, and its result arrives later
+      through `collect`.'
+  - name: collect
+    args: ''
+    returns: '`status` 200 and `results` in finishing order, each a check result with its `job` id. Other
+      investigations share the queue, and a job may post nothing.'
+  - name: diff
+    args: deploy
+    returns: What one deploy changed, called with the `deploy` id a lead names in `next`. It returns a
+      `verdict`, a one-line `finding` and `next`.
+  - name: trace
+    args: request
+    returns: A trace of one failed request, named in a lead's `next`. It returns a `verdict`, a one-line
+      `finding` and `next`, and it can raise.
+example:
+  case: follow_ups_stop_when_the_allowance_is_spent
+  expect: Spend the allowance of four on the lead's first four traces, add a line that its other 2 follow-ups
+    were not run, and return the model's finding that the allowance ran out.
+traps:
+  - Draining one lead's queue before the next lead gets a call, so a lead with many traces spends the
+    allowance another lead needed.
+  - Changing the matching or the definitive stop while adding turns, so another investigation's result
+    counts or leads run after the cause is found.
+  - Letting a follow-up that raises escape, when it should spend its call, be recorded as failed and pass
+    the turn to the next lead.

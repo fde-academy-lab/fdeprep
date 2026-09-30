@@ -320,3 +320,16 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I003.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+example:
+  message: Can I book a test drive in the compact SUV at your Altrincham branch next Tuesday afternoon?
+  expect: Offer to book the test drive at Altrincham within opening hours, say it takes about 30 minutes,
+    and keep the reply to three or four friendly sentences, as the long prompt would.
+traps:
+  - Cutting the compliance section as one block, which takes the rule that a monthly price never goes
+    out without its APR and total payable.
+  - Keeping the APR rule and dropping the 9.9% figure, so the model knows an APR belongs beside every
+    price and has none to quote.
+  - Keeping the ban on valuing a part exchange and dropping the free appraisal, which turns a redirect
+    into a refusal.
+  - Squeezing the branch hours until the times a customer asks about are no longer in the prompt.

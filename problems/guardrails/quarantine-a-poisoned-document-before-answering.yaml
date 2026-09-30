@@ -445,3 +445,24 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I021.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: help_centre
+    args: query
+    returns: A status and `results`, each with an `id` and the page `text`. It can answer in another shape,
+      which contributes no documents.
+  - name: forum
+    args: query
+    returns: A status and `results`, each with an `id` and the post `text`. It can answer in another shape,
+      which contributes no documents.
+example:
+  case: answers_from_the_help_centre_and_the_forum
+  expect: Neither document holds a marker, so both reach the prompt, and the JSON carries the answer about
+    returning faulty headphones within 30 days with an empty `quarantined` list.
+traps:
+  - Cutting the marked sentence out of a poisoned post and keeping the rest, which keeps the part the
+    attacker wanted the model to read.
+  - Comparing markers with the raw text, which misses one written in full-width letters or split by a
+    zero-width space or a line break.
+  - Screening help-centre pages as well, which sets aside a reviewed page that quotes an attack on purpose.
+  - Pasting a forum reply that has no results list into the prompt, or indexing into it and raising.

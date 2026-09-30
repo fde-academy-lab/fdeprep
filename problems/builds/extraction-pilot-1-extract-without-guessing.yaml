@@ -517,3 +517,17 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I001.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+example:
+  case: a_field_the_letter_does_not_state_stays_empty
+  expect: Keep the policy number HX-301977 because the letter contains it, and return `amount_claimed`
+    as null, since the letter states no amount, without raising.
+traps:
+  - Trusting every value the model returns without checking that the letter contains it, including a date
+    the model worked out itself.
+  - Comparing without lower-casing and collapsing whitespace, so a name in capitals or a value wrapped
+    across lines is wrongly emptied.
+  - Returning the model's reply as the record, so a missing field stays missing and a field the record
+    lacks comes back.
+  - Calling `json.loads` without a guard, so a reply in prose raises instead of giving a record of four
+    nulls.

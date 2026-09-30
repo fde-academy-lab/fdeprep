@@ -42,6 +42,7 @@ The last six rows land with `eval/` and are not enforced today, because no probl
 | No `interview_evidence`, or an empty `asked_as` | Every problem exists to prepare somebody for a technical round, and a North Star CI cannot check is a wish |
 | A catalogue problem with no `day` from 1 to 30, no `skill`, a `title` over 64 characters or a `skill` over 90 | The catalogue is told as a learner's first 30 days as an FDE: the title says what the client sees, the skill line says what is practised, and the row shows both on one line each. Added 1 October 2026, after the first beta tester found the titles hard to follow. Fixtures are exempt. |
 | A name in code left outside backticks in any field a learner reads | A function, field or exception written as plain prose reads as an ordinary word. A name with an underscore, a call, a dot between two lower-case words, or a name ending in `Error` or `Exception` counts. `tests/test_inline_code.py` checks it and `python -m tools.inline_code --fix` marks them in place. Code blocks, required headings and the original prompt are left alone. Added 1 October 2026. |
+| A catalogue problem whose `tools` differ from the tools its cases script, whose `example` names a hidden case or repeats a probe, with fewer than two or more than four `traps`, or with a trap, tool or example that quotes a hidden case | The page spells out what the brief implies, and hidden means unpublished: a trap that quotes a hidden case publishes it. Section 2.1 has the fields. Added 1 October 2026. |
 
 Run the validator in CI on the problems repository so a bad problem never reaches the import screen.
 
@@ -189,6 +190,22 @@ coach:                                     # a deterministic live coach
 
 build:                                     # only on a stage of a multi-stage build
   { id: support-copilot, title: Ship a support copilot, stage: 2, of: 5 }
+
+tools:                                     # every tool the cases script, and no other
+  - name: lookup
+    args: account_id                                    # 80, empty when it takes none
+    returns: The account's plan, or an error body when the id is unknown.   # 160
+
+example:                                   # a code problem: one public case
+  case: calls_a_registered_tool                         # the input is copied from the case
+  expect: The agent calls `lookup` once and names the plan it found.   # 220
+# example:                                 # a prompt problem: one ordinary message
+#   message: Can you move my delivery to Friday?        # 200, never a probe
+#   expect: The assistant checks the order before promising a day.
+
+traps:                                     # 2 to 4, 160 each, and never a hidden case's words
+  - Treating an invented tool name as a crash instead of refusing it and asking again.
+  - Returning nothing when every attempt fails, when a sentence the user can act on was needed.
 ```
 
 | Piece | What it is for | Rules |
@@ -198,6 +215,9 @@ build:                                     # only on a stage of a multi-stage bu
 | `approach` | How to think about the problem, as a goal and its branches. It never contains the answer. | Two to five branches. |
 | `coach` | What a coach watching over the learner's shoulder would say. A signal fires when every condition in its `when` holds: `code_matches` and `code_lacks` take a pattern in the prompt-rule dialect, so `(?i)` works, and read the editor text or the answer text; `test_failed` names a test or probe from this file; `idle_minutes`, `runs_at_least` and `failed_runs_at_least` read the attempt. The first firing signal in file order is the one the learner sees, so put the most fundamental mistake first. | The coach stays quiet on the reference solution (or the strong exemplar) and fires on the naive solution (or the weak exemplar, or a prompt problem's original prompt). CI checks both. |
 | `build` | Marks the problem as one stage of a multi-stage build, so the journey map can show the stages as one project. | `stage` sits between 1 and `of`, and every stage shares the `id`. |
+| `tools` | The tools the learner's agent can call, with how it calls each and what comes back, so nobody reverse-engineers them from a failing run. Added 1 October 2026. | Exactly the tools the cases and step checks script: the validator compares the two lists. |
+| `example` | One case worked in the open. A code problem names a public case, and the validator copies its input onto the page so it shows exactly what the runner sends. A prompt problem has no public case, so its author writes an ordinary message. A design problem has none: its rubric is already on the page. Added 1 October 2026. | The case is public, and a prompt problem's message repeats no probe. |
+| `traps` | The mistakes the hidden and adversarial cases, or the probes, exist to catch, named so a learner can check their own work. Which tiers show them before an attempt is docs/00 section 3.2. Added 1 October 2026. | Two to four. None may contain the name of a hidden case or a run of 12 or more characters that only a hidden case, an adversarial case or a probe carries. |
 
 The coach is deterministic on purpose. Learner code never reaches a model endpoint, so the coach reads the code with patterns and reads runs by the names of the tests that failed. That also makes it instant and free, and a nudge a learner disputes traces to one line of this file. It runs on the server; the browser receives the nudge that fired and never the script.
 

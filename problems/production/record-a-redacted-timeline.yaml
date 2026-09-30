@@ -504,3 +504,20 @@ interview_evidence:
     What goes into an agent's execution trace, and how do you keep customer data and secrets out of it?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: run_events
+    args: ''
+    returns: 'A status, the `run_id` and the runtime''s `events` in emitted order: a `start` for every
+      span, and an `end` with a `status` unless the run was killed.'
+example:
+  case: customer_details_are_masked_in_every_step
+  expect: Mask the email address and both writings of the card number in every detail, give the model
+    only the masked steps, and return JSON that shows [email] and [card] and neither original value.
+traps:
+  - Masking customer data and leaving credentials, so a bearer token or `api_key` quoted in an error message
+    reaches the timeline.
+  - Losing a span that never ended, or reporting the run as succeeded or failed while one of its steps
+    is unfinished.
+  - Cutting a detail to 160 characters before masking it, which can leave half an email address that no
+    pattern recognises.

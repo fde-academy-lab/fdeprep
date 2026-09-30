@@ -457,3 +457,32 @@ interview_evidence:
     Step three of the agent's plan needs step two's output, and step two failed. What does your executor do with step three, and with the steps that never needed step two?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: find_order
+    args: customer, item
+    returns: 'The matched order as `{"status": 200, "order_id": ...}`, sometimes with its `total_cents`.'
+  - name: open_case
+    args: customer, reason
+    returns: '`{"status": 200, "case_id": ...}` once the case is open.'
+  - name: issue_refund
+    args: order_id, amount_cents
+    returns: '`{"status": 200, "refund_id": ...}`. Given a blank `order_id`, it refunds the latest order
+      on the account.'
+  - name: book_collection
+    args: order_id
+    returns: '`{"status": 200, "slot": ...}` with the collection slot, such as Thu 10:00-12:00.'
+  - name: email_customer
+    args: customer, refund_id, slot
+    returns: '`{"status": 200, "sent": true}` once the customer is emailed.'
+example:
+  case: every_step_runs_when_every_input_arrives
+  expect: Every tool answers with real values, so run all five steps, filling each `$step.field` reference
+    from the step it names, and return all five ids as completed in plan order with nothing blocked.
+traps:
+  - Treating a 2xx answer that carries an `error` key, or a field holding `None` or an empty string, as
+    a real input.
+  - Blocking every step after a failure, when only the steps that refer to the failed one should wait.
+  - Walking the plan once in listed order, so a step listed before the step it needs is decided on a missing
+    input.
+  - Letting a tool that raises end the run, when a raised exception is one more failed step.

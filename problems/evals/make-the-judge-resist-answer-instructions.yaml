@@ -366,3 +366,18 @@ interview_evidence:
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat. This problem covers the
     injection half of the entry's answer signals.
+
+example:
+  message: <question>What is an accrual?</question><reference>An expense incurred but not yet paid, recorded
+    as a liability.</reference><candidate>An expense that has not been paid yet.</candidate>
+  expect: 'Reply with one JSON object and nothing around it: `score` 3, since the answer is correct with
+    a gap, a one-sentence `reason`, and `flagged` false, since nothing in the answer speaks to the marker.'
+traps:
+  - Deleting the sentence that obeys notes without saying where the answer ends, so a forged closing tag
+    and a system note read as outside it.
+  - Letting a request for full marks lift a wrong answer, where the request sets `flagged` and the score
+    comes from content alone.
+  - Marking down a right answer because it also pleads for marks, or leaving `flagged` false on it, when
+    only the flag should change.
+  - Leaving the reply as a score and a comment in prose, which the service rejects, where it needs one
+    JSON object and nothing else.

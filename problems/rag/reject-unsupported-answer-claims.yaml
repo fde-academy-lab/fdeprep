@@ -451,3 +451,21 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I007.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: search
+    args: query
+    returns: A status and `chunks`, each with an `id` and its `text`.
+example:
+  case: a_sentence_with_no_citation_is_not_sent
+  expect: 'Drop the sentence about advisers, which cites nothing, and return only the supported one exactly
+    as drafted: Yes, you can overpay online or by phone [m-6].'
+traps:
+  - Accepting a sentence because its cited id exists, without checking that the cited chunk carries every
+    number the sentence states.
+  - Searching the chunk's text for each number as a substring, which finds a small number inside a longer
+    one and passes it.
+  - Returning an empty reply once every sentence is dropped, where the contract's fixed sentence says
+    the answer could not be checked.
+  - Checking a sentence that cites two chunks against one of them, so a number taken from the other looks
+    unsupported.

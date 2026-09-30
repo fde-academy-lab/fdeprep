@@ -566,3 +566,22 @@ interview_evidence:
     Your top five retrieved chunks are the same paragraph copied onto five pages. What do you change, and where in the pipeline?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: search
+    args: query
+    returns: A status and up to ten candidate `chunks`, best first, each with an `id`, a `source`, a `score`
+      and its `text`.
+example:
+  case: keeps_five_distinct_chunks
+  expect: 'No two of the five chunks are near-duplicates, so all five go in as [<id>] <text> blocks, and
+    the answer names both exclusions: fences, gates and hedges, and a building already in poor repair.'
+traps:
+  - Taking the top five results and removing copies afterwards, which leaves one block where five fitted
+    and the answer still outside the prompt.
+  - Comparing a candidate with the last block kept, which lets a copy back in when another result ranked
+    between the two.
+  - Deduplicating by exact text or by `source`, which misses copies that differ by a product name and
+    drops different facts from one page.
+  - Measuring overlap against one text's words, or with a bar below 0.8, which merges two sentences that
+    set different amounts.

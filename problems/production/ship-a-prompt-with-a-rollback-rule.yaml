@@ -367,3 +367,13 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I023.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+traps:
+  - Shipping on the development score, which measures fit to the cases v15 was tuned against, where the
+    holdout predicts Monday.
+  - Dismissing the holdout drop as normal variation and sending connecting flights to v15, when the drop
+    sits in exactly that slice.
+  - Writing a rollback rule with no threshold or window, such as rolling back if escalations go up or
+    customers complain.
+  - Making rollback a redeploy or a meeting, where v14 stays deployed and the switch fires without anyone's
+    sign-off.

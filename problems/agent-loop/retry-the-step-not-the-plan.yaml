@@ -497,3 +497,33 @@ interview_evidence:
     "The first response already caused a side effect. Can you retry safely?" That bank
     labels every entry "Original interview-style practice; actual employer frequency
     unverified", and this inherits the caveat.
+
+tools:
+  - name: run_record
+    args: ''
+    returns: 'The last attempt''s record, `{"status": 200, "steps": {...}}`, each step completed with
+      its `output`, failed with `retryable`, or blocked.'
+  - name: find_order
+    args: customer, item
+    returns: '`{"status": 200, "order_id": ...}` for the matched order.'
+  - name: issue_refund
+    args: order_id, amount_cents
+    returns: '`{"status": 200, "refund_id": ...}`. Each call issues a new refund, so a second call refunds
+      the customer twice.'
+  - name: book_collection
+    args: order_id
+    returns: '`{"status": 200, "slot": ...}` with the collection slot.'
+  - name: email_customer
+    args: customer, refund_id, slot
+    returns: '`{"status": 200, "sent": true}` once the customer is emailed.'
+example:
+  case: a_failed_lookup_runs_again_with_everything_after_it
+  expect: The record marks the lookup failed and retryable and the rest blocked, so call `find_order`
+    once more, run the other three on its output, and return all four as completed with nothing reused.
+traps:
+  - Running the plan from the top, which repeats steps the record marks completed, the refund among them.
+  - Retrying a failure the record marks as not retryable, or running the step that waits on it.
+  - Running a completed step again because the record lost its output; the step that needs that output
+    is blocked instead.
+  - Reading a 200 that carries an `error` key as success on the retried step, or retrying it more than
+    once in one resume.

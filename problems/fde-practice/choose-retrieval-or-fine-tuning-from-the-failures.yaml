@@ -391,3 +391,13 @@ interview_evidence:
     whose follow-up pairs daily policy updates with a consistent response style.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+traps:
+  - Accepting the claims handlers' label of missing knowledge without checking what was in the model's
+    context for each failure.
+  - Proposing training on four years of old letters, which teaches wordings since replaced and cannot
+    say which wording a decision relied on.
+  - Indexing the settlement codes for retrieval, when the right code was already in the context and a
+    lookup table should supply it.
+  - Turning down fine-tuning without naming the result and the threshold on the next review that would
+    justify spending the budget.

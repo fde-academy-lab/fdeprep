@@ -743,3 +743,26 @@ interview_evidence:
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat. Topic from the problem
     catalogue, docs/source-pack/05-problem-catalog.csv A025.
+
+tools:
+  - name: describe
+    args: ''
+    returns: 'The schema: `status` 200 and `tables`, each with its `name`, a `description`, its `columns`
+      and a `deprecated` flag.'
+  - name: run_query
+    args: sql
+    returns: A result with `columns` and `rows`, which can carry extra fields, or an `error` from the
+      database. It can also answer with no result, or raise.
+example:
+  case: a_sentence_whose_figures_are_in_the_result_is_kept
+  expect: Write the rows out under their column names, ask for one sentence, keep it because 1,184,220
+    and 973,410, with separators removed, are numbers in the rows, and return `status` answered.
+traps:
+  - Keeping the model's sentence although one of its numbers, with separators removed, is missing from
+    the rows.
+  - Pasting the whole tool reply into the sentence prompt, so an extra field, or a reply that is no result,
+    reaches the model.
+  - Asking for a sentence after a repair has spent the third call, or letting a refused call escape when
+    the rows are already in hand.
+  - Letting the model word a refusal or a failure, when the answer should carry the database's own error
+    words and cost no call.

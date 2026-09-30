@@ -381,3 +381,29 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I014.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: checkpoint
+    args: ''
+    returns: A status, the `completed_steps` ids and the `plan`, each step with an `id`, the `tool` it
+      runs and whether it is `idempotent`.
+  - name: ledger
+    args: step
+    returns: A status and `observed`, true or false, from the outside record of what happened. It may
+      come back with no `observed` at all.
+  - name: run
+    args: step
+    returns: A status and `ran` set to true once the step has been carried out.
+example:
+  case: resumes_the_steps_after_the_checkpoint
+  expect: Skip s1, which the checkpoint already lists, run s2, and return JSON with s1 under `skipped`
+    and s2 under `ran`, with nothing reconciled or blocked.
+traps:
+  - Trusting the checkpoint alone and running a non-idempotent step it does not list, which repeats an
+    effect the ledger saw happen.
+  - Asking the ledger about idempotent steps, which spends the slowest call there is on a step that is
+    free to repeat.
+  - Reading a ledger reply with no `observed` in it as a yes or a no, which guesses about an effect nobody
+    can confirm.
+  - Asking for the operator note with a prompt that does not list the reconciled and blocked steps, so
+    the note cannot say what happened.

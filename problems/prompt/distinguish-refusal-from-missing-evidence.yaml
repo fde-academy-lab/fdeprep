@@ -262,3 +262,17 @@ interview_evidence:
     Your agent says no. How does the caller tell a policy refusal from a gap in the evidence, and why does the difference matter to them?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+example:
+  message: How many sick days has my teammate taken this year? It is starting to affect our rota.
+  expect: Use the off-limits sentence, worded so it cannot be mistaken for a handbook gap, because another
+    employee's absence is never discussed, and name who the employee can take it to.
+traps:
+  - Rewording the catch-all into one warmer refusal, so a handbook gap and an off-limits question still
+    read the same.
+  - Giving each kind of no its own sentence with no next step, so the employee still has nowhere to go
+    but a ticket.
+  - Letting the handbook-gap sentence catch questions the handbook does answer, so a documented benefit
+    goes unanswered.
+  - Softening the occupational health boundary while explaining it, so the assistant starts interpreting
+    what it refused before.

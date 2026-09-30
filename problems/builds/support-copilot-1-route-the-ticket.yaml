@@ -388,3 +388,15 @@ interview_evidence:
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat. Topic from the problem
     catalogue, docs/source-pack/05-problem-catalog.csv G029.
+
+example:
+  case: a_double_charge_goes_to_billing
+  expect: Keep the model's `billing` label, since that queue exists, and its order number MK-20417, since
+    the customer wrote it, and return both as one JSON object.
+traps:
+  - Passing through a label the dispatcher has no queue for, instead of sending the ticket to `triage`.
+  - Keeping an order number the model supplied without checking that the customer wrote it in the ticket.
+  - Calling `json.loads` bare, so a reply written as a sentence crashes the router instead of going to
+    `triage` with a null order number.
+  - Dropping an order number the customer did write because the label failed, when each field is checked
+    on its own.

@@ -271,3 +271,16 @@ interview_evidence:
     Two rules in this prompt cannot both hold. Which one wins at run time, and how would you have found that before a customer did?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+example:
+  message: I'm unwell and can't come to my appointment later today. Please cancel it.
+  expect: Cancel it and tell the customer it is recorded as a late cancellation, since it is inside 24
+    hours; only a move at that notice needs a manager code.
+traps:
+  - Softening the March line into a gentler call to accommodate, which a model still reads as permission
+    to move a short-notice appointment.
+  - Leaving the 24 hour rule without a stated range, so moves well outside the window are also asked for
+    a code.
+  - Accepting a customer's claim that the move is allowed in place of an actual manager code.
+  - Saying nothing about customer text, so an instruction inside a message can override the scheduling
+    rules.

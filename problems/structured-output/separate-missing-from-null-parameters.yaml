@@ -421,3 +421,21 @@ interview_evidence:
     The model's arguments leave a field out in one call and set it to null in the next. Is that the same request?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: book_redelivery
+    args: date, time_window, safe_place
+    returns: '`{"status": 200, "booking_ref": "<ref>"}` once it books. It needs all three arguments and
+      accepts null for the last two.'
+example:
+  case: a_request_with_no_date_asks_for_one
+  expect: The reply leaves the date out and sets `safe_place` to null, which is an answer, so book nothing
+    and return `action` ask with `ask_about` set to `["date"]`.
+traps:
+  - Reading an absent key and a key holding null the same way, as `extracted.get(name)` does, so a field
+    nobody mentioned passes as an answer.
+  - Treating null as a gap on every field, so a customer who said any time is fine gets asked again.
+  - Booking because the date key is present, even though it holds null and a redelivery always needs a
+    day.
+  - Listing the fields to ask about in the order the reply gave them, where the contract wants the table's
+    order.

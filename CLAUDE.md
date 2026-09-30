@@ -99,7 +99,7 @@ them fixed. Configuration means these paths and nothing else:
 | `.claude/` | Settings, rules, first-party skills and the vendored skills. |
 | `CLAUDE.md` | This file, including this exception. |
 | `.gitignore` | The ignore rules, which keep secrets and learner audio out of the repository. |
-| `scripts/bootstrap.sh`, `scripts/install_pkgs.sh`, `scripts/cloud-setup.sh`, `scripts/sync-skills.sh` | Session and environment setup that neither CI nor the product invokes. |
+| `scripts/bootstrap.sh`, `scripts/install_pkgs.sh`, `scripts/cloud-setup.sh` | Session and environment setup that neither CI nor the product invokes. |
 
 Everything else opens a pull request. Three paths read as configuration and are
 still code: `.github/workflows/` decides what runs on every pull request,

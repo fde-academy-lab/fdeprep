@@ -506,3 +506,20 @@ interview_evidence:
     What goes into a tool definition, and what does the model do with a parameter you left undescribed?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: book_room
+    args: room, start, minutes, note
+    returns: '`{"status": 200, "booking": <ref>}` when it books. For a name it does not know it books
+      the first free room, and with no length, 30 minutes.'
+example:
+  case: books_a_room_the_member_named
+  expect: With the contract in the first prompt, the model calls `book_room` for Cedar at 2026-10-08T14:00
+    for 60 minutes; run it, append the result, and return the answer with reference BK-2291.
+traps:
+  - Leaving out the enum of the three rooms, so the model books a name that is not a room and the API
+    picks one for it.
+  - 'Getting `required` wrong: leaving out a parameter with no default, or listing `note`, which has one.'
+  - Giving parameters types without descriptions, so the model guesses the start time's format and what
+    the note is for.
+  - Publishing the contract with `str()` or a repr, whose single quotes the model does not read as JSON.

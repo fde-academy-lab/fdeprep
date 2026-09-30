@@ -508,3 +508,35 @@ interview_evidence:
     Two clients' jobs run in the same agent process. How do you guarantee one client's data never reaches the other's answer, even when the model asks for it by name?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: jobs
+    args: ''
+    returns: A status and the batch's `jobs`, each with an `id`, the client `tenant` and the `ask`.
+  - name: grants
+    args: ''
+    returns: A status and `grants`, the tools each client may use, keyed by client. It can fail to arrive.
+  - name: rates_garden
+    args: ''
+    returns: A status and a `text` line with the garden client's pallet rates to Leeds and Bristol.
+  - name: rates_homeware
+    args: ''
+    returns: A status and a `text` line with the homeware client's pallet rates to Leeds and Bristol.
+  - name: notes_garden
+    args: ''
+    returns: A status and a `text` note on the liability cap the garden client will accept.
+  - name: notes_homeware
+    args: ''
+    returns: A status and a `text` note on the highest liability cap the homeware client will accept.
+example:
+  case: serves_one_job_from_its_own_clients_tools
+  expect: Serve the garden job in its own worker with only the garden client's tools, call `rates_garden`
+    when the model asks, and return JSON whose j1 answer gives the 38 pounds rate.
+traps:
+  - Creating one scratchpad for the whole batch, so a later job's prompt still holds an earlier client's
+    lookup.
+  - Calling whatever tool the model names, which hands one client's notes to another client's worker.
+  - Serving a job when grants cannot be read or has no entry for its client, where that job costs zero
+    calls and is not served.
+  - Counting model calls for the whole batch, so one client's stuck lookup spends the calls the next client's
+    job was owed.

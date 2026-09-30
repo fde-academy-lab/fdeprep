@@ -387,3 +387,20 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I025.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: run_log
+    args: week
+    returns: A status, the `week` and one `attempts` row per attempt, each with `ticket`, `attempt`, `outcome`
+      and `cost_usd`.
+example:
+  case: a_retried_ticket_is_one_ticket_with_two_costs
+  expect: Add every attempt's cost, the timeout included, to get 0.15, count three resolved tickets, and
+    return JSON with a cost per resolved ticket of 0.05.
+traps:
+  - Adding up only the resolved attempts, which leaves escalations and timeouts out of a spend they were
+    part of.
+  - Dividing by every ticket or attempt, which counts escalated tickets the client never pays for.
+  - Counting resolved rows, so a ticket resolved on two attempts counts as two resolutions.
+  - Dividing by zero resolved tickets, which raises `ZeroDivisionError`, or reporting 0 where the figure
+    should be null.

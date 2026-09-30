@@ -623,3 +623,23 @@ interview_evidence:
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat. Topic from the problem
     catalogue, docs/source-pack/05-problem-catalog.csv A060.
+
+tools:
+  - name: describe
+    args: ''
+    returns: 'The schema: `status` 200 and `tables`, each with its `name`, a `description`, its `columns`
+      and a `deprecated` flag.'
+  - name: run_query
+    args: sql
+    returns: '`status` 200 with `columns`, the column names, and `rows`, a list of rows. It runs whatever
+      it is handed, on a connection that can write.'
+example:
+  case: a_delete_never_reaches_the_database
+  expect: Refuse the model's DELETE because it writes, never call `run_query`, and return `status` refused
+    with `sql` null and a one-sentence `reason`.
+traps:
+  - Checking only the first word, so a second statement after a semicolon rides in behind a harmless SELECT.
+  - Leaving INTO off the list of writing words, so a SELECT that creates a table gets through.
+  - Reading only the table after FROM, so a JOIN to a table stage 1 never picked reaches the database.
+  - Checking the query's tables against the schema instead of stage 1's pick, so a table the schema lists
+    but stage 1 dropped can still be read.

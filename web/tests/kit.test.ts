@@ -106,6 +106,12 @@ coach:
     - id: hidden-failed
       when: { test_failed: h1 }
       say: The hidden case gives the model no reason to stop. What does your loop do then?
+example:
+  case: p1
+  expect: The agent returns the model's final answer as a non-empty string.
+traps:
+  - Letting the loop go round again after the model has already answered.
+  - Returning an empty string when the model never gives a final answer.
 `;
 
 const rules = (source: string, options?: { requireKit?: boolean }) =>

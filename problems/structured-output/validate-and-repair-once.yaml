@@ -543,3 +543,17 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I005.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+example:
+  case: a_reply_that_is_not_json_gets_one_repair
+  expect: The first reply is prose that does not parse, so send one repair prompt naming that problem,
+    validate the second reply, and return `status` ok with its record, `amount_pence` 1850, in two model
+    calls.
+traps:
+  - Accepting a reply because it parses, without checking the exact keys, the allowed decisions and each
+    value's type.
+  - Converting an amount sent as text into a number yourself, when a wrong type goes back to the model
+    to fix.
+  - Letting `True` pass as a whole number, since Python counts a `bool` as an `int`.
+  - Skipping validation on the repair, or asking a third time, when a second invalid reply has to end
+    in `needs_review` with its problems.

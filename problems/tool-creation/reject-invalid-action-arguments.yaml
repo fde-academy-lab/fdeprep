@@ -438,3 +438,21 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I013.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: refund
+    args: amount_cents, order_id
+    returns: '`{"status": 200, "refunded": true}`. It spends whatever amount it is given, so an amount
+      of `True` refunds one penny.'
+example:
+  case: refuses_a_payload_with_a_field_missing
+  expect: 'The payload has no `order_id`, so never call `refund`: append a refusal that names the missing
+    field, and return the model''s next answer, which asks for the order id.'
+traps:
+  - Checking the amount with `isinstance(value, int)`, which lets `True` through because `bool` is a subclass
+    of `int`.
+  - Checking only the keys the tool needs, so a key it does not take still reaches the call.
+  - Refusing an amount above the ceiling in words that never state the limit, so the model cannot tell
+    what it broke.
+  - Letting a model that never sends a valid payload run the loop into the budget, where the loop should
+    return its own answer.

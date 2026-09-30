@@ -357,3 +357,13 @@ interview_evidence:
     whose follow-up asks what the client loses with the recommendation. That bank
     labels every entry "Original interview-style practice; actual employer frequency
     unverified", and this inherits the caveat.
+
+traps:
+  - Putting one model on every step, when two of the three gaps in the eval come to one or two packs out
+    of 600.
+  - Resting the case on cost alone and presenting the recommendation as free, without saying what the
+    client gives up if the extraction gap is real.
+  - Waving away the debugging worry instead of answering it with mechanism, such as the step and model
+    id on every log line and a switch to the large model.
+  - Treating the quota as a request to file later and naming nobody who owns the model configuration,
+    the spend and the quota.

@@ -162,6 +162,9 @@ def learner_fields(problem: dict) -> Iterator[tuple[Path, str]]:
         paths += [("approach", "branches", i, "leaves", j)
                   for j in each(("approach", "branches", i, "leaves"))]
     paths += [("coach", "signals", i, "say") for i in each(("coach", "signals"))]
+    paths += [("example", "expect"), ("example", "message")]
+    paths += [("traps", i) for i in each(("traps",))]
+    paths += [("tools", i, "returns") for i in each(("tools",))]
     for path in paths:
         value = at(path)
         if isinstance(value, str):

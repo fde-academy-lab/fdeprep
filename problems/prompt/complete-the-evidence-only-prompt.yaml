@@ -261,3 +261,15 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I001.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+example:
+  message: Do you price match if I find the same toaster cheaper somewhere else?
+  expect: With no article on price matching in context, say plainly that the help centre does not cover
+    it and offer a next step, such as raising it with support, without inventing a policy.
+traps:
+  - Filling the no-evidence slot with a bare prohibition such as do not answer, which leaves the model
+    no permitted move, so it invents one.
+  - Writing an output shape that never says where the article id goes, so a supported answer names no
+    source.
+  - Saying nothing about text inside an article, so an instruction written into one gets obeyed.
+  - Leaving a double-brace placeholder anywhere in the prompt, where a customer can end up reading it.

@@ -557,3 +557,23 @@ interview_evidence:
     Two documents give different bank details for the same supplier. What does your extraction return, and who decides?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: documents
+    args: supplier
+    returns: 'The supplier''s paperwork as `{"status": 200, "documents": [...]}`, each document holding
+      `id`, `kind`, `received` and `text`.'
+example:
+  case: a_field_no_document_states_stays_empty
+  expect: The form and the invoice both give sort code 401276 and account 13370452, and neither states
+    a VAT number, so return that record with `vat_number` null, an empty `conflicts` list and `ready_to_pay`
+    true.
+traps:
+  - Letting the newest document decide a field the documents disagree on; that field stays null and the
+    conflict lists every value with the ids that gave it.
+  - Comparing raw strings, so a sort code written with dashes, or a VAT number with spaces and small letters,
+    is reported as a conflict.
+  - Looking for conflicts in the account number alone, when any of the three fields can disagree and each
+    one needs its own entry.
+  - Setting `ready_to_pay` from an empty conflicts list alone, so a supplier whose file holds no documents
+    at all reads as ready.

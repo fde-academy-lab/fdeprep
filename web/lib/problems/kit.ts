@@ -68,6 +68,13 @@ export const KIT_LIMITS = {
   hintsMax: 5,
   hint: 320,
   buildTitle: 80,
+  toolArgs: 80,
+  toolReturns: 160,
+  exampleMessage: 200,
+  exampleExpect: 220,
+  trapsMin: 2,
+  trapsMax: 4,
+  trap: 160,
 } as const;
 
 export interface Scenario {
@@ -145,12 +152,34 @@ export interface Build {
   of: number;
 }
 
+/** A tool the learner's agent can call, as the page lists it. */
+export interface KitTool {
+  name: string;
+  /** How the agent calls it, such as "order_id, amount_cents". Empty when it takes none. */
+  args: string;
+  returns: string;
+}
+
+/**
+ * One case worked in the open. A code problem names a public case and the
+ * input is copied from it at validation, so the page shows exactly what the
+ * runner sends. A prompt problem has no public case, so its author writes an
+ * ordinary message, which must not repeat a probe.
+ */
+export type KitExample =
+  | { kind: "case"; case: string; input: Record<string, unknown>; expect: string }
+  | { kind: "message"; message: string; expect: string };
+
 export interface Kit {
   scenario?: Scenario;
   diagram?: Diagram;
   approach?: Approach;
   coach?: Coach;
   build?: Build;
+  tools?: KitTool[];
+  example?: KitExample;
+  /** The mistakes the hidden cases catch, in words that give no case away. */
+  traps?: string[];
 }
 
 type Add = (rule: KitRule, message: string, line: number) => void;
@@ -158,7 +187,8 @@ type LineOf = (path: Array<string | number>) => number;
 
 export type KitRule =
   | "kit_missing" | "kit_scenario" | "kit_diagram" | "kit_approach" | "kit_coach"
-  | "kit_build" | "hint_count" | "missing_stub" | "stub_signature";
+  | "kit_build" | "hint_count" | "missing_stub" | "stub_signature"
+  | "kit_tools" | "kit_example" | "kit_traps";
 
 export interface KitContext {
   artefact: string;
@@ -166,6 +196,20 @@ export interface KitContext {
   /** Test and probe names a coach signal may key off. */
   runNames: Set<string>;
   hints: unknown[];
+  /** Tools the public cases and the step checks script, which the page has to list. */
+  requiredTools: Set<string>;
+  /**
+   * The required tools, plus any a hidden case scripts that the brief,
+   * contract or starter code already names. A tool only the hidden battery
+   * uses stays off the page, since listing it says what the hidden cases do.
+   */
+  allowedTools: Set<string>;
+  /** Each public case's input, by name, for a worked example to copy. */
+  publicInputs: Map<string, Record<string, unknown>>;
+  /** Probe messages, which a prompt problem's example must not repeat. */
+  probeMessages: string[];
+  /** Text only a hidden case, an adversarial case or a probe carries. */
+  secrets: string[];
   add: Add;
   lineOf: LineOf;
 }
@@ -227,7 +271,155 @@ export function validateKit(raw: Record<string, unknown>, ctx: KitContext): Kit 
     kit.coach = validateCoach(raw["coach"], ctx.runNames, add, lineOf);
   }
   if (raw["build"] !== undefined) kit.build = validateBuild(raw["build"], add, lineOf);
+  const tools = validateToolList(raw["tools"], ctx);
+  if (tools) kit.tools = tools;
+  const example = validateExample(raw["example"], ctx);
+  if (example) kit.example = example;
+  const traps = validateTraps(raw["traps"], ctx);
+  if (traps) kit.traps = traps;
   return kit;
+}
+
+/** The first secret a learner-facing string gives away, if any. */
+function leak(value: string, secrets: readonly string[]): string | null {
+  const low = value.toLowerCase();
+  return secrets.find((secret) => low.includes(secret.toLowerCase())) ?? null;
+}
+
+/**
+ * Rule: a problem lists every tool its public cases and step checks script,
+ * with how the agent calls it and what it returns, and no tool that only the
+ * hidden battery uses unless the brief already names it. The list is checked
+ * against the cases, so a tool a learner can run into on Run is never missing.
+ */
+function validateToolList(value: unknown, ctx: KitContext): KitTool[] | undefined {
+  const { add, lineOf } = ctx;
+  if (value === undefined || value === null) {
+    if (ctx.requireKit && ctx.requiredTools.size) {
+      add("kit_tools", `tools is missing. The public cases script ${[...ctx.requiredTools].sort().join(", ")}, ` +
+          "and the page lists each with its arguments and what it returns", 1);
+    }
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    add("kit_tools", "tools is not a list", lineOf(["tools"]));
+    return undefined;
+  }
+  const tools: KitTool[] = [];
+  value.forEach((entry, index) => {
+    const line = lineOf(["tools", index]);
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      add("kit_tools", `tools[${index}] is not a mapping`, line);
+      return;
+    }
+    const tool = entry as Record<string, unknown>;
+    onlyKeys(tool, ["name", "args", "returns"], `tools[${index}]`, "kit_tools", add, line);
+    const name = text(tool["name"]);
+    const args = typeof tool["args"] === "string" ? tool["args"].trim() : "";
+    if (args.length > KIT_LIMITS.toolArgs) {
+      add("kit_tools", `tools[${index}].args runs to ${args.length} characters; keep it under ` +
+          `${KIT_LIMITS.toolArgs}`, line);
+    }
+    const returns = within(tool["returns"], KIT_LIMITS.toolReturns, `tools[${index}].returns`,
+                           "kit_tools", add, line);
+    const secret = leak(`${args} ${returns}`, ctx.secrets);
+    if (secret) add("kit_tools", `tools[${index}] quotes a hidden case: "${secret.slice(0, 60)}"`, line);
+    tools.push({ name, args, returns });
+  });
+  const listed = new Set(tools.map((t) => t.name));
+  const missing = [...ctx.requiredTools].filter((name) => !listed.has(name)).sort();
+  const extra = [...listed].filter((name) => !ctx.allowedTools.has(name)).sort();
+  if (missing.length || extra.length || listed.size !== tools.length) {
+    add("kit_tools",
+        `tools has to list every tool the public cases and step checks script, ` +
+        `${[...ctx.requiredTools].sort().join(", ") || "none"}.` +
+        (missing.length ? ` Missing: ${missing.join(", ")}.` : "") +
+        (extra.length ? ` Only hidden cases use, or no case scripts: ${extra.join(", ")}.` : "") +
+        (listed.size !== tools.length ? " A tool is listed twice." : ""), lineOf(["tools"]));
+  }
+  return tools;
+}
+
+/**
+ * Rule: a code problem works one public case in the open, and a prompt
+ * problem one ordinary message. A hidden case or a probe never appears.
+ */
+function validateExample(value: unknown, ctx: KitContext): KitExample | undefined {
+  const { add, lineOf } = ctx;
+  const line = lineOf(["example"]);
+  if (value === undefined || value === null) {
+    if (ctx.requireKit && (ctx.artefact === "code" || ctx.artefact === "prompt")) {
+      add("kit_example", ctx.artefact === "code"
+        ? "example is missing. Name one public case and say what the agent must do with it"
+        : "example is missing. Write one ordinary message and what the repaired prompt should do", 1);
+    }
+    return undefined;
+  }
+  if (typeof value !== "object" || Array.isArray(value)) {
+    add("kit_example", "example is not a mapping", line);
+    return undefined;
+  }
+  const example = value as Record<string, unknown>;
+  const expect = within(example["expect"], KIT_LIMITS.exampleExpect, "example.expect",
+                        "kit_example", add, line);
+  if (ctx.artefact === "code") {
+    onlyKeys(example, ["case", "expect"], "example", "kit_example", add, line);
+    const name = text(example["case"]);
+    const input = ctx.publicInputs.get(name);
+    if (!input) {
+      add("kit_example", `example.case "${name}" is not a public case. Public cases: ` +
+          `${[...ctx.publicInputs.keys()].join(", ")}`, line);
+      return undefined;
+    }
+    const secret = leak(expect, ctx.secrets);
+    if (secret) add("kit_example", `example.expect quotes a hidden case: "${secret.slice(0, 60)}"`, line);
+    return { kind: "case", case: name, input, expect };
+  }
+  if (ctx.artefact === "prompt") {
+    onlyKeys(example, ["message", "expect"], "example", "kit_example", add, line);
+    const message = within(example["message"], KIT_LIMITS.exampleMessage, "example.message",
+                           "kit_example", add, line);
+    const low = message.toLowerCase();
+    const repeated = ctx.probeMessages.find((probe) => {
+      const p = probe.trim().toLowerCase();
+      return p && (low.includes(p) || p.includes(low));
+    });
+    if (repeated) add("kit_example", "example.message repeats a probe, which is hidden", line);
+    return { kind: "message", message, expect };
+  }
+  add("kit_example", "a design problem has no example: its rubric is on the page", line);
+  return undefined;
+}
+
+/**
+ * Rule: every catalogue problem names two to four traps, the mistakes its
+ * hidden and adversarial cases or probes exist to catch, without quoting any
+ * of them. Which tier shows them before an attempt is the policy module's call.
+ */
+function validateTraps(value: unknown, ctx: KitContext): string[] | undefined {
+  const { add, lineOf } = ctx;
+  if (value === undefined || value === null) {
+    if (ctx.requireKit) {
+      add("kit_traps", `traps is missing. Name ${KIT_LIMITS.trapsMin} to ${KIT_LIMITS.trapsMax} ` +
+          "mistakes the hidden cases catch, in words that give no case away", 1);
+    }
+    return undefined;
+  }
+  if (!Array.isArray(value)) {
+    add("kit_traps", "traps is not a list", lineOf(["traps"]));
+    return undefined;
+  }
+  if (value.length < KIT_LIMITS.trapsMin || value.length > KIT_LIMITS.trapsMax) {
+    add("kit_traps", `found ${value.length} traps; a problem names ${KIT_LIMITS.trapsMin} to ` +
+        `${KIT_LIMITS.trapsMax}`, lineOf(["traps"]));
+  }
+  return value.map((trap, index) => {
+    const line = lineOf(["traps", index]);
+    const s = within(trap, KIT_LIMITS.trap, `traps[${index}]`, "kit_traps", add, line);
+    const secret = leak(s, ctx.secrets);
+    if (secret) add("kit_traps", `traps[${index}] quotes a hidden case: "${secret.slice(0, 60)}"`, line);
+    return s;
+  });
 }
 
 function text(value: unknown): string {

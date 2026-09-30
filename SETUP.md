@@ -25,7 +25,6 @@ fdeprep/
     bootstrap.sh             creates .claude/ and .gitignore inside a session
     cloud-setup.sh           paste into the cloud environment dialog
     install_pkgs.sh          the hook the settings file points at
-    sync-skills.sh           optional local skill vendoring
   docs/
     00-PRD.md .. 09-SOURCE-PACK-RECONCILIATION.md
     source-pack/             the earlier pack, kept as reference material
@@ -179,16 +178,11 @@ Run `/setup-matt-pocock-skills` once per repository before using the others.
 
 ### The route this pack recommends
 
-Vendor them. Run `scripts/sync-skills.sh` on your own machine, read what it fetched, delete what you will not use, and commit the rest to `.claude/skills/vendor/`.
+Vendor them. `bash scripts/bootstrap.sh --with-skills` copies the skills named in its allowlists, from the commits pinned beside them, into `.claude/skills/vendor/`, and writes a `.source` file saying where each came from. Commit the result.
 
-Three reasons. Committed skills are present in every cloud session with no network dependency. They are pinned, so nothing changes under you mid-build. And you will have read them, which matters, because a skill is instructions an agent follows and some of them run shell commands.
+Three reasons. Committed skills are present in every cloud session with no network dependency. They are pinned, so nothing changes under you mid-build. And somebody read them before they were listed, which matters, because a skill is instructions an agent follows and some of them run shell commands.
 
-Fill in the two SHAs in the script before running it:
-
-```bash
-git ls-remote https://github.com/mattpocock/skills main
-git ls-remote https://github.com/anthropics/skills main
-```
+To add a skill, read its SKILL.md, add its path to the right list in `scripts/bootstrap.sh`, and say in the commit what it does and whether it runs commands or fetches from the network. To move a pin, read the upstream diff first; `git ls-remote https://github.com/<owner>/<repo> main` gives the newest commit.
 
 Do not do this from the setup script. The setup script runs before the repository is cloned, and its output is snapshotted rather than versioned, so skills installed there are invisible to code review.
 

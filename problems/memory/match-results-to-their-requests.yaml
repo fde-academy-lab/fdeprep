@@ -431,3 +431,20 @@ interview_evidence:
     You fire three tool calls at once and three results come back. How does each result find the request it belongs to?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: batch
+    args: ids
+    returns: A status and `results` in the order the carriers replied, each with a `ref` and a `state`.
+      An id it could not reach is left out.
+example:
+  case: reports_a_status_the_carrier_returned
+  expect: Call `batch` for 9, 12 and 15, write one line per id in the order asked, such as `9=in_transit`,
+    and return the model's answer that order 9 is in transit.
+traps:
+  - Pairing ids with results by position, with `zip` or a counter, which gives an order the state of whichever
+    carrier replied first.
+  - Writing no line for an id the response left out, or letting later states shift up into its place,
+    where that id gets `unknown`.
+  - Writing the lines in the order the results arrived, which the model reads as the order the customer
+    listed the orders.
