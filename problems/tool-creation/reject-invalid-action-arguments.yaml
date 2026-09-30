@@ -129,10 +129,25 @@ step_checks:
         - { type: calls_tool, name: refund }
         - { type: tool_calls_at_most, value: 1 }
         - { type: returns_matches, value: "(?i)refunded 3100 pence to order C-58" }
+  # s4 carries its own case: a payload whose keys and types are right and
+  # whose amount is below the range, then a clean one. The step holds when
+  # refund ran once, with the clean payload, so a loop that writes the
+  # refusal and calls refund anyway reads red, and so does one that never
+  # calls refund.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "Refund twenty two pounds fifty on order F-208. The shoes came back unworn." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: 'Action: refund({"amount_cents": -2250, "order_id": "F-208"})' }
+        - { match: { call_index: 2 }, reply: 'Action: refund({"amount_cents": 2250, "order_id": "F-208"})' }
+        - { match: "*", reply: "Final Answer: I refunded 2250 pence to order F-208." }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: calls_tool, name: refund }
+        - { type: calls_tool_with, name: refund, args: { amount_cents: 2250, order_id: "F-208" } }
+        - { type: tool_calls_at_most, value: 1 }
 
 hints:
   - A payload can be wrong in four ways. List them before you write a check,

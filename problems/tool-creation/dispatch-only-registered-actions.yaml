@@ -12,8 +12,8 @@ time_limit_s: 10
 allowed_imports: [json, re]
 
 brief_md: |
-  An internal operations agent has three tools. Twice this week it has asked
-  for a fourth that does not exist, once called `delete_account` and once
+  An internal operations agent has two tools. Twice this week it has asked
+  for a third that does not exist, once called `delete_account` and once
   called `refund_order_v2`, both of which read like tools it used to have in a
   prompt somebody edited.
 
@@ -102,10 +102,26 @@ step_checks:
       assertions:
         - { type: calls_tool, name: lookup }
         - { type: no_exception }
+  # s4 carries its own case: the model asks for merge_accounts, which the
+  # tools dict lacks, and changes its mind only once a refusal names it. The
+  # pattern skips the name where "(" follows it, which is the Action line the
+  # model wrote and a loop that echoes its output carries anyway, so the name
+  # has to come from the refusal. A loop that refuses in silence keeps
+  # getting merge_accounts until the budget runs out.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "Move the open invoices from account 612 to account 613. They are the same company." }
+      llm_script:
+        - { match: { regex: '\bmerge_accounts\b(?!\()' },
+            reply: "Final Answer: I cannot merge accounts from here. The accounts team can move the invoices from 612 to 613." }
+        - { match: "*", reply: "Action: merge_accounts(source=612, target=613)" }
+      tools:
+        lookup: { returns: { status: 200, plan: "business" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
+        - { type: returns_matches, value: "(?i)cannot merge accounts from here" }
 
 hints:
   - The tools dict already knows every legal name. Ask it before you index it.
@@ -121,15 +137,15 @@ hints:
 scenario:
   who: The operations team behind an internal account agent
   situation: >-
-    The agent has three tools. This week it asked twice for one it does not
+    The agent has two tools. This week it asked twice for one it does not
     have, delete_account and refund_order_v2, and the loop crashed both times.
   stakes: >-
     The on-call engineer gets a KeyError stack trace. The user gets silence:
     no answer, and no refusal either.
   metrics:
     - { label: Crashes this week, value: "2" }
-    - { label: Tools it has, value: "3" }
-    - { label: Tools it asked for, value: "5" }
+    - { label: Tools it has, value: "2" }
+    - { label: Tools it asked for, value: "4" }
 
 diagram:
   title: Where an invented tool name becomes a crash

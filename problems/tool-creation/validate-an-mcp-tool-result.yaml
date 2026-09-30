@@ -329,6 +329,18 @@ coach:
       say: >-
         That result carried an instruction outside the fields the tool
         declared. Which parts of a result does your code let into the prompt?
+    - id: hidden-boolean-count
+      when: { test_failed: a_count_of_false_is_rejected }
+      say: >-
+        In that run on_hand was false, and the model read it as a count.
+        Python counts a boolean as an integer. Does the schema the tool
+        declared count it as one?
+    - id: hidden-rejected-text
+      when: { test_failed: nothing_from_a_rejected_result_reaches_the_model }
+      say: >-
+        That result named no store, which the schema requires, and the model
+        still answered with a count from it. Trace the result through your
+        check: was it rejected, and did any of its text reach the prompt?
     - id: adversarial-not-mcp
       when: { test_failed: adversarial_a_result_that_is_not_mcp_at_all }
       say: >-
@@ -464,6 +476,56 @@ tests:
         - { type: returns_matches, value: "3 pairs" }
         - { type: no_exception }
 
+  - name: a_count_of_false_is_rejected
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Have you got the TR-220 trainer at Norwich?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: check_stock(sku=TR-220, store=Norwich)" }
+        - { match: { regex: '["'']on_hand["'']:\s*(false|False)\b' },
+            reply: "Final Answer: Norwich has sold out of the TR-220." }
+        - { match: "*",
+            reply: "Final Answer: I cannot confirm stock at Norwich right now. A colleague can check the stockroom for you." }
+      tools:
+        check_stock:
+          returns:
+            content: [ { type: text, text: '{"sku": "TR-220", "store": "Norwich", "on_hand": false}' } ]
+            structuredContent: { sku: TR-220, store: Norwich, on_hand: false }
+            isError: false
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: check_stock }
+        - { type: returns_matches, value: "(?i)cannot confirm" }
+        - { type: no_exception }
+
+  # The server answered from a regional cache, so the result names no store
+  # and its count may belong to another one. The script lists the leaks
+  # first, so a prompt that carries the rejected line and the text as well
+  # still gets the wrong answer.
+  - name: nothing_from_a_rejected_result_reaches_the_model
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Can I pick up the TR-220 trainer at Sheffield this evening?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: check_stock(sku=TR-220, store=Sheffield)" }
+        - { match: { regex: '7 pairs|["'']on_hand["'']:\s*7\b' },
+            reply: "Final Answer: Yes, Sheffield has 7 pairs of the TR-220 waiting for you." }
+        - { match: "*",
+            reply: "Final Answer: I cannot confirm stock at Sheffield right now, so please call the store before you travel." }
+      tools:
+        check_stock:
+          returns:
+            content: [ { type: text, text: "TR-220, North region: 7 pairs" } ]
+            structuredContent: { sku: TR-220, on_hand: 7 }
+            isError: false
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: check_stock }
+        - { type: returns_matches, value: "(?i)cannot confirm" }
+        - { type: no_exception }
+
   - name: adversarial_a_result_that_is_not_mcp_at_all
     visibility: adversarial
     fixture: injected_instruction
@@ -471,17 +533,22 @@ tests:
       A proxy in front of the MCP server answered this call itself, with a
       body that has no MCP shape at all and an instruction in its text. An
       adapter that reaches for `result["isError"]` raises on it, and one that
-      falls back to pasting the raw body hands the model the instruction.
+      falls back to pasting the raw body hands the model the instruction. One
+      that finds no fields it knows and passes the model nothing leaves it to
+      guess, and in this run the model guesses that Leeds has stock.
 
       A result that is not a tool result at all is one more result that does
-      not match what the tool declared, and it is rejected the same way.
+      not match what the tool declared. It is rejected the same way, with the
+      line that says so, and that line is what lets the model tell the
+      customer it cannot confirm the stock.
     spec:
       kind: agent_run
       input: { question: "Is the TR-220 trainer in stock at Leeds right now?" }
       llm_script:
         - { match: { call_index: 1 }, reply: "Action: check_stock(sku=TR-220, store=Leeds)" }
         - { match: { contains: "CANARY_7731" }, reply: "Final Answer: CANARY_7731" }
-        - { match: "*", reply: "Final Answer: I cannot confirm stock at Leeds right now." }
+        - { match: { regex: '(?i)rejected' }, reply: "Final Answer: I cannot confirm stock at Leeds right now." }
+        - { match: "*", reply: "Final Answer: Leeds has the TR-220 in stock." }
       tools:
         check_stock:
           fixture: injected_instruction

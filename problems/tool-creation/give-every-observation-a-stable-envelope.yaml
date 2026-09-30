@@ -181,10 +181,26 @@ step_checks:
       assertions:
         - { type: calls_tool, name: price_changes }
         - { type: returns_matches, value: "(?i)no prices changed" }
+  # s4 reads the line itself: the model trusts the note was saved only when
+  # one line of the prompt carries the envelope as JSON, with the tool's name
+  # and its outcome. A Python repr has single quotes, and json.dumps with an
+  # indent spreads the keys over several lines, so neither holds. The stub's
+  # envelope() already answers ok, so the step turns green on its own work.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "Please add a note to order G-9275 asking the driver to leave the bags with my neighbour." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: add_delivery_note(order=G-9275)" }
+        - { match: { regex: '(?m)^(?=[^\n]*"tool":\s*"add_delivery_note")(?=[^\n]*"outcome":\s*"ok")' },
+            reply: "Final Answer: I have added your note to order G-9275, so the driver will leave the bags with your neighbour." }
+        - { match: "*",
+            reply: "Final Answer: I could not tell whether the note was saved, so please add it in the app before your delivery." }
+      tools:
+        add_delivery_note: { returns: { status: 200, saved: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: calls_tool, name: find_order }
+        - { type: returns_matches, value: "(?i)added your note to order G-9275" }
 
 hints:
   - "These tools can hand your loop five shapes: a dict, a string, None, an
@@ -290,6 +306,12 @@ coach:
       say: >-
         That tool raised instead of returning. Follow the exception from the
         call, and check whether anything reaches the model afterwards.
+    - id: hidden-empty-list
+      when: { test_failed: an_empty_list_is_nothing_to_report }
+      say: >-
+        That tool returned an empty list, and the model told the customer the
+        check had failed. Which outcome did your envelope give it? The
+        contract counts an empty list as empty, the same as None.
     - id: adversarial-detail
       when: { test_failed: adversarial_the_error_detail_carries_a_password }
       say: >-
@@ -385,6 +407,25 @@ tests:
         - { type: no_exception }
         - { type: handles_error }
         - { type: returns_matches, value: "(?i)not answering" }
+
+  - name: an_empty_list_is_nothing_to_report
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Is anything in order G-4127 out of stock?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: out_of_stock(order=G-4127)" }
+        - { match: { regex: '["'']outcome["'']:\s*["'']empty["'']' },
+            reply: "Final Answer: Everything in order G-4127 is in stock, so nothing will be swapped or left out." }
+        - { match: "*",
+            reply: "Final Answer: The stock check failed, so I cannot tell you whether anything in order G-4127 is missing." }
+      tools:
+        out_of_stock: { returns: [] }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: out_of_stock }
+        - { type: returns_matches, value: "(?i)everything in order G-4127 is in stock" }
+        - { type: no_exception }
 
   - name: adversarial_the_error_detail_carries_a_password
     visibility: adversarial

@@ -44,9 +44,9 @@ contract_md: |
   Complete `BOOK_ROOM` in the stub as the contract the model reads:
   `{"name", "description", "input_schema"}`, where `input_schema` is JSON
   Schema. The model reads nothing else, so the schema has to say everything
-  the declaration says: each parameter's JSON type, the values `room` can
-  take, and which parameters have no default. Put the contract in the first
-  prompt as JSON, using `json.dumps`.
+  the declaration says: each parameter's JSON type and a description of what
+  it holds, the values `room` can take, and which parameters have no default.
+  Put the contract in the first prompt as JSON, using `json.dumps`.
 
   `llm(prompt)` replies with `Action: book_room({...})`, where the arguments
   are a JSON object, or with `Final Answer: <text>`. Return the final answer.
@@ -295,6 +295,24 @@ coach:
       say: >-
         That member gave no length and the model booked anyway. How does a
         contract tell the model that a parameter cannot be left out?
+    - id: hidden-no-descriptions
+      when: { test_failed: a_described_contract_gets_the_arguments_right }
+      say: >-
+        The model guessed in that run: the format of the start time, and where
+        the line for the door screen goes. A type says what kind of value a
+        parameter takes. What tells the model what the value means?
+    - id: hidden-note-required
+      when: { test_failed: a_booking_with_no_note_goes_ahead }
+      say: >-
+        That member wanted no note, and the model would not book without one.
+        note has a default in the declaration. What does your contract say
+        about it?
+    - id: hidden-not-json
+      when: { test_failed: the_contract_reaches_the_model_as_json }
+      say: >-
+        The model did not recognise your contract in that run and guessed the
+        argument names. A dict printed as it is comes out in Python's notation,
+        with single quotes. What does json.dumps give the model instead?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -386,6 +404,71 @@ tests:
         - { type: does_not_call_tool, name: book_room }
         - { type: returns_matches, value: "(?i)how long" }
         - { type: no_exception }
+
+  # The member gives the time in words and a line for the door screen. The
+  # model sends the start in the stated format, and puts the line in note,
+  # only when every parameter carries a description.
+  - name: a_described_contract_gets_the_arguments_right
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Book Oak on Monday 12 October at half past two for an hour and a half, and put Supplier call on the door screen" }
+      llm_script:
+        - { match: { contains: "BK-4729" },
+            reply: "Final Answer: Oak is booked for Monday 12 October from 14:30. Your reference is BK-4729." }
+        - { match: { regex: '(?=[\s\S]*["'']room["'']:\s*\{[^{}]*["'']description["'']:\s*["''][^"''])(?=[\s\S]*["'']start["'']:\s*\{[^{}]*["'']description["'']:\s*["''][^"''])(?=[\s\S]*["'']minutes["'']:\s*\{[^{}]*["'']description["'']:\s*["''][^"''])(?=[\s\S]*["'']note["'']:\s*\{[^{}]*["'']description["'']:\s*["''][^"''])' },
+            reply: 'Action: book_room({"room": "Oak", "start": "2026-10-12T14:30", "minutes": 90, "note": "Supplier call"})' }
+        - { match: "*",
+            reply: 'Action: book_room({"room": "Oak", "start": "Monday 12 October, half past two", "minutes": 90})' }
+      tools:
+        book_room: { returns: { status: 200, booking: "BK-4729" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: book_room,
+            args: { start: "2026-10-12T14:30", minutes: 90, note: "Supplier call" } }
+        - { type: returns_matches, value: "BK-4729" }
+
+  - name: a_booking_with_no_note_goes_ahead
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Book Cedar on Thursday 15 October at 16:00 for 30 minutes" }
+      llm_script:
+        - { match: { contains: "BK-4730" },
+            reply: "Final Answer: Cedar is booked for Thursday 15 October, 16:00 to 16:30. Your reference is BK-4730." }
+        - { match: { regex: '["'']required["'']:\s*\[[^\]]*["'']note["'']' },
+            reply: "Final Answer: What should the screen by the door say? I need a note before I can book Cedar." }
+        - { match: "*",
+            reply: 'Action: book_room({"room": "Cedar", "start": "2026-10-15T16:00", "minutes": 30})' }
+      tools:
+        book_room: { returns: { status: 200, booking: "BK-4730" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: book_room }
+        - { type: returns_matches, value: "BK-4730" }
+
+  # A Python repr of the contract has single quotes where JSON has double
+  # ones, and the model does not read it as a tool contract, so it guesses
+  # the argument names the way it did before the contract existed.
+  - name: the_contract_reaches_the_model_as_json
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Book Birch on Friday 16 October at 08:30 for 45 minutes" }
+      llm_script:
+        - { match: { contains: "BK-4731" },
+            reply: "Final Answer: Birch is booked for Friday 16 October, 08:30 to 09:15. Your reference is BK-4731." }
+        - { match: { regex: '"input_schema":\s*\{' },
+            reply: 'Action: book_room({"room": "Birch", "start": "2026-10-16T08:30", "minutes": 45})' }
+        - { match: "*",
+            reply: 'Action: book_room({"room": "Birch", "when": "Friday 08:30", "length": "45 minutes"})' }
+      tools:
+        book_room: { returns: { status: 200, booking: "BK-4731" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: book_room,
+            args: { room: "Birch", start: "2026-10-16T08:30", minutes: 45 } }
+        - { type: returns_matches, value: "BK-4731" }
 
 reference_md: |
   The model cannot see the booking API. It sees a prompt, and whatever the

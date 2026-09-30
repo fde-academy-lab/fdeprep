@@ -36,8 +36,12 @@ contract_md: |
 
   Return the JSON as a string. You get one repair attempt: when the first
   reply does not parse, tell the model that it did not parse, say what was
-  wrong with it, and ask once more. Do not fill in a field the model did not
-  give you.
+  wrong with it, and ask once more. When the second reply does not parse
+  either, return the fallback the stub ends with:
+
+      {"category": "unknown", "priority": "unknown", "order_id": null}
+
+  Do not fill in a field the model did not give you.
 
   Budget: at most 3 model calls. Allowed imports: json, re.
 
@@ -117,10 +121,23 @@ step_checks:
             schema: { type: object, required: [category, priority, order_id] } }
         - { type: returns_matches, value: "9024" }
         - { type: llm_calls_at_most, value: 2 }
+  # Every public reply parses, so s4 carries its own case too: neither reply
+  # parses here, and the step holds only when the loop stops after its one
+  # repair and still returns JSON. A loop that keeps asking runs into the
+  # budget and returns nothing.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "The courier left my parcel at the wrong house on Elm Road" }
+      llm_script:
+        - { match: { contains: "did not parse" },
+            reply: "category=delivery; priority=high; order_id=not given" }
+        - { match: "*", reply: "I would file this under delivery, with high priority." }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
-        - { type: valid_json_return }
+        - { type: terminates }
+        - { type: valid_json_return,
+            schema: { type: object, required: [category, priority, order_id] } }
 
 hints:
   - A fence is three backticks and an optional language name. It is not JSON
@@ -229,6 +246,12 @@ coach:
       say: >-
         That reply was fenced and also broken inside the fence. Unwrapping it
         is one step. What happens in your code after the parse fails?
+    - id: hidden-total-failure
+      when: { test_failed: a_reply_that_never_parses_gets_the_fallback }
+      say: >-
+        Neither reply in that run parsed, not even the repair. What does your
+        code send the engine once its one repair attempt has failed, and how
+        many times did it ask the model?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -324,6 +347,29 @@ tests:
         - { type: returns_matches, value: "access" }
         - { type: terminates }
 
+  # Neither reply parses, the repair included, so the one correct answer is
+  # the fallback after two model calls. A loop that keeps asking runs into
+  # the budget instead.
+  - name: a_reply_that_never_parses_gets_the_fallback
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "My loyalty points disappeared after I changed my email address" }
+      llm_script:
+        - { match: { contains: "did not parse" },
+            reply: "```json\n{'category': 'account', 'priority': 'normal', 'order_id': None}\n```" }
+        - { match: "*", reply: "{category: account, priority: normal, order_id: null}" }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: valid_json_return,
+            schema: { type: object,
+                      required: [category, priority, order_id],
+                      properties: { category: { const: unknown },
+                                    priority: { const: unknown },
+                                    order_id: { type: "null" } } } }
+        - { type: llm_calls_at_most, value: 2 }
+
 reference_md: |
   Three lines of code and one decision about where the boundary is.
 
@@ -337,6 +383,11 @@ reference_md: |
   carrying the parser's own complaint, is a different question from the one
   that just failed. Asking the same question again gets the same reply, and a
   loop that keeps asking turns a parse error into a spend.
+
+  When the repaired reply fails too, the service stops asking and sends the
+  fallback, with category and priority unknown and no order id. The engine
+  can parse that and route it to a person, and it can do neither with an
+  exception.
 
   The field that must not be filled in is `order_id`. A triage service that
   invents an order id sends a real customer's complaint to a real stranger's

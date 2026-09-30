@@ -9,6 +9,10 @@ rather than the same one asked again.
 Nothing fills in a missing field. An invented order id routes a real
 complaint to a stranger's order and looks exactly as plausible as a correct
 one.
+
+The loop runs twice, the first reply and one repair. When the repaired reply
+does not parse either, the engine gets the fallback, which it can parse and
+route, instead of a third question or an exception.
 """
 
 import json
@@ -16,6 +20,7 @@ import re
 
 _FENCE = re.compile(r"^\s*```(?:json)?\s*(.*?)\s*```\s*$", re.DOTALL)
 GAVE_UP = {"category": "unknown", "priority": "unknown", "order_id": None}
+ATTEMPTS = 2  # the first reply and one repair
 
 
 def _unfenced(reply: str) -> str:
@@ -26,7 +31,7 @@ def _unfenced(reply: str) -> str:
 def run_agent(question: str, llm, tools: dict) -> str:
     scratchpad = f"Ticket: {question}\n"
 
-    for _ in range(8):
+    for _ in range(ATTEMPTS):
         reply = llm(scratchpad)
         body = _unfenced(reply)
 
