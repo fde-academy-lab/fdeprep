@@ -186,6 +186,14 @@ describe("prompt problems", () => {
     expect(error?.message).toContain("must_add");
   });
 
+  it("rejects a refusal_pattern that does not compile, naming the probe", () => {
+    const report = validateProblemYaml(PROMPT.replace(
+      'assertion: { type: absent, pattern: "BANANA_QQ" }',
+      'assertion: { type: refuses, pattern: "BANANA_QQ", refusal_pattern: "(?i)(lo siento" }'), "f.yaml");
+    const error = report.errors.find((e) => e.rule === "bad_pattern");
+    expect(error?.message).toContain("injection");
+  });
+
   it("rejects a rubric with fewer than three exemplars", () => {
     const thin = PROMPT.replace('\n  - { band: weak, score: 30, body_md: "..." }', "");
     expect(rules(thin)).toContain("too_few_exemplars");

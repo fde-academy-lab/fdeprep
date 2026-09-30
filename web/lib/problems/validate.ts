@@ -221,7 +221,8 @@ export function validateProblemYaml(
   const exemplars = Array.isArray(raw["exemplars"]) ? (raw["exemplars"] as unknown[]) : [];
   const probes = Array.isArray(raw["probes"])
     ? (raw["probes"] as Array<{ name?: string; user_message?: string;
-                               assertion?: { type?: string; pattern?: string } }>) : [];
+                               assertion?: { type?: string; pattern?: string;
+                                             refusal_pattern?: string } }>) : [];
   const promptRules = Array.isArray(raw["prompt_rules"])
     ? (raw["prompt_rules"] as PromptRule[]) : [];
   const rubric = Array.isArray(raw["rubric"])
@@ -358,6 +359,17 @@ export function validateProblemYaml(
             `probe ${probe.name ?? index} asserts on ${pattern}, which appears nowhere ` +
             "else in the problem, so the probe can never be satisfied by design",
             lineOf(["probes", index, "assertion"]));
+      }
+      const refusal = probe?.assertion?.refusal_pattern;
+      if (refusal !== undefined) {
+        try {
+          compilePattern(String(refusal));
+        } catch (error) {
+          add("bad_pattern",
+              `probe ${probe.name ?? index} has a refusal_pattern that does not compile: ` +
+              (error instanceof PatternError ? error.message : String(error)),
+              lineOf(["probes", index, "assertion"]));
+        }
       }
       const type = probe?.assertion?.type;
       if (type && !PROBE_ASSERTIONS.has(type)) {
