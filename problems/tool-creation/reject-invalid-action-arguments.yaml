@@ -252,6 +252,12 @@ coach:
         In that run the model kept sending a refund with no order id and never
         gave up. Your loop has three model calls to spend. What does it return
         once they are gone?
+    - id: hidden-arguments-passed
+      when: { test_failed: a_payload_that_passes_reaches_refund_field_by_field }
+      say: >-
+        The payload in that run passed every check. Which arguments did your
+        refund call pass, and are they the two the contract's table says refund
+        accepts?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -373,6 +379,26 @@ tests:
         - { type: does_not_call_tool, name: refund }
         - { type: terminates }
         - { type: returns_nonempty }
+
+  # Every other hidden case refuses its payload, so none of them reads what
+  # refund received. This payload passes every check, and refund has to get
+  # amount_cents and order_id as its own arguments, the two the contract's
+  # table says it accepts. A loop that hands refund the whole payload under
+  # one argument name passes every other case.
+  - name: a_payload_that_passes_reaches_refund_field_by_field
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Refund sixty seven pounds forty on order B-4471. The kettle lid arrived cracked." }
+      llm_script:
+        - { match: { contains: "RF-60218" },
+            reply: "Final Answer: I refunded 6740 pence to order B-4471." }
+        - { match: "*", reply: 'Action: refund({"amount_cents": 6740, "order_id": "B-4471"})' }
+      tools:
+        refund: { returns: { status: 200, refunded: true, refund_id: "RF-60218" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { amount_cents: 6740, order_id: "B-4471" } }
 
 reference_md: |
   Four checks, and the interesting one is the one Python gets wrong for you.
