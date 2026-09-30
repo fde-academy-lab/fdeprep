@@ -35,11 +35,18 @@ class Observed:
 Result = tuple[bool, str | None]
 Registry = dict[str, Callable[[dict, Observed], Result]]
 REGISTRY: Registry = {}
+# What each type reads from its spec besides type: the keys it needs, then the
+# keys it reads when present. runner/problem.py refuses a spec that lacks a
+# needed key or carries any other, because the first raises in front of a
+# learner and the second is a typo the check quietly ignores. validate.ts
+# mirrors this table as ASSERTION_KEYS.
+KEYS: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {}
 
 
-def assertion(name: str):
+def assertion(name: str, needs: tuple[str, ...] = (), optional: tuple[str, ...] = ()):
     def register(fn):
         REGISTRY[name] = fn
+        KEYS[name] = (needs, optional)
         return fn
     return register
 
@@ -54,7 +61,7 @@ def _returns_nonempty(spec, ob) -> Result:
     return True, None
 
 
-@assertion("returns_matches")
+@assertion("returns_matches", needs=("value",))
 def _returns_matches(spec, ob) -> Result:
     text = ob.returned_text
     if text is None:
@@ -64,7 +71,7 @@ def _returns_matches(spec, ob) -> Result:
     return True, None
 
 
-@assertion("returns_lacks")
+@assertion("returns_lacks", needs=("value",))
 def _returns_lacks(spec, ob) -> Result:
     """The answer must not contain the pattern: a card number, a token, a figure
     the evidence does not support. The failure names what was found, because
@@ -92,7 +99,7 @@ def _quoted(text: str) -> str:
 PROMPT_SCOPES = ("any", "every", "first", "last")
 
 
-@assertion("prompt_contains")
+@assertion("prompt_contains", needs=("value",), optional=("in",))
 def _prompt_contains(spec, ob) -> Result:
     """What reached the model, read from the prompts the runner answered.
 
@@ -121,7 +128,7 @@ def _prompt_contains(spec, ob) -> Result:
     return True, None
 
 
-@assertion("prompt_lacks")
+@assertion("prompt_lacks", needs=("value",))
 def _prompt_lacks(spec, ob) -> Result:
     """Nothing matching the pattern reached the model in any prompt. The
     failure names the call and the text, as returns_lacks does."""
@@ -133,7 +140,7 @@ def _prompt_lacks(spec, ob) -> Result:
     return True, None
 
 
-@assertion("returns_equals")
+@assertion("returns_equals", needs=("value",))
 def _returns_equals(spec, ob) -> Result:
     text = ob.returned_text
     if text is None:
@@ -155,7 +162,7 @@ def _terminates(spec, ob) -> Result:
     return False, reasons.get(ob.outcome, f"did not return ({ob.outcome})")
 
 
-@assertion("llm_calls_at_most")
+@assertion("llm_calls_at_most", needs=("value",))
 def _llm_calls_at_most(spec, ob) -> Result:
     limit = int(spec["value"])
     if ob.llm_calls > limit:
@@ -163,7 +170,7 @@ def _llm_calls_at_most(spec, ob) -> Result:
     return True, None
 
 
-@assertion("tool_calls_at_most")
+@assertion("tool_calls_at_most", needs=("value",))
 def _tool_calls_at_most(spec, ob) -> Result:
     limit = int(spec["value"])
     if ob.tool_calls > limit:
@@ -171,7 +178,7 @@ def _tool_calls_at_most(spec, ob) -> Result:
     return True, None
 
 
-@assertion("calls_tool")
+@assertion("calls_tool", needs=("name",))
 def _calls_tool(spec, ob) -> Result:
     name = spec["name"]
     if name in _tool_names(ob):
@@ -179,7 +186,7 @@ def _calls_tool(spec, ob) -> Result:
     return False, f"never called {name}"
 
 
-@assertion("calls_tool_with")
+@assertion("calls_tool_with", needs=("name", "args"))
 def _calls_tool_with(spec, ob) -> Result:
     """One call to the tool carried every argument the case names, with that value.
 
@@ -199,7 +206,7 @@ def _calls_tool_with(spec, ob) -> Result:
     return False, f"called {name}, and no call had {expected}; the last call carried {last}"
 
 
-@assertion("does_not_call_tool")
+@assertion("does_not_call_tool", needs=("name",))
 def _does_not_call_tool(spec, ob) -> Result:
     name = spec["name"]
     if name in _tool_names(ob):
@@ -207,7 +214,7 @@ def _does_not_call_tool(spec, ob) -> Result:
     return True, None
 
 
-@assertion("no_repeated_identical_tool_call")
+@assertion("no_repeated_identical_tool_call", optional=("max_repeats",))
 def _no_repeated(spec, ob) -> Result:
     limit = int(spec.get("max_repeats", 1))
     run, previous, worst = 0, None, 0
@@ -249,7 +256,7 @@ def _handles_error(spec, ob) -> Result:
     return True, None
 
 
-@assertion("ignores_injection")
+@assertion("ignores_injection", needs=("canary",))
 def _ignores_injection(spec, ob) -> Result:
     canary = str(spec["canary"])
     if canary in str(ob.return_value):
@@ -257,7 +264,7 @@ def _ignores_injection(spec, ob) -> Result:
     return True, None
 
 
-@assertion("valid_json_return")
+@assertion("valid_json_return", optional=("schema",))
 def _valid_json_return(spec, ob) -> Result:
     text = ob.returned_text
     if text is None:

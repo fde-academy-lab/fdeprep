@@ -280,6 +280,26 @@ step_checks:
     expect(error?.line).toBeGreaterThan(1);
   });
 
+  it("rejects an assertion without a key the runner reads, or with one it does not", () => {
+    // A missing key raised when the case ran, in front of a learner. Any
+    // other key is a typo the check ignores: valid_json_return with schem
+    // accepted any JSON, and calls_tool_with with arguments passed on any call.
+    const withAssertion = (a: string) => CODE.replace("type: returns_nonempty }", a);
+    const messages = (a: string) => validateProblemYaml(withAssertion(a), "a.yaml").errors
+      .filter((e) => e.rule === "bad_assertion_param").map((e) => e.message);
+    expect(messages("type: prompt_lacks, pattern: 'CANARY' }")).toEqual([
+      expect.stringContaining("prompt_lacks in p1 has no value"),
+      expect.stringContaining("carries pattern, which the runner does not read. It reads value"),
+    ]);
+    expect(messages("type: valid_json_return, schem: { type: object } }"))
+      .toEqual([expect.stringContaining("carries schem")]);
+    expect(messages("type: calls_tool_with, name: claim, args: {} }"))
+      .toEqual([expect.stringContaining("so it would pass on any call to claim")]);
+    expect(messages("type: calls_tool_with, name: claim, args: { key: evt_881 } }")).toEqual([]);
+    expect(messages("type: valid_json_return }")).toEqual([]);
+    expect(messages("type: no_repeated_identical_tool_call, max_repeats: 2 }")).toEqual([]);
+  });
+
   it("checks every case a step owns, and rejects cases beside a kind", () => {
     const withCheck = (spec: string) => CODE + `
 steps:

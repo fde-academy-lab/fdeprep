@@ -119,15 +119,31 @@ export interface ValidationReport {
 // the judge does not evaluate is rejected in CI rather than at run time in
 // front of a learner. judge/probes.py ASSERTIONS is the other half.
 const PROBE_ASSERTIONS = new Set(["absent", "present", "complies", "refuses", "valid_json"]);
-// The runner's assertion registry, runner/harness/assertions.py REGISTRY, for
-// the same reason. tests/test_assertion_vocabulary.py fails when the two drift.
-const CODE_ASSERTIONS = new Set([
-  "returns_nonempty", "returns_matches", "returns_lacks", "returns_equals", "terminates",
-  "llm_calls_at_most", "tool_calls_at_most", "calls_tool", "calls_tool_with", "does_not_call_tool",
-  "prompt_contains", "prompt_lacks",
-  "no_repeated_identical_tool_call", "handles_error", "ignores_injection",
-  "valid_json_return", "no_exception",
-]);
+// The runner's assertion registry, runner/harness/assertions.py REGISTRY and
+// KEYS, for the same reason: each type the runner evaluates, the keys it needs
+// and the keys it reads when present. A missing key raises in front of a
+// learner, and any other key is a typo the check ignores.
+// tests/test_assertion_vocabulary.py fails when the two drift.
+const ASSERTION_KEYS: Record<string, { needs: string[]; optional: string[] }> = {
+  returns_nonempty: { needs: [], optional: [] },
+  returns_matches: { needs: ["value"], optional: [] },
+  returns_lacks: { needs: ["value"], optional: [] },
+  prompt_contains: { needs: ["value"], optional: ["in"] },
+  prompt_lacks: { needs: ["value"], optional: [] },
+  returns_equals: { needs: ["value"], optional: [] },
+  terminates: { needs: [], optional: [] },
+  llm_calls_at_most: { needs: ["value"], optional: [] },
+  tool_calls_at_most: { needs: ["value"], optional: [] },
+  calls_tool: { needs: ["name"], optional: [] },
+  calls_tool_with: { needs: ["name", "args"], optional: [] },
+  does_not_call_tool: { needs: ["name"], optional: [] },
+  no_repeated_identical_tool_call: { needs: [], optional: ["max_repeats"] },
+  handles_error: { needs: [], optional: [] },
+  ignores_injection: { needs: ["canary"], optional: [] },
+  valid_json_return: { needs: [], optional: ["schema"] },
+  no_exception: { needs: [], optional: [] },
+};
+const CODE_ASSERTIONS = new Set(Object.keys(ASSERTION_KEYS));
 // Mirrored from runner/harness/fixtures.py; tests/test_tool_specs.py checks the two agree.
 const KNOWN_FIXTURES = new Set([
   "tool_lies", "tool_soft_error", "malformed_on_nth", "injected_instruction", "schema_drift",
@@ -142,10 +158,35 @@ function checkAssertionParams(
   add: (rule: Rule, message: string, line: number) => void,
 ): void {
   const a = (entry ?? {}) as Record<string, unknown>;
-  if (a["type"] === "prompt_contains" && a["in"] !== undefined && !PROMPT_SCOPES.has(String(a["in"]))) {
+  const type = String(a["type"]);
+  const keys = ASSERTION_KEYS[type];
+  if (!keys) return; // unknown_assertion_type reports it
+  for (const key of keys.needs) {
+    if (!(key in a)) {
+      add("bad_assertion_param",
+          `${type} in ${label} has no ${key}, which the runner reads, so the case would raise ` +
+          "in front of the learner", line);
+    }
+  }
+  const reads = [...keys.needs, ...keys.optional];
+  for (const key of Object.keys(a)) {
+    if (key === "type" || reads.includes(key)) continue;
+    add("bad_assertion_param",
+        `${type} in ${label} carries ${key}, which the runner does not read. It reads ` +
+        `${reads.length ? reads.join(", ") : "nothing besides type"}`, line);
+  }
+  if (type === "prompt_contains" && a["in"] !== undefined && !PROMPT_SCOPES.has(String(a["in"]))) {
     add("bad_assertion_param",
         `prompt_contains in ${label} reads in: ${String(a["in"])}, and the runner reads any, ` +
         "every, first or last prompt", line);
+  }
+  if (type === "calls_tool_with" && "args" in a) {
+    const args = a["args"];
+    if (!args || typeof args !== "object" || Array.isArray(args) || !Object.keys(args).length) {
+      add("bad_assertion_param",
+          `calls_tool_with in ${label} has args that name no argument, so it would pass on any ` +
+          `call to ${String(a["name"])}`, line);
+    }
   }
 }
 const RULE_KINDS = new Set(["must_remove", "must_keep", "must_add", "max_words", "min_words"]);

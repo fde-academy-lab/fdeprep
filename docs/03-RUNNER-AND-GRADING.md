@@ -105,25 +105,27 @@ A fixture with no matching rule and no `"*"` fallback is an authoring error. The
 
 ### 2.4 Assertion vocabulary
 
-| Assertion | Checks |
-|---|---|
-| `returns_nonempty` | The return value is a non-empty string |
-| `returns_matches` | Return value matches a regex |
-| `returns_lacks` | Return value does not contain a regex. Added 29 September 2026 for leaked data and unsupported claims, which authors had been writing as a negative lookahead in `returns_matches`; the failure names the text found, where the lookahead showed the learner a regex |
-| `returns_equals` | Exact string equality after stripping whitespace |
-| `terminates` | The function returned rather than hitting the budget ceiling |
-| `llm_calls_at_most` | Model call count |
-| `tool_calls_at_most` | Tool call count |
-| `calls_tool` | A named tool was called at least once |
-| `calls_tool_with` | One call to a named tool carried every argument in `args`, with that value. Arguments the case does not name are ignored, and 40 and "40" differ. Added 30 September 2026: the retried-webhook problem could not tell a handler keyed on the delivery id, new on every retry, from one keyed on the event id, and that was the bug its brief is about |
-| `does_not_call_tool` | A named tool was never called |
-| `prompt_contains` | A prompt sent to the model matched a regex. `in` reads any prompt (the default), every prompt, or the first or last. It reads each prompt in full, past the trace's clip |
-| `prompt_lacks` | No prompt sent to the model matched a regex. The failure names the call and the text found. Added with `prompt_contains` on 30 September 2026: guardrail problems had tested what reached the model through a scripted reply that changed when forbidden text arrived, and a learner who failed read the symptom rather than the cause |
-| `no_repeated_identical_tool_call` | Same tool with same arguments called no more than n times consecutively |
-| `handles_error` | After an error-returning tool call, the next model prompt differs from the previous one |
-| `ignores_injection` | The return value does not contain a canary string planted in the injected instruction |
-| `valid_json_return` | Return value parses as JSON and matches a JSON Schema |
-| `no_exception` | No uncaught exception escaped |
+| Assertion | Keys | Checks |
+|---|---|---|
+| `returns_nonempty` |  | The return value is a non-empty string |
+| `returns_matches` | `value` | Return value matches a regex |
+| `returns_lacks` | `value` | Return value does not contain a regex. Added 29 September 2026 for leaked data and unsupported claims, which authors had been writing as a negative lookahead in `returns_matches`; the failure names the text found, where the lookahead showed the learner a regex |
+| `returns_equals` | `value` | Exact string equality after stripping whitespace |
+| `terminates` |  | The function returned rather than hitting the budget ceiling |
+| `llm_calls_at_most` | `value` | Model call count |
+| `tool_calls_at_most` | `value` | Tool call count |
+| `calls_tool` | `name` | A named tool was called at least once |
+| `calls_tool_with` | `name`, `args` | One call to a named tool carried every argument in `args`, with that value. Arguments the case does not name are ignored, and 40 and "40" differ. Added 30 September 2026: the retried-webhook problem could not tell a handler keyed on the delivery id, new on every retry, from one keyed on the event id, and that was the bug its brief is about |
+| `does_not_call_tool` | `name` | A named tool was never called |
+| `prompt_contains` | `value`, and `in` if wanted | A prompt sent to the model matched a regex. `in` reads any prompt (the default), every prompt, or the first or last. It reads each prompt in full, past the trace's clip |
+| `prompt_lacks` | `value` | No prompt sent to the model matched a regex. The failure names the call and the text found. Added with `prompt_contains` on 30 September 2026: guardrail problems had tested what reached the model through a scripted reply that changed when forbidden text arrived, and a learner who failed read the symptom rather than the cause |
+| `no_repeated_identical_tool_call` | `max_repeats` if wanted, 1 by default | Same tool with same arguments called no more than n times consecutively |
+| `handles_error` |  | After an error-returning tool call, the next model prompt differs from the previous one |
+| `ignores_injection` | `canary` | The return value does not contain a canary string planted in the injected instruction |
+| `valid_json_return` | `schema` if wanted | Return value parses as JSON and matches a JSON Schema |
+| `no_exception` |  | No uncaught exception escaped |
+
+The keys column is what the runner reads from an assertion's spec besides `type`. Every regex is in `value`. The loader and the validator refuse an assertion that lacks a key the column names without "if wanted", because the case would raise in front of a learner, and one that carries any other key, because the check would ignore it: `valid_json_return` with `schem` accepted any JSON. `calls_tool_with` also needs `args` to name at least one argument, or it passes on any call to the tool. Added 30 September 2026.
 
 Add an assertion type by adding a function to the assertion registry and a validator entry. Never let an author write arbitrary Python in a spec. The validator entry is `CODE_ASSERTIONS` in `web/lib/problems/validate.ts`, which names the line of an unknown type; `tests/test_assertion_vocabulary.py` fails when it and the registry drift.
 

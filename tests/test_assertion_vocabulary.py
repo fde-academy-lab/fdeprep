@@ -72,9 +72,9 @@ def test_the_web_validator_knows_every_assertion_the_runner_evaluates():
     does not have fails in CI with a line number, rather than at run time in
     front of a learner. This keeps the two halves from drifting."""
     source = (ROOT / "web/lib/problems/validate.ts").read_text(encoding="utf-8")
-    block = re.search(r"const CODE_ASSERTIONS = new Set\(\[(.*?)\]\)", source, re.S)
-    assert block, "validate.ts has no CODE_ASSERTIONS mirror"
-    mirrored = set(re.findall(r'"([a-z_]+)"', block.group(1)))
+    block = re.search(r"const ASSERTION_KEYS[^=]*= \{(.*?)\n\};", source, re.S)
+    assert block, "validate.ts has no ASSERTION_KEYS mirror"
+    mirrored = set(re.findall(r"^\s*(\w+): \{ needs:", block.group(1), re.M))
     assert mirrored == set(REGISTRY)
 
 
@@ -189,3 +189,79 @@ def test_a_prompt_assertion_reads_what_learner_code_really_sent():
     result = run_single_case("c", spec, code, allowed_imports=(), time_limit_s=5)
     statuses = {a["type"]: a["status"] for a in result["assertions"]}
     assert statuses == {"prompt_lacks": "fail", "prompt_contains": "pass"}
+
+
+# The keys an assertion reads, added 30 September 2026. Nothing checked them
+# before a case ran. An assertion missing the key the runner reads raised in
+# front of a learner, and a misspelt optional key ran as if it were absent:
+# valid_json_return with "schem" accepted any JSON, and calls_tool_with with
+# "arguments" passed on any call to the tool. The registry now declares what
+# each type reads, and the loader and the web validator hold specs to it.
+
+from runner.harness.assertions import KEYS  # noqa: E402
+from runner.problem import ProblemError, from_dict  # noqa: E402
+
+
+def _case(*assertions):
+    return {"kind": "agent_run", "input": {"question": "q"},
+            "llm_script": [{"match": "*", "reply": "Final Answer: x"}],
+            "assertions": list(assertions)}
+
+
+def _problem_with(entry, where="test"):
+    """entry in a public test, in a step check read from the public cases, or
+    in a step's own case."""
+    fine = {"type": "returns_nonempty"}
+    problem = {"slug": "keys", "artefact_type": "code", "difficulty": "easy", "call_budget": 2,
+               "tests": [{"name": "p1", "visibility": "public",
+                          "spec": _case(entry if where == "test" else fine)}]}
+    if where == "step":
+        problem["step_checks"] = [{"step_id": "s1", "spec": {"assertions": [entry]}}]
+    if where == "step case":
+        problem["step_checks"] = [{"step_id": "s1", "spec": {"cases": [_case(entry)]}}]
+    return problem
+
+
+def test_every_assertion_declares_the_keys_it_reads():
+    assert set(KEYS) == set(REGISTRY)
+    for name, (needs, optional) in KEYS.items():
+        assert not set(needs) & set(optional), name
+
+
+@pytest.mark.parametrize("entry, words", [
+    ({"type": "returns_matches"}, "has no value"),
+    ({"type": "prompt_lacks", "pattern": "x"}, "has no value"),
+    ({"type": "calls_tool_with", "name": "claim"}, "has no args"),
+    ({"type": "valid_json_return", "schem": {"type": "object"}}, "carries schem"),
+    ({"type": "returns_matches", "value": "x", "values": "y"}, "carries values"),
+    ({"type": "prompt_contains", "value": "x", "in": "most"}, "in: most"),
+    ({"type": "returns_matchs", "value": "x"}, "not an assertion the runner evaluates"),
+])
+@pytest.mark.parametrize("where", ["test", "step", "step case"])
+def test_an_assertion_the_runner_would_misread_is_refused_at_load(entry, words, where):
+    with pytest.raises(ProblemError, match=words):
+        from_dict(_problem_with(entry, where))
+
+
+@pytest.mark.parametrize("entry", [
+    {"type": "prompt_contains", "value": "x", "in": "every"},
+    {"type": "valid_json_return"},
+    {"type": "valid_json_return", "schema": {"type": "object"}},
+    {"type": "no_repeated_identical_tool_call", "max_repeats": 2},
+    {"type": "calls_tool_with", "name": "claim", "args": {"key": "evt_881"}},
+    {"type": "no_exception"},
+])
+def test_an_assertion_with_its_own_keys_loads(entry):
+    from_dict(_problem_with(entry))
+
+
+def test_the_web_validator_mirrors_the_keys_each_assertion_reads():
+    """validate.ts holds the same table, so a spec the loader refuses fails in
+    CI with a line number. This keeps the two halves from drifting."""
+    source = (ROOT / "web/lib/problems/validate.ts").read_text(encoding="utf-8")
+    block = re.search(r"const ASSERTION_KEYS[^=]*= \{(.*?)\n\};", source, re.S)
+    assert block, "validate.ts has no ASSERTION_KEYS mirror"
+    rows = re.findall(r'(\w+): \{ needs: \[(.*?)\], optional: \[(.*?)\] \}', block.group(1))
+    mirrored = {name: (tuple(re.findall(r'"(\w+)"', needs)), tuple(re.findall(r'"(\w+)"', optional)))
+                for name, needs, optional in rows}
+    assert mirrored == KEYS
