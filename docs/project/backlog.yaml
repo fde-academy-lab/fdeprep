@@ -1280,7 +1280,7 @@ stages:
     name: Voice interviewer v2, step 1
     kind: roadmap
     horizon: next
-    start: 2026-10-03
+    start: 2026-09-30
     finish: 2026-10-07
     area: Voice
     priority: P1
@@ -1298,30 +1298,33 @@ stages:
       - id: S13.1
         title: Move to the next question when an answer ends early
         type: Feature
-        status: todo
+        status: done
+        pr: 44
         points: 2
         area: Voice
-        finish: 2026-10-04
+        finish: 2026-09-30
         acceptance:
           - A Next question control ends the current answer, scores it on what was said, and starts the next question.
       - id: S13.2
         title: Type the answer when the microphone or transcription fails
         type: Feature
-        status: todo
+        status: done
+        pr: 44
         points: 5
         area: Voice
-        finish: 2026-10-04
+        finish: 2026-09-30
         acceptance:
           - When the microphone or the transcription fails, the session offers a text box, and a typed answer is scored on content and structure but not pace.
       - id: S13.3
         title: Pick a question instead of taking the first one
         type: Feature
-        status: todo
+        status: done
+        pr: 44
         points: 3
         area: Voice
-        finish: 2026-10-05
+        finish: 2026-09-30
         acceptance:
-          - The voice screen lists every published question by track and interviewer, and a learner can start any of them.
+          - The voice screen lists every published question by track, and a learner can start any of them in any mode it supports.
       - id: S13.4
         title: "Choose who interviews you: nine interviewer personas"
         type: Feature
@@ -1332,6 +1335,7 @@ stages:
         acceptance:
           - A learner picks an engineering lead, a CTO, a CEO, a solution architect, a senior AI engineer, a hiring manager, a client, a panel or a bar raiser.
           - Each persona has its own focus, questions, follow-up style and voice.
+          - The question picker filters by interviewer as well as by track.
       - id: S13.5
         title: Rewrite the question bank around real FDE interview loops
         type: Task
@@ -1353,12 +1357,25 @@ stages:
       - id: S13.7
         title: Show in the debrief where an answer stayed shallow
         type: Feature
-        status: todo
+        status: done
+        pr: 44
         points: 5
         area: Voice
-        finish: 2026-10-07
+        finish: 2026-09-30
         acceptance:
-          - The debrief marks the beats with no evidence, no number or no trade-off, and names what the learner could have volunteered.
+          - The debrief shows, for each beat, the words a strong answer used that this one did not and the strong answer's own sentence, and it does not mark evidence, numbers or trade-offs, which the authored exemplars show cannot tell a strong answer from a weak one.
+      - id: S13.8
+        title: Fix the eight defects that made the voice screen unreliable
+        type: Bug
+        status: done
+        pr: 44
+        points: 8
+        area: Voice
+        finish: 2026-09-30
+        found_by: Reading
+        acceptance:
+          - Each session is recorded against the question on screen, the docs/07 section 10 caps bind, and an answer that ends before it counts, a failed start and a judge that keeps failing all cost the learner nothing.
+          - Follow-ups are heard, survive a content re-import, and keep their cached speech past thirty days, and a recording past thirty days is deleted and marked so.
 
   - id: S14
     name: Voice interviewer v2, step 2

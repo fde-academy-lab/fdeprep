@@ -55,6 +55,7 @@ The column counts come from the stories in [backlog.yaml](backlog.yaml), and the
 | S9.6 | Stop browser extensions tripping the hydration check | Beta tester | S9 Beta on AWS | #40 | P0 Critical |
 | S9.7 | Bring undo back in both editors | Testing | S9 Beta on AWS | #40 | P0 Critical |
 | S9.8 | Stop re-rendering the whole workspace on every key | Beta tester | S9 Beta on AWS | #40 | P1 High |
+| S13.8 | Fix the eight defects that made the voice screen unreliable | Reading | S13 Voice interviewer v2, step 1 | #44 | P1 High |
 <!-- /generated:bugs -->
 
 ## What the pattern says
