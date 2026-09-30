@@ -310,8 +310,9 @@ coach:
     - id: store-by-store
       when: { code_lacks: '(?i)provenance|built from|derived from|lineage|record ids?\b|source ids?\b' }
       say: >-
-        Your design names stores. The eval fixture was a fifth store nobody
-        listed. What would let deletion find a store it was never told about?
+        Your design names stores. Until the incident, the eval fixture was a
+        store nobody had listed. What would let deletion find a store it was
+        never told about?
     - id: no-frozen-class
       when: { code_lacks: '(?i)fine-?tun|frozen|retrain|retire|cannot (?:be )?(?:edit|repair|change|remove)' }
       say: >-
