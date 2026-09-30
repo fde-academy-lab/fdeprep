@@ -1,5 +1,7 @@
 slug: incident-investigator-3-share-one-budget-across-workers
-title: Share one follow-up allowance so a noisy worker cannot take it all
+title: One worker's traces used up the follow-ups another needed
+day: 28
+skill: Share one follow-up allowance so a noisy worker cannot take it all
 artefact_type: code
 difficulty: hard
 track: builds
@@ -412,7 +414,7 @@ tests:
     fixture: slow_then_timeout
     annotation_md: |
       The tracing backend was down, and the first trace call raised
-      TimeoutError. The deploy worker's diff was one turn behind it in the
+      `TimeoutError`. The deploy worker's diff was one turn behind it in the
       same round, and the diff finds the cause.
 
       Code that lets the exception out loses the whole investigation to one

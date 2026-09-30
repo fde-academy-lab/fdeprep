@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status";
 import { cn } from "@/components/ui/cn";
 import { useSubmission } from "./use-submission";
+import { renderCode } from "@/components/ui/code";
 
 const WORD_CAP = 120;
 
@@ -53,7 +54,7 @@ export default function Defence(props: Props) {
           The attempt is not complete until this is submitted. {WORD_CAP} words or fewer.
         </p>
       </div>
-      <p className="leading-relaxed text-text">{props.question}</p>
+      <p className="leading-relaxed text-text">{renderCode(props.question)}</p>
 
       <textarea value={body} onChange={(event) => setBody(event.target.value)}
                 aria-label="Your defence" rows={5}

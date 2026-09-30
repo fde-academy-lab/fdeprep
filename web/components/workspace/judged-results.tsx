@@ -10,6 +10,7 @@ import type { SubmissionView } from "@/lib/submissions/view";
 import type { GateCheck } from "@/lib/gate";
 import { StatusBadge, StatusIcon, type StatusKind } from "@/components/ui/status";
 import { cn } from "@/components/ui/cn";
+import { renderCode } from "@/components/ui/code";
 
 function humanise(name: string): string {
   const words = name.replace(/_/g, " ").trim();
@@ -30,7 +31,7 @@ export function LocalChecks({ checks, title }: { checks: GateCheck[]; title: str
             <li key={check.label} className="flex items-start gap-3 bg-surface px-3 py-2.5">
               <StatusIcon kind="fail" className="mt-0.5" />
               <div className="min-w-0">
-                <p className="text-text">{check.label}</p>
+                <p className="text-text">{renderCode(check.label)}</p>
                 {check.message ? <p className="mt-0.5 text-meta text-text-dim">{check.message}</p> : null}
               </div>
             </li>
@@ -109,7 +110,7 @@ export function JudgedResults({ view, running, notice, idle }: {
               <li key={check.label} className="flex items-start gap-3 bg-surface px-3 py-2.5">
                 <StatusIcon kind="fail" className="mt-0.5" />
                 <div>
-                  <p className="text-text">{check.label}</p>
+                  <p className="text-text">{renderCode(check.label)}</p>
                   {check.message ? <p className="mt-0.5 text-meta text-text-dim">{check.message}</p> : null}
                 </div>
               </li>
@@ -159,7 +160,7 @@ export function JudgedResults({ view, running, notice, idle }: {
               return (
                 <li key={criterion.label} className="rounded-panel border border-border bg-surface px-3.5 py-3">
                   <div className="flex items-baseline justify-between gap-3">
-                    <p className="font-medium text-text">{criterion.label}</p>
+                    <p className="font-medium text-text">{renderCode(criterion.label)}</p>
                     <span className="tnum shrink-0 font-mono text-meta text-text-dim">
                       {criterion.score}/{criterion.weight}
                     </span>

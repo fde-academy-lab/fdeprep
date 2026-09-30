@@ -1,5 +1,7 @@
 slug: support-copilot-1-route-the-ticket
-title: Route every ticket to a queue that exists
+title: Tickets went nowhere, or carried someone else's order number
+day: 29
+skill: Route every ticket to a queue that exists
 artefact_type: code
 difficulty: easy
 complexity: C2
@@ -183,7 +185,7 @@ scenario:
   who: Support operations at a meal-kit subscription service
   situation: >-
     The copilot routes about 3,000 tickets a day into four queues. On Monday
-    212 of them reached no queue, because the model labelled them lost_parcel.
+    212 of them reached no queue, because the model labelled them `lost_parcel`.
     Another 31 carried MK-10001, copied from the routing prompt's example.
   stakes: >-
     A ticket in no queue is a customer nobody answers. A copied order number
@@ -210,7 +212,7 @@ diagram:
   edges:
     - { from: customer, to: copilot, label: ticket, step: 1 }
     - { from: copilot, to: model, label: ticket as data, step: 2 }
-    - { from: model, to: copilot, label: "intent: lost_parcel", step: 3 }
+    - { from: model, to: copilot, label: "intent: `lost_parcel`", step: 3 }
     - { from: copilot, to: check, label: label and order number, step: 4 }
     - { from: check, to: queues, label: one of the four, tone: success }
     - { from: check, to: triage, label: anything else }
@@ -232,13 +234,13 @@ approach:
 coach:
   opening: >-
     Before you write any code, list what the model's reply could be other than
-    the reply you hope for. Each item on that list is a branch in route().
+    the reply you hope for. Each item on that list is a branch in `route()`.
   signals:
     - id: label-passes-through
       when: { code_lacks: '(?i)\bin\s+(\w*(intent|queue|allowed|valid|label|known)\w*|[(\[{]\s*["'']billing)' }
       say: >-
         Nothing compares the model's label with the four queues yet. What does
-        the dispatcher do with a ticket labelled lost_parcel?
+        the dispatcher do with a ticket labelled `lost_parcel`?
     - id: order-number-unchecked
       when: { code_lacks: '\bin\s+(ticket|question|text)\b|re\.escape\(|\.find\(|\.count\(' }
       say: >-
@@ -248,7 +250,7 @@ coach:
     - id: json-without-a-net
       when: { code_matches: 'json\.loads\(', code_lacks: '\bexcept\b' }
       say: >-
-        json.loads raises on a reply that is not JSON, and the model does not
+        `json.loads` raises on a reply that is not JSON, and the model does not
         always send JSON. Which queue should that ticket end up in?
     - id: hidden-unknown-label
       when: { test_failed: a_label_outside_the_four_queues_goes_to_triage }
@@ -263,12 +265,12 @@ coach:
     - id: hidden-not-json
       when: { test_failed: a_reply_that_is_not_json_goes_to_triage }
       say: >-
-        That model replied with a sentence. What should route() return when
+        That model replied with a sentence. What should `route()` return when
         there is no JSON object to read?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with read_reply. Parse the reply, return None when parsing fails,
+        Start with `read_reply`. Parse the reply, return None when parsing fails,
         and press Run. The public tests will show whether the rest is wired up.
     - id: many-failures
       when: { failed_runs_at_least: 3 }

@@ -10,6 +10,7 @@
  * the answer.
  */
 import type { Approach } from "./kit.ts";
+import { withoutCodeMarks } from "../ui/code-marks.ts";
 
 export function answerOutline(problem: {
   requiredHeadings: readonly string[];
@@ -17,7 +18,7 @@ export function answerOutline(problem: {
 }): string | null {
   const headings = problem.requiredHeadings.length
     ? problem.requiredHeadings
-    : (problem.approach?.branches ?? []).map((branch) => branch.label);
+    : (problem.approach?.branches ?? []).map((branch) => withoutCodeMarks(branch.label));
   if (!headings.length) return null;
   return headings.map((heading) => `## ${heading}\n\n`).join("").trimEnd() + "\n";
 }

@@ -1,5 +1,7 @@
 slug: divide-the-bill-by-resolved-tickets
-title: Divide the whole bill by the tickets that were resolved
+title: The draft contract loses money on every resolved ticket
+day: 16
+skill: Divide the whole bill by the tickets that were resolved
 artefact_type: code
 difficulty: easy
 track: production
@@ -369,7 +371,7 @@ reference_md: |
   system is behaving worse.
 
   A week with no resolutions has no price. Null is the honest figure. A
-  dashboard that catches the ZeroDivisionError and prints 0 is telling the
+  dashboard that catches the `ZeroDivisionError` and prints 0 is telling the
   commercial lead the agent was free.
 
   The model asks for the log and does nothing else. Averages over forty rows

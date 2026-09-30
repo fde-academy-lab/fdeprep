@@ -78,6 +78,36 @@
   --ease-panel: cubic-bezier(0.2, 0, 0, 1);
 }
 
+/*
+ * Syntax colours, named by lib/ui/syntax.ts. The editor's highlight style and
+ * the code blocks in a brief both read these, so Python looks the same in each.
+ */
+:root {
+  --syntax-keyword: #C49BFF;
+  --syntax-string: #8FD49A;
+  --syntax-number: #F2B36B;
+  --syntax-comment: #6F7885;
+  --syntax-function: #7FB2FF;
+  --syntax-definition: #ECEEF2;
+  --syntax-type: #6FD3CC;
+  --syntax-property: #B8C4D6;
+  --syntax-punctuation: #A0A7B2;
+  --syntax-self: #F28FB8;
+  --syntax-invalid: #F26B63;
+}
+
+.syn-keyword { color: var(--syntax-keyword); }
+.syn-string { color: var(--syntax-string); }
+.syn-number { color: var(--syntax-number); }
+.syn-comment { color: var(--syntax-comment); font-style: italic; }
+.syn-function { color: var(--syntax-function); }
+.syn-definition { color: var(--syntax-definition); }
+.syn-type { color: var(--syntax-type); }
+.syn-property { color: var(--syntax-property); }
+.syn-punctuation { color: var(--syntax-punctuation); }
+.syn-self { color: var(--syntax-self); }
+.syn-invalid { color: var(--syntax-invalid); }
+
 /* Base rules sit in the base layer so a utility on an element always wins. */
 @layer base {
   :root {

@@ -1,5 +1,7 @@
 slug: separate-actions-from-final-answers
-title: Tell an action apart from an answer
+title: Guests are told their table is booked when nothing was
+day: 2
+skill: Tell an action apart from an answer
 artefact_type: code
 difficulty: easy
 track: agent-loop
@@ -173,7 +175,7 @@ diagram:
     - { id: model, label: Model, sub: answers and acts in one reply, kind: model, tone: teal, at: [1, 0] }
     - { id: loop, label: Agent loop, sub: reads the reply, kind: agent, tone: purple, at: [1, 1] }
     - { id: sort, label: Classify the reply, sub: "action, answer, both or neither", kind: decision, tone: blue, at: [2, 1] }
-    - { id: book, label: book(), sub: reserves the table, kind: tool, tone: orange, at: [3, 0] }
+    - { id: book, label: "`book()`", sub: reserves the table, kind: tool, tone: orange, at: [3, 0] }
     - { id: answer, label: Final Answer, sub: returned only when it stands alone, kind: output, tone: green, at: [3, 1] }
     - { id: wrong, label: Table confirmed, sub: nothing was booked, kind: output, tone: pink, at: [2, 2] }
   edges:

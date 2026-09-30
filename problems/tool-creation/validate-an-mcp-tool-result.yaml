@@ -1,5 +1,7 @@
 slug: validate-an-mcp-tool-result
-title: Check an MCP result against the schema its tool declared
+title: Shoppers were told a trainer sold out with 14 pairs in stock
+day: 7
+skill: Check an MCP result against the schema its tool declared
 artefact_type: code
 difficulty: medium
 track: tool-creation
@@ -249,9 +251,7 @@ hints:
     the model today, and ask which of them the tool actually promised.
   - MCP puts the promise in the output schema and the failure in isError. A
     result can match the schema and still be a failure.
-  - For this schema the check is three questions per field. Is it there, is it
-    the declared type, and is it in range? In Python True passes
-    isinstance(value, int), so the integer question needs one more clause.
+  - "For this schema the check is three questions per field. Is it there, is it the declared type, and is it in range? In Python True passes `isinstance(value, int)`, so the integer question needs one more clause."
   - Build the line the model reads from the declared fields only. Everything
     else in the result, _meta included, stays out.
   - "In order: isError first, then the schema check on structuredContent, then
@@ -261,7 +261,7 @@ scenario:
   who: The digital team behind a sportswear retailer's store assistant
   situation: >-
     The assistant checks stock through an MCP server the inventory team runs.
-    After Monday's release the server sent on_hand as null for a store in the
+    After Monday's release the server sent `on_hand` as null for a store in the
     middle of a count, and the adapter passed it straight to the model.
   stakes: >-
     For most of an afternoon customers at York were told the TR-220 had sold
@@ -269,7 +269,7 @@ scenario:
   metrics:
     - { label: Pairs in the stockroom, value: "14" }
     - { label: Store told it had none, value: York }
-    - { label: Declared type of on_hand, value: integer }
+    - { label: Declared type of `on_hand`, value: integer }
 
 diagram:
   title: Where a result that breaks its schema reaches the model
@@ -287,7 +287,7 @@ diagram:
   edges:
     - { from: server, to: adapter, label: a tool result, step: 1 }
     - { from: adapter, to: check, label: every result, step: 2 }
-    - { from: check, to: prompt, label: "sku, store, on_hand", tone: success, step: 3 }
+    - { from: check, to: prompt, label: "sku, store, `on_hand`", tone: success, step: 3 }
     - { from: prompt, to: model, label: what it reads, step: 4 }
     - { from: check, to: adapter, label: rejected with nothing in, tone: muted }
     - { from: adapter, to: wrong, label: structuredContent as it came, tone: danger }
@@ -307,7 +307,7 @@ approach:
 
 coach:
   opening: >-
-    Look at the line where a check_stock result becomes part of the prompt, and
+    Look at the line where a `check_stock` result becomes part of the prompt, and
     list what reaches the model from it today.
   signals:
     - id: no-error-flag
@@ -319,13 +319,13 @@ coach:
       when: { code_lacks: 'isinstance\(|type\(' }
       say: >-
         Nothing checks the types in structuredContent against what the tool
-        declared. What does the model make of an on_hand of null?
+        declared. What does the model make of an `on_hand` of null?
     - id: bool-passes-as-int
       when:
         code_matches: 'isinstance\([^,()]+,\s*int\s*\)'
         code_lacks: '\bbool\b|type\([^()]*\)\s*(is|==|!=|in)\b'
       say: >-
-        isinstance(value, int) is true for True and False. The schema's idea
+        `isinstance(value, int)` is true for True and False. The schema's idea
         of an integer does not include a boolean. Does yours?
     - id: whole-result-forwarded
       when: { code_matches: 'json\.dumps\(\s*(result|response|reply|raw)\s*[,)]' }
@@ -335,8 +335,8 @@ coach:
     - id: hidden-null
       when: { test_failed: a_count_of_null_is_rejected_not_read_as_zero }
       say: >-
-        In that run on_hand was null. What did the model read, and what does
-        the declared schema say on_hand has to be?
+        In that run `on_hand` was null. What did the model read, and what does
+        the declared schema say `on_hand` has to be?
     - id: hidden-is-error
       when: { test_failed: an_error_result_is_not_a_count }
       say: >-
@@ -351,7 +351,7 @@ coach:
     - id: hidden-boolean-count
       when: { test_failed: a_count_of_false_is_rejected }
       say: >-
-        In that run on_hand was false, and the model read it as a count.
+        In that run `on_hand` was false, and the model read it as a count.
         Python counts a boolean as an integer. Does the schema the tool
         declared count it as one?
     - id: hidden-rejected-text

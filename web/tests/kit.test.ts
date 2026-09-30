@@ -12,6 +12,8 @@ import { validateProblemYaml } from "../lib/problems/validate.ts";
 const BASE = `
 slug: a-problem
 title: A problem
+day: 1
+skill: Practise one thing
 artefact_type: code
 difficulty: medium
 track: agent-loop

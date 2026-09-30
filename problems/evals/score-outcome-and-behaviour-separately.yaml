@@ -1,5 +1,7 @@
 slug: score-outcome-and-behaviour-separately
-title: Score what the agent said and what the agent did
+title: A perfect eval score hides a refund nobody asked for
+day: 18
+skill: Score what the agent said and what the agent did
 artefact_type: code
 difficulty: medium
 track: evals
@@ -83,7 +85,7 @@ steps:
     text: Call trace when the model asks for it, and keep the record.
     check_id: s1
   - id: s2
-    text: Collect every tool_call event whose tool is outside allowed_tools.
+    text: Collect every `tool_call` event whose tool is outside `allowed_tools`.
     check_id: s2
   - id: s3
     text: Put Expected and Answer in the prompt and ask for a Judgement.
@@ -141,9 +143,7 @@ hints:
   - The summary was written by the thing being evaluated.
   - An unauthorised call with a correct answer is the case the harness exists
     to catch, so it cannot be a single verdict.
-  - "Read the record once. Work out behaviour from events and allowed_tools
-    before any model call, ask the model about Expected and Answer only, then
-    return both verdicts with one reason per tool."
+  - "Read the record once. Work out behaviour from events and `allowed_tools` before any model call, ask the model about Expected and Answer only, then return both verdicts with one reason per tool."
 
 scenario:
   who: The team that owns evals for a retail support agent
@@ -162,15 +162,15 @@ scenario:
 diagram:
   title: One record, two questions, and the field that answers neither
   caption: >-
-    Behaviour comes from the recorded events checked against allowed_tools. The
+    Behaviour comes from the recorded events checked against `allowed_tools`. The
     summary was written by the run being judged and decides nothing.
   direction: lr
   nodes:
-    - { id: record, label: trace(), sub: "expected, answer, events", kind: store, tone: blue, at: [0, 1] }
+    - { id: record, label: "`trace()`", sub: "expected, answer, events", kind: store, tone: blue, at: [0, 1] }
     - { id: summary, label: summary field, sub: written by the agent, kind: doc, tone: pink, at: [0, 2] }
     - { id: evaluator, label: Your evaluator, sub: reads the record once, kind: agent, tone: purple, at: [1, 1] }
     - { id: model, label: Model, sub: judges Expected against Answer, kind: model, tone: teal, at: [2, 0] }
-    - { id: allowlist, label: Allowlist check, sub: events against allowed_tools, kind: guard, tone: green, at: [2, 1] }
+    - { id: allowlist, label: Allowlist check, sub: events against `allowed_tools`, kind: guard, tone: green, at: [2, 1] }
     - { id: report, label: Two verdicts, sub: outcome and behaviour, kind: output, tone: orange, at: [3, 1] }
   edges:
     - { from: record, to: evaluator, label: one call, step: 1 }
@@ -184,7 +184,7 @@ approach:
   goal: Report what the agent said and what it did as two separate verdicts
   branches:
     - label: Split the question in two
-      leaves: [did the answer match what was expected, did the run stay inside allowed_tools]
+      leaves: [did the answer match what was expected, did the run stay inside `allowed_tools`]
     - label: Decide which half needs a model
       detail: One question is about meaning. The other is membership in a list.
       leaves: [meaning goes to the model, membership is a loop over events]
@@ -206,7 +206,7 @@ coach:
     - id: no-allowlist
       when: { code_lacks: 'allowed_tools' }
       say: >-
-        Nothing reads allowed_tools yet. Behaviour is a question about which
+        Nothing reads `allowed_tools` yet. Behaviour is a question about which
         tools this run was allowed to call, and the record answers it without
         a model.
     - id: hidden-unauthorised-refund
@@ -223,14 +223,14 @@ coach:
     - id: hidden-every-tool
       when: { test_failed: every_unauthorised_tool_gets_a_reason }
       say: >-
-        That run called more than one tool outside allowed_tools, with an
+        That run called more than one tool outside `allowed_tools`, with an
         allowed call between them. Does your evaluator keep reading events
         after the first one it flags?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with TODO 2. Loop over events, print each tool_call's tool next
-        to allowed_tools, and press Run.
+        Start with TODO 2. Loop over events, print each `tool_call`'s tool next
+        to `allowed_tools`, and press Run.
     - id: many-failed-runs
       when: { failed_runs_at_least: 3 }
       say: >-

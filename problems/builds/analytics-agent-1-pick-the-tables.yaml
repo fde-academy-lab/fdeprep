@@ -1,5 +1,7 @@
 slug: analytics-agent-1-pick-the-tables
-title: Pick only the tables the schema says exist and still use
+title: Managers restocked from best-seller lists years out of date
+day: 23
+skill: Pick only tables the schema says exist and are still in use
 artefact_type: code
 difficulty: easy
 complexity: C2
@@ -182,8 +184,7 @@ step_checks:
 hints:
   - The schema tool's answer holds everything this stage needs. Look at what
     each table entry carries besides its name.
-  - A name the model gives is only useful when describe() lists it. Look each
-    one up instead of trusting the spelling.
+  - "A name the model gives is only useful when `describe()` lists it. Look each one up instead of trusting the spelling."
   - A table can exist and still be wrong to use. The schema says which tables
     are retired, and a retired table is dropped just like a missing one.
   - Keep the names that pass both checks, each once, in the order the model
@@ -194,9 +195,9 @@ scenario:
   who: The data team at a garden-centre chain
   situation: >-
     Managers ask an analytics agent about sales in plain English. For three
-    weeks it answered best-seller questions from sales_2023_archive, a copy
+    weeks it answered best-seller questions from `sales_2023_archive`, a copy
     frozen before the March 2024 till migration, because its name matched the
-    questions better than order_lines did.
+    questions better than `order_lines` did.
   stakes: >-
     Two store managers restocked from best-seller lists more than two years
     old. Nothing errored, because the archive still exists and still answers
@@ -217,10 +218,10 @@ diagram:
     - { id: manager, label: Store manager, sub: asks in plain English, kind: actor, tone: blue, at: [0, 1] }
     - { id: model, label: Model, sub: picks tables by name, kind: model, tone: teal, at: [1, 0] }
     - { id: agent, label: Analytics agent, sub: asks the model to pick, kind: agent, tone: purple, at: [1, 1] }
-    - { id: schema, label: describe(), sub: "tables, columns, deprecated", kind: store, tone: blue, at: [1, 2] }
+    - { id: schema, label: "`describe()`", sub: "tables, columns, deprecated", kind: store, tone: blue, at: [1, 2] }
     - { id: check, label: Pick check, sub: listed and still current, kind: guard, tone: green, at: [2, 1] }
     - { id: tables, label: Picked tables, sub: what later stages may read, kind: output, tone: blue, at: [3, 1] }
-    - { id: archive, label: sales_2023_archive, sub: frozen since March 2024, kind: store, tone: pink, at: [2, 2] }
+    - { id: archive, label: "`sales_2023_archive`", sub: frozen since March 2024, kind: store, tone: pink, at: [2, 2] }
   edges:
     - { from: manager, to: agent, label: question, step: 1 }
     - { from: agent, to: schema, label: describe, step: 2 }
@@ -234,12 +235,12 @@ approach:
   goal: Keep only the tables the schema vouches for
   branches:
     - label: Ask the authority
-      leaves: [describe() lists what exists, each entry says whether it is retired]
+      leaves: ["`describe()` lists what exists", each entry says whether it is retired]
     - label: Check every name
       detail: >-
         The model spells table names from what it has read, and what it has
         read includes tables that are gone.
-      leaves: [listed by describe(), not marked deprecated]
+      leaves: [listed by `describe()`, not marked deprecated]
     - label: Keep the pick clean
       leaves: [each name once, in the model's order]
     - label: Fail towards nothing
@@ -265,12 +266,12 @@ coach:
     - id: json-without-a-net
       when: { code_matches: 'json\.loads\(', code_lacks: '\bexcept\b' }
       say: >-
-        json.loads raises when the model answers in a sentence. What should a
+        `json.loads` raises when the model answers in a sentence. What should a
         pick you cannot read contain?
     - id: hidden-unknown-table
       when: { test_failed: a_table_the_schema_does_not_describe_is_dropped }
       say: >-
-        The model named a table in that run that describe() never listed. Look
+        The model named a table in that run that `describe()` never listed. Look
         each name up before you keep it.
     - id: hidden-archive
       when: { test_failed: the_deprecated_archive_is_never_picked }
@@ -290,7 +291,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with read_schema. Call describe, look at one table's entry, and
+        Start with `read_schema`. Call describe, look at one table's entry, and
         notice every field it carries before you write the checks.
     - id: many-failures
       when: { failed_runs_at_least: 3 }
@@ -476,7 +477,7 @@ reference_md: |
   Existence is the obvious check and it catches `regions`. The model has read
   enough schemas to expect that an analytics database has a regions table,
   and it has no way of knowing that this one does not. Looking every name up
-  in what describe() returned costs nothing, and it turns a query that would
+  in what `describe()` returned costs nothing, and it turns a query that would
   have failed at run time, in front of a manager, into a pick that leaves the
   name out.
 

@@ -1,5 +1,7 @@
 slug: quarantine-a-poisoned-document-before-answering
-title: Set a poisoned forum post aside before it writes the answer
+title: Customers are sent to a number that asks for card details
+day: 20
+skill: Set a poisoned forum post aside before it writes the answer
 artefact_type: code
 difficulty: hard
 track: guardrails
@@ -154,8 +156,8 @@ diagram:
     obeyed. The screen between the forum and the prompt sets it aside whole.
   direction: lr
   nodes:
-    - { id: help, label: help_centre(), sub: reviewed by the content team, kind: store, tone: blue, at: [0, 0] }
-    - { id: forum, label: forum(), sub: anyone with an account, kind: store, tone: orange, at: [0, 2] }
+    - { id: help, label: "`help_centre()`", sub: reviewed by the content team, kind: store, tone: blue, at: [0, 0] }
+    - { id: forum, label: "`forum()`", sub: anyone with an account, kind: store, tone: orange, at: [0, 2] }
     - { id: screen, label: Marker screen, sub: "normalised text, forum only", kind: guard, tone: green, at: [1, 2] }
     - { id: builder, label: Prompt builder, sub: kept documents only, kind: agent, tone: purple, at: [2, 1] }
     - { id: quarantine, label: Quarantine, sub: whole post set aside and reported, kind: output, tone: neutral, at: [2, 3] }
@@ -225,7 +227,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with normalise() and is_poisoned(). They are two short functions,
+        Start with `normalise()` and `is_poisoned()`. They are two short functions,
         and everything else in this problem depends on them.
     - id: many-failures
       when: { failed_runs_at_least: 3 }

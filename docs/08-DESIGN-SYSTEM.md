@@ -73,7 +73,7 @@ Near-black base. One accent. Four state colours that mean exactly one thing each
 
 **Amended 29 September 2026:** the ramp gained a third surface and two border weights, the faint text moved up to pass 4.5:1 on every surface, and saturation came down below 80 percent. The primary button is inverted (light fill, dark text) rather than accent-filled, so the accent stays a signal for focus and state.
 
-Diagram tones are content, not chrome. The system diagram and the approach map give each subject a hue from the explainer grammar (`--tone-blue`, `-green`, `-purple`, `-teal`, `-orange`, `-pink`, `-neutral`). They appear inside those two components and nowhere in the interface around them, where the one-accent rule holds. Syntax colours in the editor are content in the same sense.
+Diagram tones are content, not chrome. The system diagram and the approach map give each subject a hue from the explainer grammar (`--tone-blue`, `-green`, `-purple`, `-teal`, `-orange`, `-pink`, `-neutral`). They appear inside those two components and nowhere in the interface around them, where the one-accent rule holds. Syntax colours are content in the same sense: they appear in the editor and in a Python code block inside a brief, a contract or a walkthrough, and both read one list in `web/lib/ui/syntax.ts`. Amended 1 October 2026.
 
 Rules:
 - Colour never carries meaning alone. Every state pairs with a glyph or a word, because roughly one in twelve men has a colour vision deficiency and a red and green pass/fail column is unreadable to them.

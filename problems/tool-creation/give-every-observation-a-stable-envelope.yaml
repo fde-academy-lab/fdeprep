@@ -1,5 +1,7 @@
 slug: give-every-observation-a-stable-envelope
-title: Give every tool result the same shape before the model reads it
+title: A grocer's support agent gave a customer a database password
+day: 7
+skill: Give every tool result the same shape before the model reads it
 artefact_type: code
 difficulty: medium
 track: tool-creation
@@ -47,7 +49,7 @@ contract_md: |
 
   | outcome | when | data | error |
   |---|---|---|---|
-  | `error` | the call raised | null | `"timeout"` for a TimeoutError, otherwise `"raised"` |
+  | `error` | the call raised | null | `"timeout"` for a `TimeoutError`, otherwise `"raised"` |
   | `error` | it returned a dict whose `"error"` key is set | null | `"reported"` |
   | `empty` | it returned `None`, `""`, `[]` or `{}` | null | null |
   | `ok` | anything else | the result | null |
@@ -212,9 +214,7 @@ hints:
     inside the envelope, in a try.
   - Put a code in the envelope and leave the error's own words out. Error text
     is written for whoever reads the logs, and it can carry anything.
-  - "In order: call inside a try, turn a raise into an error, turn an error
-    body into an error, turn None and the empty values into empty, and call
-    everything else ok. Then append the envelope with json.dumps."
+  - "In order: call inside a try, turn a raise into an error, turn an error body into an error, turn None and the empty values into empty, and call everything else ok. Then append the envelope with `json.dumps`."
 
 scenario:
   who: The support team at an online grocer
@@ -239,9 +239,9 @@ diagram:
     as a failure and an error body reads as text worth repeating.
   direction: lr
   nodes:
-    - { id: orders, label: find_order(), sub: returns a dict, kind: tool, tone: blue, at: [0, 0] }
-    - { id: swaps, label: substitutions(), sub: None when nothing changed, kind: tool, tone: blue, at: [0, 1] }
-    - { id: slots, label: delivery_slot(), sub: raises or reports an error, kind: tool, tone: blue, at: [0, 2] }
+    - { id: orders, label: "`find_order()`", sub: returns a dict, kind: tool, tone: blue, at: [0, 0] }
+    - { id: swaps, label: "`substitutions()`", sub: None when nothing changed, kind: tool, tone: blue, at: [0, 1] }
+    - { id: slots, label: "`delivery_slot()`", sub: raises or reports an error, kind: tool, tone: blue, at: [0, 2] }
     - { id: envelope, label: Envelope, sub: "ok, empty or error, with a code", kind: guard, tone: green, at: [1, 1] }
     - { id: prompt, label: Prompt, sub: one JSON line per result, kind: doc, tone: purple, at: [2, 1] }
     - { id: model, label: Model, sub: answers the customer, kind: model, tone: teal, at: [3, 1] }

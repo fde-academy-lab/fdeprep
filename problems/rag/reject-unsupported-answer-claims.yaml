@@ -1,5 +1,7 @@
 slug: reject-unsupported-answer-claims
-title: Drop the sentence its citation does not support
+title: A cited mortgage answer doubles the overpayment allowance
+day: 12
+skill: Drop the sentence its citation does not support
 artefact_type: code
 difficulty: medium
 track: rag
@@ -225,7 +227,7 @@ coach:
       when: { code_lacks: '(numbers|nums|digits|figures)\([\s\S]*(numbers|nums|digits|figures)\(' }
       say: >-
         Nothing compares the numbers in a sentence with the numbers in the
-        chunks it cites yet. numbers() is written for you, so where would it be
+        chunks it cites yet. `numbers()` is written for you, so where would it be
         called?
     - id: substring-number-match
       when: { code_matches: '\bin\s+\w+\[\s*\w+\s*\]' }
@@ -257,7 +259,7 @@ coach:
       when: { idle_minutes: 5 }
       say: >-
         Start with TODO 3: split the draft into sentences and return them
-        joined, so the public tests run. Then fill supported() one check at a
+        joined, so the public tests run. Then fill `supported()` one check at a
         time.
     - id: keep-failing
       when: { failed_runs_at_least: 3 }

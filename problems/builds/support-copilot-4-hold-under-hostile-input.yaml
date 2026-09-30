@@ -1,5 +1,7 @@
 slug: support-copilot-4-hold-under-hostile-input
-title: Keep the copilot safe when the ticket, a tool and the budget turn hostile
+title: A ticket told the copilot to refund £480 on a £23.50 order
+day: 30
+skill: Keep the copilot safe when the ticket, a tool and the budget turn hostile
 artefact_type: code
 difficulty: extreme
 complexity: C2
@@ -306,7 +308,7 @@ diagram:
     - { id: copilot, label: Copilot, sub: catches every failure, kind: agent, tone: purple, at: [1, 1] }
     - { id: checks, label: Stages 1 to 3, sub: "queue, citations, amount", kind: guard, tone: green, at: [2, 1] }
     - { id: order, label: Order record, sub: charged minus refunded, kind: store, tone: blue, at: [3, 0] }
-    - { id: refund, label: refund(), sub: receipt checked field by field, kind: tool, tone: orange, at: [3, 1] }
+    - { id: refund, label: "`refund()`", sub: receipt checked field by field, kind: tool, tone: orange, at: [3, 1] }
     - { id: reply, label: Reply, sub: sent after a matching receipt, kind: output, tone: blue, at: [4, 1] }
     - { id: person, label: A person, sub: "nothing sent, nothing paid", kind: output, tone: orange, at: [2, 2] }
   edges:

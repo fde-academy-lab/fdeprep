@@ -1,5 +1,7 @@
 slug: stop-when-the-approved-plan-changes
-title: Stop the run when the plan moves past the version that was approved
+title: Checkouts fail for 22 minutes after an unapproved change
+day: 20
+skill: Stop the run when the plan moves past the version that was approved
 artefact_type: code
 difficulty: hard
 track: guardrails
@@ -115,9 +117,7 @@ hints:
     version 3, and version 3 was a whole plan of three steps.
   - A Replan does not edit the approved plan. It makes a new one, and a new
     version has no approval until the board gives it one.
-  - Check before every step whether the plan is still the approved version.
-    The moment it is not, send the new version and the list of what ran to
-    request_approval, and stop.
+  - "Check before every step whether the plan is still the approved version. The moment it is not, send the new version and the list of what ran to `request_approval`, and stop."
   - Steps depend on each other, which is why the board judged them together. A
     step that looks unchanged in version 4 is still a step of version 4.
   - Two facts end the run before any step runs, a declined approval and one
@@ -146,12 +146,12 @@ diagram:
   direction: lr
   nodes:
     - { id: board, label: Change board, sub: approves version 3, kind: actor, tone: blue, at: [0, 0] }
-    - { id: approval, label: approval(), sub: version 3 and its steps, kind: store, tone: orange, at: [1, 0] }
+    - { id: approval, label: "`approval()`", sub: version 3 and its steps, kind: store, tone: orange, at: [1, 0] }
     - { id: planner, label: Planner, sub: Continue or Replan, kind: model, tone: teal, at: [0, 2] }
     - { id: executor, label: Executor, sub: one step at a time, kind: agent, tone: purple, at: [1, 1] }
     - { id: check, label: Version check, sub: before every step, kind: guard, tone: green, at: [2, 1] }
     - { id: steps, label: Step tools, sub: "drain, patch, restore", kind: tool, tone: neutral, at: [3, 1] }
-    - { id: request, label: request_approval(), sub: version 4 goes to the board, kind: service, tone: green, at: [3, 0] }
+    - { id: request, label: "`request_approval()`", sub: version 4 goes to the board, kind: service, tone: green, at: [3, 0] }
     - { id: promote, label: promote db-9, sub: ran under version 3's approval, kind: output, tone: pink, at: [3, 2] }
   edges:
     - { from: board, to: approval, label: approves version 3, step: 1 }
@@ -407,7 +407,7 @@ tests:
       say why it stopped.
 
       A missing approval and a declined one lead to the same place: nothing
-      runs, and the report says not_approved.
+      runs, and the report says `not_approved`.
     spec:
       kind: agent_run
       input: { question: "Carry out change CHG-3323." }
@@ -448,7 +448,7 @@ reference_md: |
   promotion the board never saw.
 
   Stopping is only half of it. The board deciding version 4 needs to know
-  that db-7 is drained and patched, so request_approval carries the list of
+  that db-7 is drained and patched, so `request_approval` carries the list of
   what ran along with the new steps. The same list goes in the report, which
   is what the on-call engineer reads first.
 

@@ -8,7 +8,7 @@
  * and the results of the last run. The policy decides every gate; this file
  * draws what it is told and asks again after anything that can move a gate.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import CodeMirror, { type BasicSetupOptions } from "@uiw/react-codemirror";
 import type { EditorView } from "@codemirror/view";
 import { python } from "@codemirror/lang-python";
@@ -21,6 +21,7 @@ import type { PalettePage } from "@/components/shell/command-palette";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Markdown } from "@/components/ui/markdown";
+import { renderCode } from "@/components/ui/code";
 import { cn } from "@/components/ui/cn";
 import { ProblemBar } from "@/components/workspace/problem-bar";
 import { WorkspaceLayout } from "@/components/workspace/layout";
@@ -34,6 +35,7 @@ import {
 import Defence from "./defence";
 import { submitsLeft } from "./submits-left";
 import { useSubmission } from "./use-submission";
+import { ALWAYS_ALLOWED_IMPORTS, PYTHON_VERSION } from "@/lib/problems/constraints";
 
 interface Props {
   problem: WorkspaceProblem;
@@ -171,23 +173,16 @@ export default function Workspace(props: Props) {
                 hintBadge={hintGate && hintGate.total ? `${hintGate.revealed}/${hintGate.total}` : null} />
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {tab === "brief" ? (
-          <ProblemIntro title={problem.title} track={problem.track} difficulty={problem.difficulty}
+          <ProblemIntro title={problem.title} day={problem.day} skill={problem.skill}
+                        interview={problem.interview} track={problem.track} difficulty={problem.difficulty}
                         estMinutes={problem.estMinutes} artefactLabel="Python"
                         kit={problem.kit} briefMd={problem.briefMd}>
             {problem.contractMd ? (
               <Section title="Contract" aside={problem.callBudget
                 ? `${problem.callBudget} model calls` : null}>
                 <Markdown source={problem.contractMd} />
-                {problem.allowedImports.length ? (
-                  <p className="text-meta text-text-dim">
-                    Allowed imports:{" "}
-                    {problem.allowedImports.map((name, i) => (
-                      <span key={name}>
-                        {i ? ", " : ""}<code className="font-mono text-text">{name}</code>
-                      </span>
-                    ))}
-                  </p>
-                ) : null}
+                <Constraints callBudget={problem.callBudget} timeLimitS={problem.timeLimitS}
+                             allowedImports={problem.allowedImports} />
               </Section>
             ) : null}
 
@@ -256,7 +251,7 @@ export default function Workspace(props: Props) {
           solution.py
         </span>
         <div className="flex items-center gap-3 pb-1.5 text-meta text-text-faint">
-          <span className="hidden md:inline">Python 3.12</span>
+          <span className="hidden md:inline">Python {PYTHON_VERSION}</span>
           <button type="button" title="Put the starter code back"
                   onClick={() => {
                     if (!confirm("Replace your code with the starter code? Your draft is lost.")) return;
@@ -391,7 +386,7 @@ function Steps({ steps, status }: {
                 {state === "pass" ? <Check className="size-3" strokeWidth={2.5} /> : index + 1}
               </span>
               <span className={state === "pass" ? "text-text-dim" : "text-text"}>
-                {step.text}
+                {renderCode(step.text)}
                 {state === "unchecked" ? (
                   <span className="mt-0.5 block text-meta text-text-faint">
                     Its check passes on the starter code too. Check this one against the brief.
@@ -408,5 +403,39 @@ function Steps({ steps, status }: {
         })}
       </ol>
     </Section>
+  );
+}
+
+/** What the run allows, in one place, so a learner does not piece it together from the contract. */
+function Constraints({ callBudget, timeLimitS, allowedImports }: {
+  callBudget: number | null;
+  timeLimitS: number;
+  allowedImports: string[];
+}) {
+  const imports = [...ALWAYS_ALLOWED_IMPORTS,
+                   ...allowedImports.filter((name) => !(ALWAYS_ALLOWED_IMPORTS as readonly string[])
+                     .includes(name))];
+  const rows: Array<[string, ReactNode]> = [
+    ["Model calls", callBudget ? `${callBudget} per test case` : "No budget on this problem"],
+    ["Time limit", `${timeLimitS} seconds per test case`],
+    ["Imports", imports.map((name, i) => (
+      <span key={name}>{i ? ", " : ""}<code className="font-mono text-text">{name}</code></span>
+    ))],
+    ["Python", PYTHON_VERSION],
+  ];
+  return (
+    <div className="overflow-hidden rounded-control border border-border">
+      <p className="border-b border-border bg-surface-2 px-3 py-1.5 text-meta font-medium text-text-dim">
+        Constraints
+      </p>
+      <dl className="divide-y divide-border text-meta">
+        {rows.map(([label, value]) => (
+          <div key={label} className="grid grid-cols-[7.5rem_1fr] gap-3 px-3 py-2">
+            <dt className="text-text-faint">{label}</dt>
+            <dd className="text-text">{value}</dd>
+          </div>
+        ))}
+      </dl>
+    </div>
   );
 }

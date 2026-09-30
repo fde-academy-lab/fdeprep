@@ -1,5 +1,7 @@
 slug: route-inside-hard-constraints
-title: Route each claim inside the client's hard constraints, or refuse it
+title: When a model slows, claims leave the EU against the contract
+day: 21
+skill: Route each claim only to models the contract allows, or refuse it
 artefact_type: code
 difficulty: hard
 track: production
@@ -217,7 +219,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Write failed_constraint first and check it by hand against the
+        Write `failed_constraint` first and check it by hand against the
         candidate in the contract. The loop is short once that exists.
     - id: many-failed-runs
       when: { failed_runs_at_least: 3 }

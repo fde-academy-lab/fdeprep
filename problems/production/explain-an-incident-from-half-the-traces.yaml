@@ -1,5 +1,7 @@
 slug: explain-an-incident-from-half-the-traces
-title: Explain an incident when half the traces were never kept
+title: Patients arrive for appointments that were never booked
+day: 22
+skill: Explain an incident when half the traces were never kept
 artefact_type: design
 difficulty: extreme
 track: production
@@ -16,7 +18,7 @@ brief_md: |
   were not expecting them.
 
   Traces are sampled at 50 percent, decided when a conversation starts, so 106
-  of the 212 conversations have one. In 64 of those, the create_booking tool
+  of the 212 conversations have one. In 64 of those, the `create_booking` tool
   returned HTTP 200 with an empty body and the assistant confirmed anyway. The
   message log is not sampled: it records every confirmation and nothing about
   the tool. The hospital's IT team deployed a new API gateway in front of the
@@ -298,14 +300,14 @@ diagram:
   nodes:
     - { id: patient, label: Patient, sub: asks for an appointment, kind: actor, tone: blue, at: [0, 1] }
     - { id: traces, label: Traces, sub: half the conversations, kind: doc, tone: neutral, at: [1, 0] }
-    - { id: assistant, label: Appointment assistant, sub: confirms after create_booking, kind: agent, tone: purple, at: [1, 1] }
+    - { id: assistant, label: Appointment assistant, sub: confirms after `create_booking`, kind: agent, tone: purple, at: [1, 1] }
     - { id: messages, label: Message log, sub: every confirmation and no tool data, kind: doc, tone: neutral, at: [1, 2] }
     - { id: gateway, label: Hospital API gateway, sub: new release from 09:35 to 12:10, kind: service, tone: orange, at: [2, 1] }
     - { id: schedule, label: Scheduling system, sub: 131 bookings never written, kind: store, tone: pink, at: [3, 1] }
     - { id: update, label: 17:00 update, sub: each claim observed or inferred, kind: output, tone: green, at: [3, 2] }
   edges:
     - { from: patient, to: assistant, label: books, step: 1 }
-    - { from: assistant, to: gateway, label: create_booking, step: 2 }
+    - { from: assistant, to: gateway, label: "`create_booking`", step: 2 }
     - { from: gateway, to: assistant, label: 200 with an empty body, tone: danger, step: 3 }
     - { from: gateway, to: schedule, label: no booking written, tone: danger }
     - { from: assistant, to: traces, label: sampled at 50 percent, tone: muted }

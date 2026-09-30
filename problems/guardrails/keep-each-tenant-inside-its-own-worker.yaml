@@ -1,5 +1,7 @@
 slug: keep-each-tenant-inside-its-own-worker
-title: Keep each client's job inside its own worker
+title: A buyer is quoted another client's confidential pallet rate
+day: 22
+skill: Keep each client's job inside its own worker
 artefact_type: code
 difficulty: extreme
 track: guardrails
@@ -128,13 +130,13 @@ diagram:
     second prompt.
   direction: lr
   nodes:
-    - { id: jobs, label: jobs(), sub: a batch from two clients, kind: queue, tone: neutral, at: [0, 1] }
-    - { id: grants, label: grants(), sub: which tools each client has, kind: store, tone: orange, at: [1, 0] }
+    - { id: jobs, label: "`jobs()`", sub: a batch from two clients, kind: queue, tone: neutral, at: [0, 1] }
+    - { id: grants, label: "`grants()`", sub: which tools each client has, kind: store, tone: orange, at: [1, 0] }
     - { id: orchestrator, label: Orchestrator, sub: one worker per job, kind: agent, tone: purple, at: [1, 1] }
     - { id: garden, label: Garden worker, sub: "own scratchpad, own tools", kind: guard, tone: green, at: [2, 0] }
     - { id: homeware, label: Homeware worker, sub: "own scratchpad, own tools", kind: guard, tone: green, at: [2, 2] }
-    - { id: rates_garden, label: rates_garden(), sub: "negotiated rate, 38 pounds", kind: tool, tone: blue, at: [3, 0] }
-    - { id: rates_homeware, label: rates_homeware(), sub: "negotiated rate, 44 pounds", kind: tool, tone: teal, at: [3, 2] }
+    - { id: rates_garden, label: "`rates_garden()`", sub: "negotiated rate, 38 pounds", kind: tool, tone: blue, at: [3, 0] }
+    - { id: rates_homeware, label: "`rates_homeware()`", sub: "negotiated rate, 44 pounds", kind: tool, tone: teal, at: [3, 2] }
     - { id: shared, label: Batch scratchpad, sub: created once for every job, kind: store, tone: pink, at: [3, 1] }
     - { id: leak, label: 38 pounds to homeware, sub: another client's rate, kind: output, tone: pink, at: [4, 1] }
   edges:
@@ -179,7 +181,7 @@ coach:
     - id: other-clients-notes
       when: { test_failed: a_worker_asking_for_another_clients_notes_is_refused }
       say: >-
-        The homeware worker's model asked for notes_garden. Which list decides
+        The homeware worker's model asked for `notes_garden`. Which list decides
         whether that worker may have them, and did your code consult it before
         the call?
     - id: missing-grants-entry
@@ -478,7 +480,7 @@ reference_md: |
 
   Capabilities do the rest. Telling the homeware worker to use only homeware
   tools is a request, and handing it a table that holds only homeware tools
-  is a control. The model asked for notes_garden because it could name it,
+  is a control. The model asked for `notes_garden` because it could name it,
   and the table answered. The refusal says the tool is not available rather
   than whose it is, because a worker has no business learning which other
   clients exist.

@@ -1,5 +1,7 @@
 slug: attach-a-source-to-each-evidence-block
-title: Give every evidence block its chunk id, and never cut one
+title: The HR assistant quotes ten days' leave from a five day rule
+day: 11
+skill: Start each evidence block with its chunk id, and add only whole blocks
 artefact_type: code
 difficulty: easy
 track: rag
@@ -230,7 +232,7 @@ coach:
       when: { idle_minutes: 5 }
       say: >-
         Start with TODO 1 and TODO 2: return a Final Answer, and call search
-        when the model asks. Then make block() start with the id and press Run.
+        when the model asks. Then make `block()` start with the id and press Run.
     - id: keep-failing
       when: { failed_runs_at_least: 3 }
       say: >-

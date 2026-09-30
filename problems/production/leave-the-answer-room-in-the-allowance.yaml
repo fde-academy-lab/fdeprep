@@ -1,5 +1,7 @@
 slug: leave-the-answer-room-in-the-allowance
-title: Leave the answer room inside the token allowance
+title: Hindi tickets sit unrouted because their label is cut off
+day: 17
+skill: Leave the answer room inside the token allowance
 artefact_type: code
 difficulty: easy
 track: production
@@ -325,7 +327,7 @@ coach:
     - id: no-room-for-the-answer
       when: { code_lacks: 'answer_tokens' }
       say: >-
-        Nothing in your code reads answer_tokens. The allowance pays for the
+        Nothing in your code reads `answer_tokens`. The allowance pays for the
         answer too. How much of it can the prompt have?
     - id: estimates-from-characters
       when: { code_matches: 'len\([^)]*\)\s*//?\s*4\b' }

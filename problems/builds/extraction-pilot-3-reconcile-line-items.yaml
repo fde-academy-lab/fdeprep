@@ -1,5 +1,7 @@
 slug: extraction-pilot-3-reconcile-line-items
-title: Check the invoice lines add up before anyone pays the total
+title: A claim was overpaid by £412.50 against its own invoice
+day: 26
+skill: Check the invoice lines add up before anyone pays the total
 artefact_type: code
 difficulty: hard
 track: builds
@@ -201,10 +203,7 @@ hints:
     letter.
   - Binary floating point stores almost no pence value exactly. Count money in
     a type that does, such as whole pence as integers or decimal.
-  - "The shape: read the invoice text, keep each line whose amount the invoice
-    contains, add the kept lines in pence, compare the sum with amount_claimed,
-    and add an error line for whatever fails. The repair and routing you
-    already have do the rest."
+  - "The shape: read the invoice text, keep each line whose amount the invoice contains, add the kept lines in pence, compare the sum with `amount_claimed`, and add an error line for whatever fails. The repair and routing you already have do the rest."
   - An invoice that never arrived leaves nothing to check a line against, so
     no line passes and the claim goes to a person.
 

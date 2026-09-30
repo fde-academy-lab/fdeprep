@@ -1,5 +1,7 @@
 slug: resolve-a-follow-up-without-changing-intent
-title: Resolve "what about the other one" without borrowing someone else's order
+title: A customer is told where somebody else's parcel is
+day: 14
+skill: Resolve "what about the other one" without borrowing someone else's order
 artefact_type: code
 difficulty: hard
 track: rag
@@ -93,8 +95,7 @@ stub_code: |
       return ASK
 
 hints:
-  - Look at what history() returns and whose turns they are. The session
-    belongs to the queue, so it holds more than one customer.
+  - "Look at what `history()` returns and whose turns they are. The session belongs to the queue, so it holds more than one customer."
   - Once another customer's order id is in the prompt, "the other one" has a
     referent, and a model asked to resolve it will use the nearest one.
   - The filter goes on before the turns reach the prompt, not on the rewrite
@@ -129,14 +130,14 @@ diagram:
     - { id: customer, label: Customer c-4, sub: and what about the other one, kind: actor, tone: blue, at: [0, 1] }
     - { id: history, label: Session history, sub: one session for the whole queue, kind: store, tone: orange, at: [1, 0] }
     - { id: loop, label: Agent loop, sub: builds the rewrite prompt, kind: agent, tone: purple, at: [1, 1] }
-    - { id: filter, label: Customer filter, sub: keeps turns whose customer_id matches, kind: guard, tone: green, at: [2, 1] }
+    - { id: filter, label: Customer filter, sub: keeps turns whose `customer_id` matches, kind: guard, tone: green, at: [2, 1] }
     - { id: model, label: Model, sub: rewrites the follow-up, kind: model, tone: teal, at: [3, 0] }
     - { id: search, label: search, sub: finds whatever it is asked for, kind: tool, tone: neutral, at: [4, 0] }
     - { id: leak, label: Z-9114 status, sub: "a stranger's parcel, told to c-4", kind: output, tone: pink, at: [4, 1] }
     - { id: ask, label: Ask which order, sub: no search and no guess, kind: output, tone: teal, at: [3, 2] }
   edges:
     - { from: customer, to: loop, label: follow-up, step: 1 }
-    - { from: loop, to: history, label: history(), step: 2 }
+    - { from: loop, to: history, label: "`history()`", step: 2 }
     - { from: history, to: loop, label: every customer's turns, step: 3 }
     - { from: loop, to: filter, label: turns, step: 4 }
     - { from: filter, to: model, label: this customer's turns only, tone: success }
@@ -149,7 +150,7 @@ approach:
   goal: Resolve the follow-up from this customer's own words, or ask
   branches:
     - label: Know whose turns these are
-      leaves: [the session belongs to the queue, every turn carries a customer_id]
+      leaves: [the session belongs to the queue, every turn carries a `customer_id`]
     - label: Filter before the prompt
       detail: A turn that is not in the prompt cannot be used. An instruction to ignore one is a request.
       leaves: [keep this customer's turns, drop the rest before writing anything]
@@ -160,7 +161,7 @@ approach:
 
 coach:
   opening: >-
-    Look at what history() returns and ask whose turns they are. The session
+    Look at what `history()` returns and ask whose turns they are. The session
     is shared by the whole queue.
   signals:
     - id: instructs-instead-of-filtering
@@ -174,7 +175,7 @@ coach:
     - id: no-customer-filter
       when: { code_lacks: '(\.get\(|\[)\s*[''"]customer_id[''"]' }
       say: >-
-        Nothing reads a turn's customer_id yet, so every customer in the queue
+        Nothing reads a turn's `customer_id` yet, so every customer in the queue
         reaches the prompt. Which turns belong to the person asking?
     - id: hidden-another-customers-order
       when: { test_failed: another_customers_order_never_reaches_the_prompt }
@@ -196,12 +197,12 @@ coach:
     - id: adversarial-nothing
       when: { test_failed: adversarial_the_history_tool_returns_nothing }
       say: >-
-        history() answered with nothing at all in that run. Does your loop
+        `history()` answered with nothing at all in that run. Does your loop
         treat that the same way as a history with no order in it?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with split_question, then keep only the turns whose customer_id
+        Start with `split_question`, then keep only the turns whose `customer_id`
         matches and print them for the first public case. Nobody else's turns
         should appear.
     - id: keep-failing

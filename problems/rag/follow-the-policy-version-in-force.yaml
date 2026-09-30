@@ -1,5 +1,7 @@
 slug: follow-the-policy-version-in-force
-title: Answer from the policy in force, and record what you set aside
+title: Finance refuses a business class fare the assistant allowed
+day: 15
+skill: Answer from the policy in force, and record what you set aside
 artefact_type: code
 difficulty: extreme
 track: rag
@@ -73,7 +75,7 @@ contract_md: |
 
 defence_question: |
   Your loop decides which version is in force from the doc and
-  effective_from fields the index returns. A reviewer points out that a
+  `effective_from` fields the index returns. A reviewer points out that a
   policy can also be withdrawn with no replacement, or amended by a
   one-page notice filed as a separate document. Which of those does your
   design get wrong, and what would you add to the index, rather than to the
@@ -116,9 +118,7 @@ hints:
   - Rank says how well a chunk matches the words of the question, and an old
     policy often matches old words better. Which version applies is a fact
     about dates.
-  - Group the chunks by doc. In each group the version in force is the latest
-    effective_from on or before as_of, and every other version in the group
-    is set aside with its reason.
+  - "Group the chunks by doc. In each group the version in force is the latest `effective_from` on or before `as_of`, and every other version in the group is set aside with its reason."
   - Set versions aside before you choose the two chunks for the prompt.
     Choosing first lets a superseded chunk take the place its replacement
     needed.
@@ -149,7 +149,7 @@ diagram:
     - { id: engineer, label: Engineer, sub: business class to Singapore, kind: actor, tone: blue, at: [0, 1] }
     - { id: search, label: search, sub: "old, current and next versions", kind: tool, tone: neutral, at: [1, 1] }
     - { id: topk, label: Top two by score, sub: 2024 ranks above 2026, kind: decision, tone: pink, at: [2, 0] }
-    - { id: resolve, label: Version check, sub: latest effective_from on or before today, kind: guard, tone: green, at: [2, 2] }
+    - { id: resolve, label: Version check, sub: latest `effective_from` on or before today, kind: guard, tone: green, at: [2, 2] }
     - { id: model, label: Model, sub: follows what it reads first, kind: model, tone: teal, at: [3, 1] }
     - { id: record, label: Record, sub: followed and set aside by id, kind: doc, tone: purple, at: [3, 2] }
     - { id: wrong, label: "Business class, refused", sub: the 2024 rule followed, kind: output, tone: pink, at: [4, 0] }
@@ -171,11 +171,11 @@ approach:
       detail: The same doc means versions of one policy. Different docs never conflict.
       leaves: [group by doc, one version can span several chunks]
     - label: Pick the version by date
-      leaves: [latest effective_from on or before as_of, later than as_of is not in force yet]
+      leaves: [latest `effective_from` on or before `as_of`, later than `as_of` is not in force yet]
     - label: Resolve before the budget
       leaves: [set aside first and then take two, a superseded chunk never takes a place]
     - label: Say what happened
-      leaves: [followed and set_aside by id, no evidence means no answer]
+      leaves: [followed and `set_aside` by id, no evidence means no answer]
 
 coach:
   opening: >-
@@ -186,7 +186,7 @@ coach:
     - id: never-compares-dates
       when: { code_lacks: '(<=|>=|<|>)\s*(as_of|asof|today|on_date|cutoff)\b|\b(as_of|asof|today|on_date|cutoff)\s*(<=|>=|<|>)' }
       say: >-
-        Nothing compares a chunk's effective_from with the as-of date yet, so
+        Nothing compares a chunk's `effective_from` with the as-of date yet, so
         every version looks equally current. Which one was in force on the day
         of the question?
     - id: hidden-superseded-first
@@ -452,7 +452,7 @@ reference_md: |
 
   Which version applies is a fact about dates, and the dates are in the
   metadata, so the loop can decide it without the model. Group by doc, and
-  the version in force is the latest effective_from on or before the as-of
+  the version in force is the latest `effective_from` on or before the as-of
   date. That one rule handles both directions of the trap: the 2024 version
   is older than the one in force, and the 2027 version is newer than today.
   A loop that takes the newest version follows a policy nobody is bound by

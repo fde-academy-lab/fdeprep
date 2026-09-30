@@ -1,5 +1,7 @@
 slug: fuse-lexical-and-semantic-rankings
-title: Merge keyword and vector results by rank, not by score
+title: An engineer replaces the wrong part and a printer stays down
+day: 14
+skill: Merge keyword and vector search results by their rank in each list
 artefact_type: code
 difficulty: hard
 track: rag
@@ -143,8 +145,8 @@ diagram:
   direction: lr
   nodes:
     - { id: engineer, label: Field engineer, sub: "M400, E-4102, tray 2", kind: actor, tone: blue, at: [0, 1] }
-    - { id: keyword, label: keyword_search, sub: exact codes and scores up to 20, kind: tool, tone: neutral, at: [1, 0] }
-    - { id: vector, label: vector_search, sub: descriptions and scores up to 1, kind: tool, tone: neutral, at: [1, 2] }
+    - { id: keyword, label: "`keyword_search`", sub: exact codes and scores up to 20, kind: tool, tone: neutral, at: [1, 0] }
+    - { id: vector, label: "`vector_search`", sub: descriptions and scores up to 1, kind: tool, tone: neutral, at: [1, 2] }
     - { id: byscore, label: Sort by score, sub: keyword scores always win, kind: decision, tone: pink, at: [2, 0] }
     - { id: fusion, label: Rank fusion, sub: "1 / (60 + rank), summed per chunk", kind: guard, tone: green, at: [2, 2] }
     - { id: model, label: Model, sub: answers from the top three, kind: model, tone: teal, at: [3, 1] }
@@ -215,7 +217,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with ranks(): map each id to its first position in one list, and
+        Start with `ranks()`: map each id to its first position in one list, and
         try it on a list where an id appears twice.
     - id: keep-failing
       when: { failed_runs_at_least: 3 }

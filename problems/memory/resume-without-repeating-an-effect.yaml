@@ -1,5 +1,7 @@
 slug: resume-without-repeating-an-effect
-title: Resume a crashed run without sending the email twice
+title: A customer gets two welcome emails and two discount codes
+day: 15
+skill: Resume a crashed run without sending the email twice
 artefact_type: code
 difficulty: extreme
 track: memory
@@ -130,7 +132,7 @@ diagram:
     - { id: checkpoint, label: Checkpoint, sub: written after each step returns, kind: store, tone: blue, at: [0, 0] }
     - { id: ledger, label: Mail ledger, sub: what the provider actually sent, kind: store, tone: green, at: [0, 2] }
     - { id: worker, label: Onboarding worker, sub: resumes after a restart, kind: agent, tone: purple, at: [1, 1] }
-    - { id: run, label: run(step), sub: sends the welcome email, kind: tool, tone: orange, at: [2, 1] }
+    - { id: run, label: "`run(step)`", sub: sends the welcome email, kind: tool, tone: orange, at: [2, 1] }
     - { id: customer, label: Customer, sub: receives two discount codes, kind: actor, tone: pink, at: [3, 1] }
     - { id: operator, label: Operator, sub: told which step is blocked, kind: actor, tone: teal, at: [2, 2] }
   edges:

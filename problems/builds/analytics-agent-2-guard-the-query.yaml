@@ -1,5 +1,7 @@
 slug: analytics-agent-2-guard-the-query
-title: Run only a single read over the tables that were picked
+title: The analytics agent deleted 4,112 sales lines on request
+day: 23
+skill: Run only a single read over the tables that were picked
 artefact_type: code
 difficulty: medium
 complexity: C2
@@ -279,8 +281,7 @@ hints:
     SELECT.
   - Tables are named after FROM and JOIN. Compare each one with stage 1's
     pick, which is the allowlist for this question.
-  - A refusal is an answer. Record the reason and return without calling
-    run_query at all.
+  - "A refusal is an answer. Record the reason and return without calling `run_query` at all."
 
 scenario:
   who: The data team at a garden-centre chain
@@ -288,7 +289,7 @@ scenario:
     The agent now writes and runs its own SQL, on a database connection it
     shares with the reporting service, which can write. Last Thursday a manager
     asked it to clear the test sales for store 99, and it ran DELETE FROM
-    order_lines.
+    `order_lines`.
   stakes: >-
     Restoring the deleted lines took the data team a day. The same connection
     can read the staff table, which holds salaries.
@@ -335,7 +336,7 @@ approach:
     - label: Picked tables only
       leaves: [the names after FROM and JOIN, stage 1's pick is the allowlist]
     - label: Refuse before running
-      leaves: [run_query never sees it, the reason goes back to the manager]
+      leaves: ["`run_query` never sees it", the reason goes back to the manager]
 
 coach:
   opening: >-
@@ -381,8 +382,8 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Fill in TODO 4 first, running the query only when guard() returns None,
-        and press Run. Then add one check to guard() at a time.
+        Fill in TODO 4 first, running the query only when `guard()` returns None,
+        and press Run. Then add one check to `guard()` at a time.
     - id: many-failures
       when: { failed_runs_at_least: 3 }
       say: >-

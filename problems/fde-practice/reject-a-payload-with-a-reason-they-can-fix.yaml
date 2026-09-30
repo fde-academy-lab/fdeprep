@@ -1,5 +1,7 @@
 slug: reject-a-payload-with-a-reason-they-can-fix
-title: Reject a bad request with a reason their engineer can fix
+title: After an upgrade, 14 urgent repairs sat in the normal queue
+day: 23
+skill: Reject a bad request with a reason their engineer can fix
 artefact_type: code
 difficulty: easy
 track: fde-practice
@@ -104,16 +106,16 @@ stub_code: |
 
 steps:
   - id: s1
-    text: Name request_id or description when either one is missing or empty.
+    text: Name `request_id` or description when either one is missing or empty.
     check_id: s1
   - id: s2
     text: Reject a priority outside the three allowed values, naming them and what arrived.
     check_id: s2
   - id: s3
-    text: Find out whether tenant is an object before you read tenant.name and tenant.unit.
+    text: Find out whether tenant is an object before you read `tenant.name` and `tenant.unit`.
     check_id: s3
   - id: s4
-    text: Return every problem in one rejection, before the model call and create_case.
+    text: Return every problem in one rejection, before the model call and `create_case`.
     check_id: s4
 
 step_checks:
@@ -185,10 +187,8 @@ hints:
   - Collect problems in a list and return once, at the end. Their engineer
     fixes everything you name in one deploy, and anything you leave out costs
     them another.
-  - "Write each problem for the person reading it at their desk: the full path
-    such as tenant.unit, what the contract expects, and what actually arrived."
-  - The model call and create_case both belong below the rejection. A request
-    that fails the contract should cost nothing.
+  - "Write each problem for the person reading it at their desk: the full path such as `tenant.unit`, what the contract expects, and what actually arrived."
+  - "The model call and `create_case` both belong below the rejection. A request that fails the contract should cost nothing."
 
 scenario:
   who: The integration team at a property management company
@@ -208,13 +208,13 @@ diagram:
   title: Where a bad request should stop, and where it went
   caption: >-
     The contract check belongs at the door. Past it, the model summarises
-    anything and create_case files anything, so nothing downstream will object.
+    anything and `create_case` files anything, so nothing downstream will object.
   direction: lr
   nodes:
     - { id: ticketing, label: Their ticketing system, sub: "posts JSON, upgraded on Tuesday", kind: actor, tone: blue, at: [0, 1] }
     - { id: intake, label: Intake, sub: checks the contract first, kind: guard, tone: green, at: [1, 1] }
     - { id: model, label: Model, sub: summarises whatever it is given, kind: model, tone: teal, at: [2, 0] }
-    - { id: create, label: create_case, sub: files it in a queue, kind: tool, tone: neutral, at: [3, 0] }
+    - { id: create, label: "`create_case`", sub: files it in a queue, kind: tool, tone: neutral, at: [3, 0] }
     - { id: misfiled, label: Normal queue, sub: a burst pipe waits a day, kind: output, tone: pink, at: [4, 0] }
     - { id: rejection, label: Rejection, sub: "the path, the rule, what arrived", kind: output, tone: orange, at: [2, 2] }
   edges:
@@ -236,7 +236,7 @@ approach:
         separate checks.
       leaves: [a key present with null is not an object, "an unknown priority is an error, never a default"]
     - label: Write the rejection for a person
-      leaves: ["the full path, like tenant.unit", what was expected and what arrived]
+      leaves: ["the full path, like `tenant.unit`", what was expected and what arrived]
     - label: Name everything at once
       leaves: [one reply lists every problem, one fix and one deploy on their side]
 

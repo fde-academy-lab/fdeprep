@@ -1,5 +1,7 @@
 slug: match-results-to-their-requests
-title: Keep each result attached to the thing it was asked about
+title: A customer is told their order arrived when another one did
+day: 11
+skill: Keep each result attached to the thing it was asked about
 artefact_type: code
 difficulty: easy
 track: memory
@@ -206,7 +208,7 @@ diagram:
   nodes:
     - { id: customer, label: Customer, sub: asks where order 9 is, kind: actor, tone: blue, at: [0, 1] }
     - { id: loop, label: Agent loop, sub: "asks for 9, 12 and 15", kind: agent, tone: purple, at: [1, 1] }
-    - { id: batch, label: batch(), sub: fans out to three carriers, kind: tool, tone: neutral, at: [2, 1] }
+    - { id: batch, label: "`batch()`", sub: fans out to three carriers, kind: tool, tone: neutral, at: [2, 1] }
     - { id: carriers, label: Carriers, sub: reply in whatever order they finish, kind: service, tone: teal, at: [3, 1] }
     - { id: lookup, label: Join on ref, sub: each result names its order, kind: guard, tone: green, at: [1, 0] }
     - { id: zip, label: Pair by position, sub: "first id, first result", kind: decision, tone: pink, at: [1, 2] }
@@ -216,7 +218,7 @@ diagram:
     - { from: batch, to: carriers, label: one request each, step: 3 }
     - { from: carriers, to: batch, label: "12 first, then 15, then 9", step: 4 }
     - { from: batch, to: loop, label: results in reply order, step: 5 }
-    - { from: loop, to: zip, label: "zip(ids, results)", tone: danger }
+    - { from: loop, to: zip, label: "`zip(ids, results)`", tone: danger }
     - { from: loop, to: lookup, label: look up by ref, tone: success }
 
 approach:

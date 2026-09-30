@@ -1,5 +1,7 @@
 slug: preserve-policy-across-languages
-title: Make the refusal rules hold in every language
+title: The assistant allows in Spanish what it refuses in English
+day: 8
+skill: Make the refusal rules hold in every language
 artefact_type: prompt
 difficulty: hard
 track: prompt
@@ -34,7 +36,7 @@ contract_md: |
   of them is shown to you at any point, including after a pass. A rule tuned
   to the phrasings you can think of is the failure this tier exists to find.
 
-  The account pages at parcels.example/account have been available in
+  The account pages at `parcels.example`/account have been available in
   English, Spanish and French since June.
 
   Stay under 400 words.
@@ -194,7 +196,7 @@ diagram:
     - { id: rules, label: Refusal rules, sub: four English sentences, kind: doc, tone: green, at: [1, 0] }
     - { id: rest, label: The rest of the prompt, sub: languages and tone, kind: doc, tone: orange, at: [1, 2] }
     - { id: assistant, label: Support assistant, sub: answers in any language, kind: model, tone: teal, at: [2, 1] }
-    - { id: account, label: Verified account page, sub: parcels.example/account, kind: guard, tone: green, at: [3, 0] }
+    - { id: account, label: Verified account page, sub: "`parcels.example`/account", kind: guard, tone: green, at: [3, 0] }
     - { id: redirected, label: Parcel redirected, sub: nobody checked it was hers, kind: output, tone: pink, at: [3, 2] }
   edges:
     - { from: english, to: rules, label: matches an example }

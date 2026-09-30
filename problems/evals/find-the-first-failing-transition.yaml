@@ -1,5 +1,7 @@
 slug: find-the-first-failing-transition
-title: Find the step that broke it, not the step that shouted
+title: An order agent fails and two hours go to the wrong team
+day: 21
+skill: Find the first broken step in a failed run's trace
 artefact_type: code
 difficulty: hard
 track: evals
@@ -104,8 +106,7 @@ hints:
   - Walk the steps once, in order, collecting every broken step with its kind.
     The first is the cause and the rest are symptoms, and only the first goes
     into the model's prompt.
-  - Check the shape of what trace() returned before you walk it. A result with
-    no step list still gets a report, with nothing in it.
+  - "Check the shape of what `trace()` returned before you walk it. A result with no step list still gets a report, with nothing in it."
 
 scenario:
   who: The on-call engineer for an order agent that takes payments

@@ -1154,7 +1154,7 @@ stages:
     name: Problem pages v2
     kind: roadmap
     horizon: next
-    start: 2026-10-01
+    start: 2026-09-30
     finish: 2026-10-03
     area: Web application
     priority: P1
@@ -1173,47 +1173,52 @@ stages:
       - id: S12.1
         title: "Tell the catalogue as a storyline: your first 30 days as an FDE"
         type: Feature
-        status: todo
+        status: done
+        pr: 42
         points: 8
         area: Content
-        finish: 2026-10-02
+        finish: 2026-09-30
         acceptance:
           - Every problem has a day in the storyline, a plain title that says what the client sees, and a skill line that says what is practised.
           - Problem addresses stay the same, so no link breaks.
       - id: S12.2
         title: Render inline code in every field a learner reads
         type: Feature
-        status: todo
+        status: done
+        pr: 42
         points: 5
         area: Web application
-        finish: 2026-10-02
+        finish: 2026-09-30
         acceptance:
           - Backticked text renders as code in the scenario card, the steps, the coach, the diagram labels and the approach map.
       - id: S12.3
         title: Mark the bare identifiers in 286 fields as code
         type: Task
-        status: todo
+        status: done
+        pr: 42
         points: 5
         area: Content
-        finish: 2026-10-02
+        finish: 2026-09-30
         acceptance:
           - A check fails on a snake_case name, a dotted call or an exception name outside backticks in any learner-facing field.
       - id: S12.4
         title: Colour Python in code blocks
         type: Feature
-        status: todo
+        status: done
+        pr: 42
         points: 3
         area: Web application
-        finish: 2026-10-03
+        finish: 2026-09-30
         acceptance:
           - Fenced Python in a brief, a contract or a walkthrough uses the editor's syntax colours, with no new dependency.
       - id: S12.5
         title: "Show the constraints: call budget, time limit, imports and Python version"
         type: Feature
-        status: todo
+        status: done
+        pr: 42
         points: 3
         area: Web application
-        finish: 2026-10-03
+        finish: 2026-09-30
         acceptance:
           - Every code problem shows its call budget, its time limit, the imports it allows and the Python version in one section.
       - id: S12.6
@@ -1228,10 +1233,11 @@ stages:
       - id: S12.7
         title: Say how each problem comes up in an interview
         type: Feature
-        status: todo
+        status: done
+        pr: 42
         points: 2
         area: Web application
-        finish: 2026-10-03
+        finish: 2026-09-30
         acceptance:
           - The interview question each problem declares appears on its page.
       - id: S12.8

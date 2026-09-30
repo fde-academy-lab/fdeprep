@@ -1,5 +1,7 @@
 slug: support-copilot-3-refund-the-amount-quoted
-title: Refund exactly the amount the customer was told, once
+title: A customer was told £23.50 and refunded £47.00
+day: 30
+skill: Refund exactly the amount the customer was told, once
 artefact_type: code
 difficulty: hard
 complexity: C2
@@ -231,9 +233,7 @@ hints:
   - Three facts you already have approve a refund. The router sent the ticket
     to refund, stage 1 kept an order number the customer wrote, and the
     message the customer reads states the same amount as the action.
-  - Turn every pound amount in the message into pence and compare them with
-    amount_cents. A different amount, two amounts, or none at all means the
-    action does not run and nothing is sent.
+  - "Turn every pound amount in the message into pence and compare them with `amount_cents`. A different amount, two amounts, or none at all means the action does not run and nothing is sent."
   - Call the refund tool once. A timeout is an outcome you cannot see, so the
     safe answer is a handover, because a retry could pay the customer twice.
   - Status 200 says the request arrived. Read the body before telling the
@@ -267,7 +267,7 @@ diagram:
     - { id: copilot, label: Copilot, sub: splits message from action, kind: agent, tone: purple, at: [1, 1] }
     - { id: earlier, label: Stages 1 and 2, sub: "queue, order, citations", kind: guard, tone: green, at: [2, 0] }
     - { id: bind, label: Amount check, sub: pounds in message equal the action, kind: guard, tone: green, at: [2, 1] }
-    - { id: refund, label: refund(), sub: "called once, never retried", kind: tool, tone: orange, at: [3, 1] }
+    - { id: refund, label: "`refund()`", sub: "called once, never retried", kind: tool, tone: orange, at: [3, 1] }
     - { id: reply, label: Reply, sub: only what the receipt confirms, kind: output, tone: blue, at: [4, 1] }
     - { id: person, label: A person, sub: unbound or unconfirmed, kind: output, tone: orange, at: [3, 2] }
   edges:
@@ -285,7 +285,7 @@ approach:
   goal: Refund what the customer was told, once, and report only what happened
   branches:
     - label: Bind the action to the message
-      leaves: [every pound amount equals amount_cents, no amount stated means no refund]
+      leaves: [every pound amount equals `amount_cents`, no amount stated means no refund]
     - label: Only an approved ticket acts
       detail: >-
         The router already decided which tickets may refund. It is the refund
@@ -348,7 +348,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Write split_draft first and run the public tests. Once the message
+        Write `split_draft` first and run the public tests. Once the message
         reaches stage 2's check without the action line, the rest has
         something to stand on.
     - id: many-failures

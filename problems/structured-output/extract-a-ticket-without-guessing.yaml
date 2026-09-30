@@ -1,5 +1,7 @@
 slug: extract-a-ticket-without-guessing
-title: Leave the order number empty when the customer never gave one
+title: An invented order number sent a refund to the wrong customer
+day: 1
+skill: Leave the order number empty when the customer never gave one
 artefact_type: code
 difficulty: easy
 track: structured-output
@@ -92,10 +94,10 @@ steps:
     text: Start the ticket with all three fields set to None.
     check_id: s2
   - id: s3
-    text: Copy a value onto the ticket only when stated_in says the email has it.
+    text: Copy a value onto the ticket only when `stated_in` says the email has it.
     check_id: s3
   - id: s4
-    text: Make stated_in look for the value in the email, ignoring case.
+    text: Make `stated_in` look for the value in the email, ignoring case.
     check_id: s4
 
 step_checks:
@@ -182,12 +184,12 @@ diagram:
     - { id: intake, label: Intake step, sub: builds the ticket, kind: agent, tone: purple, at: [1, 1] }
     - { id: model, label: Extraction model, sub: asked for null and guesses anyway, kind: model, tone: teal, at: [1, 0] }
     - { id: check, label: "Stated in the email?", sub: one check per value, kind: guard, tone: green, at: [2, 1] }
-    - { id: ticket, label: Ticket, sub: order_id is null, kind: output, tone: blue, at: [3, 1] }
+    - { id: ticket, label: Ticket, sub: "`order_id` is null", kind: output, tone: blue, at: [3, 1] }
     - { id: wrong, label: "A stranger's order", sub: refunded by mistake, kind: output, tone: pink, at: [2, 2] }
   edges:
     - { from: email, to: intake, label: the email, step: 1 }
     - { from: intake, to: model, label: prompt, step: 2 }
-    - { from: model, to: intake, label: "order_id HW-20931", step: 3 }
+    - { from: model, to: intake, label: "`order_id` HW-20931", step: 3 }
     - { from: intake, to: check, label: each value, step: 4 }
     - { from: check, to: ticket, label: null when not stated, tone: success }
     - { from: intake, to: wrong, label: copied as it came, tone: danger }
@@ -226,13 +228,13 @@ coach:
       when:
         code_matches: 'def stated_in\([^)]*\)[^\n]*\n(?:[ \t]*(?:#[^\n]*|"""[^\n]*""")?\n)*[ \t]*return True[ \t]*$'
       say: >-
-        stated_in still says yes to everything, so an invented order number
+        `stated_in` still says yes to everything, so an invented order number
         passes it. What should it look for in the email before it says yes?
     - id: invented-order-number
       when: { test_failed: an_order_number_the_customer_never_wrote_comes_back_empty }
       say: >-
         That email has no order number in it, and the model supplied one
-        anyway. Trace the order_id value from the reply to your ticket.
+        anyway. Trace the `order_id` value from the reply to your ticket.
     - id: placeholder-kept
       when: { test_failed: a_placeholder_is_not_a_value }
       say: >-
@@ -242,7 +244,7 @@ coach:
       when: { test_failed: a_number_or_an_empty_string_is_not_a_value }
       say: >-
         The model sent the phone number as a number and the address as an
-        empty string. What does stated_in say about a value that is not a
+        empty string. What does `stated_in` say about a value that is not a
         string with text in it?
     - id: shape-from-the-reply
       when: { test_failed: a_field_the_model_dropped_is_still_on_the_ticket }
@@ -253,7 +255,7 @@ coach:
       when: { test_failed: a_value_in_different_capitals_is_still_stated }
       say: >-
         The customer wrote the order number in capitals and the model wrote
-        it in lower case. Does stated_in find a value when only the case
+        it in lower case. Does `stated_in` find a value when only the case
         differs?
     - id: stuck
       when: { idle_minutes: 5 }

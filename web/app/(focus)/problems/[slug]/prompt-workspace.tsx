@@ -21,6 +21,7 @@ import type { AttemptHistory, PastSubmission, WorkspaceProblem } from "@/lib/pro
 import type { PalettePage } from "@/components/shell/command-palette";
 import { Button } from "@/components/ui/button";
 import { Markdown } from "@/components/ui/markdown";
+import { renderCode } from "@/components/ui/code";
 import { StatusIcon } from "@/components/ui/status";
 import { cn } from "@/components/ui/cn";
 import { ProblemBar } from "@/components/workspace/problem-bar";
@@ -169,7 +170,8 @@ export default function PromptWorkspace(props: Props) {
                 hintBadge={hintGate && hintGate.total ? `${hintGate.revealed}/${hintGate.total}` : null} />
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {tab === "brief" ? (
-          <ProblemIntro title={problem.title} track={problem.track} difficulty={problem.difficulty}
+          <ProblemIntro title={problem.title} day={problem.day} skill={problem.skill}
+                        interview={problem.interview} track={problem.track} difficulty={problem.difficulty}
                         estMinutes={problem.estMinutes} artefactLabel="Prompt surgery"
                         kit={problem.kit} briefMd={problem.briefMd}>
             {problem.contractMd ? (
@@ -329,7 +331,7 @@ function Checklist({ title, checks }: { title: string; checks: StaticGate["check
             <StatusIcon kind={check.status === "pass" ? "pass" : "untouched"} className="mt-0.5"
                         label={check.status === "pass" ? "Done" : "Not yet"} />
             <span className={check.status === "pass" ? "text-text-dim" : "text-text"}>
-              {check.label}
+              {renderCode(check.label)}
             </span>
           </li>
         ))}

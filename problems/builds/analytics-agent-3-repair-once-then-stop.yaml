@@ -1,5 +1,7 @@
 slug: analytics-agent-3-repair-once-then-stop
-title: Repair a failed query once with the database's own words
+title: The agent's fix for a failed query skipped the safety check
+day: 24
+skill: Repair a failed query once from its error message, then stop
 artefact_type: code
 difficulty: hard
 complexity: C2
@@ -242,7 +244,7 @@ scenario:
   situation: >-
     The first retry resent a failing query four times and then showed the
     manager a stack trace. The second version asked the model for a fix and
-    ran whatever came back, and on Tuesday a fix joined regional_targets, a
+    ran whatever came back, and on Tuesday a fix joined `regional_targets`, a
     table the picker never chose.
   stakes: >-
     An unguarded repair can reach every table the connection can. A retry that
@@ -306,7 +308,7 @@ coach:
     - id: no-net-around-the-database
       when: { code_lacks: 'except\s+(Exception|BaseException|TimeoutError|OSError)\b|except\s*\(|except\s*:' }
       say: >-
-        run_query can raise when the database does not answer in time, and
+        `run_query` can raise when the database does not answer in time, and
         nothing here catches it. What does the manager get when that happens?
     - id: hidden-unguarded-repair
       when: { test_failed: a_repaired_query_goes_through_the_guard_again }
@@ -341,7 +343,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Write ask_database first and print its three return values for each
+        Write `ask_database` first and print its three return values for each
         public test. The repair logic follows from the explained flag.
     - id: many-failures
       when: { failed_runs_at_least: 3 }
@@ -671,7 +673,7 @@ reference_md: |
 
   The repaired query is a new query from the same model, and it gets the same
   guard. This is the part the second version got wrong. Its repair path
-  called run_query directly because the first query had already passed the
+  called `run_query` directly because the first query had already passed the
   guard, as if passing were a property of the question and not of the SQL. A
   repair for a missing column is exactly when a model reaches for a table it
   imagines has the column, and `regional_targets` is where it went.

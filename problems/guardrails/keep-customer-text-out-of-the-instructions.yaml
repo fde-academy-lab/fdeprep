@@ -1,5 +1,7 @@
 slug: keep-customer-text-out-of-the-instructions
-title: Keep the customer's words out of the agent's instructions
+title: A customer's note to the AI gets them a £640 refund
+day: 16
+skill: Keep the customer's words out of the agent's instructions
 artefact_type: code
 difficulty: easy
 track: guardrails
@@ -49,7 +51,7 @@ contract_md: |
   field may be able to end the block early.
 
   Put one line directly above `<customer_email>` that says what the block
-  holds and calls it by its name, customer_email. Unless that line names the
+  holds and calls it by its name, `customer_email`. Unless that line names the
   block, the model follows an instruction inside the block too.
 
   Call `llm(prompt)` once. It replies `Final Answer: <draft>`. Return the
@@ -95,7 +97,7 @@ stub_code: |
 
 steps:
   - id: s1
-    text: Read the email with the read_email tool.
+    text: Read the email with the `read_email` tool.
     check_id: s1
   - id: s2
     text: Pass every field the customer wrote through neutralise, so none of them can end the block.
@@ -174,9 +176,7 @@ hints:
   - The model can only treat text as the customer's words if the prompt marks
     where those words begin and end. The sender and the subject line were
     written by the customer too.
-  - Put every field the customer wrote inside the customer_email tags, under
-    one line that names the block and says it is data from the customer, and
-    keep the team's instruction outside it.
+  - "Put every field the customer wrote inside the `customer_email` tags, under one line that names the block and says it is data from the customer, and keep the team's instruction outside it."
   - A boundary the customer can type is a boundary the customer can move. By
     the time a field reaches the prompt, nothing in it may be able to end the
     block early.
@@ -206,9 +206,9 @@ diagram:
   direction: lr
   nodes:
     - { id: customer, label: Customer, sub: writes the email, kind: actor, tone: blue, at: [0, 1] }
-    - { id: inbox, label: read_email, sub: "from, subject and body", kind: tool, tone: neutral, at: [1, 1] }
-    - { id: builder, label: Prompt builder, sub: your run_agent, kind: agent, tone: purple, at: [2, 1] }
-    - { id: block, label: customer_email block, sub: "labelled, brackets escaped", kind: guard, tone: green, at: [3, 0] }
+    - { id: inbox, label: "`read_email`", sub: "from, subject and body", kind: tool, tone: neutral, at: [1, 1] }
+    - { id: builder, label: Prompt builder, sub: your `run_agent`, kind: agent, tone: purple, at: [2, 1] }
+    - { id: block, label: "`customer_email` block", sub: "labelled, brackets escaped", kind: guard, tone: green, at: [3, 0] }
     - { id: model, label: Model, sub: drafts the reply, kind: model, tone: teal, at: [4, 1] }
     - { id: draft, label: Draft, sub: answers the customer, kind: output, tone: green, at: [5, 0] }
     - { id: refund, label: Refund promised, sub: the draft obeys the paragraph, kind: output, tone: pink, at: [5, 2] }
@@ -249,7 +249,7 @@ coach:
       when: { code_lacks: 'replace\(|\.sub\(|escape|translate\(|&lt;|<>' }
       say: >-
         Nothing changes the customer's text before it goes into the block. What
-        does the model see if the email itself contains </customer_email>?
+        does the model see if the email itself contains </`customer_email`>?
     - id: prefix-left-on
       when: { code_lacks: 'Final Answer' }
       say: >-

@@ -101,6 +101,8 @@ create table problem (
   id                bigint generated always as identity primary key,
   slug              text not null unique,
   title             text not null,
+  day               int check (day is null or day between 1 and 30),  -- the 30-day storyline, docs/04 section 2
+  skill             text,                       -- what the problem practises, shown under the title
   artefact_type     artefact_type not null,
   difficulty        difficulty not null,
   track             text not null,              -- agent-loop, tool-creation, memory, rag, evals, prompt
@@ -125,6 +127,8 @@ create table problem_version (
   model_id      text,                           -- pinned Bedrock model for live runs and judging
   call_budget   int,
   time_limit_s  int not null default 10,
+  kit           jsonb,                          -- scenario, diagram, approach, coach, build (migration 018)
+  interview     jsonb,                          -- {round, asked_as} from interview_evidence (migration 020)
   created_at    timestamptz not null default now(),
   unique (problem_id, version)
 );

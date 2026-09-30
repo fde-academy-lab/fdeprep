@@ -1,5 +1,7 @@
 slug: fall-back-only-when-the-policy-permits
-title: Fall back to the stronger tool only when the policy says so
+title: A caller nobody verified got a SIM swap during an outage
+day: 9
+skill: Fall back to the stronger tool only when the policy says so
 artefact_type: code
 difficulty: hard
 track: tool-creation
@@ -45,7 +47,7 @@ contract_md: |
 
   Classify what `account_api` did:
 
-  | account_api | class |
+  | `account_api` | class |
   |---|---|
   | status 200 | done |
   | status 503, or the call raised | unavailable |
@@ -66,7 +68,7 @@ contract_md: |
 
 defence_question: |
   Your policy never falls back on a 401 or a 403. During a token service
-  outage every request gets a 401 for twenty minutes, staff_console would have
+  outage every request gets a 401 for twenty minutes, `staff_console` would have
   answered all of them, and the operations lead asks you to add 401 to the
   fallback list until the incident is over. What do you say, and what would
   you build instead?
@@ -115,20 +117,14 @@ stub_code: |
       return _result("failed", None)
 
 hints:
-  - Two questions decide a fallback, and the rule in the incident asked
-    neither. One is about what account_api said, and the other is about what
-    the caller asked for.
+  - "Two questions decide a fallback, and the rule in the incident asked neither. One is about what `account_api` said, and the other is about what the caller asked for."
   - An outage means the normal path could not answer. A 401 or a 403 means it
     answered, and the answer was no.
   - Write the policy as the failures that permit a fallback, and let every
     other status stop the request. A status nobody thought of should land on
     the safe side.
-  - staff_console skips the identity check. The actions it may take for a
-    customer are a list the security team wrote, and that list does not grow
-    during an outage.
-  - "In order: call account_api and catch a raise, return on a 200, stop
-    unless the answer was an outage and the action is in FALLBACK_ALLOWED,
-    then try staff_console once and report which tool answered."
+  - "`staff_console` skips the identity check. The actions it may take for a customer are a list the security team wrote, and that list does not grow during an outage."
+  - "In order: call `account_api` and catch a raise, return on a 200, stop unless the answer was an outage and the action is in FALLBACK_ALLOWED, then try `staff_console` once and report which tool answered."
 
 scenario:
   who: The security team at a mobile network
@@ -148,15 +144,15 @@ scenario:
 diagram:
   title: Where a refusal becomes a reason to use the stronger tool
   caption: >-
-    The policy sits between account_api's answer and staff_console. Only an
+    The policy sits between `account_api`'s answer and `staff_console`. Only an
     outage on an allowed action gets through, and a refusal stays a refusal.
   direction: lr
   nodes:
     - { id: caller, label: Caller, sub: asks about a number, kind: actor, tone: blue, at: [0, 1] }
-    - { id: api, label: account_api, sub: checks who is asking, kind: tool, tone: teal, at: [1, 0] }
+    - { id: api, label: "`account_api`", sub: checks who is asking, kind: tool, tone: teal, at: [1, 0] }
     - { id: agent, label: Agent loop, sub: classifies the answer, kind: agent, tone: purple, at: [1, 1] }
     - { id: policy, label: Fallback policy, sub: "an outage, and an allowed action", kind: guard, tone: green, at: [2, 1] }
-    - { id: console, label: staff_console, sub: "any account, no identity check", kind: tool, tone: orange, at: [3, 1] }
+    - { id: console, label: "`staff_console`", sub: "any account, no identity check", kind: tool, tone: orange, at: [3, 1] }
     - { id: leak, label: The answer it refused, sub: a 403 routed around, kind: output, tone: pink, at: [2, 2] }
   edges:
     - { from: caller, to: agent, label: request, step: 1 }
@@ -169,7 +165,7 @@ diagram:
 approach:
   goal: Use the stronger tool only for the reason it was allowed
   branches:
-    - label: Classify what account_api said
+    - label: Classify what `account_api` said
       leaves: [done or unavailable or denied or failed, a call that raises is unavailable]
     - label: Let only outages through
       detail: List the failures that permit a fallback, and let every other status stop the request.
@@ -181,14 +177,14 @@ approach:
 
 coach:
   opening: >-
-    Before you write anything, sort the kinds of answer account_api can give
+    Before you write anything, sort the kinds of answer `account_api` can give
     into the ones that mean it is down and the ones that mean it said no.
   signals:
     - id: falls-back-on-any-failure
       when: { code_lacks: '(?i)40[13]|denied|forbidden|unauthori[sz]ed' }
       say: >-
         Nothing in your code tells a refusal apart from an outage. What does
-        staff_console do with a caller that account_api has just refused?
+        `staff_console` do with a caller that `account_api` has just refused?
     - id: no-action-gate
       when: { code_lacks: 'FALLBACK_ALLOWED|["'']usage["'']|sim_swap' }
       say: >-
@@ -197,7 +193,7 @@ coach:
     - id: no-exception-branch
       when: { code_lacks: '\bexcept\b' }
       say: >-
-        account_api can stop answering and raise instead of returning a
+        `account_api` can stop answering and raise instead of returning a
         status. Where does that exception go, and does the fallback ever run?
     - id: deny-list
       when: { code_matches: '40[13]', code_lacks: '503' }
@@ -207,28 +203,28 @@ coach:
     - id: hidden-sim-swap
       when: { test_failed: a_sim_swap_during_an_outage_waits }
       say: >-
-        account_api was down and the caller wanted a SIM swap. Of the two
+        `account_api` was down and the caller wanted a SIM swap. Of the two
         conditions for a fallback, which held and which did not?
     - id: hidden-raise
       when: { test_failed: an_account_api_that_stops_answering_is_an_outage }
       say: >-
-        In that run account_api never answered at all. What does your code do
+        In that run `account_api` never answered at all. What does your code do
         with a call that raises instead of returning a status?
     - id: hidden-not-found
       when: { test_failed: a_not_found_is_not_an_outage }
       say: >-
-        account_api answered with a status your policy does not list as an
-        outage. Which statuses are allowed to reach staff_console?
+        `account_api` answered with a status your policy does not list as an
+        outage. Which statuses are allowed to reach `staff_console`?
     - id: adversarial-refusal
       when: { test_failed: adversarial_a_denied_caller_is_not_rerouted }
       say: >-
-        account_api refused that caller. Trace what your code did with the
+        `account_api` refused that caller. Trace what your code did with the
         refusal, and which tool answered in the end.
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with the first public test: call account_api and return done via
-        account_api on a 200. The policy grows around that one call.
+        Start with the first public test: call `account_api` and return done via
+        `account_api` on a 200. The policy grows around that one call.
     - id: many-failed-runs
       when: { failed_runs_at_least: 3 }
       say: >-
@@ -330,9 +326,9 @@ tests:
     visibility: adversarial
     fixture: tool_soft_error
     annotation_md: |
-      account_api refused because the caller is not the account holder. A
+      `account_api` refused because the caller is not the account holder. A
       fallback rule that reads every failure as a reason to try the stronger
-      tool turns that refusal into a question for staff_console, which can
+      tool turns that refusal into a question for `staff_console`, which can
       read any account and does not check who is asking. The caller gets the
       answer the access control existed to withhold.
 
@@ -357,7 +353,7 @@ tests:
 reference_md: |
   A fallback to a stronger tool is a privilege escalation with a reason
   attached, and the reason has to be checked every time it is used. The rule
-  in the incident had no reason in it. "If account_api fails" treats a
+  in the incident had no reason in it. "If `account_api` fails" treats a
   refusal, a missing record and an outage as one event, and only the outage
   is the event the console was meant to cover.
 

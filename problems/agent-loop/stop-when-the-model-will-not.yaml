@@ -1,5 +1,7 @@
 slug: stop-when-the-model-will-not
-title: Stop the loop yourself when the model never will
+title: One question cost $340 and the buyer got nothing back
+day: 3
+skill: Stop the loop yourself when the model never will
 artefact_type: code
 difficulty: easy
 track: agent-loop
@@ -162,7 +164,7 @@ diagram:
     - { id: buyer, label: Buyer, sub: asks one question, kind: actor, tone: blue, at: [0, 1] }
     - { id: loop, label: Agent loop, sub: while True, kind: agent, tone: purple, at: [1, 1] }
     - { id: model, label: Model, sub: asks for one more lookup, kind: model, tone: teal, at: [2, 0] }
-    - { id: lookup, label: lookup(), sub: returns contract text, kind: tool, tone: orange, at: [2, 2] }
+    - { id: lookup, label: "`lookup()`", sub: returns contract text, kind: tool, tone: orange, at: [2, 2] }
     - { id: counter, label: Call counter, sub: stops after the fifth call, kind: guard, tone: green, at: [2, 1] }
     - { id: alarm, label: Spend alarm, sub: 340 dollars on one question, kind: output, tone: pink, at: [1, 2] }
     - { id: unfinished, label: Unfinished answer, sub: carries what the lookups found, kind: output, tone: green, at: [3, 1] }
@@ -170,7 +172,7 @@ diagram:
     - { from: buyer, to: loop, label: question, step: 1 }
     - { from: loop, to: model, label: scratchpad, step: 2 }
     - { from: model, to: loop, label: one more lookup, step: 3, tone: danger }
-    - { from: loop, to: lookup, label: lookup(topic) }
+    - { from: loop, to: lookup, label: "`lookup(topic)`" }
     - { from: lookup, to: loop, label: contract text }
     - { from: loop, to: alarm, label: no exit of its own, tone: danger }
     - { from: loop, to: counter, label: count every call, step: 4 }
@@ -184,7 +186,7 @@ approach:
     - label: Count calls where they happen
       detail: >-
         A retry added inside the loop later turns five iterations into eight
-        calls. The counter belongs next to llm().
+        calls. The counter belongs next to `llm()`.
       leaves: [one counter, one comparison with MAX_CALLS]
     - label: Use the whole allowance
       leaves: [a summary on the fourth call still counts, stop after the fifth]
@@ -223,7 +225,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with TODO 1. Put a counter next to the llm() call and leave the
+        Start with TODO 1. Put a counter next to the `llm()` call and leave the
         loop when it reaches MAX_CALLS, then press Run.
     - id: hints
       when: { failed_runs_at_least: 3 }
