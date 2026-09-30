@@ -182,6 +182,12 @@ coach:
         In that session the only order reference belongs to a different
         customer. What does this customer's own history give the model to work
         with?
+    - id: hidden-only-this-customer
+      when: { test_failed: only_this_customers_turns_reach_the_prompt }
+      say: >-
+        In that session this customer named an order, and so did another
+        customer. The answer was right, and the other customer's order still
+        reached the model. Which turns does your code put in the prompt?
     - id: hidden-no-referent
       when: { test_failed: no_referent_means_ask_rather_than_search }
       say: >-
@@ -298,6 +304,40 @@ tests:
         - { type: returns_matches, value: "(?i)which order you mean" }
         - { type: does_not_call_tool, name: search }
         - { type: terminates }
+
+  # In the case above this customer names no order, so the loop asks before
+  # any turn reaches a prompt. Here this customer names two orders and the
+  # session also holds another customer's. The scripted rewrite reads only
+  # this customer's order, so a prompt that carried the other turn as well,
+  # with a warning or without one, got the same answer. prompt_lacks reads
+  # the prompt for the other customer's order.
+  - name: only_this_customers_turns_reach_the_prompt
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "customer=c-7|and the other one?" }
+      llm_script:
+        - { match: { contains: "depot 2" },
+            reply: "Final Answer: Order A-2202 is at depot 2 awaiting collection." }
+        - { match: { contains: "A-2202" }, reply: "Rewrite: status of order A-2202" }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, customer_id: "c-8", text: "Where is order Z-7730? It was due yesterday." }
+              - { n: 2, customer_id: "c-7", text: "I ordered two lamps, A-2201 and A-2202." }
+              - { n: 3, customer_id: "c-7", text: "A-2201 came this morning, thank you." }
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "s1", text: "Order A-2202 is at depot 2 awaiting collection." }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_lacks, value: 'Z-7730' }
+        - { type: returns_matches, value: "A-2202 is at depot 2" }
 
   - name: no_referent_means_ask_rather_than_search
     visibility: hidden

@@ -476,6 +476,32 @@ tests:
         - { type: returns_matches, value: "3 pairs" }
         - { type: no_exception }
 
+  # The server added a staff price its schema does not declare, and repeated
+  # it in the text block, as a server that mirrors structuredContent there
+  # does. The count is valid, so the model gives the same answer whether or
+  # not the price reached it, and prompt_lacks reads the prompt for it.
+  - name: a_field_the_schema_does_not_declare_stays_out
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Is the TR-220 trainer in stock at Bristol?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: check_stock(sku=TR-220, store=Bristol)" }
+        - { match: { regex: '["'']on_hand["'']:\s*5\b' },
+            reply: "Final Answer: Bristol has 5 pairs of the TR-220 in stock." }
+        - { match: "*", reply: "Final Answer: I cannot confirm stock at Bristol right now." }
+      tools:
+        check_stock:
+          returns:
+            content: [ { type: text, text: '{"sku": "TR-220", "store": "Bristol", "on_hand": 5, "staff_price": 38.5}' } ]
+            structuredContent: { sku: TR-220, store: Bristol, on_hand: 5, staff_price: 38.5 }
+            isError: false
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: check_stock }
+        - { type: prompt_lacks, value: 'staff_price' }
+        - { type: returns_matches, value: "5 pairs" }
+
   - name: a_count_of_false_is_rejected
     visibility: hidden
     spec:

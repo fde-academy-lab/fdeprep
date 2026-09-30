@@ -83,6 +83,10 @@ prompt_rules:
       pattern: "COMPLAINT\\s+or\\s+QUERY" }
   - { kind: must_keep, label: "at least one example labelled QUERY",
       pattern: "(?i)label:\\s*query" }
+  # The contract keeps the Message and Label lines, and the model has never
+  # been shown a complaint, so every fix adds an example labelled COMPLAINT.
+  - { kind: must_add, label: "at least one example labelled COMPLAINT",
+      pattern: "(?i)label:\\s*complaint" }
   - { kind: max_words, label: "under 180 words", numeric_value: 180 }
 
 probes:
