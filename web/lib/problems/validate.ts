@@ -318,6 +318,7 @@ export function validateProblemYaml(
     requireKit: options.requireKit === true,
     runNames,
     hints,
+    ...caseFacts(raw, tests, stepChecks as Array<Record<string, unknown>>, probes),
     add,
     lineOf,
   });
@@ -741,6 +742,81 @@ function validateInterviewEvidence(
           lineOf(["interview_evidence", key]));
     }
   }
+}
+
+/** Every string inside a value, however deeply nested. */
+function leaves(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (typeof value === "number") return [String(value)];
+  if (Array.isArray(value)) return value.flatMap(leaves);
+  if (value && typeof value === "object") return Object.values(value).flatMap(leaves);
+  return [];
+}
+
+/**
+ * What the tool list, the worked example and the traps are checked against:
+ * the tools the cases script, each public case's input, the probe messages,
+ * and the text only hidden material carries. A fragment of a hidden case is
+ * any run of 12 or more characters in its spec that no public case, brief,
+ * contract, stub, hint or scenario already shows.
+ */
+function caseFacts(
+  raw: Record<string, unknown>, tests: Record<string, unknown>[],
+  stepChecks: Array<Record<string, unknown>>,
+  probes: Array<{ name?: string; user_message?: string }>,
+) {
+  const specOf = (t: Record<string, unknown>) =>
+    (t["spec"] && typeof t["spec"] === "object" ? t["spec"] : {}) as Record<string, unknown>;
+  const isPublic = (t: Record<string, unknown>) => (t["visibility"] ?? "public") === "public";
+  const toolsOf = (cases: Array<Record<string, unknown>>) => {
+    const names = new Set<string>();
+    for (const t of cases) {
+      const tools = specOf(t)["tools"];
+      if (tools && typeof tools === "object") for (const name of Object.keys(tools)) names.add(name);
+    }
+    return names;
+  };
+  // Step checks run on every Run and report per step, so what they script is public.
+  const requiredTools = toolsOf([...tests.filter(isPublic), ...stepChecks]);
+  const publicInputs = new Map<string, Record<string, unknown>>();
+  for (const t of tests.filter(isPublic)) {
+    const input = specOf(t)["input"];
+    publicInputs.set(String(t["name"]),
+                     input && typeof input === "object" ? input as Record<string, unknown> : {});
+  }
+  // What a learner can read before the attempt closes. The walkthrough opens
+  // only on a pass or a give-up, so text it quotes from a hidden case is
+  // still a secret on a page that shows traps up front.
+  const brief = leaves(["brief_md", "contract_md", "stub_code", "hints", "scenario", "steps"]
+    .map((key) => raw[key])).join("\n");
+  const shown = [...leaves(tests.filter(isPublic)), brief].join("\n");
+  const allowedTools = new Set(requiredTools);
+  for (const name of toolsOf(tests.filter((t) => !isPublic(t)))) {
+    if (new RegExp(`\\b${name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(brief)) {
+      allowedTools.add(name);
+    }
+  }
+  const secrets = new Set<string>();
+  for (const t of tests.filter((t) => !isPublic(t))) {
+    secrets.add(String(t["name"]));
+    for (const s of leaves(t["spec"])) {
+      for (const piece of s.split(/[\n"'{}[\],]/)) {
+        const fragment = piece.trim();
+        if (fragment.length >= 12 && !shown.includes(fragment)) secrets.add(fragment);
+      }
+    }
+  }
+  for (const probe of probes) {
+    if (probe.name) secrets.add(probe.name);
+    if (probe.user_message?.trim()) secrets.add(probe.user_message.trim());
+  }
+  return {
+    requiredTools,
+    allowedTools,
+    publicInputs,
+    probeMessages: probes.map((p) => p.user_message ?? "").filter(Boolean),
+    secrets: [...secrets].filter(Boolean),
+  };
 }
 
 /** The title and day limits are what a catalogue row shows on one line. */

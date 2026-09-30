@@ -36,6 +36,7 @@ import Defence from "./defence";
 import { submitsLeft } from "./submits-left";
 import { useSubmission } from "./use-submission";
 import { ALWAYS_ALLOWED_IMPORTS, PYTHON_VERSION } from "@/lib/problems/constraints";
+import { ToolTable, Traps, WorkedExample } from "@/components/workspace/problem-extras";
 
 interface Props {
   problem: WorkspaceProblem;
@@ -183,7 +184,16 @@ export default function Workspace(props: Props) {
                 <Markdown source={problem.contractMd} />
                 <Constraints callBudget={problem.callBudget} timeLimitS={problem.timeLimitS}
                              allowedImports={problem.allowedImports} />
+                {problem.kit.tools ? <ToolTable tools={problem.kit.tools} /> : null}
               </Section>
+            ) : null}
+
+            {problem.kit.example ? (
+              <Section title="Worked example"><WorkedExample example={problem.kit.example} /></Section>
+            ) : null}
+
+            {problem.kit.traps ? (
+              <Section title="Common traps"><Traps traps={problem.kit.traps} /></Section>
             ) : null}
 
             {problem.steps.length ? <Steps steps={problem.steps} status={stepStatus} /> : null}

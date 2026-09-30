@@ -9,7 +9,7 @@
 import { db } from "../db/pool.ts";
 import type { Difficulty } from "../policy/tiers.ts";
 import { trimSteps, type StepView } from "../submissions/view.ts";
-import type { Approach, Build, Diagram, Kit, Scenario } from "./kit.ts";
+import type { Approach, Build, Diagram, Kit, KitExample, KitTool, Scenario } from "./kit.ts";
 
 export interface WorkspaceKit {
   scenario: Scenario | null;
@@ -17,6 +17,10 @@ export interface WorkspaceKit {
   approach: Approach | null;
   coachOpening: string | null;
   build: (Build & { stages: BuildStage[] }) | null;
+  tools: KitTool[] | null;
+  example: KitExample | null;
+  /** Withheld by the page until the policy says the tier shows them. */
+  traps: string[] | null;
 }
 
 export interface BuildStage {
@@ -136,6 +140,9 @@ export async function loadWorkspaceProblem(
       coachOpening: kit.coach?.opening ?? null,
       build: kit.build ? { ...kit.build, stages: await buildStages(kit.build.id, enrolmentId) }
         : null,
+      tools: kit.tools?.length ? kit.tools : null,
+      example: kit.example ?? null,
+      traps: kit.traps?.length ? kit.traps : null,
     },
   };
 }

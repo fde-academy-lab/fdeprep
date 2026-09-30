@@ -69,6 +69,12 @@ export default async function WorkspacePage({ params, searchParams }: {
       // The approach map and the coach are help, and screen conditions have none.
       approach: policy.coach.enabled ? loaded.kit.approach : null,
       coachOpening: policy.coach.enabled ? loaded.kit.coachOpening : null,
+      // The tools and the worked example belong to the contract and go where
+      // it goes. The traps name what the hidden cases catch, so they are not
+      // sent at all until the tier shows them, not merely hidden on screen.
+      tools: policy.layers.contract ? loaded.kit.tools : null,
+      example: policy.layers.contract ? loaded.kit.example : null,
+      traps: policy.traps ? loaded.kit.traps : null,
     },
   };
   const history = await attemptHistory(learner.enrolmentId, loaded.id);

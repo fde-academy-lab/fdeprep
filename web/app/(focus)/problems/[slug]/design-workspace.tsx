@@ -31,6 +31,7 @@ import {
 } from "@/components/workspace/panels";
 import { submitsLeft } from "./submits-left";
 import { useSubmission } from "./use-submission";
+import { ToolTable, Traps, WorkedExample } from "@/components/workspace/problem-extras";
 
 interface Props {
   problem: WorkspaceProblem;
@@ -166,6 +167,9 @@ export default function DesignWorkspace(props: Props) {
                 ))}
               </ul>
             </Section>
+            {problem.kit.traps ? (
+              <Section title="Common traps"><Traps traps={problem.kit.traps} /></Section>
+            ) : null}
             {headingChecks.length ? (
               <Section title="Required headings">
                 <ul className="space-y-1">

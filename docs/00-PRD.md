@@ -96,6 +96,18 @@ Every tier also has a live coach, a deterministic reader of the learner's work t
 | Extreme | Nudges that read the code wait for two failed runs, the same currency hints cost. |
 | Screen conditions | Off. An interviewer does not coach. |
 
+Every problem also names its traps, the two to four mistakes its hidden and adversarial cases exist to catch, in words that give no case away (`04-PROBLEM-AUTHORING.md` section 2.1). Added 1 October 2026. When they show is a tier rule:
+
+| Difficulty | Traps |
+|---|---|
+| Easy | Shown from the start, as teaching. |
+| Medium | Shown from the start. |
+| Hard | Shown once the attempt is solved or given up. |
+| Extreme | Shown once the attempt is solved or given up. |
+| Screen conditions | Shown once the attempt is solved or given up. |
+
+Until a tier shows them the page does not send them at all, so they cannot be read from the page source either. The tool list and the worked example belong to L1 and go wherever the contract goes.
+
 The tier table lives in `web/lib/policy/tiers.ts` with the rest of the ladder.
 
 **Amended 29 September 2026.** The ladder used to give Hard no stub and Extreme a blank editor with no hints, so that the top two tiers imitated a screen. Learners running the platform read that as a blank page with nobody to ask, and the tiers taught less than the easier ones. Every tier now carries starter code and hints, and the tiers differ in how much the starter code gives away and what a hint costs. The screen itself did not go away: rehearsal mode (section 7.4) runs under **screen conditions**, which are the old Extreme rules kept whole: the brief only, a blank editor, no hints, nothing about the tests.

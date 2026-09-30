@@ -78,6 +78,13 @@ export interface Tier {
    */
   requiresDefence: boolean;
   coach: CoachRule;
+  /**
+   * Whether the traps, the mistakes the hidden cases catch, show before the
+   * attempt closes. Added 1 October 2026. Easy and Medium name them up front
+   * as teaching; Hard and Extreme keep the hidden battery a test of judgement
+   * and name them once the attempt is solved or given up.
+   */
+  trapsBeforeAttempt: boolean;
 }
 
 export const TIERS: Readonly<Record<Difficulty, Tier>> = {
@@ -92,6 +99,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     rejectsDuplicateSubmissions: false,
     requiresDefence: false,
     coach: { enabled: true, codeSignalsAfterFailedRuns: 0 },
+    trapsBeforeAttempt: true,
   },
   medium: {
     layers: ["brief", "contract", "stub", "steps", "hints"],
@@ -104,6 +112,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     rejectsDuplicateSubmissions: false,
     requiresDefence: false,
     coach: { enabled: true, codeSignalsAfterFailedRuns: 0 },
+    trapsBeforeAttempt: true,
   },
   hard: {
     layers: ["brief", "contract", "stub", "hints"],
@@ -116,6 +125,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     rejectsDuplicateSubmissions: false,
     requiresDefence: true,
     coach: { enabled: true, codeSignalsAfterFailedRuns: 1 },
+    trapsBeforeAttempt: false,
   },
   extreme: {
     // The signature and its contract, and hints that cost a real attempt
@@ -131,6 +141,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     rejectsDuplicateSubmissions: true,
     requiresDefence: true,
     coach: { enabled: true, codeSignalsAfterFailedRuns: 2 },
+    trapsBeforeAttempt: false,
   },
 };
 
@@ -154,6 +165,7 @@ export const SCREEN_CONDITIONS: Tier = {
   rejectsDuplicateSubmissions: true,
   requiresDefence: true,
   coach: { enabled: false, codeSignalsAfterFailedRuns: 0 },
+  trapsBeforeAttempt: false,
 };
 
 /**

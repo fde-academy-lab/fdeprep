@@ -35,6 +35,7 @@ import {
 } from "@/components/workspace/panels";
 import { submitsLeft } from "./submits-left";
 import { useSubmission } from "./use-submission";
+import { ToolTable, Traps, WorkedExample } from "@/components/workspace/problem-extras";
 
 interface Props {
   problem: WorkspaceProblem;
@@ -176,6 +177,12 @@ export default function PromptWorkspace(props: Props) {
                         kit={problem.kit} briefMd={problem.briefMd}>
             {problem.contractMd ? (
               <Section title="What counts as done"><Markdown source={problem.contractMd} /></Section>
+            ) : null}
+            {problem.kit.example ? (
+              <Section title="Worked example"><WorkedExample example={problem.kit.example} /></Section>
+            ) : null}
+            {problem.kit.traps ? (
+              <Section title="Common traps"><Traps traps={problem.kit.traps} /></Section>
             ) : null}
             <Section title="Checklist" aside="Updates as you type">
               {CHECK_GROUPS.map((group) => (
