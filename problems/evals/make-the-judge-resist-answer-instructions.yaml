@@ -76,6 +76,12 @@ prompt_rules:
       pattern: '(?i)5\s+means\s+correct\s+and\s+complete' }
   - { kind: must_keep, label: "the bottom of the scale",
       pattern: '(?i)0\s+means\s+blank\s+or\s+unrelated' }
+  # The service reads reason and flagged by name, and the original prompt
+  # names neither, so every fix has to add both words.
+  - { kind: must_add, label: "the reason field",
+      pattern: '(?i)\breason\b' }
+  - { kind: must_add, label: "the flagged field",
+      pattern: '(?i)\bflagged\b' }
   - { kind: max_words, label: "under 300 words", numeric_value: 300 }
 
 probes:
