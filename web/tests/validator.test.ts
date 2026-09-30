@@ -267,6 +267,19 @@ step_checks:
     expect(noArg.errors.map((e) => e.rule)).toContain("bad_tool_spec");
   });
 
+  it("accepts the prompt assertions and rejects a prompt scope the runner does not read", () => {
+    const withAssertion = (a: string) => CODE.replace("type: returns_nonempty }", a);
+    expect(validateProblemYaml(withAssertion("type: prompt_lacks, value: 'CANARY' }"), "a.yaml").errors)
+      .toEqual([]);
+    expect(validateProblemYaml(
+      withAssertion("type: prompt_contains, value: 'POLICY', in: every }"), "a.yaml").errors).toEqual([]);
+    const report = validateProblemYaml(
+      withAssertion("type: prompt_contains, value: 'POLICY', in: most }"), "a.yaml");
+    const error = report.errors.find((e) => e.rule === "bad_assertion_param");
+    expect(error?.message).toContain("most");
+    expect(error?.line).toBeGreaterThan(1);
+  });
+
   it("accepts returns_lacks, the absence check", () => {
     const report = validateProblemYaml(
       CODE.replace("type: returns_nonempty }", "type: returns_lacks, value: 'secret' }"), "a.yaml");

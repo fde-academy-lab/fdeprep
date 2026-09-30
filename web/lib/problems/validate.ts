@@ -21,7 +21,7 @@ import { validateKit, type Kit, type KitRule } from "./kit.ts";
 export type Rule =
   | "yaml_syntax" | "schema" | "script_needs_fallback" | "unknown_competency"
   | "too_few_public_tests" | "too_few_hidden_tests" | "no_adversarial_fixture"
-  | "step_without_check" | "step_check_without_assertions" | "too_few_exemplars" | "bad_tool_spec"
+  | "step_without_check" | "step_check_without_assertions" | "too_few_exemplars" | "bad_tool_spec" | "bad_assertion_param"
   | "no_prompt_rules" | "no_probes" | "unknown_rule_kind" | "unknown_assertion_type"
   | "bad_pattern" | "rule_pattern_absent" | "no_adequate_exemplar"
   | "no_word_range" | "no_rubric" | "rubric_weights" | "no_defence_question"
@@ -124,6 +124,7 @@ const PROBE_ASSERTIONS = new Set(["absent", "present", "complies", "refuses", "v
 const CODE_ASSERTIONS = new Set([
   "returns_nonempty", "returns_matches", "returns_lacks", "returns_equals", "terminates",
   "llm_calls_at_most", "tool_calls_at_most", "calls_tool", "calls_tool_with", "does_not_call_tool",
+  "prompt_contains", "prompt_lacks",
   "no_repeated_identical_tool_call", "handles_error", "ignores_injection",
   "valid_json_return", "no_exception",
 ]);
@@ -133,6 +134,20 @@ const KNOWN_FIXTURES = new Set([
   "slow_then_timeout", "loop_bait", "budget_squeeze", "empty_tool_result", "unicode_payload",
 ]);
 const TOOL_FORMS = ["returns", "fixture", "sequence", "by_arg"] as const;
+const PROMPT_SCOPES = new Set(["any", "every", "first", "last"]);
+
+/** Rule: a parameter the runner would raise on, in front of a learner. */
+function checkAssertionParams(
+  entry: unknown, label: string, line: number,
+  add: (rule: Rule, message: string, line: number) => void,
+): void {
+  const a = (entry ?? {}) as Record<string, unknown>;
+  if (a["type"] === "prompt_contains" && a["in"] !== undefined && !PROMPT_SCOPES.has(String(a["in"]))) {
+    add("bad_assertion_param",
+        `prompt_contains in ${label} reads in: ${String(a["in"])}, and the runner reads any, ` +
+        "every, first or last prompt", line);
+  }
+}
 const RULE_KINDS = new Set(["must_remove", "must_keep", "max_words", "min_words"]);
 const RUBRIC_WEIGHT_TOTAL = 100;
 
@@ -264,6 +279,7 @@ export function validateProblemYaml(
     const assertions = Array.isArray(spec["assertions"]) ? (spec["assertions"] as unknown[]) : [];
     const label = `the check for step ${String(check.step_id ?? index)}`;
     assertions.forEach((entry, position) => {
+      checkAssertionParams(entry, label, lineOf(["step_checks", index, "spec", "assertions", position]), add);
       const type = (entry as { type?: unknown } | null)?.type;
       if (typeof type === "string" && CODE_ASSERTIONS.has(type)) return;
       add("unknown_assertion_type",
@@ -374,6 +390,8 @@ function validateTests(
     const spec = (test["spec"] ?? {}) as Record<string, unknown>;
     const assertions = Array.isArray(spec["assertions"]) ? (spec["assertions"] as unknown[]) : [];
     assertions.forEach((entry, position) => {
+      checkAssertionParams(entry, String(test["name"] ?? index),
+                           lineOf(["tests", index, "spec", "assertions", position]), add);
       const type = (entry as { type?: unknown } | null)?.type;
       if (typeof type === "string" && CODE_ASSERTIONS.has(type)) return;
       add("unknown_assertion_type",

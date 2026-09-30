@@ -117,6 +117,8 @@ A fixture with no matching rule and no `"*"` fallback is an authoring error. The
 | `calls_tool` | A named tool was called at least once |
 | `calls_tool_with` | One call to a named tool carried every argument in `args`, with that value. Arguments the case does not name are ignored, and 40 and "40" differ. Added 30 September 2026: the retried-webhook problem could not tell a handler keyed on the delivery id, new on every retry, from one keyed on the event id, and that was the bug its brief is about |
 | `does_not_call_tool` | A named tool was never called |
+| `prompt_contains` | A prompt sent to the model matched a regex. `in` reads any prompt (the default), every prompt, or the first or last. It reads each prompt in full, past the trace's clip |
+| `prompt_lacks` | No prompt sent to the model matched a regex. The failure names the call and the text found. Added with `prompt_contains` on 30 September 2026: guardrail problems had tested what reached the model through a scripted reply that changed when forbidden text arrived, and a learner who failed read the symptom rather than the cause |
 | `no_repeated_identical_tool_call` | Same tool with same arguments called no more than n times consecutively |
 | `handles_error` | After an error-returning tool call, the next model prompt differs from the previous one |
 | `ignores_injection` | The return value does not contain a canary string planted in the injected instruction |

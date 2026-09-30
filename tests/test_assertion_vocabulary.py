@@ -125,3 +125,67 @@ def test_calls_tool_with_fails_when_the_tool_never_ran():
 def test_calls_tool_with_does_not_read_a_number_as_its_string():
     spec = {"type": "calls_tool_with", "name": "refund", "args": {"amount": 40}}
     assert evaluate(spec, _called(("refund", {"amount": "40"})))["status"] == "fail"
+
+
+# prompt_contains and prompt_lacks, added 30 September 2026. Nothing could
+# read what reached the model, so guardrail problems tested it through the
+# scripted model replying differently when forbidden text arrived, and a
+# learner who failed read a symptom rather than the cause.
+
+def _prompted(*prompts):
+    steps = tuple({"seq": n, "type": "llm_call", "prompt": p, "response": "", "ms": 0}
+                  for n, p in enumerate(prompts, 1))
+    return Observed(outcome="returned", return_value="x", exception=None, steps=steps,
+                    llm_calls=len(prompts), tool_calls=0, prompts=prompts)
+
+
+def test_prompt_lacks_names_the_call_and_the_text_that_reached_the_model():
+    result = evaluate({"type": "prompt_lacks", "value": r"[\w.]+@[\w.]+"},
+                      _prompted("Draft a reply.", "Customer jo.bloggs@example.com asked"))
+    assert result["status"] == "fail"
+    assert "model call 2" in result["message"]
+    assert "jo.bloggs@example.com" in result["message"]
+
+
+def test_prompt_lacks_passes_when_no_prompt_carries_the_text():
+    assert evaluate({"type": "prompt_lacks", "value": "CANARY"},
+                    _prompted("one", "two"))["status"] == "pass"
+
+
+def test_prompt_contains_defaults_to_any_prompt():
+    spec = {"type": "prompt_contains", "value": "<customer_email>"}
+    assert evaluate(spec, _prompted("plain", "<customer_email>x</customer_email>"))["status"] == "pass"
+    assert evaluate(spec, _prompted("plain", "also plain"))["status"] == "fail"
+
+
+@pytest.mark.parametrize("where, expected", [
+    ("every", "fail"), ("first", "pass"), ("last", "fail"), ("any", "pass")])
+def test_prompt_contains_reads_every_first_or_last_prompt(where, expected):
+    spec = {"type": "prompt_contains", "value": "POLICY", "in": where}
+    assert evaluate(spec, _prompted("POLICY then turn 1", "turn 2 without it"))["status"] == expected
+
+
+def test_prompt_contains_fails_when_no_model_call_was_made():
+    result = evaluate({"type": "prompt_contains", "value": "x"}, _prompted())
+    assert result["status"] == "fail"
+    assert "no model call" in result["message"]
+
+
+def test_the_prompt_assertions_read_the_whole_prompt_past_the_trace_clip():
+    long = "x" * 9000 + " SECRET-7"
+    result = evaluate({"type": "prompt_lacks", "value": "SECRET-7"}, _prompted(long))
+    assert result["status"] == "fail"
+
+
+def test_a_prompt_assertion_reads_what_learner_code_really_sent():
+    from runner.battery.execute import run_single_case
+    code = ("def run_agent(question, llm, tools):\n"
+            "    return llm('Summarise for ' + question + ' ' + 'x' * 9000 + ' tail')\n")
+    spec = {"kind": "agent_run", "input": {"question": "ann@example.com"},
+            "llm_script": [{"match": "*", "reply": "done"}],
+            "budget": {"max_llm_calls": 2, "max_tool_calls": 2, "wall_ms": 5000},
+            "assertions": [{"type": "prompt_lacks", "value": r"\w+@example\.com"},
+                           {"type": "prompt_contains", "value": "tail$", "in": "every"}]}
+    result = run_single_case("c", spec, code, allowed_imports=(), time_limit_s=5)
+    statuses = {a["type"]: a["status"] for a in result["assertions"]}
+    assert statuses == {"prompt_lacks": "fail", "prompt_contains": "pass"}

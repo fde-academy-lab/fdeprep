@@ -265,6 +265,7 @@ def _judge(name: str, spec: dict, document: dict, exchange: Exchange,
         steps=steps,
         llm_calls=sum(1 for s in steps if s.get("type") == "llm_call"),
         tool_calls=sum(1 for s in steps if s.get("type") == "tool_call"),
+        prompts=tuple(recorded.prompts),
     )
 
     results = [evaluate(a, observed) for a in (spec.get("assertions") or [])]

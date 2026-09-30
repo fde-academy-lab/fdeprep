@@ -22,11 +22,16 @@ class Trace:
 
     def __init__(self) -> None:
         self.steps: list[dict[str, Any]] = []
+        # Every prompt in full. The steps clip a prompt at MAX_FIELD_CHARS so
+        # the trace stays small; an assertion about what reached the model
+        # reads these, and as_dict never serialises them.
+        self.prompts: list[str] = []
 
     def _next_seq(self) -> int:
         return len(self.steps) + 1
 
     def llm_call(self, prompt: str, response: str, ms: int) -> None:
+        self.prompts.append(prompt)
         self.steps.append({
             "seq": self._next_seq(),
             "type": "llm_call",

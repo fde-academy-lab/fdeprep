@@ -24,6 +24,8 @@ class Observed:
     steps: tuple[dict, ...]
     llm_calls: int
     tool_calls: int
+    # Each prompt in full, in call order. The steps hold clipped copies.
+    prompts: tuple[str, ...] = ()
 
     @property
     def returned_text(self) -> str | None:
@@ -74,6 +76,60 @@ def _returns_lacks(spec, ob) -> Result:
     if found is not None:
         shown = found.group(0) if len(found.group(0)) <= 80 else found.group(0)[:80] + "..."
         return False, f"the answer contains {shown!r}, which this case says must not appear"
+    return True, None
+
+
+def _prompts(ob: Observed) -> tuple[str, ...]:
+    if ob.prompts:
+        return ob.prompts
+    return tuple(str(s.get("prompt", "")) for s in ob.steps if s.get("type") == "llm_call")
+
+
+def _quoted(text: str) -> str:
+    return repr(text if len(text) <= 80 else text[:80] + "...")
+
+
+PROMPT_SCOPES = ("any", "every", "first", "last")
+
+
+@assertion("prompt_contains")
+def _prompt_contains(spec, ob) -> Result:
+    """What reached the model, read from the prompts the runner answered.
+
+    `in` is any (the default), every, first or last prompt.
+    """
+    prompts = _prompts(ob)
+    if not prompts:
+        return False, "no model call was made, so no prompt carried what this case expects"
+    pattern = str(spec["value"])
+    scope = spec.get("in", "any")
+    if scope == "any":
+        if any(re.search(pattern, p) for p in prompts):
+            return True, None
+        return False, f"no prompt sent to the model matched {pattern!r}"
+    if scope == "first":
+        chosen = [(1, prompts[0])]
+    elif scope == "last":
+        chosen = [(len(prompts), prompts[-1])]
+    elif scope == "every":
+        chosen = list(enumerate(prompts, 1))
+    else:
+        raise ValueError(f"prompt_contains reads any, every, first or last prompt, not {scope!r}")
+    for number, prompt in chosen:
+        if not re.search(pattern, prompt):
+            return False, f"the prompt for model call {number} does not match {pattern!r}"
+    return True, None
+
+
+@assertion("prompt_lacks")
+def _prompt_lacks(spec, ob) -> Result:
+    """Nothing matching the pattern reached the model in any prompt. The
+    failure names the call and the text, as returns_lacks does."""
+    for number, prompt in enumerate(_prompts(ob), 1):
+        found = re.search(str(spec["value"]), prompt)
+        if found is not None:
+            return False, (f"the prompt for model call {number} contains {_quoted(found.group(0))}, "
+                           "which this case says must not reach the model")
     return True, None
 
 
