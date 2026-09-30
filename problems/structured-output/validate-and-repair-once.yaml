@@ -275,7 +275,7 @@ coach:
     - id: see-the-hints
       when: { failed_runs_at_least: 3 }
       say: >-
-        Three runs have failed. The hints are unlocked now and go from where
+        Three runs have failed. The hints are available now and go from where
         to look to the shape of the fix.
   wrap_up: >-
     Parsing tells you the model wrote JSON, and validation tells you the next

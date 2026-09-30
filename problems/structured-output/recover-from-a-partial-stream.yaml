@@ -248,7 +248,7 @@ coach:
     - id: see-the-hints
       when: { failed_runs_at_least: 3 }
       say: >-
-        Three runs have failed. The hints are unlocked and walk from where to
+        Three runs have failed. The hints are available now and walk from where to
         look to the shape of the fix.
   wrap_up: >-
     A stream reports its own ending, and a parser that fills one in is

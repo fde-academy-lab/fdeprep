@@ -219,7 +219,7 @@ coach:
     - id: see-the-hints
       when: { failed_runs_at_least: 3 }
       say: >-
-        Three runs have failed. The hints are unlocked and narrow from where to
+        Three runs have failed. The hints are available now and narrow from where to
         look to the shape of the fix.
   wrap_up: >-
     When sources disagree, the disagreement is the finding. Keep every value
