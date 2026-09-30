@@ -564,11 +564,9 @@ tests:
 
   # The one case where a repair works. Pick, query and repair spend all three
   # model calls before the rows arrive, so no call is left for a sentence and
-  # the answer is the rows alone. The ceiling is four, one above the
-  # contract's three, because a call past the ceiling is refused before the
-  # trace counts it: an agent that asks for a sentence anyway and catches the
-  # refusal would look exactly like one that never asked. Here a fourth call
-  # is answered and counted, and llm_calls_at_most holds the contract's three.
+  # the answer is the rows alone. An agent that asks for a sentence anyway
+  # has its fourth call refused, and the refused call counts toward
+  # llm_calls_at_most whether or not the agent catches the refusal.
   - name: a_repaired_query_leaves_no_call_for_a_sentence
     visibility: hidden
     spec:
@@ -599,7 +597,7 @@ tests:
           sequence:
             - { status: 400, error: "column p.category_name does not exist" }
             - { status: 200, columns: [store, plants], rows: [[Hexham, 4812], [Morpeth, 3977], [Alnwick, 2560]] }
-      budget: { max_llm_calls: 4, max_tool_calls: 4, wall_ms: 10000 }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: llm_calls_at_most, value: 3 }
         - { type: valid_json_return,

@@ -26,6 +26,11 @@ class Observed:
     tool_calls: int
     # Each prompt in full, in call order. The steps hold clipped copies.
     prompts: tuple[str, ...] = ()
+    # Calls the budget refused. llm_calls and tool_calls count the calls that
+    # were answered; a refused call never ran, but it was asked for, so the
+    # budget assertions count it.
+    llm_refused: int = 0
+    tool_refused: int = 0
 
     @property
     def returned_text(self) -> str | None:
@@ -164,18 +169,27 @@ def _terminates(spec, ob) -> Result:
 
 @assertion("llm_calls_at_most", needs=("value",))
 def _llm_calls_at_most(spec, ob) -> Result:
-    limit = int(spec["value"])
-    if ob.llm_calls > limit:
-        return False, f"used {ob.llm_calls} model calls, allowed {limit}"
-    return True, None
+    return _asked_at_most(int(spec["value"]), ob.llm_calls, ob.llm_refused, "model")
 
 
 @assertion("tool_calls_at_most", needs=("value",))
 def _tool_calls_at_most(spec, ob) -> Result:
-    limit = int(spec["value"])
-    if ob.tool_calls > limit:
-        return False, f"used {ob.tool_calls} tool calls, allowed {limit}"
-    return True, None
+    return _asked_at_most(int(spec["value"]), ob.tool_calls, ob.tool_refused, "tool")
+
+
+def _asked_at_most(limit: int, answered: int, refused: int, kind: str) -> Result:
+    """Calls asked for, the refused ones included, against the limit.
+
+    Code that asks for one call too many, catches the refusal and answers
+    anyway has still asked for the call the budget did not allow.
+    """
+    asked = answered + refused
+    if asked <= limit:
+        return True, None
+    if refused:
+        return False, (f"asked for {asked} {kind} calls, allowed {limit}; "
+                       f"the budget refused {refused} of them")
+    return False, f"used {asked} {kind} calls, allowed {limit}"
 
 
 @assertion("calls_tool", needs=("name",))

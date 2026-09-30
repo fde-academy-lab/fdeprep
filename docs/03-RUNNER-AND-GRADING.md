@@ -59,6 +59,20 @@ and a value JSON cannot carry crosses as its `repr`, which is how the trace
 always recorded one. A single call may carry 4MB; a larger one raises
 `ValueError` in learner code.
 
+**Amended 30 September 2026.** A call past the case's ceiling is refused, and
+the runner writes the refusal to the trace before it raises `BudgetExceeded`.
+Learner code may catch the refusal and carry on, and until this amendment a
+caught refusal left no step and no count, so code that asked for one call too
+many and answered anyway graded exactly like code that stopped in time. A
+refused call now counts as a call asked for in every budget measure:
+`llm_calls_at_most`, `tool_calls_at_most`, the `budget_exceeded` flag, and the
+`llm_calls` and `within_budget` of the result's `budget`. It counts in nothing
+that asks whether a tool ran or what reached the model: `calls_tool`,
+`calls_tool_with`, `does_not_call_tool`, `prompt_contains` and `prompt_lacks`
+read only the calls that were answered. An adversarial case that squeezes the
+ceiling below what a correct solution needs expects the refusal to be caught,
+and its trace now shows the refused call.
+
 ### 2.2 Fixture format
 
 A test's `spec` column holds the script. This is the shape:
@@ -112,8 +126,8 @@ A fixture with no matching rule and no `"*"` fallback is an authoring error. The
 | `returns_lacks` | `value` | Return value does not contain a regex. Added 29 September 2026 for leaked data and unsupported claims, which authors had been writing as a negative lookahead in `returns_matches`; the failure names the text found, where the lookahead showed the learner a regex |
 | `returns_equals` | `value` | Exact string equality after stripping whitespace |
 | `terminates` |  | The function returned rather than hitting the budget ceiling |
-| `llm_calls_at_most` | `value` | Model call count |
-| `tool_calls_at_most` | `value` | Tool call count |
+| `llm_calls_at_most` | `value` | Model calls asked for, the refused ones included |
+| `tool_calls_at_most` | `value` | Tool calls asked for, the refused ones included |
 | `calls_tool` | `name` | A named tool was called at least once |
 | `calls_tool_with` | `name`, `args` | One call to a named tool carried every argument in `args`, with that value. Arguments the case does not name are ignored, and 40 and "40" differ. Added 30 September 2026: the retried-webhook problem could not tell a handler keyed on the delivery id, new on every retry, from one keyed on the event id, and that was the bug its brief is about |
 | `does_not_call_tool` | `name` | A named tool was never called |
@@ -354,6 +368,7 @@ base       = 100 if all gates pass else (public_weight * public_ratio
                                        + hidden_weight * hidden_ratio)
 hint_pen   = 5 points per hint revealed, capped at 25
 budget_pen = 10 points if llm_calls exceeds max_llm_calls, else 0
+             (llm_calls counts the calls asked for, the refused ones included)
 score      = max(0, base - hint_pen - budget_pen)
 ```
 
@@ -379,13 +394,23 @@ Weights: public 30, hidden 70 on Easy and Medium. On Hard and Extreme the advers
 }
 ```
 
+A call past the case's ceiling is a `refused` step, written by the runner before it raises `BudgetExceeded`:
+
+```json
+{"seq": 7, "type": "refused", "op": "llm", "prompt": "...", "prompt_chars": 388,
+ "message": "the model budget of 3 calls is spent", "repeats": 2,
+ "flags": ["budget_exceeded"], "annotation": "This call was past the case's budget, ..."}
+```
+
+`op` is `llm` or `tool`; a refused tool call carries `tool` and `args` instead of the prompt. Only the first refusal of each kind gets a step, because every later call of that kind is refused too, and `repeats` counts those. A loop that swallows refusals in `while True` therefore cannot grow the trace or the runner's memory. Added 30 September 2026.
+
 Post-processing adds `flags` automatically:
 
 | Flag | Condition |
 |---|---|
 | `repeated_identical_tool_call` | Same tool and args twice in a row |
 | `soft_error` | Observation contains an error key with a success status |
-| `budget_exceeded` | Call count passed the declared budget |
+| `budget_exceeded` | The ceiling refused a call, which the trace shows as a `refused` step |
 | `no_tool_used` | The loop finished without calling any tool when tools were available |
 | `injection_followed` | The canary string reached the final answer |
 

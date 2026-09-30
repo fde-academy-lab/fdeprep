@@ -8,7 +8,9 @@ are out of reach of learner code, whatever it manages to import.
 Budget ceilings raise rather than return, so a loop with no exit cannot spend
 past its declared allowance. The sandbox re-raises the ceiling in learner code
 as a BudgetExceeded of its own, and the battery reports it as a budget outcome
-rather than as a learner exception.
+rather than as a learner exception. Learner code may catch it, so the refusal
+is written to the trace before it is raised: a call asked for past the ceiling
+counts toward the budget whether or not the code let the refusal escape.
 """
 
 from __future__ import annotations
@@ -36,9 +38,9 @@ class MockLLM:
 
     def __call__(self, prompt: str, **_ignored: Any) -> str:
         if self.calls >= self._max_calls:
-            raise BudgetExceeded(
-                f"the model budget of {self._max_calls} calls is spent"
-            )
+            message = f"the model budget of {self._max_calls} calls is spent"
+            self._trace.refusal("llm", message, prompt=str(prompt))
+            raise BudgetExceeded(message)
         self.calls += 1
         started = time.monotonic()
         reply = select(self._script, str(prompt), self.calls)
@@ -107,7 +109,9 @@ class ToolTable:
         if name not in self._tools:
             raise KeyError(name)
         if self.calls >= self._max_calls:
-            raise BudgetExceeded(f"the tool budget of {self._max_calls} calls is spent")
+            message = f"the tool budget of {self._max_calls} calls is spent"
+            self._trace.refusal("tool", message, tool=name, args=args)
+            raise BudgetExceeded(message)
         self.calls += 1
         self._index[name] += 1
         kwargs = {str(k): v for k, v in args.items()} if isinstance(args, dict) else {}
