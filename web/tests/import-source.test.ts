@@ -50,7 +50,7 @@ describe("the publishable set", () => {
     const excluded = all.filter((f) => !publishable.includes(f));
 
     expect(all).toHaveLength(publishable.length + excluded.length);
-    expect(excluded).toHaveLength(11);
+    expect(excluded).toHaveLength(12);
     for (const file of excluded) {
       expect(file, file).toContain(`${path.sep}_fixtures${path.sep}`);
     }
