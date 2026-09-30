@@ -155,10 +155,14 @@ step_checks:
     spec:
       assertions:
         - { type: returns_nonempty }
+  # Reads a_result_that_matches_its_schema_reaches_the_model. s1, s2 and s3
+  # cannot be told apart from the stub on the public cases: both public
+  # results are successful and match the schema, and the stub's
+  # matches_schema already accepts them. Their checks stay as they were.
   - step_id: s4
     spec:
       assertions:
-        - { type: calls_tool, name: check_stock }
+        - { type: returns_matches, value: '3 pairs' }
 
 hints:
   - The server is another team's code. List the parts of a result that reach
