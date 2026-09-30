@@ -7,9 +7,10 @@
  * database and no model credential. Neither half can do the other's job, which
  * is the whole point of there being two.
  *
- * Locally the judge runs as a subprocess. Set JUDGE_ENDPOINT to the runtime
- * interface emulator and the same event goes over HTTP to the container, which
- * is the deployed shape.
+ * Three roads to the same handler, judge.handler.lambda_handler, chosen in this
+ * order: JUDGE_FUNCTION, the deployed judge Lambda by a signed Invoke, so this
+ * host holds no model credential; JUDGE_ENDPOINT, the runtime interface
+ * emulator in a local container; and otherwise a subprocess on this host.
  */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
@@ -18,6 +19,7 @@ import { parse } from "yaml";
 import { db } from "../db/pool.ts";
 import { staticGate, type GateProblem, type StaticGate } from "../gate/index.ts";
 import { deleteMessage, receive, send, type QueueMessage } from "./shim.ts";
+import { invokeLambda, type Invoker } from "./lambda.ts";
 
 const REPO_ROOT = path.join(import.meta.dirname, "..", "..", "..");
 const LEASE_EXTENSION_S = 120;
@@ -25,16 +27,31 @@ const LEASE_EXTENSION_S = 120;
 export interface JudgeOptions {
   python?: string;
   endpoint?: string;
+  /** The judge Lambda. Falls back to JUDGE_FUNCTION. */
+  functionName?: string;
+  /** How the function is called. Tests pass their own. */
+  lambda?: Invoker;
   /** Injected by tests that do not want to spawn a process at all. */
   invoke?: (event: Record<string, unknown>) => Promise<Record<string, unknown>>;
 }
 
 export async function judgeOnce(options: JudgeOptions = {}): Promise<number> {
   const messages = await receive("judgements", 5);
-  for (const message of messages) {
-    await handle(message, options);
+  if (judgeFunction(options)) {
+    // Side by side, as in the runner worker: each judgement is its own
+    // invocation, and a probe run takes long enough that one at a time would
+    // queue a whole session's design answers behind each other.
+    await Promise.all(messages.map((message) => handle(message, options)));
+  } else {
+    for (const message of messages) {
+      await handle(message, options);
+    }
   }
   return messages.length;
+}
+
+function judgeFunction(options: JudgeOptions): string | undefined {
+  return options.functionName ?? process.env.JUDGE_FUNCTION;
 }
 
 async function handle(message: QueueMessage, options: JudgeOptions): Promise<void> {
@@ -176,8 +193,9 @@ async function requeue(
 }
 
 /**
- * The road to the judge Lambda: a subprocess locally, the runtime interface
- * emulator or the deployed function when JUDGE_ENDPOINT is set.
+ * The road to the judge: the deployed function when JUDGE_FUNCTION is set, the
+ * runtime interface emulator when JUDGE_ENDPOINT is, and a subprocess
+ * otherwise.
  *
  * Exported so the voice scorer reaches the same function the same way rather
  * than growing a second road to it. docs/07 section 6 scores a spoken answer
@@ -187,6 +205,9 @@ export async function invoke(
   event: Record<string, unknown>, options: JudgeOptions,
 ): Promise<Record<string, unknown>> {
   if (options.invoke) return options.invoke(event);
+
+  const functionName = judgeFunction(options);
+  if (functionName) return (options.lambda ?? invokeLambda)(functionName, event);
 
   const endpoint = options.endpoint ?? process.env.JUDGE_ENDPOINT;
   if (endpoint) {

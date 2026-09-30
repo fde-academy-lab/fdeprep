@@ -7,15 +7,20 @@
  * .claude/rules/01 both rest on: the component that executes learner code has
  * no database credential and no model credential.
  *
- * Locally the battery runs as a subprocess. Set RUNNER_ENDPOINT to the runtime
- * interface emulator and the same event goes over HTTP to the container
- * instead, which is the deployed shape.
+ * Three roads to the same handler, runner.handler.lambda_handler, chosen in
+ * this order:
+ *
+ *   RUNNER_FUNCTION  the deployed runner Lambda, by a signed Invoke. Learner
+ *                    code runs there and never on this host.
+ *   RUNNER_ENDPOINT  the runtime interface emulator in a local container.
+ *   neither          a subprocess on this host, for a laptop.
  */
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import { db } from "../db/pool.ts";
 import { deleteMessage, receive, send, type QueueMessage } from "./shim.ts";
+import { invokeLambda, type Invoker } from "./lambda.ts";
 
 const REPO_ROOT = path.join(import.meta.dirname, "..", "..", "..");
 
@@ -23,14 +28,29 @@ export interface WorkerOptions {
   /** Falls back to the repo's virtualenv, then to python3. */
   python?: string;
   endpoint?: string;
+  /** The runner Lambda. Falls back to RUNNER_FUNCTION. */
+  functionName?: string;
+  /** How the function is called. Tests pass their own. */
+  lambda?: Invoker;
 }
 
 export async function runOnce(options: WorkerOptions = {}): Promise<number> {
   const messages = await receive("submissions", 5);
-  for (const message of messages) {
-    await handle(message, options);
+  if (runnerFunction(options)) {
+    // Each submission is its own invocation, so a batch runs side by side
+    // rather than queueing behind the slowest. Locally the battery is a
+    // process on this machine, and five at once on a laptop is not worth it.
+    await Promise.all(messages.map((message) => handle(message, options)));
+  } else {
+    for (const message of messages) {
+      await handle(message, options);
+    }
   }
   return messages.length;
+}
+
+function runnerFunction(options: WorkerOptions): string | undefined {
+  return options.functionName ?? process.env.RUNNER_FUNCTION;
 }
 
 async function handle(message: QueueMessage, options: WorkerOptions): Promise<void> {
@@ -86,6 +106,9 @@ async function buildEvent(submissionId: number): Promise<Record<string, unknown>
 async function invoke(
   event: Record<string, unknown>, options: WorkerOptions,
 ): Promise<Record<string, unknown>> {
+  const functionName = runnerFunction(options);
+  if (functionName) return (options.lambda ?? invokeLambda)(functionName, event);
+
   const endpoint = options.endpoint ?? process.env.RUNNER_ENDPOINT;
   if (endpoint) {
     const response = await fetch(endpoint, {
