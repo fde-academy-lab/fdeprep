@@ -112,9 +112,14 @@ step_checks:
   # The stub returns a fixed sentence until step 4 returns the draft, so s1
   # shows only after that. It reads a_ticket_with_contact_details_gets_a_draft,
   # whose draft comes back only when no raw email or phone reached the prompt.
+  # That ticket's details are all in its metadata, so code that sends only the
+  # body got the draft too without swapping anything. The placeholders have to
+  # be in the prompt, which they are only when the whole ticket went, swapped.
   - step_id: s1
     spec:
       assertions:
+        - { type: prompt_contains, value: '\[EMAIL_1\]' }
+        - { type: prompt_contains, value: '\[PHONE_1\]' }
         - { type: returns_matches, value: '(?i)line test tonight' }
   # Neither public ticket repeats a value or holds two of one kind, so this
   # check runs its own ticket: two phone numbers, one of them written three

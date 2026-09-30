@@ -143,8 +143,8 @@ steps:
     check_id: s4
 
 step_checks:
-  # Both public results succeed and match the schema, so steps 1 to 3 each
-  # carry their own case. The stub lets nothing from a result in, so what
+  # Both public results succeed and match the schema, so every step carries
+  # its own case. The stub lets nothing from a result in, so what
   # tells a solution from the stub is what the contract says goes in instead:
   # the error text for an isError result, and the line saying a result was
   # rejected. Each script lists the leaks first, so a prompt that carries
@@ -220,10 +220,29 @@ step_checks:
         - { type: calls_tool, name: check_stock }
         - { type: returns_matches, value: "(?i)result for Exeter that I could not use" }
   # Reads a_result_that_matches_its_schema_reaches_the_model.
+  # s4: a valid result that also carries a field the schema does not declare.
+  # Every public result holds declared fields only, so code that let the whole
+  # of structuredContent in read green here when s4 read them.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "Are there any HK-12 walking boots at Leeds?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: check_stock(sku=HK-12, store=Leeds)" }
+        - { match: { regex: '["'']on_hand["'']:\s*4\b' },
+            reply: "Final Answer: Leeds has 4 pairs of the HK-12 in stock." }
+        - { match: "*", reply: "Final Answer: I cannot confirm stock at Leeds right now." }
+      tools:
+        check_stock:
+          returns:
+            content: [ { type: text, text: '{"sku": "HK-12", "store": "Leeds", "on_hand": 4, "supplier_cost": 21.4}' } ]
+            structuredContent: { sku: HK-12, store: Leeds, on_hand: 4, supplier_cost: 21.4 }
+            isError: false
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: returns_matches, value: '3 pairs' }
+        - { type: calls_tool, name: check_stock }
+        - { type: prompt_lacks, value: 'supplier_cost' }
+        - { type: returns_matches, value: "4 pairs" }
 
 hints:
   - The server is another team's code. List the parts of a result that reach
