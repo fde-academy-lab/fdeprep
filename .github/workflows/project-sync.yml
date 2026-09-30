@@ -1,0 +1,70 @@
+name: Project board
+
+# Puts docs/project/backlog.yaml on the GitHub Project: one issue per stage and
+# story, and a card for each with its fields. docs/project/board-setup.md
+# covers the token, the one-time setup and the views.
+#
+# Only a merge to main or a person starting it by hand runs a sync. A pull
+# request never does, because the sync writes to the repository's issues with
+# a token that a pull request from a fork must not reach.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - docs/project/backlog.yaml
+      - tools/backlog.py
+      - tools/project_sync.py
+      - .github/workflows/project-sync.yml
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Plan only. Say what the sync would create or change and write nothing.
+        type: boolean
+        default: true
+
+# The sync writes through PROJECT_TOKEN, so the workflow's own token only
+# needs to read the checkout.
+permissions:
+  contents: read
+
+# Two syncs at once would each see an issue missing and both create it.
+concurrency:
+  group: project-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    name: Sync the board
+    runs-on: ubuntu-latest
+    # Writes are paced at one a second to stay inside GitHub's secondary
+    # limits, and a first sync makes a few hundred of them.
+    timeout-minutes: 60
+    env:
+      PROJECT_TOKEN: ${{ secrets.PROJECT_TOKEN }}
+      EVENT: ${{ github.event_name }}
+      DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      # A missing token is a setup step not yet taken. On a merge that is a
+      # notice, so main stays green before anyone has set the board up. Run
+      # by hand, somebody expected a sync, so it fails.
+      - name: Sync
+        run: |
+          if [ -z "$PROJECT_TOKEN" ]; then
+            if [ "$EVENT" = "workflow_dispatch" ]; then
+              echo "::error::PROJECT_TOKEN is not set. Step 2 of docs/project/board-setup.md says how to add it."
+              exit 1
+            fi
+            echo "::notice::The board was not synced because PROJECT_TOKEN is not set. Step 2 of docs/project/board-setup.md says how to add it."
+            exit 0
+          fi
+          if [ "$DRY_RUN" = "true" ]; then
+            python -m tools.project_sync --dry-run
+          else
+            python -m tools.project_sync
+          fi

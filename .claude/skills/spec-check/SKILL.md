@@ -40,9 +40,9 @@ care than usual, then three more:
     from `web/`, `runner/`, `judge/`, `infra/`, `.github/workflows/` or `docs/`
     in the diff sends the whole change to a branch, including the configuration
     part of it.
-12. **A new entry in a vendored-skill allowlist.** `MATTPOCOCK_KEEP` and
-    `ANTHROPIC_KEEP` in `scripts/bootstrap.sh` decide which third-party agent
-    instructions land in this repository. A line added there needs the commit
+12. **A new entry in a vendored-skill allowlist.** The `*_KEEP`, `*_EXTRAS`
+    and `*_FILES` lists in `scripts/bootstrap.sh` decide which third-party
+    agent instructions land in this repository. A line added there needs the commit
     message to say what the skill does and whether it runs shell commands or
     fetches from the network. Without that, an unreviewed instruction set just
     entered the repository.

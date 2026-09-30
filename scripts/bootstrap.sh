@@ -293,9 +293,9 @@ care than usual, then three more:
     from `web/`, `runner/`, `judge/`, `infra/`, `.github/workflows/` or `docs/`
     in the diff sends the whole change to a branch, including the configuration
     part of it.
-12. **A new entry in a vendored-skill allowlist.** `MATTPOCOCK_KEEP` and
-    `ANTHROPIC_KEEP` in `scripts/bootstrap.sh` decide which third-party agent
-    instructions land in this repository. A line added there needs the commit
+12. **A new entry in a vendored-skill allowlist.** The `*_KEEP`, `*_EXTRAS`
+    and `*_FILES` lists in `scripts/bootstrap.sh` decide which third-party
+    agent instructions land in this repository. A line added there needs the commit
     message to say what the skill does and whether it runs shell commands or
     fetches from the network. Without that, an unreviewed instruction set just
     entered the repository.
@@ -317,6 +317,152 @@ One table: rule, file and line, one sentence on what is wrong. Then a single
 verdict line: safe to ship, or not, and why. On a push to `main`, "not" means
 the change goes to a branch and opens a pull request instead.
 __FDEPREP_06__
+
+say "writing .claude/skills/documentation-standard/SKILL.md"
+mkdir -p ".claude/skills/documentation-standard"
+cat > ".claude/skills/documentation-standard/SKILL.md" <<'__FDEPREP_08__'
+---
+name: documentation-standard
+description: The standard for the README and every page a person reads in this repository, from docs/project to a runbook. Use when writing or rewriting a README, a spec page, a delivery page, a runbook or release notes, and before committing any of them. Sets what goes at the top, which diagrams and tables a document needs, how facts and estimates are marked, and the writing pass every page gets last.
+---
+
+# Documentation standard
+
+A document here has two readers at once: someone deciding whether the product is
+worth their time, and someone about to run it. The first gets an answer from the
+top screen. The second finds every step without asking anybody.
+
+## Before writing
+
+1. Name the reader, what they do right after reading, and how much time they
+   have. A README serves a first-time visitor for about two minutes and an
+   operator for as long as setup takes, so write both paths and keep them apart.
+2. For anything longer than a page, show a one-screen outline first: the
+   sections, and the one sentence each section must deliver. Rejecting an
+   outline costs a minute; rejecting a finished page costs the page.
+3. Collect every figure from its source. Test counts come from the test
+   runners, dates and pull requests from git and GitHub, sizes and estimates
+   from `docs/project/backlog.yaml`. A figure remembered from an earlier
+   session is a guess.
+
+## Which skill does what
+
+The vendored skills are not loaded automatically. Read the one the task needs.
+
+| Task | Read |
+|---|---|
+| The last pass on every document | `.claude/skills/vendor/humanizer/SKILL.md` |
+| The structure of a README, runbook or API page | `.claude/skills/vendor/knowledge-work/engineering/skills/documentation/SKILL.md` |
+| Requirements, constraints, trade-offs and diagrams | `.claude/skills/vendor/knowledge-work/engineering/skills/system-design/SKILL.md` |
+| A decision record | `.claude/skills/vendor/knowledge-work/engineering/skills/architecture/SKILL.md` |
+| A roadmap page with RICE and Now, Next and Later | `.claude/skills/vendor/knowledge-work/product-management/skills/roadmap-update/SKILL.md` |
+| Sprint and capacity planning | `.claude/skills/vendor/knowledge-work/product-management/skills/sprint-planning/SKILL.md` |
+| A status update for management | `.claude/skills/vendor/knowledge-work/product-management/skills/stakeholder-update/SKILL.md` |
+| A spec for a new feature | `.claude/skills/vendor/knowledge-work/product-management/skills/write-spec/SKILL.md` |
+
+When they disagree, this order decides: `.claude/rules/02-writing.md` and
+`CLAUDE.md` first, then this file, then the humanizer, then the knowledge-work
+skills. The knowledge-work templates separate parts of a line with dashes, put
+a bold label on every line and report status as a colour word, and none of that
+survives the humanizer pass. Their steps that begin "If ~~project tracker is
+connected" do not apply here: the delivery record is
+`docs/project/backlog.yaml`, so read that instead.
+
+## The README
+
+Sections in this order. Leave out a section with nothing true to say rather
+than pad it.
+
+| Section | What it must deliver |
+|---|---|
+| Opening | What the product is and who it is for in two sentences, then one line with the current build stage and its date. |
+| How to use it | Numbered steps through the key screens, each with a labelled screenshot, as the Screenshots section below describes. |
+| Who it is for | A table of the people who use it and what each does with it: learners, faculty, placement teams, operators, and anyone outside FDE Academy preparing for a forward deployed or agent engineering role. |
+| Key features | A table giving each feature, what the user gets from it, and where it lives. |
+| Modes | Every mode the product supports and what changes in each: difficulty from Easy to Extreme, the guided, unguided and pressure voice modes, rehearsal, development against production, and local against AWS. |
+| Stages of development | POC, MVP, alpha and beta, with dates, what each proved and the stages each spans, taken from `docs/project/delivery-history.md`. |
+| Spec at a glance | One row per numbered document in `docs/`, saying what it decides and when to read it. |
+| Architecture | The diagrams in the next section. |
+| Requirements | Functional requirements; non-functional requirements, each with a measurable target and the test or check that verifies it; constraints; and assumptions, each with what happens if it is wrong. Every row has an ID a test or a document can cite. |
+| Running it | Local first, then AWS. Every command can be pasted as it stands, and each says what it prints when it works. |
+| Quality | The suites, what each covers and its current count, re-measured on the day of writing. |
+| Project record | A link to `docs/project/` for the history, roadmap, estimates and risks. |
+
+## Diagrams
+
+Mermaid in fenced blocks, because GitHub renders it where the reader already is.
+
+| Diagram | Mermaid type | What it shows |
+|---|---|---|
+| C4 level 1, context | `flowchart` | The people and outside systems around the product. |
+| C4 level 2, containers | `flowchart` | Each deployable unit with its technology, and which talks to which. |
+| C4 level 3, components | `flowchart` | The inside of the one container a reader most needs to understand. |
+| Deployment | `flowchart` | Where each container runs on AWS, and the network boundaries between them. |
+| Trust boundaries | `flowchart` | What each boundary keeps out, from `.claude/rules/01-trust-boundaries.md`. |
+| Sequence | `sequenceDiagram` | One per main flow, for example a code submission from the click to the verdict. |
+| State | `stateDiagram-v2` | Every entity with a lifecycle, for example a submission or an evaluation. |
+| Entity relationship | `erDiagram` | The core tables and their keys. |
+
+Draw the C4 levels as flowcharts that keep C4's conventions: each person,
+system and container is a box labelled with its name, its technology and one
+line of purpose, and every arrow carries a verb. Mermaid's own C4 syntax is
+marked experimental in its documentation and places shapes in the order they
+are written (checked on mermaid.js.org on 30 September 2026), so a flowchart
+renders more reliably.
+
+A diagram states only what the code does. Take table names and columns from the
+migrations, and services from `infra/`. Render every diagram before committing,
+with the Mermaid validation tool when the session has one and otherwise in the
+pull request's preview on GitHub. A diagram GitHub cannot render is worse than
+no diagram.
+
+## Screenshots
+
+- Capture from the running app with Playwright against seeded development data,
+  at a fixed viewport, so a later capture matches.
+- Add the labels in the page before capturing, as numbered markers from an
+  injected stylesheet, so a later capture reproduces them exactly. The step
+  text refers to the numbers.
+- Save each as a PNG under `docs/images/` with a name that says which screen it
+  shows, and give it alt text that says what the reader should notice.
+- Show no personal data. Seed a named test learner instead.
+
+## Figures and claims
+
+- Mark every figure as a fact, with where it came from, or as an estimate, with
+  how it was made. `docs/project/estimation.md` is the model to follow.
+- Give a library, API or service claim the version or the date it was checked
+  against.
+- Keep generated numbers generated. The tables in `docs/project` come from
+  `python -m tools.project_sync --render-docs`, and a hand edit to one is
+  overwritten on the next run.
+
+## The writing pass
+
+Last, on every page, read the humanizer skill and apply it. The rules most
+often broken in this repository's documents:
+
+- No dash as punctuation, em or en, anywhere, including tables and code
+  comments shown on the page.
+- No word from the list in `.claude/rules/02-writing.md`, and none of
+  Additionally, Moreover, However, Hence, Thus, Nonetheless, Furthermore,
+  Accordingly, Indeed or Dynamic.
+- Full sentences in bullets and in any table cell that carries prose. A name or
+  a number can stand alone in a cell.
+- No "not X but Y", no closing line that repeats the point, no list of three
+  for rhythm, and no bold label on every item.
+- No sentence about the document itself or how it was made. "You" means the
+  person reading the page.
+- Sentence-case headings.
+
+Tests check the banned words and the dashes in `problems/` and `docs/project/`.
+Check any other page by hand before committing:
+
+```bash
+grep -nE "$(printf '\342\200\224|\342\200\223')" FILE
+grep -niwE 'additionally|moreover|however|hence|thus|nonetheless|furthermore|accordingly|indeed|dynamic|delve|leverage|robust|seamless|holistic|unlock|elevate|crucial|pivotal|myriad|plethora|tapestry|landscape|realm|beginner' FILE
+```
+__FDEPREP_08__
 
 say "writing .gitignore"
 cat > ".gitignore" <<'__FDEPREP_07__'
@@ -379,11 +525,14 @@ if [ "$WITH_SKILLS" = "1" ]; then
   DEST=".claude/skills/vendor"
   mkdir -p "$DEST"
 
-  # Pinned to the commits actually reviewed and vendored on 2026-09-13.
-  # Move a pin only after reading the diff. Find a newer SHA with:
+  # Pinned to the commits actually reviewed and vendored: the first two on
+  # 2026-09-13, the documentation pair on 2026-09-30. Move a pin only after
+  # reading the diff. Find a newer SHA with:
   #   git ls-remote https://github.com/<owner>/<repo> main
   MATTPOCOCK_REF="3cca18b368ae95cdbdebbff572ccafa662551015"
   ANTHROPIC_REF="34040c9c568585f6929bedeaad110ad08f079624"
+  KNOWLEDGE_WORK_REF="da38ec1ee89d41e5380e652a97382695003396e7"
+  HUMANIZER_REF="225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8"
 
   # Allowlists. Paths are relative to each repo's skills/ directory, and nothing
   # outside these lists is copied, so a re-run cannot restore a skill that was
@@ -424,17 +573,53 @@ frontend-design
 webapp-testing
 "
 
+  # Documentation, added 2026-09-30 for the README and the delivery pages in
+  # docs/project. The rule above dropped the document-production skills
+  # because they make files in formats this repository does not ship. These
+  # write Markdown, which it does. .claude/skills/documentation-standard says
+  # how they combine and which one wins when they disagree.
+  #
+  # Each is instructions only: no shell command and no fetch. The
+  # knowledge-work skills mention placeholders such as ~~project tracker for a
+  # tool a session might have connected. Nothing here connects one and no
+  # .mcp.json is copied, so those branches do nothing unless a session already
+  # has that connector. Of the 252 skills that repository ships, 7 are taken.
+  KNOWLEDGE_WORK_KEEP="
+engineering/skills/architecture
+engineering/skills/documentation
+engineering/skills/system-design
+product-management/skills/roadmap-update
+product-management/skills/sprint-planning
+product-management/skills/stakeholder-update
+product-management/skills/write-spec
+"
+  # The skills above link to the CONNECTORS.md at their plugin's root, and the
+  # Apache 2.0 licence travels with the copy.
+  KNOWLEDGE_WORK_EXTRAS="LICENSE product-management/LICENSE engineering/CONNECTORS.md product-management/CONNECTORS.md"
+
+  # blader/humanizer is one skill whose SKILL.md sits at the repository root,
+  # beside a README, packaging for other agents and a validator script the
+  # skill never calls. Only these files are copied.
+  HUMANIZER_FILES="SKILL.md LICENSE"
+
   # A pinned SHA is not a branch, so the first clone form always fails on one
   # and the fallback is what actually does the work. Both are kept: the shallow
   # form is faster whenever a ref is a branch name again.
+  clone_at() {
+    git clone --quiet --depth 1 --branch "$2" "https://github.com/$1" "$3" 2>/dev/null \
+      || { git clone --quiet --filter=blob:none --no-checkout "https://github.com/$1" "$3" \
+           && git -C "$3" checkout --quiet "$2"; }
+  }
+
+  # Extras are single files copied at their own paths, for what a kept skill
+  # links to or a licence asks to keep with the copy.
   fetch_skills() {
-    repo="$1"; ref="$2"; name="$3"; subdir="$4"; keep="$5"
+    repo="$1"; ref="$2"; name="$3"; subdir="$4"; keep="$5"; extras="${6:-}"
+    listname="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')_KEEP"
     tmp="$(mktemp -d)"
     say "fetching $repo @ $ref"
 
-    if ! { git clone --quiet --depth 1 --branch "$ref" "https://github.com/$repo" "$tmp" 2>/dev/null \
-           || { git clone --quiet --filter=blob:none --no-checkout "https://github.com/$repo" "$tmp" \
-                && git -C "$tmp" checkout --quiet "$ref"; }; }; then
+    if ! clone_at "$repo" "$ref" "$tmp"; then
       say "  could not fetch $repo, continuing"
       rm -rf "$tmp"
       return 0
@@ -469,6 +654,15 @@ webapp-testing
 $keep
 __KEEPLIST__
 
+    for file in $extras; do
+      if [ -f "$tmp/$file" ]; then
+        mkdir -p "$DEST/$name/$(dirname "$file")"
+        cp "$tmp/$file" "$DEST/$name/$file"
+      else
+        missing="$missing $file"
+      fi
+    done
+
     sha="$(git -C "$tmp" rev-parse HEAD 2>/dev/null || echo "$ref")"
     upstream_total="$(wc -l < "$tmp/.upstream" | tr -d ' ')"
     declined="$(comm -13 "$tmp/.keep" "$tmp/.upstream" | wc -l | tr -d ' ')"
@@ -476,7 +670,7 @@ __KEEPLIST__
     {
       echo "$repo@$sha"
       echo "curated subset: $copied of $upstream_total skills upstream ships at this ref."
-      echo "The allowlist is MATTPOCOCK_KEEP / ANTHROPIC_KEEP in scripts/bootstrap.sh."
+      echo "The allowlist is $listname in scripts/bootstrap.sh."
       echo "This folder is not a mirror. Do not re-add a skill by hand; add it to the list."
     } > "$DEST/$name/.source"
 
@@ -487,7 +681,6 @@ __KEEPLIST__
     # nobody decided to drop, so record it and keep going: every other repo
     # still gets vendored, and the run reports the whole list at the end.
     if [ -n "$missing" ]; then
-      listname="$(printf '%s' "$name" | tr '[:lower:]' '[:upper:]')_KEEP"
       for path in $missing; do
         say "  MISSING: $path"
         VENDOR_ERRORS="$VENDOR_ERRORS$path  (in $listname, from $repo @ $ref)
@@ -498,8 +691,49 @@ __KEEPLIST__
     rm -rf "$tmp"
   }
 
+  # A repository that is a single skill keeps SKILL.md at its root. Only the
+  # named files are copied, so nothing else it ships lands here.
+  fetch_root_skill() {
+    repo="$1"; ref="$2"; name="$3"; files="$4"
+    listname="$(printf '%s' "$name" | tr '[:lower:]-' '[:upper:]_')_FILES"
+    tmp="$(mktemp -d)"
+    say "fetching $repo @ $ref"
+
+    if ! clone_at "$repo" "$ref" "$tmp"; then
+      say "  could not fetch $repo, continuing"
+      rm -rf "$tmp"
+      return 0
+    fi
+
+    rm -rf "${DEST:?}/$name"
+    mkdir -p "$DEST/$name"
+    for file in $files; do
+      if [ -f "$tmp/$file" ]; then
+        cp "$tmp/$file" "$DEST/$name/$file"
+      else
+        say "  MISSING: $file"
+        VENDOR_ERRORS="$VENDOR_ERRORS$file  (in $listname, from $repo @ $ref)
+"
+      fi
+    done
+
+    sha="$(git -C "$tmp" rev-parse HEAD 2>/dev/null || echo "$ref")"
+    {
+      echo "$repo@$sha"
+      echo "one skill: only $files copied from the repository root."
+      echo "The list is $listname in scripts/bootstrap.sh."
+      echo "This folder is not a mirror. Do not add a file by hand; add it to the list."
+    } > "$DEST/$name/.source"
+
+    say "  vendored $files"
+    rm -rf "$tmp"
+  }
+
   fetch_skills "mattpocock/skills" "$MATTPOCOCK_REF" "mattpocock" "skills" "$MATTPOCOCK_KEEP"
   fetch_skills "anthropics/skills" "$ANTHROPIC_REF"  "anthropic"  "skills" "$ANTHROPIC_KEEP"
+  fetch_skills "anthropics/knowledge-work-plugins" "$KNOWLEDGE_WORK_REF" "knowledge-work" "." \
+    "$KNOWLEDGE_WORK_KEEP" "$KNOWLEDGE_WORK_EXTRAS"
+  fetch_root_skill "blader/humanizer" "$HUMANIZER_REF" "humanizer" "$HUMANIZER_FILES"
 
   say "vendored skills written to $DEST"
   say "re-running is safe: only the allowlisted skills are copied"

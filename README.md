@@ -11,6 +11,7 @@ The platform exists to produce one signal the placement side can trust: is this 
 | **Tests** | 1,760 across four suites, all green: 717 web, 980 Python, 37 infrastructure, 26 voice |
 | **Content** | 92 problems and 12 voice questions, each solved by its author before it shipped |
 | **State** | Runs end to end on a laptop with `docker compose up`. Not yet deployed anywhere. Section 3 is the deploy. |
+| **Project record** | [docs/project](docs/project/README.md) holds the delivery history from the specification to the beta, the roadmap with estimates, the risks, and the setup for the GitHub Project board. |
 
 ---
 

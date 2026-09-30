@@ -1,0 +1,1586 @@
+# The delivery record and the plan, in one file.
+#
+# Every stage of the build is an epic and every piece of work in it is a
+# story. tools/project_sync.py turns each one into a GitHub issue, nests the
+# stories under their stage, and puts them on the Project board with the
+# fields below. The pages in docs/project are generated from this file too, so
+# change it here and run `python -m tools.project_sync --render-docs`.
+#
+# Two kinds of number live here, and every page keeps them apart:
+#   facts      dates, pull requests, commits, lines and test counts, from git
+#              and GitHub (the `actuals` blocks, the `pr` and `commits` keys,
+#              and every delivered `finish`). Dates are India time.
+#   estimates  `points` on a relative scale, three-point `estimate` blocks in
+#              person-days for a human team, `rice` scores, and every date on
+#              planned work. They are judgement, and docs/project/estimation.md
+#              says how they were made.
+#
+# Every pull request adds or closes the story it delivers. CI checks this file.
+
+version: 1
+as_of: 2026-09-30
+
+project:
+  owner: fde-academy-lab
+  owner_type: organization
+  repository: fdeprep
+  # Found automatically when exactly one Project is linked to the repository.
+  number: null
+  status: {field: Status, done: Done, in_progress: In Progress, todo: Todo}
+
+sprints:
+  field: Sprint
+  start: 2026-09-14
+  days: 7
+  count: 12
+
+areas:
+  - {name: Runner and sandbox, label: "area: runner", color: "1f6feb",
+     description: "Where learner code runs, and the harness around it."}
+  - {name: Grading and judge, label: "area: grading", color: "8250df",
+     description: "Gates, caps, policy and the model judge."}
+  - {name: Evaluation panel, label: "area: eval", color: "bf3989",
+     description: "The three evaluators and the faculty tools."}
+  - {name: Web application, label: "area: web", color: "1a7f37",
+     description: "Every screen a learner or an admin uses."}
+  - {name: Voice, label: "area: voice", color: "9a6700",
+     description: "Spoken interview practice."}
+  - {name: Content, label: "area: content", color: "bc4c00",
+     description: "Problems, voice questions and their solutions."}
+  - {name: Auth and access, label: "area: auth", color: "cf222e",
+     description: "Sign-in, invites and roles."}
+  - {name: Infrastructure, label: "area: infra", color: "57606a",
+     description: "AWS, the stack and the deploy."}
+  - {name: Docs and process, label: "area: docs", color: "0550ae",
+     description: "Specifications, runbooks and how the work is done."}
+  - {name: Delivery management, label: "area: delivery", color: "116329",
+     description: "The board, the estimates and the reports."}
+
+stages:
+
+  # ------------------------------------------------------------------ built
+
+  - id: S0
+    name: Foundation
+    kind: history
+    start: 2026-09-14
+    finish: 2026-09-14
+    area: Docs and process
+    priority: P0
+    summary: >-
+      Ten numbered documents, 2,843 lines, specified the product before
+      any code was written: what a learner does, how grading works, the
+      data model, deployment, the Voice Screen and the design system.
+      The agent that built it got written rules, a curated set of skills
+      and a check that runs before anything merges.
+    why: >-
+      Every later disagreement between the code and the plan was settled
+      against the specification, and each change to the plan was written
+      into it where the next reader would find it.
+    lesson: >-
+      Writing 2,843 lines first delays the first thing you can learn from
+      running code. It paid back in the Voice Screen, whose hardest rule, no
+      transcript while the learner speaks, was written down before any cockpit
+      existed and never had to be undone.
+    estimate: {optimistic: 6, likely: 10, pessimistic: 18}
+    actuals: {prs: 0, commits: 7, added: 33784, removed: 125, files: 195,
+              tests: {python: 0, web: 0, voice: 0, infra: 0}}
+    stories:
+      - id: S0.1
+        title: Write the specification before any code
+        type: Task
+        status: done
+        points: 13
+        area: Docs and process
+        finish: 2026-09-14
+        commits: [b86a1ae, 03e128a]
+        summary: >-
+          The product contract, the wireframes, the data model, the runner and
+          grading contract, the problem authoring schema, deploy and
+          operations, the build plan, the Voice Screen, the design system, and
+          a reconciliation of an earlier build pack from a different model.
+      - id: S0.2
+        title: Give the agent written rules, curated skills and a pre-merge check
+        type: Task
+        status: done
+        points: 5
+        area: Docs and process
+        finish: 2026-09-14
+        commits: [f237837, 75b74f6, 8bcff2a, d8e956f]
+        summary: >-
+          Trust boundaries and writing rules that load in every session, a
+          pinned allowlist of third-party skills, and a spec-check skill that
+          reviews every diff before a pull request or a push to main.
+      - id: S0.3
+        title: Record the one exception to the no-push-to-main rule
+        type: Task
+        status: done
+        points: 1
+        area: Docs and process
+        finish: 2026-09-14
+        commits: [fab19ff]
+        summary: >-
+          Configuration may go straight to main, and CLAUDE.md names exactly
+          which paths count, so a review gate on the agent's own settings does
+          not slow every session that needs them fixed.
+
+  - id: S1
+    name: Core grading platform
+    kind: history
+    start: 2026-09-14
+    finish: 2026-09-14
+    area: Grading and judge
+    priority: P0
+    summary: >-
+      Learner code runs in a sandbox against a scripted model and is
+      graded the same way every time. The platform also decides what
+      help each difficulty shows, caps attempts, and grades prompts and
+      design answers with a model judge.
+    why: >-
+      Deterministic grading is why a verdict can be reproduced and appealed,
+      and why the model bill does not grow with how much learners practise.
+    lesson: >-
+      Reading the vendor's documentation against the specification found a
+      specification error and a live bug in the judge on the same day, PR #5.
+    estimate: {optimistic: 25, likely: 40, pessimistic: 70}
+    actuals: {prs: 5, commits: 10, added: 20577, removed: 217, files: 180,
+              tests: {python: 112, web: 149, voice: 0, infra: 0}}
+    stories:
+      - id: S1.1
+        title: "The runner: a scripted model, adversarial fixtures and a static gate"
+        type: Feature
+        status: done
+        points: 13
+        area: Runner and sandbox
+        finish: 2026-09-14
+        pr: 1
+        summary: >-
+          A Lambda container on Python 3.12 with the mock model, ten
+          adversarial fixtures, the assertion registry, the static gate, gates
+          that run in order, the result contract and an authoring command. Each
+          case runs in its own process, and call counts are recomputed from the
+          trace instead of trusted from the sandbox.
+      - id: S1.2
+        title: Problems, the code workspace and the submission pipeline
+        type: Feature
+        status: done
+        points: 21
+        area: Web application
+        finish: 2026-09-14
+        pr: 2
+        summary: >-
+          The Next.js application, a validator that reports every authoring rule
+          with line numbers, an import with a diff preview, the catalogue and
+          the code workspace. One transaction writes the submission, the cap
+          decrement and an outbox row, a dispatcher publishes it, and a lease
+          stops a late runner overwriting a fresh result.
+      - id: S1.3
+        title: The scaffold ladder, attempt caps and the step protocol
+        type: Feature
+        status: done
+        points: 13
+        area: Grading and judge
+        finish: 2026-09-14
+        pr: 3
+        summary: >-
+          One policy module decides what each difficulty shows and allows, and a
+          lint rule stops anything else reading difficulty directly. It covers
+          hints, the Hard attempt note, the Extreme rule that tests come first,
+          caps spent in the same transaction as the submission, and the step
+          protocol for live runs.
+      - id: S1.4
+        title: Prompt surgery, the design argument and the model judge
+        type: Feature
+        status: done
+        points: 13
+        area: Grading and judge
+        finish: 2026-09-14
+        pr: 4
+        summary: >-
+          The judge is a second Lambda that may call Bedrock and never runs
+          learner code, with its prompts kept as files so a grading change is a
+          code review. A static rule engine is shared by the live checklist and
+          the submit gate.
+      - id: S1.5
+        title: Correct the seed and top_p in docs/03, and state the judge's thinking mode
+        type: Bug
+        status: done
+        points: 2
+        area: Grading and judge
+        finish: 2026-09-14
+        pr: 5
+        found_by: Reading
+        summary: >-
+          docs/03 asked for a fixed seed that Bedrock's Converse API has no
+          field for, and a temperature and top_p pair that recent Claude models
+          refuse together. The same reading exposed a live bug in the judge.
+
+  - id: S2
+    name: Learner journey and operations
+    kind: history
+    start: 2026-09-15
+    finish: 2026-09-15
+    area: Web application
+    priority: P1
+    summary: >-
+      Learners got persona roadmaps, a progress heatmap a placement team
+      reads, a replay of what their agent actually did and a timed
+      rehearsal, and operators got the admin screens, a switch that
+      pauses grading and the first infrastructure code.
+    why: >-
+      A score alone cannot show whether someone is ready. The heatmap and the
+      trace replay are what a reviewer trusts.
+    estimate: {optimistic: 8, likely: 14, pessimistic: 24}
+    actuals: {prs: 2, commits: 3, added: 6572, removed: 45, files: 67,
+              tests: {python: 112, web: 242, voice: 0, infra: 17}}
+    stories:
+      - id: S2.1
+        title: Tracks, the progress heatmap and trace replay
+        type: Feature
+        status: done
+        points: 8
+        area: Web application
+        finish: 2026-09-15
+        pr: 6
+        summary: >-
+          Three persona roadmaps ordered in the policy module, a progress screen
+          whose cells have four states with only the fourth counting toward
+          readiness, a CSV export, and a replay of every model and tool call in
+          order with its budget.
+      - id: S2.2
+        title: Rehearsal, admin screens, degraded mode and the CDK stack
+        type: Feature
+        status: done
+        points: 13
+        area: Infrastructure
+        finish: 2026-09-15
+        pr: 7
+        summary: >-
+          A timed rehearsal that reads Extreme's rules from the same tier table,
+          admin screens for the roster, imports and submissions, a switch that
+          closes Submit while Run keeps working, and the first CDK stack.
+
+  - id: S3
+    name: Voice Screen
+    kind: history
+    start: 2026-09-15
+    finish: 2026-09-15
+    area: Voice
+    priority: P1
+    summary: >-
+      Learners can practise interview answers out loud: a consent step
+      and a microphone check lead into live transcription, a cockpit
+      with five instruments and three modes, and a debrief that scores
+      content, structure and pace and reports delivery without scoring
+      it.
+    why: >-
+      Forward deployed engineers are hired in conversation, and answering out
+      loud against a clock is a different skill from writing the same answer.
+    estimate: {optimistic: 12, likely: 20, pessimistic: 35}
+    actuals: {prs: 3, commits: 4, added: 10549, removed: 30, files: 99,
+              tests: {python: 131, web: 326, voice: 26, infra: 30}}
+    stories:
+      - id: S3.1
+        title: Voice capture, consent and the session socket
+        type: Feature
+        status: done
+        points: 13
+        area: Voice
+        finish: 2026-09-15
+        pr: 8
+        summary: >-
+          The voice schema, a speech-to-text seam with Amazon Transcribe behind
+          it, consent and a microphone check, and the WebSocket session that
+          streams an answer.
+      - id: S3.2
+        title: The guided cockpit, unguided mode and pressure mode
+        type: Feature
+        status: done
+        points: 8
+        area: Voice
+        finish: 2026-09-15
+        pr: 9
+        summary: >-
+          Five live instruments driven by pure functions, so one engine serves
+          the live cockpit, a mode that shows nothing, and replay. No transcript
+          appears while the learner speaks.
+      - id: S3.3
+        title: Scoring, the debrief and instrument replay
+        type: Feature
+        status: done
+        points: 8
+        area: Voice
+        finish: 2026-09-15
+        pr: 10
+        summary: >-
+          Content is worth 50 from the rubric judge, structure 30 and pace 20
+          from deterministic checks, and delivery is reported and never scored.
+          The scoring function has no parameter that could carry a delivery
+          metric, so breaking that rule would not compile.
+
+  - id: S4
+    name: Launch content
+    kind: history
+    start: 2026-09-15
+    finish: 2026-09-19
+    area: Content
+    priority: P1
+    summary: >-
+      The launch catalogue shipped with 25 problems and 12 voice
+      questions, each solved by its author before release. The first
+      corrections followed: two found by reading the rules against their
+      own examples, and three found by timing answers read aloud.
+    why: >-
+      Content is what learners actually meet, and a rule that its own worked
+      example breaks is a fault only careful reading finds.
+    lesson: >-
+      Timing real speech moved every voice budget by a third. The first
+      measurement method confirmed the hypothesis suspiciously neatly and
+      turned out to be an artefact, which a second method caught.
+    estimate: {optimistic: 12, likely: 18, pessimistic: 30}
+    actuals: {prs: 6, commits: 11, added: 9251, removed: 144, files: 110,
+              tests: {python: 145, web: 347, voice: 26, infra: 30}}
+    stories:
+      - id: S4.1
+        title: 25 problems and 12 voice questions, each solved by its author
+        type: Feature
+        status: done
+        points: 21
+        area: Content
+        finish: 2026-09-15
+        pr: 11
+        summary: >-
+          Every problem has a reference solution that passes every gate and a
+          naive solution that passes the public tests and fails a hidden one.
+          Every voice question has beats, live cue anchors, a rubric and three
+          exemplar answers.
+      - id: S4.2
+        title: Stop learner code reading the scripted model
+        type: Bug
+        status: done
+        points: 3
+        area: Runner and sandbox
+        priority: P0
+        finish: 2026-09-16
+        pr: 12
+        found_by: Reading
+        summary: >-
+          The static gate missed plain attribute access to the scripted model
+          and the trace, so a solution could read the answers, or add tool calls
+          that never happened, and pass while solving nothing.
+      - id: S4.3
+        title: Make the budget rule in docs/04 and its own worked example agree
+        type: Bug
+        status: done
+        points: 1
+        area: Docs and process
+        finish: 2026-09-16
+        pr: 13
+        found_by: Reading
+        summary: >-
+          The checklist said a call budget sits one above a clean solution, and
+          the worked problem four sections earlier broke that rule by four.
+          Both the rule and the example moved.
+      - id: S4.4
+        title: Cut every voice budget by a third, to 138 words a minute
+        type: Bug
+        status: done
+        points: 2
+        area: Voice
+        finish: 2026-09-16
+        pr: 14
+        found_by: Measuring
+        summary: >-
+          The budgets assumed 96 words a minute. Timing exemplars read aloud put
+          spontaneous speech near 138, so every question allowed a third too
+          much time.
+      - id: S4.5
+        title: Check that a beat's seconds match the words spent on it
+        type: Task
+        status: done
+        points: 2
+        area: Voice
+        finish: 2026-09-19
+        pr: 15
+        summary: >-
+          A validator rule compares each beat's share of the clock with its
+          share of the strong exemplar's words, allowing a band of two and a
+          half times either way.
+      - id: S4.6
+        title: Move seconds onto the beats that carry the words
+        type: Bug
+        status: done
+        points: 1
+        area: Voice
+        finish: 2026-09-19
+        pr: 16
+        found_by: Measuring
+        summary: >-
+          Six of the twelve questions had the right total with the time on the
+          wrong beats. One gave 35 seconds to a beat of 38 words and the same 35
+          to a beat of 121.
+
+  - id: S5
+    name: First real use
+    kind: history
+    start: 2026-09-19
+    finish: 2026-09-20
+    area: Auth and access
+    priority: P0
+    summary: >-
+      The first end-to-end run found four faults in one afternoon, the
+      worst being that there was no authentication at all. Sign-in, the
+      queue worker, a publishing command and an operating manual
+      followed.
+    why: >-
+      Each of the four faults would have broken the beta on its first day.
+    lesson: >-
+      A green test suite shows the code does what the tests say, and says
+      nothing about whether the product works. The missing sign-in had 396
+      passing tests around it.
+    estimate: {optimistic: 5, likely: 8, pessimistic: 14}
+    actuals: {prs: 6, commits: 6, added: 2722, removed: 83, files: 28,
+              tests: {python: 145, web: 396, voice: 26, infra: 30}}
+    stories:
+      - id: S5.1
+        title: Sign in with GitHub, so two learners are two people
+        type: Bug
+        status: done
+        points: 8
+        area: Auth and access
+        priority: P0
+        finish: 2026-09-19
+        pr: 17
+        found_by: Running it
+        summary: >-
+          Every visitor resolved to the first enrolment row, created with the
+          admin role. Deployed, twenty students would have shared one account,
+          one set of caps and the admin screens.
+      - id: S5.2
+        title: Add the worker that drains the queue
+        type: Bug
+        status: done
+        points: 3
+        area: Grading and judge
+        priority: P0
+        finish: 2026-09-19
+        pr: 18
+        found_by: Running it
+        summary: >-
+          Two documented npm scripts pointed at files that never existed, so
+          nothing drained the queue and every submission waited forever.
+      - id: S5.3
+        title: Keep test fixtures out of the catalogue, and let local sign-in through
+        type: Bug
+        status: done
+        points: 2
+        area: Web application
+        finish: 2026-09-19
+        pr: 19
+        found_by: Running it
+        summary: >-
+          The import published eleven test fixtures beside the 25 real problems,
+          and the new sign-in proxy blocked the documented local workflow.
+      - id: S5.4
+        title: Publish content with a command, and serve the twelve voice questions
+        type: Bug
+        status: done
+        points: 5
+        area: Content
+        finish: 2026-09-19
+        pr: 20
+        found_by: Running it
+        summary: >-
+          The import screen reads problems from disk, which cannot work on a
+          deployment, and the voice questions had no importer at all. One
+          command now publishes both.
+      - id: S5.5
+        title: Rewrite the README as the operating manual
+        type: Task
+        status: done
+        points: 5
+        area: Docs and process
+        finish: 2026-09-20
+        pr: 21
+        summary: >-
+          What the system is, how to run it, deploy it, maintain it and fix it,
+          what to use in code, the build log, and a roadmap in three horizons.
+      - id: S5.6
+        title: Add a deploy route on AWS alone, with no subscriptions
+        type: Task
+        status: done
+        points: 2
+        area: Infrastructure
+        finish: 2026-09-20
+        pr: 22
+        summary: >-
+          One EC2 instance runs the web application, the worker and Postgres,
+          for someone who wants to see the product working before paying for
+          anything.
+
+  - id: S6
+    name: Evaluation panel
+    kind: history
+    start: 2026-09-21
+    finish: 2026-09-22
+    area: Evaluation panel
+    priority: P1
+    summary: >-
+      Three evaluators give one consolidated verdict: deterministic checks, a
+      small local model that compares an answer with graded neighbours, and the
+      model judge. Faculty get a queue of disagreements and a way to override a
+      grade.
+    why: >-
+      A grade a learner can appeal needs a record of which evaluator said what,
+      and a person who can correct it.
+    estimate: {optimistic: 12, likely: 20, pessimistic: 32}
+    actuals: {prs: 11, commits: 11, added: 8211, removed: 172, files: 147,
+              tests: {python: 164, web: 538, voice: 26, infra: 30}}
+    stories:
+      - id: S6.1
+        title: Specify the evaluation panel, analytics and progress
+        type: Task
+        status: done
+        points: 5
+        area: Evaluation panel
+        finish: 2026-09-21
+        pr: 23
+        summary: >-
+          docs/10 to docs/12. Only deterministic checks can fail a submission,
+          and an evaluator that cannot run never lowers a score.
+      - id: S6.2
+        title: Measure panelist 2's model before writing its code
+        type: Task
+        status: done
+        points: 3
+        area: Evaluation panel
+        finish: 2026-09-21
+        pr: 24
+        summary: >-
+          Two small embedding models were benchmarked against the repository's
+          own graded exemplars, both licences were checked, and a tokenizer
+          default that cut answers at 128 tokens was caught.
+      - id: S6.3
+        title: "Build eval/: the panel, the consolidator and the evaluation record"
+        type: Feature
+        status: done
+        points: 8
+        area: Evaluation panel
+        finish: 2026-09-21
+        pr: 25
+        summary: >-
+          The evaluators run in a fixed order whatever order they are handed,
+          one that throws is marked unavailable instead of failing the
+          submission, and only the static evaluator can fail one.
+      - id: S6.4
+        title: Wire the panel into the result writer, behind a savepoint
+        type: Feature
+        status: done
+        points: 3
+        area: Evaluation panel
+        finish: 2026-09-21
+        pr: 26
+        summary: >-
+          Every committed submission now gets an evaluation record. Wiring it in
+          found two bugs that fake evaluators never would.
+      - id: S6.5
+        title: "Build panelist 2: a band from the nearest graded answers"
+        type: Feature
+        status: done
+        points: 8
+        area: Evaluation panel
+        finish: 2026-09-21
+        pr: 27
+        summary: >-
+          An answer is embedded with a pinned local model and its three nearest
+          graded neighbours vote, weighted by similarity, with no model call and
+          no network.
+      - id: S6.6
+        title: Refuse to start without an evaluator the catalogue requires
+        type: Feature
+        status: done
+        points: 3
+        area: Evaluation panel
+        finish: 2026-09-21
+        pr: 28
+        summary: >-
+          A worker without the embedding model graded design answers on half a
+          panel and told nobody. At start-up it now asks its own catalogue what
+          it needs and exits when it cannot supply it.
+      - id: S6.7
+        title: The faculty disagreement queue
+        type: Feature
+        status: done
+        points: 5
+        area: Evaluation panel
+        finish: 2026-09-21
+        pr: 29
+        summary: >-
+          When evaluators disagree by two bands the lower band holds, and the
+          answer now reaches a faculty queue, oldest first.
+      - id: S6.8
+        title: The faculty override, with competency recomputed from it
+        type: Feature
+        status: done
+        points: 5
+        area: Evaluation panel
+        finish: 2026-09-21
+        pr: 30
+        summary: >-
+          An override writes a new evaluation instead of editing the old one,
+          so an appeal can read what the panel said before a person disagreed.
+      - id: S6.9
+        title: The heuristic registry, and a notice when a grade moves
+        type: Feature
+        status: done
+        points: 5
+        area: Evaluation panel
+        finish: 2026-09-21
+        pr: 31
+        summary: >-
+          Five heuristics with thresholds measured against the catalogue, and a
+          message to the learner whenever faculty change a grade.
+      - id: S6.10
+        title: Declare complexity and interview evidence on every problem
+        type: Task
+        status: done
+        points: 3
+        area: Content
+        finish: 2026-09-22
+        pr: 32
+        summary: >-
+          Both were inferred and are now declared, and the validator requires
+          them on every problem.
+      - id: S6.11
+        title: Drop the C5 complexity level that nothing could supply
+        type: Task
+        status: done
+        points: 1
+        area: Evaluation panel
+        finish: 2026-09-22
+        pr: 33
+        summary: >-
+          C5 promised a second model that existed nowhere in the codebase, so an
+          author could declare it and nothing would say the promise was empty.
+
+  - id: S7
+    name: Install fixes
+    kind: history
+    start: 2026-09-22
+    finish: 2026-09-30
+    area: Docs and process
+    priority: P1
+    summary: >-
+      The first people to set it up on their own machines hit four gaps:
+      two missing installs, an undocumented database install on a Mac,
+      and a test suite that deleted the development database of anyone
+      who followed the README.
+    why: >-
+      Each of these stopped a person at the first step of using the product.
+    estimate: {optimistic: 1, likely: 2, pessimistic: 4}
+    actuals: {prs: 4, commits: 4, added: 425, removed: 25, files: 14,
+              tests: {python: 171, web: 548, voice: 26, infra: 30}}
+    stories:
+      - id: S7.1
+        title: Install boto3 for the local judge, and test that it is there
+        type: Bug
+        status: done
+        points: 1
+        area: Grading and judge
+        finish: 2026-09-22
+        pr: 34
+        found_by: Running it
+        summary: >-
+          The judge imports boto3 only when it first calls a model, so a
+          missing install surfaced as an error verdict that named nothing
+          useful.
+      - id: S7.2
+        title: Install panelist 2's runtime, and name the right fix when it is missing
+        type: Bug
+        status: done
+        points: 3
+        area: Evaluation panel
+        finish: 2026-09-29
+        pr: 35
+        found_by: Running it
+        summary: >-
+          Nothing installed the embedding runtime, and the worker's refusal told
+          the operator to fetch a model that was already on disk.
+      - id: S7.3
+        title: Document the Postgres install on a Mac
+        type: Task
+        status: done
+        points: 1
+        area: Docs and process
+        finish: 2026-09-29
+        pr: 36
+        summary: >-
+          Homebrew's postgresql@16 keeps its tools off the PATH, so the setup
+          stopped at "createdb: command not found".
+      - id: S7.4
+        title: Stop the web tests wiping the development database
+        type: Bug
+        status: done
+        points: 3
+        area: Web application
+        priority: P1
+        finish: 2026-09-30
+        pr: 37
+        found_by: Running it
+        summary: >-
+          Following the README ran the web tests against the development
+          database, and the tests truncate every table, so they deleted
+          everything a developer had imported or graded.
+
+  - id: S8
+    name: Revamp
+    kind: history
+    start: 2026-09-30
+    finish: 2026-09-30
+    area: Web application
+    priority: P0
+    summary: >-
+      Every problem got a coached workspace, the catalogue grew from 25 to 92
+      problems along a four-stage path, and the sandbox stopped holding the
+      scripted model, the trace or any credential.
+    why: >-
+      Before it, learner code could read the answers, forge its own trace or
+      read the runner's credentials, and a score from such a sandbox proves
+      nothing.
+    lesson: >-
+      Mutants of each reference solution found 37 contract promises that no
+      graded test checked. Each now fails a hidden case.
+    estimate: {optimistic: 30, likely: 50, pessimistic: 90}
+    actuals: {prs: 2, commits: 221, added: 57068, removed: 3235, files: 395,
+              tests: {python: 275, web: 660, voice: 26, infra: 30}}
+    stories:
+      - id: S8.1
+        title: "The problem kit: a schema, its validator and a gold-standard problem"
+        type: Feature
+        status: done
+        points: 8
+        area: Content
+        finish: 2026-09-30
+        pr: 38
+        summary: >-
+          Every problem carries a scenario, a system diagram, an approach map,
+          hints, a coach and a stub or an outline, and the validator refuses one
+          that lacks them.
+      - id: S8.2
+        title: A design system and an app shell
+        type: Feature
+        status: done
+        points: 8
+        area: Web application
+        finish: 2026-09-30
+        pr: 38
+        summary: >-
+          One set of tokens, type and components across every screen, restyled
+          from the home page to the admin screens.
+      - id: S8.3
+        title: "A coached workspace: scenario, diagram, approach map, hints and coach"
+        type: Feature
+        status: done
+        points: 13
+        area: Web application
+        finish: 2026-09-30
+        pr: 38
+        summary: >-
+          A coach that reads the learner's code and test results, a steps
+          checklist that turns green from each Run, and an outline in place of a
+          blank page for written answers on the easier tiers.
+      - id: S8.4
+        title: "Journey surfaces: home, a readiness gauge, a four-stage path and search"
+        type: Feature
+        status: done
+        points: 8
+        area: Web application
+        finish: 2026-09-30
+        pr: 38
+        summary: >-
+          A continue panel, a readiness gauge, the path drawn as four stages,
+          and stage tabs, search and filters on the problem list.
+      - id: S8.5
+        title: Grow the catalogue from 25 to 92 problems, with four capstone builds
+        type: Feature
+        status: done
+        points: 21
+        area: Content
+        finish: 2026-09-30
+        pr: 38
+        summary: >-
+          Eleven tracks from agent loops to client delivery, each problem with
+          three to five hints, and four builds of four stages each.
+      - id: S8.6
+        title: Move the harness out of the sandbox and close the escape routes
+        type: Bug
+        status: done
+        points: 13
+        area: Runner and sandbox
+        priority: P0
+        finish: 2026-09-30
+        pr: 38
+        found_by: Reading
+        summary: >-
+          The static gate could be walked around through public module
+          attributes. Learner code could read the whole scripted model, write
+          its own result file, read the runner's AWS credentials, or leave a
+          file for the next submission on the same instance. The runner now
+          holds the model, the fixtures and the trace, and the sandbox holds
+          proxies.
+      - id: S8.7
+        title: Every step checkable, new assertions, and hidden cases from mutants
+        type: Feature
+        status: done
+        points: 8
+        area: Grading and judge
+        finish: 2026-09-30
+        pr: 38
+        summary: >-
+          All 160 steps turn green on the reference and not on the stub, four
+          new assertion types check arguments and prompts, and 37 hidden cases
+          check contract promises that no graded test read.
+      - id: S8.8
+        title: Record a call the budget refuses, and count it as a call asked for
+        type: Bug
+        status: done
+        points: 3
+        area: Runner and sandbox
+        finish: 2026-09-30
+        pr: 39
+        found_by: Testing
+        summary: >-
+          Code that asked for one call too many, caught the refusal and answered
+          anyway graded exactly like code that stopped in time. The runner now
+          writes the refused step itself, where learner code cannot hide it.
+
+  - id: S9
+    name: Beta on AWS
+    kind: history
+    start: 2026-09-30
+    finish: 2026-09-30
+    area: Infrastructure
+    priority: P0
+    summary: >-
+      The worker now calls the runner and judge functions directly, the
+      stack deploys from a clean AWS account, sign-in is by invite, a
+      runbook covers the launch, and what the first beta tester hit is
+      fixed.
+    why: >-
+      Before it, the first deploy could not succeed, and students outside the
+      GitHub organisation could not sign in at all.
+    lesson: >-
+      The beta tester's complaint that the site was sluggish traced to every
+      keystroke re-rendering the whole workspace. Measuring before guessing
+      found it, and found that undo did nothing in either editor, which no
+      test had covered.
+    estimate: {optimistic: 6, likely: 10, pessimistic: 18}
+    actuals: {prs: 1, commits: 8, added: 3337, removed: 756, files: 57,
+              tests: {python: 276, web: 716, voice: 26, infra: 37}}
+    stories:
+      - id: S9.1
+        title: Call the runner and judge Lambdas directly from the worker
+        type: Feature
+        status: done
+        points: 5
+        area: Infrastructure
+        finish: 2026-09-30
+        pr: 40
+        summary: >-
+          The Postgres queue, outbox and lease stay, and the worker invokes a
+          function where it used to start a subprocess. A failed or throttled
+          function becomes an error verdict, which spends no attempt.
+      - id: S9.2
+        title: Make the stack deploy from a clean account
+        type: Bug
+        status: done
+        points: 8
+        area: Infrastructure
+        priority: P0
+        finish: 2026-09-30
+        pr: 40
+        found_by: Reading
+        summary: >-
+          The first deploy pointed both functions at image tags that only a
+          later workflow would push, and reserved concurrency a new account
+          refuses. The images now build and push as part of the deploy.
+      - id: S9.3
+        title: Accept India's and Japan's Bedrock inference profiles
+        type: Bug
+        status: done
+        points: 1
+        area: Grading and judge
+        finish: 2026-09-30
+        pr: 40
+        found_by: Reading
+        summary: >-
+          The judge refused the in. and jp. profile prefixes that the Bedrock
+          model cards list, so a deployment near its learners could not name
+          its own region's profile.
+      - id: S9.4
+        title: Invite-only sign-in, the organisation check as a switch, and APP_URL
+        type: Feature
+        status: done
+        points: 8
+        area: Auth and access
+        finish: 2026-09-30
+        pr: 40
+        summary: >-
+          One-time invite links, stored only as a hash, bound to a GitHub login
+          if the admin wants, with expiry, withdrawal and an audit row. Behind a
+          proxy, every redirect now uses the public address.
+      - id: S9.5
+        title: Amend the specifications and write the AWS runbook
+        type: Task
+        status: done
+        points: 5
+        area: Docs and process
+        finish: 2026-09-30
+        pr: 40
+        summary: >-
+          Six specification documents say what changed and when, and README
+          route C takes a clean AWS account to a running beta in fifteen steps.
+      - id: S9.6
+        title: Stop browser extensions tripping the hydration check
+        type: Bug
+        status: done
+        points: 1
+        area: Web application
+        finish: 2026-09-30
+        pr: 40
+        found_by: Beta tester
+        summary: >-
+          Grammarly writes two attributes onto the page body before React
+          starts, and the development overlay reported it as an error on every
+          page.
+      - id: S9.7
+        title: Bring undo back in both editors
+        type: Bug
+        status: done
+        points: 2
+        area: Web application
+        finish: 2026-09-30
+        pr: 40
+        found_by: Testing
+        summary: >-
+          Stale version pins made npm install second copies of CodeMirror's
+          core, and the undo history was built against the wrong one. A test
+          now fails if a second copy returns.
+      - id: S9.8
+        title: Stop re-rendering the whole workspace on every key
+        type: Bug
+        status: done
+        points: 5
+        area: Web application
+        priority: P1
+        finish: 2026-09-30
+        pr: 40
+        found_by: Beta tester
+        summary: >-
+          Every key re-rendered the whole screen and rebuilt the editor's
+          settings. On a CPU slowed four times, the median key event in
+          development mode fell from 152 ms to 24 ms.
+
+  # ------------------------------------------------------------------ planned
+
+  - id: S10
+    name: Delivery board
+    kind: roadmap
+    horizon: now
+    start: 2026-09-30
+    finish: 2026-10-01
+    area: Delivery management
+    priority: P1
+    risk: Low
+    summary: >-
+      Every stage and story becomes a GitHub issue on the Project with
+      its estimate, dates and sprint, all generated from one file in the
+      repository. A set of pages lets a manager read the build without
+      opening a pull request.
+    why: >-
+      Management and non-technical teams need to see what was built, when, how
+      big it was and what comes next.
+    estimate: {optimistic: 2, likely: 3, pessimistic: 5}
+    rice: {reach: 10, impact: 1, confidence: 1.0}
+    stories:
+      - id: S10.1
+        title: Keep the backlog as a file that CI checks
+        type: Task
+        status: done
+        pr: 41
+        points: 5
+        area: Delivery management
+        finish: 2026-09-30
+        acceptance:
+          - The pull requests of the build, #1 to #40, each appear on a story, and the sync warns about any later merged pull request that no story names.
+          - CI fails on a size off the scale, a bug that does not say how it was found, planned work without acceptance criteria, or a stale generated page.
+      - id: S10.2
+        title: Sync the backlog to GitHub issues and the Project board
+        type: Task
+        status: in_progress
+        points: 8
+        area: Delivery management
+        finish: 2026-10-01
+        acceptance:
+          - A sync creates one issue per stage and story, nests each story under its stage, and closes delivered work as completed.
+          - A second sync with nothing changed writes nothing.
+          - Every card shows Stage, Level, Area, Priority, Points, Start, Finish, Pull request, Found by, Risk and Sprint.
+      - id: S10.3
+        title: Write the project pages for management
+        type: Task
+        status: done
+        pr: 41
+        points: 5
+        area: Delivery management
+        finish: 2026-09-30
+        acceptance:
+          - docs/project holds the summary, the delivery history, the roadmap, the estimation method, quality, risks, decisions and setup.
+          - Every figure is marked as a fact from git or GitHub, or as an estimate.
+      - id: S10.4
+        title: Add the token, run the first sync and create the views
+        type: Task
+        status: todo
+        points: 2
+        area: Delivery management
+        finish: 2026-10-01
+        acceptance:
+          - The repository secret PROJECT_TOKEN exists and the first sync run is green.
+          - The five views that docs/project/board-setup.md describes exist on the Project.
+
+  - id: S11
+    name: Beta launch
+    kind: roadmap
+    horizon: now
+    start: 2026-10-01
+    finish: 2026-10-09
+    area: Infrastructure
+    priority: P0
+    risk: High
+    summary: >-
+      The beta goes in front of invited students on AWS, and each live
+      integration is proven once before a learner touches it.
+    why: >-
+      Four integrations have never made a live call, so without this the first
+      learner to touch one becomes the test.
+    estimate: {optimistic: 3, likely: 5, pessimistic: 10}
+    rice: {reach: 30, impact: 3, confidence: 0.8}
+    stories:
+      - id: S11.1
+        title: "Deploy route C: the stack, the web host, DNS, GitHub sign-in and HTTPS"
+        type: Task
+        status: todo
+        points: 8
+        area: Infrastructure
+        finish: 2026-10-03
+        acceptance:
+          - README route C steps C0 to C10 are done and the site answers on its public address over HTTPS.
+          - The first admin signs in through an invite minted on the host.
+      - id: S11.2
+        title: Prove the Bedrock judge with one live submission
+        type: Task
+        status: todo
+        points: 2
+        area: Grading and judge
+        risk: High
+        finish: 2026-10-04
+        acceptance:
+          - One design submission comes back with a band from the live judge, and the judge's cost appears in the spend alarm's metric.
+      - id: S11.3
+        title: Prove Transcribe, Polly and S3 with one real voice session
+        type: Task
+        status: todo
+        points: 3
+        area: Voice
+        risk: High
+        finish: 2026-10-04
+        acceptance:
+          - A spoken answer is transcribed live, a pressure-mode follow-up plays aloud, and the recording can be fetched from the bucket afterwards.
+      - id: S11.4
+        title: Run the database restore drill once
+        type: Task
+        status: todo
+        points: 3
+        area: Infrastructure
+        finish: 2026-10-06
+        acceptance:
+          - A backup restores into a scratch database, and the time it took is written in README section 4.
+      - id: S11.5
+        title: Brief a second operator and run one practice drill
+        type: Task
+        status: todo
+        points: 2
+        area: Docs and process
+        finish: 2026-10-07
+        acceptance:
+          - A second person pauses grading, requeues a submission and reads an alarm without help.
+      - id: S11.6
+        title: Set the Bedrock budget alarm at 50 and 80 percent
+        type: Task
+        status: todo
+        points: 1
+        area: Infrastructure
+        finish: 2026-10-03
+        acceptance:
+          - An AWS Budgets alarm on the Bedrock line notifies at 50 and 80 percent of the monthly limit.
+      - id: S11.7
+        title: Run the 200-submission burst test against staging
+        type: Task
+        status: todo
+        points: 3
+        area: Infrastructure
+        finish: 2026-10-08
+        acceptance:
+          - npm run burst completes 200 concurrent submissions against the deployed stack, and the result is recorded in docs/project/quality.md.
+      - id: S11.8
+        title: Fetch the embedding model on every worker host
+        type: Task
+        status: todo
+        points: 1
+        area: Evaluation panel
+        finish: 2026-10-03
+        acceptance:
+          - The worker starts without EVAL_DEGRADED_PANELISTS and reports all three evaluators available.
+      - id: S11.9
+        title: Invite the first testers and collect their feedback every week
+        type: Task
+        status: todo
+        points: 3
+        area: Delivery management
+        finish: 2026-10-09
+        acceptance:
+          - The first invited students have signed in, and their feedback is a story on this board within a week.
+
+  - id: S12
+    name: Problem pages v2
+    kind: roadmap
+    horizon: next
+    start: 2026-10-01
+    finish: 2026-10-03
+    area: Web application
+    priority: P1
+    risk: Medium
+    summary: >-
+      Problem pages become something a new learner can follow: the
+      catalogue is told as a learner's first 30 days as an FDE, names in
+      code are highlighted, the constraints and tools are spelled out,
+      and each problem says how it comes up in an interview.
+    why: >-
+      The first beta tester found the problem names hard to follow and the
+      function names lost in the prose around them.
+    estimate: {optimistic: 8, likely: 14, pessimistic: 25}
+    rice: {reach: 180, impact: 1, confidence: 0.8}
+    stories:
+      - id: S12.1
+        title: "Tell the catalogue as a storyline: your first 30 days as an FDE"
+        type: Feature
+        status: todo
+        points: 8
+        area: Content
+        finish: 2026-10-02
+        acceptance:
+          - Every problem has a day in the storyline, a plain title that says what the client sees, and a skill line that says what is practised.
+          - Problem addresses stay the same, so no link breaks.
+      - id: S12.2
+        title: Render inline code in every field a learner reads
+        type: Feature
+        status: todo
+        points: 5
+        area: Web application
+        finish: 2026-10-02
+        acceptance:
+          - Backticked text renders as code in the scenario card, the steps, the coach, the diagram labels and the approach map.
+      - id: S12.3
+        title: Mark the bare identifiers in 286 fields as code
+        type: Task
+        status: todo
+        points: 5
+        area: Content
+        finish: 2026-10-02
+        acceptance:
+          - A check fails on a snake_case name, a dotted call or an exception name outside backticks in any learner-facing field.
+      - id: S12.4
+        title: Colour Python in code blocks
+        type: Feature
+        status: todo
+        points: 3
+        area: Web application
+        finish: 2026-10-03
+        acceptance:
+          - Fenced Python in a brief, a contract or a walkthrough uses the editor's syntax colours, with no new dependency.
+      - id: S12.5
+        title: "Show the constraints: call budget, time limit, imports and Python version"
+        type: Feature
+        status: todo
+        points: 3
+        area: Web application
+        finish: 2026-10-03
+        acceptance:
+          - Every code problem shows its call budget, its time limit, the imports it allows and the Python version in one section.
+      - id: S12.6
+        title: List the tools the agent has, with their arguments and returns
+        type: Feature
+        status: todo
+        points: 5
+        area: Web application
+        finish: 2026-10-03
+        acceptance:
+          - Every code problem that scripts tools lists each tool's name, arguments and what it returns, taken from the problem file.
+      - id: S12.7
+        title: Say how each problem comes up in an interview
+        type: Feature
+        status: todo
+        points: 2
+        area: Web application
+        finish: 2026-10-03
+        acceptance:
+          - The interview question each problem declares appears on its page.
+      - id: S12.8
+        title: Add a worked example to every problem
+        type: Task
+        status: todo
+        points: 13
+        area: Content
+        finish: 2026-10-03
+        acceptance:
+          - Every problem shows one input and the behaviour expected from it, taken from a public case, never a hidden one.
+      - id: S12.9
+        title: Name the common traps on every problem
+        type: Task
+        status: todo
+        points: 8
+        area: Content
+        finish: 2026-10-03
+        acceptance:
+          - Every problem lists the mistakes its hidden and adversarial cases exist to catch, in words that do not give the case away.
+
+  - id: S13
+    name: Voice interviewer v2, step 1
+    kind: roadmap
+    horizon: next
+    start: 2026-10-03
+    finish: 2026-10-07
+    area: Voice
+    priority: P1
+    risk: Medium
+    summary: >-
+      Interview practice starts behaving like an interview: a learner
+      can move on when done, type when the microphone fails, choose who
+      interviews them, and learn a framework on every question.
+    why: >-
+      The first beta tester found the voice practice shallow and brittle: no
+      way to move on, no fallback, and questions that did not connect.
+    estimate: {optimistic: 10, likely: 16, pessimistic: 28}
+    rice: {reach: 180, impact: 2, confidence: 0.8}
+    stories:
+      - id: S13.1
+        title: Move to the next question when an answer ends early
+        type: Feature
+        status: todo
+        points: 2
+        area: Voice
+        finish: 2026-10-04
+        acceptance:
+          - A Next question control ends the current answer, scores it on what was said, and starts the next question.
+      - id: S13.2
+        title: Type the answer when the microphone or transcription fails
+        type: Feature
+        status: todo
+        points: 5
+        area: Voice
+        finish: 2026-10-04
+        acceptance:
+          - When the microphone or the transcription fails, the session offers a text box, and a typed answer is scored on content and structure but not pace.
+      - id: S13.3
+        title: Pick a question instead of taking the first one
+        type: Feature
+        status: todo
+        points: 3
+        area: Voice
+        finish: 2026-10-05
+        acceptance:
+          - The voice screen lists every published question by track and interviewer, and a learner can start any of them.
+      - id: S13.4
+        title: "Choose who interviews you: nine interviewer personas"
+        type: Feature
+        status: todo
+        points: 8
+        area: Voice
+        finish: 2026-10-06
+        acceptance:
+          - A learner picks an engineering lead, a CTO, a CEO, a solution architect, a senior AI engineer, a hiring manager, a client, a panel or a bar raiser.
+          - Each persona has its own focus, questions, follow-up style and voice.
+      - id: S13.5
+        title: Rewrite the question bank around real FDE interview loops
+        type: Task
+        status: todo
+        points: 13
+        area: Content
+        finish: 2026-10-07
+        acceptance:
+          - Every question names the scenario, the competency it tests and what a strong answer contains, and validates in CI.
+      - id: S13.6
+        title: Teach a framework and the tips people miss on every question
+        type: Task
+        status: todo
+        points: 8
+        area: Content
+        finish: 2026-10-07
+        acceptance:
+          - Every question shows a framework to answer with, a worked example, and the tips people overlook, including how to handle a question you cannot answer.
+      - id: S13.7
+        title: Show in the debrief where an answer stayed shallow
+        type: Feature
+        status: todo
+        points: 5
+        area: Voice
+        finish: 2026-10-07
+        acceptance:
+          - The debrief marks the beats with no evidence, no number or no trade-off, and names what the learner could have volunteered.
+
+  - id: S14
+    name: Voice interviewer v2, step 2
+    kind: roadmap
+    horizon: next
+    start: 2026-10-07
+    finish: 2026-10-12
+    area: Voice
+    priority: P2
+    risk: High
+    summary: >-
+      The interviewer generates follow-ups from the learner's own
+      answer, digs up to five levels of why, and can cross-question an
+      optional resume, with the prewritten follow-ups as the fallback
+      when the model is slow or down.
+    why: >-
+      Real interviewers dig into what you just said and into what your resume
+      claims, and practice that cannot do either leaves the hardest part
+      untested.
+    estimate: {optimistic: 10, likely: 18, pessimistic: 35}
+    rice: {reach: 180, impact: 2, confidence: 0.5}
+    stories:
+      - id: S14.1
+        title: "Follow up like an interviewer: five levels of why, and stress probes"
+        type: Feature
+        status: todo
+        points: 13
+        area: Voice
+        risk: High
+        finish: 2026-10-10
+        acceptance:
+          - Each follow-up is generated from the answer just given and the persona, capped per question, and never shown as text while the learner speaks.
+          - When the model cannot answer in time, a prewritten follow-up takes its place and the session carries on.
+      - id: S14.2
+        title: Cross-question an optional resume, kept only for the session
+        type: Feature
+        status: todo
+        points: 8
+        area: Voice
+        risk: High
+        finish: 2026-10-11
+        acceptance:
+          - A pasted or uploaded resume becomes a list of claims for that session, the file is deleted at once, and nothing from it is used in scoring.
+          - The resume reaches the model as data, so instructions written in it change nothing.
+      - id: S14.3
+        title: Run a panel of interviewers who take turns
+        type: Feature
+        status: todo
+        points: 5
+        area: Voice
+        finish: 2026-10-11
+        acceptance:
+          - A panel session rotates between two or three personas, and the debrief says which interviewer asked what.
+      - id: S14.4
+        title: Draw the interview room in the lobby and the debrief
+        type: Feature
+        status: todo
+        points: 5
+        area: Web application
+        finish: 2026-10-12
+        acceptance:
+          - The lobby and the debrief show a pixel-art room with the chosen interviewer, and the live cockpit keeps its five-instrument limit.
+      - id: S14.5
+        title: Measure the cost and latency of a session before rollout
+        type: Task
+        status: todo
+        points: 3
+        area: Delivery management
+        finish: 2026-10-12
+        acceptance:
+          - The model cost and the follow-up latency of ten sessions are recorded, priced from Bedrock's published rates on the day.
+      - id: S14.6
+        title: Amend docs/07 and the privacy notice
+        type: Task
+        status: todo
+        points: 3
+        area: Docs and process
+        finish: 2026-10-12
+        acceptance:
+          - docs/07 describes generated follow-ups and resume handling, and the consent screen says what happens to a resume.
+
+  - id: S15
+    name: First cohort
+    kind: roadmap
+    horizon: later
+    start: 2026-10-12
+    finish: 2026-11-30
+    area: Evaluation panel
+    priority: P2
+    risk: Medium
+    summary: >-
+      The first full cohort gets what it needs: a diagnostic that sets
+      personas, analytics, a report card a placement team can file, the
+      readiness signal, and content aimed at what the cohort actually
+      fails.
+    why: >-
+      The platform exists to produce one signal a placement team trusts, and
+      today that signal is implied instead of computed.
+    estimate: {optimistic: 25, likely: 40, pessimistic: 70}
+    rice: {reach: 180, impact: 2, confidence: 0.8}
+    stories:
+      - id: S15.1
+        title: A baseline diagnostic that sets a learner's persona
+        type: Feature
+        status: todo
+        points: 8
+        area: Grading and judge
+        finish: 2026-10-26
+        acceptance:
+          - A new learner's persona comes from a short diagnostic instead of an admin's hand.
+      - id: S15.2
+        title: Author constraint lists, so the unnamed-constraint check can fire
+        type: Task
+        status: todo
+        points: 5
+        area: Content
+        finish: 2026-10-26
+        acceptance:
+          - Every C3 and C4 problem declares its constraints, and names_no_constraint fires on an answer that names none.
+      - id: S15.3
+        title: Re-grade past submissions against a new judge prompt version
+        type: Feature
+        status: todo
+        points: 8
+        area: Evaluation panel
+        finish: 2026-11-09
+        acceptance:
+          - A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it.
+      - id: S15.4
+        title: Replace the import screen with something that works on a deployment
+        type: Feature
+        status: todo
+        points: 5
+        area: Web application
+        finish: 2026-11-09
+        acceptance:
+          - An admin publishes content on a deployed host without a shell.
+      - id: S15.5
+        title: "Build analytics: cohort views, the stuck list, calibration and panel health"
+        type: Feature
+        status: todo
+        points: 13
+        area: Evaluation panel
+        finish: 2026-11-23
+        acceptance:
+          - Faculty can see which topic a cohort failed without writing SQL.
+      - id: S15.6
+        title: Issue the report card as a dated, hashed snapshot
+        type: Feature
+        status: todo
+        points: 8
+        area: Evaluation panel
+        finish: 2026-11-23
+        acceptance:
+          - A report card never changes after it is issued, and its hash proves it.
+      - id: S15.7
+        title: Move the competency write into eval/, and make progress a pure reader
+        type: Task
+        status: todo
+        points: 5
+        area: Evaluation panel
+        finish: 2026-11-16
+        acceptance:
+          - Only eval/ writes a grade, a band or a competency state, and a test fails if anything else does.
+      - id: S15.8
+        title: Compute the readiness signal with its four counts and three bands
+        type: Feature
+        status: todo
+        points: 8
+        area: Evaluation panel
+        finish: 2026-11-30
+        acceptance:
+          - Each learner has a readiness band computed from the four counts in docs/12, shown to the learner and to placement.
+      - id: S15.9
+        title: Write more content where the cohort actually fails
+        type: Task
+        status: todo
+        points: 13
+        area: Content
+        finish: 2026-11-30
+        acceptance:
+          - New problems target the three topics with the lowest pass rate in the first cohort.
+
+  - id: S16
+    name: Second version
+    kind: roadmap
+    horizon: later
+    start: 2026-12-01
+    finish: 2027-03-31
+    area: Web application
+    priority: P3
+    risk: Medium
+    summary: >-
+      A second version adds a problem family where the learner's agent
+      drives a real browser, an export built for placement, several
+      cohorts at once, peer review of design answers, and a mobile
+      reading view.
+    why: >-
+      Each item answers a need the first cohort is expected to expose, and
+      none of them is worth building before that cohort confirms it.
+    estimate: {optimistic: 30, likely: 55, pessimistic: 100}
+    rice: {reach: 360, impact: 1, confidence: 0.5}
+    stories:
+      - id: S16.1
+        title: A problem family where the agent drives a real browser
+        type: Feature
+        status: todo
+        points: 21
+        area: Runner and sandbox
+        finish: 2027-02-15
+        acceptance:
+          - A learner's agent fills a form or extracts data in a real browser, graded deterministically.
+      - id: S16.2
+        title: An export built for placement instead of a CSV
+        type: Feature
+        status: todo
+        points: 8
+        area: Web application
+        finish: 2027-01-15
+        acceptance:
+          - A placement team reads a learner's readiness without re-interpreting a spreadsheet.
+      - id: S16.3
+        title: Run several cohorts and tracks at once
+        type: Feature
+        status: todo
+        points: 8
+        area: Web application
+        finish: 2027-01-31
+        acceptance:
+          - Two cohorts on different tracks run at the same time without either seeing the other.
+      - id: S16.4
+        title: Peer review of design answers
+        type: Feature
+        status: todo
+        points: 8
+        area: Evaluation panel
+        finish: 2027-03-15
+        acceptance:
+          - A second learner can review a design answer, and the review is recorded apart from the grade.
+      - id: S16.5
+        title: A mobile reading view without the workspace
+        type: Feature
+        status: todo
+        points: 5
+        area: Web application
+        finish: 2027-03-31
+        acceptance:
+          - A learner can read a brief, check progress and review a debrief on a phone.
