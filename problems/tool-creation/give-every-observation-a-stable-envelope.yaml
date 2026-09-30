@@ -312,6 +312,13 @@ coach:
         That tool returned an empty list, and the model told the customer the
         check had failed. Which outcome did your envelope give it? The
         contract counts an empty list as empty, the same as None.
+    - id: hidden-json-line
+      when: { test_failed: the_envelope_reaches_the_model_as_one_line_of_json }
+      say: >-
+        The model could not read the envelope in that run. The contract asks
+        for one line of JSON, with double quotes, null for None and every key
+        on the same line. Print the line your code appends and compare it with
+        that.
     - id: adversarial-detail
       when: { test_failed: adversarial_the_error_detail_carries_a_password }
       say: >-
@@ -425,6 +432,29 @@ tests:
       assertions:
         - { type: calls_tool, name: out_of_stock }
         - { type: returns_matches, value: "(?i)everything in order G-4127 is in stock" }
+        - { type: no_exception }
+
+  # The contract asks for one line of JSON. The model reads the balance only
+  # from a prompt line that carries the tool's name, the outcome and the data
+  # in JSON, so it cannot read an envelope appended as a Python repr, or one
+  # dumped with an indent across several lines.
+  - name: the_envelope_reaches_the_model_as_one_line_of_json
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How many loyalty points are on my account? I am li@example.com" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: loyalty_points(email=li@example.com)" }
+        - { match: { regex: '(?m)^(?=[^\n]*"tool":\s*"loyalty_points")(?=[^\n]*"outcome":\s*"ok")(?=[^\n]*"points":\s*340\b)' },
+            reply: "Final Answer: You have 340 loyalty points, and they expire on 31 December 2026." }
+        - { match: "*",
+            reply: "Final Answer: I could not read your points balance just now. Please check the app." }
+      tools:
+        loyalty_points: { returns: { status: 200, points: 340, expires: "2026-12-31" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: loyalty_points }
+        - { type: returns_matches, value: "340 loyalty points" }
         - { type: no_exception }
 
   - name: adversarial_the_error_detail_carries_a_password

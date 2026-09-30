@@ -48,7 +48,9 @@ contract_md: |
   scratchpad, naming the field and the rule it broke, and let the model try
   again.
 
-  Budget: at most 3 model calls. Allowed imports: json, re.
+  Budget: at most 3 model calls. Allowed imports: json, re. Return a
+  non-empty string in every case, including when the model never sends a
+  payload that passes.
 
 stub_code: |
   import json
@@ -244,6 +246,12 @@ coach:
       say: >-
         That amount was above what the agent may refund without a person. Does
         your refusal tell the model what the limit is?
+    - id: hidden-never-passes
+      when: { test_failed: a_payload_that_never_passes_still_ends_in_an_answer }
+      say: >-
+        In that run the model kept sending a refund with no order id and never
+        gave up. Your loop has three model calls to spend. What does it return
+        once they are gone?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -345,6 +353,26 @@ tests:
         - { type: does_not_call_tool, name: refund }
         - { type: returns_matches, value: "(?i)above the automatic limit" }
         - { type: no_exception }
+
+  # The model sends a refund with no order id on every call, whatever the
+  # refusal says. Every loop that passes the public tests refuses it, so
+  # what this case reads is the bound: a loop bounded by the budget returns
+  # its own answer after the third call, and a larger one runs into the
+  # budget instead.
+  - name: a_payload_that_never_passes_still_ends_in_an_answer
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Refund eighteen pounds fifty. The jacket came back torn." }
+      llm_script:
+        - { match: "*", reply: 'Action: refund({"amount_cents": 1850})' }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: refund }
+        - { type: terminates }
+        - { type: returns_nonempty }
 
 reference_md: |
   Four checks, and the interesting one is the one Python gets wrong for you.

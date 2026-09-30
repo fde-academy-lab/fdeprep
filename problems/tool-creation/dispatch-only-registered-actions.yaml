@@ -220,6 +220,12 @@ coach:
       say: >-
         The model only changed its mind when the prompt named refund_order_v2.
         Does your refusal line include the name it refused?
+    - id: hidden-never-stops
+      when: { test_failed: a_model_that_never_stops_asking_still_ends_in_an_answer }
+      say: >-
+        In that run the model asked for a missing tool on every call and never
+        gave an answer. Your loop has four model calls to spend. What does it
+        return once they are gone?
     - id: stuck
       when: { idle_minutes: 4 }
       say: >-
@@ -283,13 +289,16 @@ tests:
         - { type: returns_matches, value: "(?i)cannot close accounts" }
         - { type: calls_tool, name: lookup }
 
+  # The name counts only where "(" does not follow it, so the Action line the
+  # model wrote, which a loop that echoes its output carries anyway, is not
+  # enough. The refusal has to name the tool itself.
   - name: the_refusal_names_the_tool_it_refused
     visibility: hidden
     spec:
       kind: agent_run
       input: { question: "Refund order 4471 on the new endpoint" }
       llm_script:
-        - { match: { contains: "refund_order_v2" },
+        - { match: { regex: '\brefund_order_v2\b(?!\()' },
             reply: "Final Answer: There is no refund tool here. Raise it with billing." }
         - { match: "*", reply: "Action: refund_order_v2(order=4471)" }
       tools:
@@ -300,6 +309,25 @@ tests:
         - { type: no_exception }
         - { type: returns_matches, value: "(?i)no refund tool" }
         - { type: llm_calls_at_most, value: 4 }
+
+  # The model asks for the same missing tool on every call, whatever the
+  # refusal says. A loop bounded by the budget returns its own answer after
+  # the fourth call, and a loop bounded by anything larger runs into the
+  # budget instead.
+  - name: a_model_that_never_stops_asking_still_ends_in_an_answer
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Archive account 3021. It has been closed for a year." }
+      llm_script:
+        - { match: "*", reply: "Action: archive_account(id=3021)" }
+      tools:
+        lookup: { returns: { status: 200, plan: "team" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: returns_nonempty }
 
 reference_md: |
   One membership test carries the whole problem, and the reason it is worth a
