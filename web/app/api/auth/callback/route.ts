@@ -17,16 +17,33 @@ import { resolveAccess } from "@/lib/auth/access";
 import { SESSION_COOKIE, SESSION_TTL_S, mintSession } from "@/lib/auth/session";
 import {
   AuthNotConfigured, authSecret, callbackUrl, githubClientId, githubClientSecret, githubOrg,
+  orgCheckRequired,
 } from "@/lib/auth/config";
-import { NEXT_COOKIE, STATE_COOKIE } from "../start/route";
+import { publicUrl, servedOverHttps } from "@/lib/http/public-url";
+import { INVITE_COOKIE, NEXT_COOKIE, STATE_COOKIE } from "../start/route";
 
 function backToSignIn(request: Request, error: string): NextResponse {
-  const url = new URL("/signin", request.url);
+  const url = publicUrl("/signin", request.url);
   url.searchParams.set("error", error);
   const response = NextResponse.redirect(url);
+  clearRoundTrip(response);
+  return response;
+}
+
+/** Every cookie the round trip set, spent or not. */
+function clearRoundTrip(response: NextResponse): void {
   response.cookies.delete(STATE_COOKIE);
   response.cookies.delete(NEXT_COOKIE);
-  return response;
+  response.cookies.delete(INVITE_COOKIE);
+}
+
+function readCookie(request: Request, name: string): string | undefined {
+  return request.headers
+    .get("cookie")
+    ?.split(";")
+    .map((part) => part.trim())
+    .find((part) => part.startsWith(`${name}=`))
+    ?.slice(name.length + 1);
 }
 
 function statesMatch(a: string, b: string): boolean {
@@ -43,12 +60,7 @@ export async function GET(request: Request): Promise<NextResponse> {
   // The learner pressed Cancel on GitHub's screen. Not an error worth a page.
   if (url.searchParams.get("error")) return backToSignIn(request, "cancelled");
 
-  const expected = request.headers
-    .get("cookie")
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${STATE_COOKIE}=`))
-    ?.slice(STATE_COOKIE.length + 1);
+  const expected = readCookie(request, STATE_COOKIE);
 
   if (!code || !state || !expected || !statesMatch(state, expected)) {
     return backToSignIn(request, "bad_state");
@@ -62,11 +74,18 @@ export async function GET(request: Request): Promise<NextResponse> {
       clientSecret: githubClientSecret(),
       redirectUri: callbackUrl(request.url),
     });
+    // With the organisation check off, membership is not asked about at all:
+    // the token was not granted read:org, and an invite or an enrolment is the
+    // wall instead.
+    const orgRequired = orgCheckRequired();
     const [viewer, member] = await Promise.all([
       fetchViewer(token),
-      isActiveOrgMember(token, githubOrg()),
+      orgRequired ? isActiveOrgMember(token, githubOrg()) : Promise.resolve(false),
     ]);
-    access = await resolveAccess(viewer, member);
+    access = await resolveAccess(viewer, member, {
+      orgRequired,
+      inviteToken: readCookie(request, INVITE_COOKIE) ?? null,
+    });
   } catch (error) {
     if (error instanceof AuthNotConfigured) return backToSignIn(request, "not_configured");
     if (error instanceof GithubRejected) return backToSignIn(request, "github_refused");
@@ -75,23 +94,17 @@ export async function GET(request: Request): Promise<NextResponse> {
 
   if (!access.ok) return backToSignIn(request, access.reason);
 
-  const wanted = request.headers
-    .get("cookie")
-    ?.split(";")
-    .map((part) => part.trim())
-    .find((part) => part.startsWith(`${NEXT_COOKIE}=`))
-    ?.slice(NEXT_COOKIE.length + 1);
+  const wanted = readCookie(request, NEXT_COOKIE);
   const destination = wanted && wanted.startsWith("/") && !wanted.startsWith("//") ? wanted : "/";
 
-  const response = NextResponse.redirect(new URL(destination, request.url));
+  const response = NextResponse.redirect(publicUrl(destination, request.url));
   response.cookies.set(SESSION_COOKIE, mintSession({ uid: access.userId }, authSecret()), {
     httpOnly: true,
     sameSite: "lax",
-    secure: url.protocol === "https:",
+    secure: servedOverHttps(request.url),
     path: "/",
     maxAge: SESSION_TTL_S,
   });
-  response.cookies.delete(STATE_COOKIE);
-  response.cookies.delete(NEXT_COOKIE);
+  clearRoundTrip(response);
   return response;
 }

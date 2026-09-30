@@ -2,6 +2,7 @@
 import type { Metadata } from "next";
 import { LogIn } from "lucide-react";
 import { githubConfigured } from "@/lib/auth/config";
+import { REFUSALS } from "@/lib/auth/refusals";
 import { STAGES } from "@/lib/problems/vocabulary";
 import { LogoMark } from "@/components/ui/logo";
 import { cn } from "@/components/ui/cn";
@@ -12,15 +13,13 @@ export const metadata: Metadata = { title: "Sign in" };
 /**
  * Every way this screen can be reached with something to say.
  *
- * The first three are docs/01's refusals, word for word, because each one has
- * a different owner and a learner needs to know which door is shut. The rest
- * are the mechanics of the round trip, and they say what to do rather than
- * what broke.
+ * The refusals come from lib/auth/refusals.ts, the same table the access
+ * check decides with, so the screen cannot say something the check did not
+ * mean. The rest are the mechanics of the round trip, and they say what to do
+ * rather than what broke.
  */
 const MESSAGES: Record<string, string> = {
-  not_a_member: "Your GitHub account is not in the FDE Academy organisation yet.",
-  not_enrolled: "Your account is not enrolled in an active cohort.",
-  enrolment_ended: "Your enrolment has ended. Past submissions stay readable for thirty days.",
+  ...REFUSALS,
   cancelled: "You cancelled on GitHub. Nothing was changed. Try again when you are ready.",
   bad_state: "That sign-in link had expired. Start again from this page.",
   github_refused: "GitHub would not complete the sign-in. Wait a moment and try again.",

@@ -41,12 +41,14 @@ export function authorizeUrl(input: {
   clientId: string;
   redirectUri: string;
   state: string;
+  /** Defaults to SCOPE. Narrower when the organisation is not checked. */
+  scope?: string;
 }): string {
   const url = new URL(AUTHORIZE_URL);
   url.searchParams.set("client_id", input.clientId);
   url.searchParams.set("redirect_uri", input.redirectUri);
   url.searchParams.set("state", input.state);
-  url.searchParams.set("scope", SCOPE);
+  url.searchParams.set("scope", input.scope ?? SCOPE);
   // No public sign-up: docs/00 section 2. Offering one on the GitHub screen
   // sends somebody off to make an account that still will not get them in.
   url.searchParams.set("allow_signup", "false");
