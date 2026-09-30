@@ -20,7 +20,7 @@ import { Markdown } from "@/components/ui/markdown";
 import { StatusIcon } from "@/components/ui/status";
 import { cn } from "@/components/ui/cn";
 import { ProblemBar } from "@/components/workspace/problem-bar";
-import { Split } from "@/components/workspace/split";
+import { WorkspaceLayout } from "@/components/workspace/layout";
 import { CoachBar, useCoach } from "@/components/workspace/coach";
 import { JudgedResults } from "@/components/workspace/judged-results";
 import {
@@ -130,7 +130,7 @@ export default function DesignWorkspace(props: Props) {
     <div className="flex h-full min-h-0 flex-col bg-bg">
       <PaneTabs tab={tab} onTab={setTab} attemptCount={past.length}
                 hintBadge={hintGate && hintGate.total ? `${hintGate.revealed}/${hintGate.total}` : null} />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
         {tab === "brief" ? (
           <ProblemIntro title={problem.title} track={problem.track} difficulty={problem.difficulty}
                         estMinutes={problem.estMinutes} artefactLabel="Written argument"
@@ -204,7 +204,7 @@ export default function DesignWorkspace(props: Props) {
         <span className="font-medium text-text">Your answer</span>
         <WordMeter words={words} range={problem.wordRange} />
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
         <textarea value={body} onChange={(event) => onChange(event.target.value)} spellCheck
                   aria-label="Your answer"
                   placeholder="Write it the way you would send it. Open on the recommendation, then the reasons."
@@ -221,7 +221,7 @@ export default function DesignWorkspace(props: Props) {
                 enabled={policy.coach.enabled} onDismiss={coach.dismiss}
                 onHint={hintGate ? () => setTab("guide") : undefined} hintLabel="Guide"
                 idleText="Nothing to flag. Submit when the argument is whole." />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
         <JudgedResults view={view} running={running} notice={notice} idle={
           <p className="text-text-dim">
             Submit runs the structural checks, then the rubric judge. Each criterion comes back
@@ -245,13 +245,9 @@ export default function DesignWorkspace(props: Props) {
           </Button>
         }
       />
-      <Split direction="row" storageKey={`fdeprep.split.${problem.id}.left`} initial={42} min={26} max={62}
-             label="Resize the problem pane" className="min-h-0 flex-1" first={left}
-             second={
-               <Split direction="column" storageKey={`fdeprep.split.${problem.id}.editor`} initial={64}
-                      min={25} max={85} label="Resize the editor" className="h-full"
-                      first={editor} second={dock} />
-             } />
+      <WorkspaceLayout storageKey={`fdeprep.split.${problem.id}`} left={left} editor={editor}
+                       dock={dock} editorLabel="Answer" editorShare={64}
+                       dockSignal={`${view?.id ?? ""}:${view?.status ?? ""}:${coach.current?.say ?? ""}:${notice ?? ""}`} />
     </div>
   );
 }

@@ -162,7 +162,7 @@ export function CommandPalette({ problems, pages }: {
       </div>
 
       <ul id={listId} role="listbox" aria-label="Results"
-          className="max-h-[min(60vh,440px)] overflow-y-auto p-2">
+          className="relative max-h-[min(60vh,440px)] overflow-y-auto p-2">
         {entries.length === 0 ? (
           <li className="px-3 py-8 text-center text-text-dim">
             Nothing matches &ldquo;{query}&rdquo;. Try a track name, such as retrieval or evals.

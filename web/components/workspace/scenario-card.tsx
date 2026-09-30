@@ -11,7 +11,7 @@ export function ScenarioCard({ scenario }: { scenario: Scenario }) {
   const metrics = scenario.metrics.slice(0, 3);
   return (
     <section aria-label="The situation"
-             className="overflow-hidden rounded-panel border border-border bg-surface">
+             className="@container overflow-hidden rounded-panel border border-border bg-surface">
       <div className="px-4 pb-4 pt-3.5">
         <p className="flex items-center gap-2 text-meta font-medium text-text-dim">
           <Building2 aria-hidden className="size-3.5" strokeWidth={1.9} />
@@ -21,14 +21,18 @@ export function ScenarioCard({ scenario }: { scenario: Scenario }) {
         <p className="mt-2 text-text-dim">{scenario.stakes}</p>
       </div>
       {metrics.length ? (
-        <dl className={cn("grid divide-x divide-border border-t border-border bg-surface-2/60",
-                          metrics.length === 1 ? "grid-cols-1"
-                            : metrics.length === 2 ? "grid-cols-2" : "grid-cols-3")}>
+        // A narrow card stacks the figures as label and value rows, because
+        // three columns in a phone's width cut every label to a word.
+        <dl className={cn("grid divide-y divide-border border-t border-border bg-surface-2/60",
+                          "@md:divide-x @md:divide-y-0",
+                          metrics.length === 2 ? "@md:grid-cols-2"
+                            : metrics.length === 3 ? "@md:grid-cols-3" : "")}>
           {metrics.map((metric) => (
-            <div key={metric.label} className="min-w-0 px-4 py-2.5">
-              <dt className="truncate text-meta text-text-faint">{metric.label}</dt>
-              <dd className="tnum mt-0.5 truncate text-title font-semibold tracking-[-0.01em]
-                             text-text">
+            <div key={metric.label}
+                 className="flex min-w-0 items-baseline justify-between gap-4 px-4 py-2.5 @md:block">
+              <dt className="text-meta text-text-faint @md:truncate">{metric.label}</dt>
+              <dd className="tnum shrink-0 text-lead font-semibold tracking-[-0.01em] text-text
+                             @md:mt-0.5 @md:truncate @md:text-title">
                 {metric.value}
               </dd>
             </div>

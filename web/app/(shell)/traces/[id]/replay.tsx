@@ -60,7 +60,7 @@ export default function Replay({ replay }: { replay: ReplayData }) {
             <Kbd>J</Kbd><Kbd>K</Kbd> to step
           </span>
         </div>
-        <ol className="max-h-[70vh] min-h-0 flex-1 overflow-y-auto py-1">
+        <ol className="relative max-h-[70vh] min-h-0 flex-1 overflow-y-auto py-1">
           {replay.steps.map((entry, position) => {
             const look = LOOK[entry.type] ?? LOOK.marker;
             const Icon = look.icon;
@@ -109,7 +109,7 @@ function Selected({ step, attemptClosed }: { step: ReplayStep; attemptClosed: bo
   const look = LOOK[step.type] ?? LOOK.marker;
   const Icon = look.icon;
   return (
-    <section className="results-pane min-h-0 overflow-y-auto bg-bg p-5">
+    <section className="results-pane relative min-h-0 overflow-y-auto bg-bg p-5">
       <p className="flex items-center gap-2 font-semibold text-text">
         <Icon aria-hidden className="size-4 text-text-dim" /> {look.label}
         <span className="font-normal text-text-faint">in case {step.caseName.replace(/_/g, " ")}</span>

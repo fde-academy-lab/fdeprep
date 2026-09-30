@@ -24,7 +24,7 @@ import { Markdown } from "@/components/ui/markdown";
 import { StatusIcon } from "@/components/ui/status";
 import { cn } from "@/components/ui/cn";
 import { ProblemBar } from "@/components/workspace/problem-bar";
-import { Split } from "@/components/workspace/split";
+import { WorkspaceLayout } from "@/components/workspace/layout";
 import { editorTheme } from "@/components/workspace/editor-theme";
 import { CoachBar, useCoach } from "@/components/workspace/coach";
 import { JudgedResults, LocalChecks } from "@/components/workspace/judged-results";
@@ -154,7 +154,7 @@ export default function PromptWorkspace(props: Props) {
     <div className="flex h-full min-h-0 flex-col bg-bg">
       <PaneTabs tab={tab} onTab={setTab} attemptCount={past.length}
                 hintBadge={hintGate && hintGate.total ? `${hintGate.revealed}/${hintGate.total}` : null} />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
         {tab === "brief" ? (
           <ProblemIntro title={problem.title} track={problem.track} difficulty={problem.difficulty}
                         estMinutes={problem.estMinutes} artefactLabel="Prompt surgery"
@@ -227,7 +227,7 @@ export default function PromptWorkspace(props: Props) {
           <span className="text-fail">-{counts.removed}</span> lines
         </span>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+      <div className="relative min-h-0 flex-1 overflow-auto">
         {mode === "original" ? (
           <pre className="whitespace-pre-wrap p-4 font-mono text-[13px] leading-[1.65] text-text-dim">
             {original}
@@ -251,7 +251,7 @@ export default function PromptWorkspace(props: Props) {
                 enabled={policy.coach.enabled} onDismiss={coach.dismiss}
                 onHint={hintGate ? () => setTab("guide") : undefined} hintLabel="Guide"
                 idleText="Nothing to flag. Check runs the rules; Submit sends the probes." />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
         {checked && !view && !running ? (
           <div className="results-pane p-4"><LocalChecks checks={gate.checks} title="rules" /></div>
         ) : (
@@ -284,13 +284,9 @@ export default function PromptWorkspace(props: Props) {
           </>
         }
       />
-      <Split direction="row" storageKey={`fdeprep.split.${problem.id}.left`} initial={42} min={26} max={62}
-             label="Resize the problem pane" className="min-h-0 flex-1" first={left}
-             second={
-               <Split direction="column" storageKey={`fdeprep.split.${problem.id}.editor`} initial={60}
-                      min={25} max={85} label="Resize the editor" className="h-full"
-                      first={editor} second={dock} />
-             } />
+      <WorkspaceLayout storageKey={`fdeprep.split.${problem.id}`} left={left} editor={editor}
+                       dock={dock} editorLabel="Prompt" editorShare={60}
+                       dockSignal={`${view?.id ?? ""}:${view?.status ?? ""}:${coach.current?.say ?? ""}:${notice ?? ""}`} />
     </div>
   );
 }

@@ -28,13 +28,15 @@ const KIND_ICON: Record<NodeKind, LucideIcon> = {
 };
 
 /** Whole class strings, so Tailwind can see every one of them. */
+// Opaque tints, mixed into the surface, so an edge routed behind a node stays
+// behind it instead of showing through the label.
 const TONE: Record<Tone, { box: string; chip: string }> = {
-  blue: { box: "border-tone-blue/45 bg-tone-blue/[0.07]", chip: "bg-tone-blue/15 text-tone-blue" },
-  green: { box: "border-tone-green/45 bg-tone-green/[0.07]", chip: "bg-tone-green/15 text-tone-green" },
-  purple: { box: "border-tone-purple/45 bg-tone-purple/[0.07]", chip: "bg-tone-purple/15 text-tone-purple" },
-  teal: { box: "border-tone-teal/45 bg-tone-teal/[0.07]", chip: "bg-tone-teal/15 text-tone-teal" },
-  orange: { box: "border-tone-orange/45 bg-tone-orange/[0.07]", chip: "bg-tone-orange/15 text-tone-orange" },
-  pink: { box: "border-tone-pink/45 bg-tone-pink/[0.07]", chip: "bg-tone-pink/15 text-tone-pink" },
+  blue: { box: "border-tone-blue/45 bg-[color-mix(in_srgb,var(--color-tone-blue)_7%,var(--color-surface))]", chip: "bg-tone-blue/15 text-tone-blue" },
+  green: { box: "border-tone-green/45 bg-[color-mix(in_srgb,var(--color-tone-green)_7%,var(--color-surface))]", chip: "bg-tone-green/15 text-tone-green" },
+  purple: { box: "border-tone-purple/45 bg-[color-mix(in_srgb,var(--color-tone-purple)_7%,var(--color-surface))]", chip: "bg-tone-purple/15 text-tone-purple" },
+  teal: { box: "border-tone-teal/45 bg-[color-mix(in_srgb,var(--color-tone-teal)_7%,var(--color-surface))]", chip: "bg-tone-teal/15 text-tone-teal" },
+  orange: { box: "border-tone-orange/45 bg-[color-mix(in_srgb,var(--color-tone-orange)_7%,var(--color-surface))]", chip: "bg-tone-orange/15 text-tone-orange" },
+  pink: { box: "border-tone-pink/45 bg-[color-mix(in_srgb,var(--color-tone-pink)_7%,var(--color-surface))]", chip: "bg-tone-pink/15 text-tone-pink" },
   neutral: { box: "border-border-strong bg-surface-2", chip: "bg-surface-3 text-text-dim" },
 };
 
@@ -76,8 +78,49 @@ export function layout(diagram: Diagram, sideways: boolean): { placed: Placed[];
 
 interface Drawn { d: string; mid: [number, number]; edge: DiagramEdge; number: number }
 
+type Point = [number, number];
+
+function cubic(p0: Point, p1: Point, p2: Point, p3: Point, t: number): Point {
+  const u = 1 - t;
+  const a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+  return [a * p0[0] + b * p1[0] + c * p2[0] + d * p3[0],
+          a * p0[1] + b * p1[1] + c * p2[1] + d * p3[1]];
+}
+
+/** How far a point is from the nearest node, zero when it is on one. */
+function clearance([x, y]: Point, nodes: DOMRect[]): number {
+  let nearest = Infinity;
+  for (const n of nodes) {
+    const dx = Math.max(n.left - x, 0, x - n.right);
+    const dy = Math.max(n.top - y, 0, y - n.bottom);
+    nearest = Math.min(nearest, Math.hypot(dx, dy));
+  }
+  return nearest;
+}
+
+/**
+ * Where along its own curve an edge's number goes: the middle when the middle
+ * is clear of every node, and otherwise the point on the curve furthest from
+ * any node, so a number never sits on top of a label.
+ */
+function badgeAt(curve: [Point, Point, Point, Point], nodes: DOMRect[]): Point {
+  const middle = cubic(...curve, 0.5);
+  if (clearance(middle, nodes) >= 12) return middle;
+  let best = middle, room = clearance(middle, nodes);
+  for (let step = 1; step <= 18; step++) {
+    const t = 0.05 * step;
+    const point = cubic(...curve, t);
+    const here = clearance(point, nodes);
+    if (here > room + 0.5) { best = point; room = here; }
+  }
+  return best;
+}
+
 function route(edges: DiagramEdge[], boxes: Map<string, DOMRect>, origin: DOMRect): Drawn[] {
   const pairs = new Set(edges.map((e) => `${e.from}>${e.to}`));
+  // Nodes, and each number once it is placed, so two numbers never stack.
+  const obstacles = [...boxes.values()].map((r) =>
+    new DOMRect(r.left - origin.left, r.top - origin.top, r.width, r.height));
   return edges.flatMap((edge, index) => {
     const a = boxes.get(edge.from);
     const b = boxes.get(edge.to);
@@ -91,31 +134,37 @@ function route(edges: DiagramEdge[], boxes: Map<string, DOMRect>, origin: DOMRec
     // steps aside by the same amount in opposite directions.
     const shift = pairs.has(`${edge.to}>${edge.from}`) ? (edge.from < edge.to ? -11 : 11) : 0;
 
-    let sx: number, sy: number, tx: number, ty: number, d: string;
+    let curve: [Point, Point, Point, Point];
     if (Math.abs(dx) >= Math.abs(dy) * 0.9) {
-      sx = dx > 0 ? ax + a.width : ax; sy = acy + shift;
-      tx = dx > 0 ? bx - 3 : bx + b.width + 3; ty = bcy + shift;
+      const sx = dx > 0 ? ax + a.width : ax, sy = acy + shift;
+      const tx = dx > 0 ? bx - 3 : bx + b.width + 3, ty = bcy + shift;
       const k = Math.max(20, Math.abs(tx - sx) / 2);
       const s = dx > 0 ? 1 : -1;
-      d = `M${sx},${sy} C${sx + s * k},${sy} ${tx - s * k},${ty} ${tx},${ty}`;
+      curve = [[sx, sy], [sx + s * k, sy], [tx - s * k, ty], [tx, ty]];
     } else {
-      sx = acx + shift; sy = dy > 0 ? ay + a.height : ay;
-      tx = bcx + shift; ty = dy > 0 ? by - 3 : by + b.height + 3;
+      const sx = acx + shift, sy = dy > 0 ? ay + a.height : ay;
+      const tx = bcx + shift, ty = dy > 0 ? by - 3 : by + b.height + 3;
       const k = Math.max(16, Math.abs(ty - sy) / 2);
       const s = dy > 0 ? 1 : -1;
-      d = `M${sx},${sy} C${sx},${sy + s * k} ${tx},${ty - s * k} ${tx},${ty}`;
+      curve = [[sx, sy], [sx, sy + s * k], [tx, ty - s * k], [tx, ty]];
     }
-    // The midpoint of a cubic with its control points placed as above.
-    const mid: [number, number] = [(sx + tx) / 2, (sy + ty) / 2];
+    const [p0, p1, p2, p3] = curve;
+    const d = `M${p0[0]},${p0[1]} C${p1[0]},${p1[1]} ${p2[0]},${p2[1]} ${p3[0]},${p3[1]}`;
+    const mid = badgeAt(curve, obstacles);
+    obstacles.push(new DOMRect(mid[0] - 10, mid[1] - 10, 20, 20));
     return [{ d, mid, edge, number: index + 1 }];
   });
 }
 
+/** The narrowest a node gets before the picture scrolls instead of squeezing. */
+const MIN_NODE = 148;
+
 export function DiagramView({ diagram, className, large = false }: {
   diagram: Diagram; className?: string; large?: boolean;
 }) {
+  const scroller = useRef<HTMLDivElement>(null);
   const container = useRef<HTMLDivElement>(null);
-  const [width, setWidth] = useState(0);
+  const [available, setAvailable] = useState(0);
   const [drawn, setDrawn] = useState<Drawn[]>([]);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const markerBase = useId().replace(/:/g, "");
@@ -123,29 +172,47 @@ export function DiagramView({ diagram, className, large = false }: {
   const natural = useMemo(() => layout(diagram, false), [diagram]);
   // Turn the picture on its side when a column would be narrower than a node
   // can be and still hold a title.
-  const sideways = width > 0 && natural.cols > 1 && width / natural.cols < (large ? 130 : 150);
+  const turned = useMemo(() => layout(diagram, true), [diagram]);
+  // Turn only when turning makes the picture narrower; a turned picture with
+  // as many columns just trades one squeeze for another.
+  const sideways = available > 0 && natural.cols > turned.cols &&
+    available / natural.cols < (large ? 130 : 150);
   const grid = useMemo(() => layout(diagram, sideways), [diagram, sideways]);
   const byId = useMemo(() => new Map(diagram.nodes.map((n) => [n.id, n])), [diagram]);
 
+  // Measured in the diagram's own coordinates. A thumbnail scales the whole
+  // picture with a CSS transform, and getBoundingClientRect reports the scaled
+  // size, so without dividing it out the edges would be scaled twice.
   const measure = useCallback(() => {
     const el = container.current;
-    if (!el) return;
-    const origin = el.getBoundingClientRect();
+    if (!el || !el.offsetWidth) return;
+    const outer = el.getBoundingClientRect();
+    const scale = outer.width / el.offsetWidth || 1;
+    const local = (r: DOMRect) => new DOMRect((r.left - outer.left) / scale,
+                                              (r.top - outer.top) / scale,
+                                              r.width / scale, r.height / scale);
     const boxes = new Map<string, DOMRect>();
     el.querySelectorAll<HTMLElement>("[data-node]").forEach((node) => {
-      boxes.set(node.dataset["node"]!, node.getBoundingClientRect());
+      boxes.set(node.dataset["node"]!, local(node.getBoundingClientRect()));
     });
-    setWidth(origin.width);
-    setSize({ w: origin.width, h: origin.height });
-    setDrawn(route(diagram.edges, boxes, origin));
+    setSize({ w: el.offsetWidth, h: el.offsetHeight });
+    setDrawn(route(diagram.edges, boxes, new DOMRect(0, 0, el.offsetWidth, el.offsetHeight)));
   }, [diagram.edges]);
 
-  useLayoutEffect(() => { measure(); }, [measure, grid]);
+  useLayoutEffect(() => {
+    setAvailable(scroller.current?.clientWidth ?? 0);
+    measure();
+  }, [measure, grid]);
   useEffect(() => {
     const el = container.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => measure());
+    const outer = scroller.current;
+    if (!el || !outer || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => {
+      setAvailable(outer.clientWidth);
+      measure();
+    });
     observer.observe(el);
+    observer.observe(outer);
     return () => observer.disconnect();
   }, [measure]);
 
@@ -153,7 +220,11 @@ export function DiagramView({ diagram, className, large = false }: {
 
   return (
     <div className={cn("min-w-0", className)}>
-      <div ref={container} className="relative">
+      {/* Below a readable column width the picture scrolls sideways inside
+          its card, because a squeezed column breaks labels mid-word. */}
+      <div ref={scroller} className="-mx-1 overflow-x-auto px-1 pb-1">
+      <div ref={container} className="relative"
+           style={{ minWidth: grid.cols * MIN_NODE + (grid.cols - 1) * (grid.cols > 3 ? 32 : 48) }}>
         <div className={cn("grid items-center gap-y-7", gap)}
              style={{ gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))` }}>
           {grid.placed.map((place) => {
@@ -170,13 +241,13 @@ export function DiagramView({ diagram, className, large = false }: {
                   <Icon aria-hidden className="size-4" strokeWidth={1.9} />
                 </span>
                 <span className="min-w-0">
-                  <span className="block text-body font-semibold leading-tight text-text
-                                   [overflow-wrap:anywhere]">
+                  <span className="block break-words text-body font-semibold leading-tight
+                                   text-text">
                     {node.label}
                   </span>
                   {node.sub ? (
-                    <span className="mt-0.5 block text-meta leading-snug text-text-dim
-                                     [overflow-wrap:anywhere]">
+                    <span className="mt-0.5 block break-words text-meta leading-snug
+                                     text-text-dim">
                       {node.sub}
                     </span>
                   ) : null}
@@ -213,6 +284,7 @@ export function DiagramView({ diagram, className, large = false }: {
             {number}
           </span>
         ))}
+      </div>
       </div>
 
       <ol className="mt-5 grid gap-x-6 gap-y-1.5 text-meta sm:grid-cols-2">
@@ -277,7 +349,7 @@ export function DiagramFigure({ diagram }: { diagram: Diagram }) {
             <X aria-hidden className="size-4" />
           </button>
         </div>
-        <div className="max-h-[80vh] overflow-auto p-6">
+        <div className="relative max-h-[80vh] overflow-auto p-6">
           <DiagramView diagram={diagram} large />
           {diagram.caption ? (
             <p className="mt-5 rounded-control border-l-2 border-text-faint bg-surface-2 px-3 py-2
@@ -288,5 +360,43 @@ export function DiagramFigure({ diagram }: { diagram: Diagram }) {
         </div>
       </dialog>
     </figure>
+  );
+}
+
+/**
+ * The diagram at its natural size, scaled down to fit, for a preview beside
+ * other content. A diagram squeezed into a narrow column instead breaks its
+ * labels mid-word; scaled, it keeps its layout and reads as a picture of the
+ * problem.
+ */
+export function DiagramThumbnail({ diagram, naturalWidth = 600, className }: {
+  diagram: Diagram; naturalWidth?: number; className?: string;
+}) {
+  const outer = useRef<HTMLDivElement>(null);
+  const inner = useRef<HTMLDivElement>(null);
+  const [fit, setFit] = useState<{ scale: number; height: number } | null>(null);
+
+  useLayoutEffect(() => {
+    const measure = () => {
+      if (!outer.current || !inner.current) return;
+      const scale = Math.min(1, outer.current.clientWidth / naturalWidth);
+      setFit({ scale, height: inner.current.offsetHeight * scale });
+    };
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(measure);
+    if (outer.current) observer.observe(outer.current);
+    if (inner.current) observer.observe(inner.current);
+    return () => observer.disconnect();
+  }, [naturalWidth]);
+
+  return (
+    <div ref={outer} className={cn("relative w-full overflow-hidden", className)}
+         style={{ height: fit ? fit.height : undefined }}>
+      <div ref={inner} className="origin-top-left [&_ol]:hidden"
+           style={{ width: naturalWidth, transform: fit ? `scale(${fit.scale})` : undefined }}>
+        <DiagramView diagram={diagram} />
+      </div>
+    </div>
   );
 }

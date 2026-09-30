@@ -10,7 +10,7 @@ import type { BuildSummary, ContinueItem, Journey } from "@/lib/progress/journey
 import type { CompetencyBar } from "@/lib/progress/summary";
 import type { Teaser } from "@/lib/problems/workspace";
 import { ButtonLink } from "@/components/ui/button";
-import { DiagramView } from "@/components/workspace/diagram";
+import { DiagramThumbnail } from "@/components/workspace/diagram";
 import { DifficultyMeter } from "@/components/ui/difficulty";
 import { StatusIcon } from "@/components/ui/status";
 import { TrackIcon, TrackLabel } from "@/components/ui/tracks";
@@ -87,9 +87,8 @@ export function ContinuePanel({ firstName, item, teaser, kind }: {
         )}
       </div>
       {teaser?.diagram ? (
-        <div aria-hidden className="pointer-events-none hidden select-none self-center opacity-90 xl:block
-                                    [&_ol]:hidden">
-          <DiagramView diagram={teaser.diagram} />
+        <div aria-hidden className="pointer-events-none hidden select-none self-center opacity-90 xl:block">
+          <DiagramThumbnail diagram={teaser.diagram} />
         </div>
       ) : null}
       </div>

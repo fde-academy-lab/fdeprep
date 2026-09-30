@@ -22,7 +22,7 @@ import { Kbd } from "@/components/ui/kbd";
 import { Markdown } from "@/components/ui/markdown";
 import { cn } from "@/components/ui/cn";
 import { ProblemBar } from "@/components/workspace/problem-bar";
-import { Split } from "@/components/workspace/split";
+import { WorkspaceLayout } from "@/components/workspace/layout";
 import { editorTheme } from "@/components/workspace/editor-theme";
 import { CoachBar, useCoach } from "@/components/workspace/coach";
 import { CodeResults } from "@/components/workspace/code-results";
@@ -154,7 +154,7 @@ export default function Workspace(props: Props) {
     <div className="flex h-full min-h-0 flex-col bg-bg">
       <PaneTabs tab={tab} onTab={setTab} attemptCount={past.length}
                 hintBadge={hintGate && hintGate.total ? `${hintGate.revealed}/${hintGate.total}` : null} />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
         {tab === "brief" ? (
           <ProblemIntro title={problem.title} track={problem.track} difficulty={problem.difficulty}
                         estMinutes={problem.estMinutes} artefactLabel="Python"
@@ -283,7 +283,7 @@ export default function Workspace(props: Props) {
                 onHint={hintGate ? () => setTab("guide") : undefined}
                 hintLabel="Guide"
                 idleText="Nothing to flag. Press Cmd Enter to run the public tests." />
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="relative min-h-0 flex-1 overflow-y-auto">
         <CodeResults view={view} running={running} notice={notice}
                      visibility={policy.visibility} callBudget={problem.callBudget} />
       </div>
@@ -315,14 +315,9 @@ export default function Workspace(props: Props) {
           {policy.submit.reason}
         </p>
       ) : null}
-      <Split direction="row" storageKey={`${storageKey}.left`} initial={42} min={26} max={62}
-             label="Resize the problem pane" className="min-h-0 flex-1"
-             first={left}
-             second={
-               <Split direction="column" storageKey={`${storageKey}.editor`} initial={58} min={25}
-                      max={85} label="Resize the editor" className="h-full"
-                      first={editor} second={dock} />
-             } />
+      <WorkspaceLayout storageKey={`fdeprep.split.${problem.id}`} left={left} editor={editor}
+                       dock={dock} editorLabel="Code" editorShare={58}
+                       dockSignal={`${view?.id ?? ""}:${view?.status ?? ""}:${coach.current?.say ?? ""}:${notice ?? ""}`} />
     </div>
   );
 }
