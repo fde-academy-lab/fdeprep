@@ -315,7 +315,8 @@ Every submission writes this object into `submission.result`. The front end rend
     "hidden":      {"status": "fail", "passed": 5, "total": 7, "cases": []},
     "adversarial": {"status": "skipped", "passed": 0, "total": 3, "cases": []}
   },
-  "steps": [{"id": "s1", "status": "pass"}, {"id": "s2", "status": "fail"}],
+  "steps": [{"id": "s1", "status": "pass"}, {"id": "s2", "status": "fail"},
+            {"id": "s3", "status": "unchecked"}],
   "budget": {"llm_calls": 9, "tool_calls": 11, "wall_ms": 1412,
              "max_llm_calls": 6, "within_budget": false},
   "trace_ref": "s3://fde-prep-traces/2026/09/sub-38191.json.gz",
@@ -328,7 +329,7 @@ Rules the front end relies on:
 - `cases` is empty for hidden and adversarial gates unless the learner has already passed the problem.
 - A gate that never ran has status `skipped`, never `fail`.
 - `score` is null until every gate has run or been skipped by a prior failure.
-- `steps` lists every step of the problem in order once the public cases have run, and is empty when they did not. Added 29 September 2026, for the checklist docs/01 S4 specifies. A step is `pass` when any public case satisfied its `step_check` assertions. The spec never said which case a check reads: read against every public case, 16 of 43 reference solutions left a step red, and read against any case, none did, so authors had written them for the second reading. Hidden and adversarial cases never count, so a step never reports on a case the learner cannot see. CI requires the reference to turn every step green and the stub to leave at least one red.
+- `steps` lists every step of the problem in order once the public cases have run, and is empty when they did not. Added 29 September 2026, for the checklist docs/01 S4 specifies. A step is `pass` when any public case satisfied its `step_check` assertions. The spec never said which case a check reads: read against every public case, 16 of 43 reference solutions left a step red, and read against any case, none did, so authors had written them for the second reading. Hidden and adversarial cases never count, so a step never reports on a case the learner cannot see. Amended 30 September 2026: a step whose check the untouched stub also satisfies reports `unchecked` instead of `pass`, because the public cases cannot tell the learner's work from no work. At the time, 76 of the catalogue's 160 steps read green on the stub. The runner computes this by running the stub on the same public cases, once per problem version. CI requires the reference to leave no step `fail`, and at least one step on every problem to be one the public cases can show.
 
 ### Scoring
 

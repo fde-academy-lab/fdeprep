@@ -334,8 +334,9 @@ function Steps({ steps, status }: {
 }) {
   const byId = new Map(status.map((s) => [s.id, s.status]));
   const green = steps.filter((step) => byId.get(step.id) === "pass").length;
+  const checkable = steps.filter((step) => byId.get(step.id) !== "unchecked").length;
   const aside = status.length
-    ? `${green} of ${steps.length} green on the last run`
+    ? `${green} of ${checkable} checked steps green on the last run`
     : "Run to check each step";
   return (
     <Section title="Steps" aside={aside}>
@@ -343,19 +344,29 @@ function Steps({ steps, status }: {
         {steps.map((step, index) => {
           const state = byId.get(step.id);
           return (
-            <li key={step.id} className="flex items-start gap-3 rounded-control px-2 py-1.5">
+            <li key={step.id} className="flex items-start gap-3 rounded-control px-2 py-1.5"
+                title={state === "unchecked"
+                  ? "The public tests cannot tell this step apart from the starter code. " +
+                    "Check it against the brief yourself." : undefined}>
               <span aria-hidden
                     className={cn("mt-px grid size-5 shrink-0 place-items-center rounded-full border",
                                   "font-mono text-[11px] leading-none",
                                   state === "pass" ? "border-pass/50 bg-pass-soft text-pass"
+                                    : state === "unchecked" ? "border-dashed border-border-strong text-text-faint"
                                     : "border-border-strong text-text-faint")}>
                 {state === "pass" ? <Check className="size-3" strokeWidth={2.5} /> : index + 1}
               </span>
               <span className={state === "pass" ? "text-text-dim" : "text-text"}>
                 {step.text}
+                {state === "unchecked" ? (
+                  <span className="mt-0.5 block text-meta text-text-faint">
+                    The public tests cannot show this one. Check it against the brief.
+                  </span>
+                ) : null}
                 <span className="sr-only">
                   {state === "pass" ? ", done on the last run"
-                    : state === "fail" ? ", not done on the last run" : ", not checked yet"}
+                    : state === "fail" ? ", not done on the last run"
+                    : state === "unchecked" ? "" : ", not checked yet"}
                 </span>
               </span>
             </li>

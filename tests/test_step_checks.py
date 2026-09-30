@@ -8,6 +8,12 @@ reference solutions leave a step red; read against any public case, all 43
 turn every step green. Authors wrote them against the second reading, so that
 is the rule. Only public cases count, so a step never reports on a case the
 learner cannot see.
+
+A check the untouched stub already satisfies cannot tell a learner's work
+from no work: on 30 September 2026, 76 of the catalogue's 160 steps read
+green on the stub. The runner runs the stub against the same public cases,
+once per problem version, and reports such a step as unchecked rather than
+green.
 """
 
 from __future__ import annotations
@@ -106,6 +112,25 @@ def test_code_the_gate_rejects_reports_no_steps():
 def test_a_problem_without_steps_reports_an_empty_list():
     plain = from_dict({**PROBLEM.raw, "step_checks": []})
     assert run_battery(plain, LOOP)["steps"] == []
+
+
+# The stub answers from the model's text, as ANSWERS_ONLY does, so steps 1
+# and 3 are ones the public cases cannot tell apart from no work at all.
+STUBBED = from_dict({**PROBLEM.raw, "stub_code": ANSWERS_ONLY})
+
+
+def test_a_step_the_stub_already_satisfies_is_unchecked_rather_than_green():
+    assert _steps(run_battery(STUBBED, LOOP)) == {
+        "s1": "unchecked", "s2": "pass", "s3": "unchecked"}
+
+
+def test_the_stub_itself_never_turns_a_step_green():
+    assert "pass" not in _steps(run_battery(STUBBED, ANSWERS_ONLY)).values()
+
+
+def test_a_step_the_learner_breaks_is_red_whatever_the_stub_does():
+    silent = "def run_agent(question, llm, tools):\n    return ''\n"
+    assert _steps(run_battery(STUBBED, silent)) == {"s1": "fail", "s2": "fail", "s3": "fail"}
 
 
 def test_no_case_result_carries_the_step_detail():

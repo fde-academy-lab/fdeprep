@@ -11,6 +11,7 @@ sandbox is how run_agent ended, and nothing it says about its own calls.
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import os
 import pathlib
@@ -105,6 +106,49 @@ def run_single_case(name: str, spec: dict[str, Any], source: str, *,
         return _judge(name, spec, document, exchange, trace, step_checks)
     finally:
         shutil.rmtree(root, ignore_errors=True)
+
+
+# Steps the untouched stub already satisfies, per problem version. The runner
+# computes them once and keeps them for as long as the process lives, which in
+# Lambda is a warm instance.
+_BASELINES: dict[str, frozenset[str]] = {}
+
+
+def _stub_baseline(problem) -> frozenset[str]:
+    """The steps the stub already satisfies on the public cases.
+
+    A check the stub satisfies cannot tell a learner's work from no work, so
+    such a step is reported as unchecked rather than green. Computed from the
+    problem's own stub, so it stays honest as the content changes.
+    """
+    stub = (problem.raw or {}).get("stub_code")
+    if not stub or not problem.step_checks:
+        return frozenset()
+    key = hashlib.sha256(json.dumps(
+        [stub, [c.spec for c in problem.cases("public")], problem.step_checks,
+         sorted(problem.allowed_imports)],
+        sort_keys=True, default=str).encode("utf-8")).hexdigest()
+    if key not in _BASELINES:
+        held: set[str] = set()
+        if static_check(stub, problem.allowed_imports).status == "pass":
+            for case in problem.cases("public"):
+                ran = run_single_case(
+                    case.name, case.spec, stub,
+                    allowed_imports=problem.allowed_imports,
+                    time_limit_s=problem.time_limit_s,
+                    step_checks=problem.step_checks,
+                )
+                held |= {step for step, ok in ran["_steps"].items() if ok}
+        if len(_BASELINES) > 512:
+            _BASELINES.clear()
+        _BASELINES[key] = frozenset(held)
+    return _BASELINES[key]
+
+
+def _step_status(step_id: str, held: dict[str, bool], baseline: frozenset[str]) -> str:
+    if not held.get(step_id):
+        return "fail"
+    return "unchecked" if step_id in baseline else "pass"
 
 
 def _imports_to_preload(source: str, allowed_imports) -> list[str]:
@@ -312,6 +356,8 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
             gates[visibility] = contract.gate_from_cases(ran, reveal=reveal)
             previous_passed = gates[visibility]["status"] == "pass"
 
+    baseline = _stub_baseline(problem) if public_ran and held else frozenset()
+
     worst_llm = max((c["llm_calls"] for c in all_cases), default=0)
     worst_tool = max((c["tool_calls"] for c in all_cases), default=0)
     within_budget = worst_llm <= problem.call_budget
@@ -325,9 +371,10 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
         ),
         "gates": gates,
         # docs/01 S4: a step is green when any public case satisfied its
-        # micro-check. Empty when the public cases did not run.
+        # micro-check and the untouched stub did not. Empty when the public
+        # cases did not run.
         "steps": [
-            {"id": check["step_id"], "status": "pass" if held.get(check["step_id"]) else "fail"}
+            {"id": check["step_id"], "status": _step_status(check["step_id"], held, baseline)}
             for check in problem.step_checks
         ] if public_ran else [],
         "budget": {

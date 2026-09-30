@@ -49,18 +49,22 @@ async function run(body: string) {
 }
 
 describe("the steps checklist", () => {
-  it("turns every step green on a run of the reference", async () => {
+  it("turns no step red on a run of the reference", async () => {
     const reference = await readFile(path.join(PROBLEMS, EASY, "reference_solution.py"), "utf8");
     const view = await run(reference);
     expect(view.status).toBe("terminal");
     expect(view.steps.map((s) => s.id)).toEqual(["s1", "s2", "s3", "s4"]);
-    expect(view.steps.every((s) => s.status === "pass")).toBe(true);
+    expect(view.steps.some((s) => s.status === "fail")).toBe(false);
+    expect(view.steps.some((s) => s.status === "pass")).toBe(true);
   });
 
-  it("leaves a step red on a run of the starter code", async () => {
+  it("never turns a step green on a run of the starter code", async () => {
+    // A check the stub already satisfies reads unchecked: the public cases
+    // cannot tell the learner's work from no work.
     const stub = validateProblemYaml(source, EASY).problem!.stub_code!;
     const view = await run(stub);
     expect(view.steps.some((s) => s.status === "fail")).toBe(true);
+    expect(view.steps.some((s) => s.status === "pass")).toBe(false);
   });
 
   it("comes back after a reload as the last run left it", async () => {

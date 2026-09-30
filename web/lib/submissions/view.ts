@@ -65,10 +65,15 @@ export interface CorrectionView {
   at: string;
 }
 
-/** docs/01 S4: one step of the checklist, green when a public case satisfied its check. */
+/**
+ * docs/01 S4: one step of the checklist. Green when a public case satisfied
+ * its check and the untouched stub did not; unchecked when the stub satisfies
+ * it too, because then the public cases cannot tell the learner's work from
+ * no work.
+ */
 export interface StepView {
   id: string;
-  status: "pass" | "fail";
+  status: "pass" | "fail" | "unchecked";
 }
 
 /** The runner's step statuses, kept only where they have the contract's shape. */
@@ -77,7 +82,7 @@ export function trimSteps(value: unknown): StepView[] {
   return value.flatMap((entry) => {
     const step = entry as { id?: unknown; status?: unknown } | null;
     if (typeof step?.id !== "string") return [];
-    if (step.status !== "pass" && step.status !== "fail") return [];
+    if (step.status !== "pass" && step.status !== "fail" && step.status !== "unchecked") return [];
     return [{ id: step.id, status: step.status }];
   });
 }

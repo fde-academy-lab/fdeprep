@@ -165,10 +165,13 @@ def test_the_reference_turns_every_step_green_and_the_stub_does_not(path):
         pytest.skip("no steps on this problem")
     problem = load_problem(path)
     reference, _ = solutions(path)
-    red = [s["id"] for s in run_battery(problem, reference)["steps"] if s["status"] != "pass"]
+    steps = run_battery(problem, reference)["steps"]
+    red = [s["id"] for s in steps if s["status"] == "fail"]
     assert not red, (path.stem, "the reference leaves these steps red", red)
-    stub = run_battery(problem, document["stub_code"])["steps"]
-    assert any(s["status"] != "pass" for s in stub), (path.stem, "the stub turns every step green")
+    # A step the stub already satisfies reads unchecked, never green, so what
+    # this guards is that the checklist checks something at all.
+    assert any(s["status"] == "pass" for s in steps), (
+        path.stem, "the public cases cannot tell any step apart from the stub")
 
 
 @pytest.mark.parametrize("path", CODE, ids=IDS)
