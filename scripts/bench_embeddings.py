@@ -190,8 +190,9 @@ if __name__ == "__main__":
     sys.exit(main())
 
 # Test inputs and expected outcomes:
-#   The repository's three design problems -> nine exemplar rows, a measured
-#     tokens-per-word ratio near 1.2, and counts of how many exceed 256 and 512.
+#   The repository's design problems -> one row per exemplar (39 on 30 September
+#     2026), a measured tokens-per-word ratio near 1.2, and counts of how many
+#     exceed 256 and 512.
 #   The MiniLM tokenizer as shipped -> the truncation warning fires, because its
 #     tokenizer.json sets max_length 128.
 #   Each of the four variants -> a size, a session load time, and p50/p95 for

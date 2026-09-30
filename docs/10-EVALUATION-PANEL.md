@@ -132,15 +132,17 @@ Heuristics produce findings and never produce a terminal fail on their own, beca
 
 The registry lives in `web/lib/eval/heuristics.ts` and runs inside panelist 1. It runs after the gates rather than before them, which does not soften the deterministic-first rule in `CLAUDE.md`: that rule exists so a cheap check can save a model call, and a rule that cannot fail a submission can never save one.
 
-Every threshold was measured against the catalogue on 21 September 2026 rather than chosen.
+Every threshold was measured against the catalogue rather than chosen: first on 21 September 2026, when it held 25 problems, and again on 30 September 2026, when it held 92 problems and 12 voice questions. The figures below are from 30 September, and every threshold held.
 
 | Rule | Threshold | What the measurement said |
 |---|---|---|
-| `restates_the_brief` | 0.60 of the answer's distinct content words appear in the brief | The highest any authored reference reaches is 0.44. An *unedited* original prompt, which is the case this rule exists to catch, reaches 0.45. |
-| `single_paragraph` | 400 words in one paragraph | No authored reference is close. |
+| `restates_the_brief` | 0.60 of the answer's distinct content words appear in the brief | Across 124 authored exemplars and walkthroughs, the highest any text other than a weak exemplar reaches is 0.44, and a weak prompt exemplar reaches 0.52. An *unedited* original prompt, which is the case this rule exists to catch, reaches 0.45 at most. |
+| `single_paragraph` | 400 words in one paragraph | No authored design exemplar is a single paragraph. The longest is 606 words in eight. |
 | `budget_ignored` | More than twice the declared budget | Straight from this table. |
-| `no_tradeoff_language` | No marker from a deliberately narrow list | `but` and `while` appear in nearly every answer of any quality, so including them makes the rule unable to fire at all. |
+| `no_tradeoff_language` | No marker from a deliberately narrow list | `but` and `while` appear in nearly every answer of any quality, so including them makes the rule unable to fire at all. As the list stands it fires on none of the 12 strong C4 design exemplars and on 6 of the 12 adequate ones. |
 | `names_no_constraint` | No constraint term appears in the answer | Needs a `constraints` list, which no problem authors yet, so it is silent until one does. |
+
+`restates_the_brief` cannot tell an unedited original prompt from the best authored answer, since 0.45 and 0.44 are the same number for this purpose. The static gate is what stops an unedited prompt submission: each of the nine catalogue prompt problems has a `must_remove` rule whose text is in the original, or a `max_words` limit the original breaks, which is 411 words against 250 on `compress-a-prompt-without-losing-a-constraint`. The rule's job is the answer that pastes the brief back.
 
 **`no_tradeoff_language` is narrowed to design, against this document's own table.** Measured across the 12 authored voice questions, four `strong` exemplars carry no written trade marker and are still plainly arguments: spoken answers compare by contrast rather than by phrase, as in "what it is evidence of, and what it is not evidence of". A marker list widened until those four stopped firing would be fitted to twelve examples rather than derived from anything, so the rule does not run on voice until somebody has a reason better than that.
 
@@ -148,9 +150,9 @@ Every threshold was measured against the catalogue on 21 September 2026 rather t
 
 ## 5. Panelist 2: pretrained models, no training run
 
-The design constraint that shaped this section: **there is no training data.** The repository holds 25 reference solutions, 25 naive solutions and 36 voice exemplars. All 86 were written by the author. Zero were written by a learner.
+The design constraint that shaped this section: **there is no training data.** On 30 September 2026 the repository holds 70 reference solutions, 70 naive solutions, 66 design and prompt exemplars and 36 voice exemplars. All 242 were written by the author. Zero were written by a learner.
 
-Training a grader on 86 author-written examples produces a model that has learned how the author writes a wrong answer. Learners fail differently, and the model would be confidently wrong in front of a cohort, which is the one failure mode this platform cannot afford.
+Training a grader on 242 author-written examples produces a model that has learned how the author writes a wrong answer. Learners fail differently, and the model would be confidently wrong in front of a cohort, which is the one failure mode this platform cannot afford.
 
 So P2 trains nothing. It uses models whose training already happened, on corpora nobody here has to build, and applies them to the graded exemplars that already exist.
 
@@ -169,53 +171,55 @@ That is a system that learns from your cohort without anybody running a training
 
 ### The model, measured
 
-Measured on 20 September 2026 with `scripts/bench_embeddings.py`, against this repository's own nine graded design exemplars. Re-run it when a model, a runtime version or a Lambda price changes.
+Measured on 30 September 2026 with `scripts/bench_embeddings.py`, against this repository's own 39 graded design exemplars, on onnxruntime 1.30.0, tokenizers 0.23.2 and numpy 2.5.3. The first measurement, on 20 September against nine exemplars, reached the same decision. Re-run it when a model, a runtime version or a Lambda price changes.
 
 | Candidate | Licence | Params | Dims | Documented limit |
 |---|---|---|---|---|
 | `sentence-transformers/all-MiniLM-L6-v2` | Apache-2.0 | 22.7M | 384 | 256 tokens |
 | `BAAI/bge-small-en-v1.5` | MIT | 33.4M | 384 | 512 tokens |
 
-Both licences permit this use. Both ship an ONNX export. MiniLM also ships files pre-quantised per instruction set, which matters more than it sounds.
+Both licences permit this use, as each model card stated on 30 September 2026. Both ship an ONNX export. MiniLM also ships files pre-quantised per instruction set, which matters more than it sounds.
 
-Latency, one intra-op thread on an AVX-512 Xeon, embedding an answer at the problems' own 700-word ceiling, twenty runs:
+Latency, one intra-op thread on a four-core AVX-512 Xeon, embedding an answer at the problems' own 700-word ceiling, twenty runs after three to warm up:
 
 | Variant | Model | Load | One pass (truncates) | Chunked (complete) |
 |---|---|---|---|---|
-| MiniLM int8, avx2 | 23.0 MB | 200 ms | 43.6 ms p95 | 147.0 ms p95 |
-| **MiniLM int8, avx512-vnni** | **23.0 MB** | **191 ms** | 20.6 ms p95 | **67.0 ms p95** |
-| MiniLM fp32 | 90.4 MB | 614 ms | 38.4 ms p95 | 127.0 ms p95 |
-| bge-small fp32 | 133.1 MB | 794 ms | 169.9 ms p95 | 280.4 ms p95 |
+| MiniLM int8, avx2 | 23.0 MB | 186 ms | 50.3 ms p95 | 155.1 ms p95 |
+| **MiniLM int8, avx512-vnni** | **23.0 MB** | **187 ms** | 22.1 ms p95 | **70.3 ms p95** |
+| MiniLM fp32 | 90.4 MB | 546 ms | 49.2 ms p95 | 194.1 ms p95 |
+| bge-small fp32 | 133.1 MB | 629 ms | 178.4 ms p95 | 306.3 ms p95 |
 
-The runtime adds 120 MB: ONNX Runtime 67.9, numpy 40.7, tokenizers 11.6. With two model variants that is about 190 MB of image, against Lambda's 10 GB limit. Image size was never the constraint.
+The benchmark ran three times. The chosen variant's chunked p95 came out between 68.7 and 83.5 ms, and the table shows the second run, whose figure for it is the median of the three. Load is one measurement per run and the noisiest figure: the same file loaded in 187 ms with the disk cache warm and 1,158 ms with it cold.
+
+The runtime adds 148 MB: ONNX Runtime 67.9, numpy 40.7 and the 27.5 MB of native libraries numpy installs beside itself in `numpy.libs`, and tokenizers 11.6. The 20 September figure of 120 MB left `numpy.libs` out. With both model variants and the tokenizer that is about 194 MB of image, against Lambda's 10 GB limit on an uncompressed image. Image size was never the constraint.
 
 ### Two traps that would have shipped silently
 
 **MiniLM's `tokenizer.json` truncates at 128 tokens by default.** Not the 256 its model card documents, and not anything the caller asked for. Loaded as shipped, it returns exactly 128 tokens for a 117-word answer and for a 700-word one. A P2 built without calling `no_truncation()` would embed the first hundred words of every answer and band the rest on nothing. The benchmark prints a warning when it detects this, and any P2 implementation sets truncation explicitly rather than inheriting it.
 
-**Half the real answers exceed MiniLM's documented limit anyway.** Measured at 1.19 tokens per word: five of ten test inputs pass 256 tokens, and an answer at the 700-word ceiling is 880. A design argument puts its trade-off in the back half, so truncation does not lose detail, it loses the thing being graded.
+**Nearly every real answer exceeds MiniLM's documented limit anyway.** Measured at 1.18 tokens per word: 38 of 40 test inputs pass 256 tokens, and an answer at the 700-word ceiling is 867. On 20 September it was five of ten, before the exemplars were extended. A design argument puts its trade-off in the back half, so truncation loses the thing being graded.
 
-Chunking is the fix. Split on paragraphs, embed each, mean-pool. It costs four inferences on a long answer and the numbers above already include that cost.
+Chunking is the fix. Split on paragraphs, embed each, mean-pool. It costs four inferences on a long answer and the numbers above already include that cost. bge-small's longer window would not avoid it: 12 of the 40 inputs pass 512 tokens.
 
 ### The decision: MiniLM int8, chunked, and not in the judge
 
-**Model:** `all-MiniLM-L6-v2`, int8, chunked. At 67 ms p95 for a complete 700-word answer it is four times faster than bge-small chunked, on a model file 5.8 times smaller, and it loses nothing to truncation.
+**Model:** `all-MiniLM-L6-v2`, int8, chunked. At 70 ms p95 for a complete 700-word answer it is four times faster than bge-small chunked, on a model file 5.8 times smaller, and it loses nothing to truncation.
 
 Ship both quantised variants, 46 MB together, and select on CPU flags at start-up. The avx512-vnni file is twice as fast as the avx2 one on hardware that supports it and Lambda's fleet is mixed, so the avx2 file is the fallback rather than the default.
 
 **Where it runs: the worker, not the judge Lambda.** The judge stays at 512 MB with no embedding model in it.
 
-AWS documents that Lambda allocates CPU in proportion to memory and that "at 1,769 MB, a function has the equivalent of one vCPU", verified on 20 September 2026. The judge's 512 MB is therefore 0.29 of a vCPU, so a single-core measurement multiplies by 3.46:
+AWS documents that Lambda allocates CPU in proportion to memory and that "at 1,769 MB, a function has the equivalent of one vCPU", verified on 20 September 2026 and again on 30 September 2026. The judge's 512 MB is therefore 0.29 of a vCPU, so a single-core measurement multiplies by 3.46:
 
 | Where | P2 on a 700-word answer |
 |---|---|
-| This benchmark, one core | 67 ms p95 |
-| Judge Lambda at 512 MB | about 232 ms p95 |
-| A Lambda at 1,769 MB | about 67 ms p95 |
+| This benchmark, one core | 70 ms p95 |
+| Judge Lambda at 512 MB | about 243 ms p95 |
+| A Lambda at 1,769 MB | about 70 ms p95 |
 
-Raising memory looks free, because cost is GB-seconds and both settings come to 0.119 GB-seconds for the same work. The reason not to do it is the judge's other job: **P3 spends its time waiting on Bedrock, and waiting is not CPU-bound.** Raising the judge to 1,769 MB would multiply the cost of every second it spends waiting on a model by 3.46, to buy speed for work that is a fraction of its duration. One memory setting cannot serve a CPU-bound workload and a network-bound one.
+Raising memory looks free, because cost is GB-seconds and both settings come to about 0.121 GB-seconds for the same work, counting a GB as 1,024 MB as Lambda's pricing examples do. The reason not to do it is the judge's other job: **P3 spends its time waiting on Bedrock, and waiting is not CPU-bound.** Raising the judge to 1,769 MB would multiply the cost of every second it spends waiting on a model by 3.46, to buy speed for work that is a fraction of its duration. One memory setting cannot serve a CPU-bound workload and a network-bound one.
 
-So P2 runs in the worker, invoked as a Python subprocess exactly as the test battery already is through `RUNNER_PYTHON`. No new language, no new pattern, and the 191 ms model load happens in a long-lived process rather than on every cold start.
+So P2 runs in the worker, invoked as a Python subprocess exactly as the test battery already is through `RUNNER_PYTHON`. No new language, no new pattern, and the model load of about 190 ms happens in a long-lived process rather than on every cold start.
 
 P2 makes no network call. That is the whole point of it, since a panelist that needs the network cannot be the fallback for a panelist that needs the network.
 
