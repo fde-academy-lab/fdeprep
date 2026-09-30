@@ -346,8 +346,8 @@ function Steps({ steps, status }: {
           return (
             <li key={step.id} className="flex items-start gap-3 rounded-control px-2 py-1.5"
                 title={state === "unchecked"
-                  ? "The public tests cannot tell this step apart from the starter code. " +
-                    "Check it against the brief yourself." : undefined}>
+                  ? "This step's check passes on the starter code too, so it cannot tell " +
+                    "your work from none. Check it against the brief yourself." : undefined}>
               <span aria-hidden
                     className={cn("mt-px grid size-5 shrink-0 place-items-center rounded-full border",
                                   "font-mono text-[11px] leading-none",
@@ -360,7 +360,7 @@ function Steps({ steps, status }: {
                 {step.text}
                 {state === "unchecked" ? (
                   <span className="mt-0.5 block text-meta text-text-faint">
-                    The public tests cannot show this one. Check it against the brief.
+                    Its check passes on the starter code too. Check this one against the brief.
                   </span>
                 ) : null}
                 <span className="sr-only">
