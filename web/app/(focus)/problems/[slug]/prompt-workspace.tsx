@@ -147,8 +147,6 @@ export default function PromptWorkspace(props: Props) {
   const hintGate = policy.layers.hints ? policy.hints : null;
   const extensions = useMemo(() => [...editorTheme, EditorView.lineWrapping], []);
 
-  const mustRemove = gate.checks.filter((c) => c.kind === "must_remove");
-  const mustKeep = gate.checks.filter((c) => c.kind !== "must_remove");
 
   const left = (
     <div className="flex h-full min-h-0 flex-col bg-bg">
@@ -163,8 +161,12 @@ export default function PromptWorkspace(props: Props) {
               <Section title="What counts as done"><Markdown source={problem.contractMd} /></Section>
             ) : null}
             <Section title="Checklist" aside="Updates as you type">
-              <Checklist title="Must go" checks={mustRemove} />
-              <Checklist title="Must survive" checks={mustKeep} />
+              {CHECK_GROUPS.map((group) => (
+                <Checklist key={group.title} title={group.title}
+                           checks={gate.checks.filter((c) => group.kinds.includes(c.kind))} />
+              ))}
+              <Checklist title="Also checked"
+                         checks={gate.checks.filter((c) => !CHECK_GROUPS.some((g) => g.kinds.includes(c.kind)))} />
               <p className="text-meta text-text-faint">
                 {problem.probeCount} probes run on Submit. They send customer messages to your
                 edited prompt and read the replies.
@@ -290,6 +292,15 @@ export default function PromptWorkspace(props: Props) {
     </div>
   );
 }
+
+// Each rule kind has its own heading, so a word limit never reads as text
+// that must survive. A kind outside these still shows, under "Also checked".
+const CHECK_GROUPS: { title: string; kinds: string[] }[] = [
+  { title: "Must go", kinds: ["must_remove"] },
+  { title: "Must survive", kinds: ["must_keep"] },
+  { title: "Must be added", kinds: ["must_add"] },
+  { title: "Length", kinds: ["max_words", "min_words"] },
+];
 
 function Checklist({ title, checks }: { title: string; checks: StaticGate["checks"] }) {
   if (!checks.length) return null;
