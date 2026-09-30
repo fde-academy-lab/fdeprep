@@ -164,6 +164,28 @@ describe("prompt problems", () => {
       .toContain("rule_pattern_absent");
   });
 
+  it("accepts must_add for text the original prompt lacks, and rejects it for text already there", () => {
+    // must_add, added 30 September 2026: must_keep was the only way to ask for
+    // text, and a must_keep of absent text told a learner who never had it
+    // that it was "no longer in the prompt".
+    const adding = PROMPT.replace(
+      '  - { kind: max_words, label: "under 400 words", numeric_value: 400 }',
+      '  - { kind: must_add, label: "an escalation path", pattern: "(?i)escalat" }\n' +
+      '  - { kind: max_words, label: "under 400 words", numeric_value: 400 }');
+    expect(rules(adding)).not.toContain("rule_pattern_present");
+    expect(rules(adding.replace('pattern: "(?i)escalat"', 'pattern: "(?i)always comply"')))
+      .toContain("rule_pattern_present");
+  });
+
+  it("rejects a must_keep of text the original prompt lacks, pointing at must_add", () => {
+    const report = validateProblemYaml(
+      PROMPT.replace('{ kind: must_keep, label: "refunds", pattern: "(?i)refund" }',
+                     '{ kind: must_keep, label: "an escalation path", pattern: "(?i)escalat" }'),
+      "f.yaml");
+    const error = report.errors.find((e) => e.rule === "rule_pattern_absent");
+    expect(error?.message).toContain("must_add");
+  });
+
   it("rejects a rubric with fewer than three exemplars", () => {
     const thin = PROMPT.replace('\n  - { band: weak, score: 30, body_md: "..." }', "");
     expect(rules(thin)).toContain("too_few_exemplars");

@@ -10,7 +10,7 @@
  * checklist shows all of them at once.
  */
 
-export type RuleKind = "must_remove" | "must_keep" | "max_words" | "min_words";
+export type RuleKind = "must_remove" | "must_keep" | "must_add" | "max_words" | "min_words";
 
 export interface PromptRule {
   kind: RuleKind;
@@ -112,6 +112,13 @@ function evaluateRule(body: string, rule: PromptRule): GateCheck {
         return found
           ? { ...base, status: "pass", message: "kept" }
           : { ...base, status: "fail", message: "no longer in the prompt" };
+      }
+      case "must_add": {
+        // Text the original prompt never had. must_keep reads "no longer in
+        // the prompt", which is wrong for something the learner never had.
+        return compilePattern(rule.pattern!).test(body)
+          ? { ...base, status: "pass", message: "added" }
+          : { ...base, status: "fail", message: "not in the prompt yet" };
       }
       case "max_words": {
         const count = wordCount(body);

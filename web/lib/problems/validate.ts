@@ -23,7 +23,7 @@ export type Rule =
   | "too_few_public_tests" | "too_few_hidden_tests" | "no_adversarial_fixture"
   | "step_without_check" | "step_check_without_assertions" | "too_few_exemplars" | "bad_tool_spec" | "bad_assertion_param"
   | "no_prompt_rules" | "no_probes" | "unknown_rule_kind" | "unknown_assertion_type"
-  | "bad_pattern" | "rule_pattern_absent" | "no_adequate_exemplar"
+  | "bad_pattern" | "rule_pattern_absent" | "rule_pattern_present" | "no_adequate_exemplar"
   | "no_word_range" | "no_rubric" | "rubric_weights" | "no_defence_question"
   | "probe_pattern_absent" | "missing_call_budget" | "matcher_shadows_input"
   | "bad_complexity" | "panel_without_static" | "panel_mismatch"
@@ -148,7 +148,7 @@ function checkAssertionParams(
         "every, first or last prompt", line);
   }
 }
-const RULE_KINDS = new Set(["must_remove", "must_keep", "max_words", "min_words"]);
+const RULE_KINDS = new Set(["must_remove", "must_keep", "must_add", "max_words", "min_words"]);
 const RUBRIC_WEIGHT_TOTAL = 100;
 
 const MEDIUM_AND_ABOVE = new Set(["medium", "hard", "extreme"]);
@@ -754,6 +754,21 @@ function validatePrompt(
         add("rule_pattern_absent",
             `${rule.label} asks for the removal of ${rule.pattern}, which is not in ` +
             "original_prompt, so the rule passes before the learner types anything", at);
+      }
+      // Rule: a must_keep of text the original lacks is an addition, and its
+      // failure would tell the learner the text is "no longer" there.
+      if (rule.kind === "must_keep" && original && !compiled.test(original)) {
+        add("rule_pattern_absent",
+            `${rule.label} asks to keep ${rule.pattern}, which is not in original_prompt, so ` +
+            "there is nothing to keep. Use must_add for text the learner has to add.", at);
+      }
+      // Rule: a must_add of text the original already has is green before the
+      // learner types anything.
+      if (rule.kind === "must_add" && original && compiled.test(original)) {
+        add("rule_pattern_present",
+            `${rule.label} asks for ${rule.pattern} to be added, and original_prompt already ` +
+            "has it, so the rule passes before the learner types anything. Use must_keep for " +
+            "text that has to stay.", at);
       }
     } catch (error) {
       add("bad_pattern",

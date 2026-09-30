@@ -25,6 +25,7 @@ The last six rows land with `eval/` and are not enforced today, because no probl
 | A `track` outside the vocabulary in `web/lib/problems/vocabulary.ts` | The journey map groups problems by track, and an invented track is a problem nobody can find |
 | Steps present without matching `step_check` entries | The Easy checklist would show items that never turn green |
 | A `step_check` with no assertions | It holds for any code, the stub's included, so its step reads unchecked forever. Added 30 September 2026. |
+| A `must_keep` of text the original prompt lacks, or a `must_add` of text it already has | The first asks for an addition under the wrong name, and the second passes before the learner types anything. Added 30 September 2026. |
 | A tool that is not exactly one of `returns`, `fixture`, `sequence` or `by_arg`, or that names a fixture the runner does not have | A typo such as `return:` used to load as a tool that answers null. docs/03 section 3 has the forms. Added 30 September 2026. |
 | Fewer than three rubric exemplars on a design problem | The judge drifts without anchors |
 | An exemplar outside the problem's `word_range` | The structural gate refuses such an answer before grading, and the exemplars anchor the pass threshold and the neighbour vote, so the band would rest on an answer the platform never grades. Added 29 September 2026, when two strong exemplars sat below their own floor. |
@@ -138,7 +139,7 @@ tests:
     spec: { ... }
 ```
 
-Prompt problems replace `stub_code` and `tests` with `original_prompt`, `prompt_rules` and `probes`. Design problems replace them with `word_range`, `required_headings`, `rubric` and `exemplars`.
+Prompt problems replace `stub_code` and `tests` with `original_prompt`, `prompt_rules` and `probes`. A prompt rule is one of five kinds, each checked on every keystroke with no model call: `must_remove` (text in the original prompt that has to go), `must_keep` (text in the original that has to stay), `must_add` (text the original lacks that the learner has to add), `max_words` and `min_words`. `must_add` was added on 30 September 2026. Before it, a `must_keep` of text the original lacked asked for an addition and told a learner who never had the text that it was "no longer in the prompt". Design problems replace them with `word_range`, `required_headings`, `rubric` and `exemplars`.
 
 ### 2.1 The kit
 
