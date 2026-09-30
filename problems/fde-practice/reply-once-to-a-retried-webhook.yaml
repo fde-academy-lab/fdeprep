@@ -110,13 +110,13 @@ steps:
     check_id: s4
 
 step_checks:
-  # Which id becomes the key shows nowhere a check can read: the store's
-  # replies are scripted per case and ignore the key they are given. That the
-  # key is claimed does show, and a_new_ticket_gets_one_reply reads it.
+  # The store's replies are scripted per case and ignore the key, so which id
+  # became the key shows only in the claim's own arguments.
+  # a_new_ticket_gets_one_reply carries evt_870 and dlv_31a0.
   - step_id: s1
     spec:
       assertions:
-        - { type: calls_tool, name: claim }
+        - { type: calls_tool_with, name: claim, args: { key: evt_870 } }
   # In both public retries the lookup already reads the key as held, so a
   # handler that trusts the lookup can pass them. This check runs its own
   # race: the lookup reads absent and the claim is already taken.
@@ -365,6 +365,7 @@ tests:
         - { type: does_not_call_tool, name: post_reply }
         - { type: does_not_call_tool, name: mark_done }
         - { type: does_not_call_tool, name: release }
+        - { type: calls_tool_with, name: claim, args: { key: evt_893 } }
 
   - name: two_deliveries_race_past_the_same_lookup
     visibility: hidden
@@ -385,6 +386,7 @@ tests:
         - { type: does_not_call_tool, name: post_reply }
         - { type: llm_calls_at_most, value: 0 }
         - { type: returns_matches, value: '"http_status":\s*409' }
+        - { type: calls_tool_with, name: claim, args: { key: evt_902 } }
 
   - name: a_reply_that_did_not_post_is_released
     visibility: hidden
@@ -405,6 +407,7 @@ tests:
         - { type: calls_tool, name: release }
         - { type: does_not_call_tool, name: mark_done }
         - { type: returns_matches, value: '"http_status":\s*503' }
+        - { type: calls_tool_with, name: claim, args: { key: evt_911 } }
 
 reference_md: |
   The handler had a duplicate check, and it failed twice over. It was keyed on
