@@ -12,6 +12,7 @@ import Link from "next/link";
 import type { Route } from "next";
 import { ArrowUpRight, ChevronRight, CircleDashed } from "lucide-react";
 import type { GateView, SubmissionView } from "@/lib/submissions/view";
+import { failHeadline } from "@/lib/submissions/headline";
 import type { Visibility } from "@/lib/policy/tiers";
 import { StatusBadge, StatusIcon, type StatusKind } from "@/components/ui/status";
 import { cn } from "@/components/ui/cn";
@@ -113,7 +114,7 @@ export function CodeResults({ view, running, notice, visibility, callBudget }: {
     : verdict === "error" ? (view.message ?? "The runner failed. Your attempt was not counted. Try again.")
     : verdict === "pass" ? (view.kind === "run" ? "Every public test passes. Submit when you are ready."
                             : "Passed. Every gate is green.")
-    : `${pub.passed} of ${pub.total} public tests pass.`;
+    : failHeadline(view.gates, visibility);
   const headKind: StatusKind = verdict === "pass" ? "pass"
     : verdict === "error" || verdict === "timeout" ? "error" : "fail";
 
