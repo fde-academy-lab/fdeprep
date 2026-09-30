@@ -124,32 +124,56 @@ step_checks:
       budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: returns_matches, value: "(?i)ring the bell for flat 2B" }
-  # s2 carries its own case, because no public history holds two survivors
-  # and so none shows their order. The model books the collection from both
-  # the requirement and the approval only when their text reaches it in the
-  # order they were said.
+  # s2 carries its own cases, because no public history holds two survivors
+  # and so none shows their order. The model acts on both survivors only when
+  # their text reaches it in the order they were said. The first case says
+  # the requirement first and the second says the approval first, so code
+  # that writes survivors grouped by kind, in either order of kinds, fails
+  # one of them. In the second the requirement changes what was approved, so
+  # the order carries the meaning.
   - step_id: s2
     spec:
-      kind: agent_run
-      input: { question: "Book the collection for this customer." }
-      llm_script:
-        - { match: { regex: 'side door on Ferry Road[\s\S]*waived the collection fee' },
-            reply: "Final Answer: I booked a free collection from the side door on Ferry Road." }
-        - { match: { contains: "waived the collection fee" },
-            reply: "Final Answer: I booked a free collection from the front door." }
-        - { match: "*", reply: "Action: history()" }
-      tools:
-        history:
-          returns:
-            status: 200
-            turns:
-              - { n: 1, kind: requirement, text: "Collect the parcel from the side door on Ferry Road." }
-              - { n: 2, kind: chat, text: "Thanks for sorting this out." }
-              - { n: 3, kind: approval, text: "The team lead waived the collection fee." }
-              - { n: 4, kind: chat, text: "I will look out for the driver." }
-      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
-      assertions:
-        - { type: returns_matches, value: "(?i)side door on Ferry Road" }
+      cases:
+        - kind: agent_run
+          input: { question: "Book the collection for this customer." }
+          llm_script:
+            - { match: { regex: 'side door on Ferry Road[\s\S]*waived the collection fee' },
+                reply: "Final Answer: I booked a free collection from the side door on Ferry Road." }
+            - { match: { contains: "waived the collection fee" },
+                reply: "Final Answer: I booked a free collection from the front door." }
+            - { match: "*", reply: "Action: history()" }
+          tools:
+            history:
+              returns:
+                status: 200
+                turns:
+                  - { n: 1, kind: requirement, text: "Collect the parcel from the side door on Ferry Road." }
+                  - { n: 2, kind: chat, text: "Thanks for sorting this out." }
+                  - { n: 3, kind: approval, text: "The team lead waived the collection fee." }
+                  - { n: 4, kind: chat, text: "I will look out for the driver." }
+          budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+          assertions:
+            - { type: returns_matches, value: "(?i)side door on Ferry Road" }
+        - kind: agent_run
+          input: { question: "Book the redelivery for this customer." }
+          llm_script:
+            - { match: { regex: 'free redelivery to the home address[\s\S]*office reception at 14 Mill Lane' },
+                reply: "Final Answer: I booked a free redelivery to the office reception at 14 Mill Lane." }
+            - { match: { contains: "free redelivery to the home address" },
+                reply: "Final Answer: I booked a free redelivery to the home address." }
+            - { match: "*", reply: "Action: history()" }
+          tools:
+            history:
+              returns:
+                status: 200
+                turns:
+                  - { n: 1, kind: approval, text: "The shift manager approved a free redelivery to the home address." }
+                  - { n: 2, kind: chat, text: "That is kind of you." }
+                  - { n: 3, kind: requirement, text: "Send it to the office reception at 14 Mill Lane instead, because nobody is home on weekdays." }
+                  - { n: 4, kind: chat, text: "Speak soon." }
+          budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+          assertions:
+            - { type: returns_matches, value: "(?i)office reception at 14 Mill Lane" }
   # s3 carries its own case, because the public answers turned green once
   # TODO 2 wrote the survivors, before any count existed. Five of the seven
   # turns are chat, and the handover says what was left out only when one

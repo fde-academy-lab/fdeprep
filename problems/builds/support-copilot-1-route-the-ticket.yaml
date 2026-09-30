@@ -134,20 +134,32 @@ step_checks:
         - { type: returns_matches, value: '"intent":\s*"(billing|delivery|plan|refund)"' }
   # No public reply names an order number its ticket lacks, so code that
   # passes the model's number through unchecked passed s3 when it read
-  # them. s3 runs a case of its own: the model's label is a queue, and its
-  # order number swaps two digits of the one the customer wrote. The route
-  # keeps the label and drops the number, and the stub's triage route fails.
+  # them. s3 runs two cases of its own on one ticket, and holds only when
+  # both do. In the first the model's order number swaps two digits of the
+  # one the customer wrote, and the route drops it. In the second the model
+  # copies the number exactly, and the route keeps it, so code that drops
+  # every number fails too. The stub's triage route fails both.
   - step_id: s3
     spec:
-      kind: agent_run
-      input: { question: "Order MK-21148 came with the box for two. We pay for the family plan, so half of us had no dinner." }
-      llm_script:
-        - { match: "*", reply: '{"intent": "delivery", "order_id": "MK-21184"}' }
-      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
-      assertions:
-        - { type: valid_json_return,
-            schema: { type: object, required: [intent, order_id],
-                      properties: { intent: { const: delivery }, order_id: { type: "null" } } } }
+      cases:
+        - kind: agent_run
+          input: { question: "Order MK-21148 came with the box for two. We pay for the family plan, so half of us had no dinner." }
+          llm_script:
+            - { match: "*", reply: '{"intent": "delivery", "order_id": "MK-21184"}' }
+          budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
+          assertions:
+            - { type: valid_json_return,
+                schema: { type: object, required: [intent, order_id],
+                          properties: { intent: { const: delivery }, order_id: { type: "null" } } } }
+        - kind: agent_run
+          input: { question: "Order MK-21148 came with the box for two. We pay for the family plan, so half of us had no dinner." }
+          llm_script:
+            - { match: "*", reply: '{"intent": "delivery", "order_id": "MK-21148"}' }
+          budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
+          assertions:
+            - { type: valid_json_return,
+                schema: { type: object, required: [intent, order_id],
+                          properties: { intent: { const: delivery }, order_id: { const: MK-21148 } } } }
   - step_id: s4
     spec:
       assertions:

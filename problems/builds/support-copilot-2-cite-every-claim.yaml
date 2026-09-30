@@ -191,31 +191,57 @@ step_checks:
       assertions:
         - { type: returns_matches, value: '"answer":\s*"' }
   # Every public draft cites a shown chunk in every sentence, so code that
-  # sends every draft passed s4 when it read them. s4 runs a case of its own:
-  # a draft whose middle sentence cites nothing. The stub never searches, so
-  # it fails here too.
+  # sends every draft passed s4 when it read them. s4 runs two cases of its
+  # own on one ticket, and holds only when both do. In the first the draft's
+  # middle sentence cites nothing, and the draft is held. In the second every
+  # sentence cites a chunk that was shown, and the draft is sent with both
+  # ids, so code that holds every draft fails too. The stub never searches,
+  # so it fails both.
   - step_id: s4
     spec:
-      kind: agent_run
-      input: { question: "The courier left my box on the step in the rain and the cardboard fell apart. What happens now? Order MK-21306." }
-      llm_script:
-        - { match: { contains: "damaged in transit" },
-            reply: "A box damaged in transit is replaced free of charge [P-21]. The replacement will reach you tomorrow morning. Report the damage from the account page within 48 hours of delivery [P-24]." }
-        - { match: "*", reply: '{"intent": "delivery", "order_id": "MK-21306"}' }
-      tools:
-        search:
-          returns:
-            status: 200
-            chunks:
-              - { id: P-21, score: 0.83, text: "A box damaged in transit is replaced free of charge." }
-              - { id: P-24, score: 0.69, text: "Damage is reported from the account page within 48 hours of delivery." }
-      budget: { max_llm_calls: 3, max_tool_calls: 3, wall_ms: 5000 }
-      assertions:
-        - { type: calls_tool, name: search }
-        - { type: valid_json_return,
-            schema: { type: object, required: [intent, answer, citations],
-                      properties: { intent: { const: delivery }, answer: { type: "null" },
-                                    citations: { type: array, maxItems: 0 } } } }
+      cases:
+        - kind: agent_run
+          input: { question: "The courier left my box on the step in the rain and the cardboard fell apart. What happens now? Order MK-21306." }
+          llm_script:
+            - { match: { contains: "damaged in transit" },
+                reply: "A box damaged in transit is replaced free of charge [P-21]. The replacement will reach you tomorrow morning. Report the damage from the account page within 48 hours of delivery [P-24]." }
+            - { match: "*", reply: '{"intent": "delivery", "order_id": "MK-21306"}' }
+          tools:
+            search:
+              returns:
+                status: 200
+                chunks:
+                  - { id: P-21, score: 0.83, text: "A box damaged in transit is replaced free of charge." }
+                  - { id: P-24, score: 0.69, text: "Damage is reported from the account page within 48 hours of delivery." }
+          budget: { max_llm_calls: 3, max_tool_calls: 3, wall_ms: 5000 }
+          assertions:
+            - { type: calls_tool, name: search }
+            - { type: valid_json_return,
+                schema: { type: object, required: [intent, answer, citations],
+                          properties: { intent: { const: delivery }, answer: { type: "null" },
+                                        citations: { type: array, maxItems: 0 } } } }
+        - kind: agent_run
+          input: { question: "The courier left my box on the step in the rain and the cardboard fell apart. What happens now? Order MK-21306." }
+          llm_script:
+            - { match: { contains: "damaged in transit" },
+                reply: "A box damaged in transit is replaced free of charge [P-21]. Report the damage from the account page within 48 hours of delivery [P-24]." }
+            - { match: "*", reply: '{"intent": "delivery", "order_id": "MK-21306"}' }
+          tools:
+            search:
+              returns:
+                status: 200
+                chunks:
+                  - { id: P-21, score: 0.83, text: "A box damaged in transit is replaced free of charge." }
+                  - { id: P-24, score: 0.69, text: "Damage is reported from the account page within 48 hours of delivery." }
+          budget: { max_llm_calls: 3, max_tool_calls: 3, wall_ms: 5000 }
+          assertions:
+            - { type: calls_tool, name: search }
+            - { type: valid_json_return,
+                schema: { type: object, required: [intent, answer, citations],
+                          properties: { intent: { const: delivery },
+                                        answer: { type: string, pattern: '\[P-21\][\s\S]*\[P-24\]' },
+                                        citations: { type: array, minItems: 2, maxItems: 2, uniqueItems: true,
+                                                     items: { enum: [P-21, P-24] } } } } }
 
 hints:
   - Two separate moments decide whether a draft is safe to send. One is what
