@@ -120,7 +120,7 @@ def run_agent(question, llm, tools):
 def test_the_sandbox_inherits_no_environment(monkeypatch):
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "canary-secret-4471")
     monkeypatch.setenv("AWS_SESSION_TOKEN", "canary-token-4471")
-    monkeypatch.setenv("DATABASE_URL", "postgres://canary:4471@db/fdeprep")
+    monkeypatch.setenv("DATABASE_URL", "postgres://db.internal/canary_4471")
     keys = json.loads(_returned(_case(ENV_READER)))
     assert not [k for k in keys if k.startswith("AWS_") or k == "DATABASE_URL"], keys
     # LC_CTYPE is the one variable Python adds itself, under PEP 538, when the
