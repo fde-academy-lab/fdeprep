@@ -8,7 +8,7 @@
  * the same module the structural gate runs on submit, so a count that reads
  * "in range" is a count the server agrees with.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ListTree, Send } from "lucide-react";
 import { evaluateDesignStructure, wordCount } from "@/lib/gate";
 import { answerOutline } from "@/lib/problems/outline";
@@ -23,6 +23,7 @@ import { cn } from "@/components/ui/cn";
 import { ProblemBar } from "@/components/workspace/problem-bar";
 import { WorkspaceLayout } from "@/components/workspace/layout";
 import { CoachBar, useCoach } from "@/components/workspace/coach";
+import { useDraft } from "@/components/workspace/draft";
 import { JudgedResults } from "@/components/workspace/judged-results";
 import {
   AttemptsPanel, GuidePanel, NoteBox, PaneTabs, ProblemIntro, Section, type PaneTab,
@@ -42,7 +43,12 @@ interface Props {
 export default function DesignWorkspace(props: Props) {
   const { problem } = props;
   const [policy, setPolicy] = useState(props.policy);
-  const [body, setBody] = useState("");
+  // The answer as typed lives in draft.live and in the textarea itself, out of
+  // React state, so a key re-renders nothing. The word count, the structure
+  // checks and the coach read `settled`, which follows it after a pause.
+  const storageKey = `fdeprep.design.${problem.id}`;
+  const { draft, settled, change } = useDraft(storageKey, "");
+  const box = useRef<HTMLTextAreaElement>(null);
   const [tab, setTab] = useState<PaneTab>("brief");
   const [hints, setHints] = useState(props.history.hints);
   const [note, setNote] = useState(props.history.note);
@@ -80,25 +86,23 @@ export default function DesignWorkspace(props: Props) {
   const outlineMode = !outline ? "none"
     : policy.layers.steps ? "prefill" : policy.layers.stub ? "offer" : "none";
 
-  const storageKey = `fdeprep.design.${problem.id}`;
+  /** Text from outside the textarea: a restored draft, or the outline. */
+  const put = useCallback((text: string, options: { save: boolean }) => {
+    draft.replace(text, options);
+    if (box.current) box.current.value = text;
+  }, [draft]);
+
   useEffect(() => {
-    try {
-      const draft = localStorage.getItem(storageKey);
-      if (draft) { setBody(draft); return; }
-    } catch { /* a browser with storage blocked still gets a workspace */ }
-    if (outlineMode === "prefill" && outline) setBody(outline);
+    const saved = draft.saved();
+    if (saved) { put(saved, { save: false }); return; }
+    if (outlineMode === "prefill" && outline) put(outline, { save: false });
     // Only on arrival: a learner who clears the outline has chosen a blank page.
-  }, [storageKey]);
+  }, [draft]);
 
-  const onChange = useCallback((next: string) => {
-    setBody(next);
-    try { localStorage.setItem(storageKey, next); } catch { /* blocked */ }
-  }, [storageKey]);
-
-  const words = useMemo(() => wordCount(body), [body]);
-  const structure = useMemo(() => evaluateDesignStructure(body, {
+  const words = useMemo(() => wordCount(settled), [settled]);
+  const structure = useMemo(() => evaluateDesignStructure(settled, {
     word_range: problem.wordRange ?? undefined, required_headings: problem.requiredHeadings,
-  }), [body, problem.wordRange, problem.requiredHeadings]);
+  }), [settled, problem.wordRange, problem.requiredHeadings]);
 
   const act = useCallback(async (path: string, init?: RequestInit) => {
     setGateNotice(null);
@@ -120,8 +124,8 @@ export default function DesignWorkspace(props: Props) {
     if (policy.confirmBeforeSubmit && !confirm(props.rehearsalId
       ? "One submit per problem in a rehearsal. Submit this one?"
       : "This is your only submit today on an Extreme problem. Submit it?")) return;
-    void send("submit", body, { rehearsalId: props.rehearsalId });
-  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, props.rehearsalId, send, body]);
+    void send("submit", draft.live, { rehearsalId: props.rehearsalId });
+  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, props.rehearsalId, send, draft]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -134,7 +138,7 @@ export default function DesignWorkspace(props: Props) {
     return () => window.removeEventListener("keydown", onKey, { capture: true });
   }, [submit]);
 
-  const coach = useCoach({ problemId: problem.id, enabled: policy.coach.enabled, text: body, settledKey });
+  const coach = useCoach({ problemId: problem.id, enabled: policy.coach.enabled, text: settled, settledKey });
   const hintGate = policy.layers.hints ? policy.hints : null;
   const headingChecks = structure.checks.filter((c) => c.kind === "required_heading");
 
@@ -182,12 +186,15 @@ export default function DesignWorkspace(props: Props) {
                         if (h) setHints((prior) => [...prior, h as { ordinal: number; bodyMd: string }]);
                       })}
                       noteSlot={policy.attemptNote.required ? (
-                        <NoteBox note={note} setNote={setNote}
+                        <NoteBox note={note}
                                  required={policy.attemptNote.chars + policy.attemptNote.needed}
-                                 onSave={() => void act("note", {
-                                   method: "PUT", headers: { "content-type": "application/json" },
-                                   body: JSON.stringify({ note }),
-                                 })} />
+                                 onSave={(text) => {
+                                   setNote(text);
+                                   void act("note", {
+                                     method: "PUT", headers: { "content-type": "application/json" },
+                                     body: JSON.stringify({ note: text }),
+                                   });
+                                 }} />
                       ) : null}
                       coachLog={policy.coach.enabled ? coach.log : null}
                       giveUp={policy.giveUp}
@@ -217,17 +224,17 @@ export default function DesignWorkspace(props: Props) {
         <WordMeter words={words} range={problem.wordRange} />
       </div>
       <div className="relative min-h-0 flex-1 overflow-y-auto">
-        {outlineMode !== "none" && outline && !body.trim() ? (
+        {outlineMode !== "none" && outline && !settled.trim() ? (
           <div className="mx-auto flex max-w-[72ch] items-center justify-between gap-3 px-6 pt-4">
             <p className="text-meta text-text-faint">
               The approach map, as headings to write under.
             </p>
-            <Button size="sm" variant="secondary" onClick={() => onChange(outline)}>
+            <Button size="sm" variant="secondary" onClick={() => put(outline, { save: true })}>
               <ListTree aria-hidden /> Start from the outline
             </Button>
           </div>
         ) : null}
-        <textarea value={body} onChange={(event) => onChange(event.target.value)} spellCheck
+        <textarea ref={box} defaultValue="" onChange={(event) => change(event.target.value)} spellCheck
                   aria-label="Your answer"
                   placeholder="Write it the way you would send it. Open on the recommendation, then the reasons."
                   className="mx-auto block h-full min-h-[320px] w-full max-w-[72ch] resize-none bg-transparent

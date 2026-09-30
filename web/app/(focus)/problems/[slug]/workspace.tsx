@@ -8,8 +8,9 @@
  * and the results of the last run. The policy decides every gate; this file
  * draws what it is told and asks again after anything that can move a gate.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
-import CodeMirror from "@uiw/react-codemirror";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import CodeMirror, { type BasicSetupOptions } from "@uiw/react-codemirror";
+import type { EditorView } from "@codemirror/view";
 import { python } from "@codemirror/lang-python";
 import { Check, Play, RotateCcw, Send } from "lucide-react";
 import type { Decision } from "@/lib/policy";
@@ -23,9 +24,10 @@ import { Markdown } from "@/components/ui/markdown";
 import { cn } from "@/components/ui/cn";
 import { ProblemBar } from "@/components/workspace/problem-bar";
 import { WorkspaceLayout } from "@/components/workspace/layout";
-import { editorTheme } from "@/components/workspace/editor-theme";
+import { editorTheme, noWritingAssistant } from "@/components/workspace/editor-theme";
 import { CoachBar, useCoach } from "@/components/workspace/coach";
 import { CodeResults } from "@/components/workspace/code-results";
+import { useDraft } from "@/components/workspace/draft";
 import {
   AttemptsPanel, GuidePanel, NoteBox, PaneTabs, ProblemIntro, Section, type PaneTab,
 } from "@/components/workspace/panels";
@@ -43,16 +45,32 @@ interface Props {
   rehearsalId: number | null;
 }
 
+// docs/01 S4: tab size four, soft wrap off, which is the default. Declared
+// here because the editor rebuilds itself whenever this object changes identity.
+const BASIC_SETUP: BasicSetupOptions = {
+  autocompletion: false, tabSize: 4, highlightActiveLine: true, foldGutter: true, bracketMatching: true,
+};
+
 export default function Workspace(props: Props) {
   const { problem } = props;
+  const stub = problem.stubCode ?? "";
   const [policy, setPolicy] = useState<Decision>(props.policy);
   const [hints, setHints] = useState(props.history.hints);
   const [note, setNote] = useState(props.history.note);
-  const [learnerTest, setLearnerTest] = useState("");
   const [gateNotice, setGateNotice] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState<PaneTab>("brief");
-  const [code, setCode] = useState(problem.stubCode ?? "");
+  // The code as typed lives in draft.live, out of React state, so a key
+  // re-renders the editor and nothing else. settledCode follows it after a
+  // pause, for the coach.
+  const { draft, settled: settledCode, change: onCodeChange } =
+    useDraft(`fdeprep.split.${problem.id}.code`, stub);
+  // What the editor was last told from outside. It changes when a saved draft
+  // is restored and never on a key: the wrapper writes this value over the
+  // document whenever it changes, so a copy that lagged the typing would put
+  // older text back over the newest keys.
+  const [editorDoc, setEditorDoc] = useState(stub);
+  const editorView = useRef<EditorView | null>(null);
   const [settledKey, setSettledKey] = useState(0);
   const [past, setPast] = useState<PastSubmission[]>(props.history.submissions);
   const [stepStatus, setStepStatus] = useState<StepView[]>(props.history.steps);
@@ -100,31 +118,28 @@ export default function Workspace(props: Props) {
     }
   }, [problem.id, refreshPolicy]);
 
-  const storageKey = `fdeprep.split.${problem.id}`;
+  // A saved draft comes back on arrival. The storage read waits for the
+  // browser, since the server rendered the starter code.
   useEffect(() => {
-    try {
-      const draft = localStorage.getItem(`${storageKey}.code`);
-      if (draft) setCode(draft);
-    } catch { /* a browser with storage blocked still gets a working workspace */ }
-  }, [storageKey]);
-
-  const onCodeChange = useCallback((next: string) => {
-    setCode(next);
-    try { localStorage.setItem(`${storageKey}.code`, next); } catch { /* blocked */ }
-  }, [storageKey]);
+    const saved = draft.saved();
+    if (saved) {
+      draft.replace(saved, { save: false });
+      setEditorDoc(saved);
+    }
+  }, [draft]);
 
   const run = useCallback(() => {
     if (running || !policy.run.allowed) return;
-    void send("run", code, { rehearsalId: props.rehearsalId });
-  }, [running, policy.run.allowed, send, code, props.rehearsalId]);
+    void send("run", draft.live, { rehearsalId: props.rehearsalId });
+  }, [running, policy.run.allowed, send, draft, props.rehearsalId]);
 
   const submit = useCallback(() => {
     if (running || !policy.submit.allowed) return;
     if (policy.confirmBeforeSubmit && !confirm(props.rehearsalId
       ? "One submit per problem in a rehearsal. Submit this one?"
       : "This is your only submit today on an Extreme problem. Submit it?")) return;
-    void send("submit", code, { rehearsalId: props.rehearsalId });
-  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, send, code, props.rehearsalId]);
+    void send("submit", draft.live, { rehearsalId: props.rehearsalId });
+  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, send, draft, props.rehearsalId]);
 
   // Cmd or Ctrl Enter runs, with Shift it submits. Captured before the editor
   // sees it, since CodeMirror binds Mod-Enter to inserting a blank line.
@@ -140,7 +155,7 @@ export default function Workspace(props: Props) {
   }, [run, submit]);
 
   const coach = useCoach({
-    problemId: problem.id, enabled: policy.coach.enabled, text: code, settledKey,
+    problemId: problem.id, enabled: policy.coach.enabled, text: settledCode, settledKey,
   });
 
   const reveal = () => void act("hints", { method: "POST" }).then((hint) => {
@@ -148,7 +163,7 @@ export default function Workspace(props: Props) {
   });
 
   const hintGate = policy.layers.hints ? policy.hints : null;
-  const extensions = useMemo(() => [python(), ...editorTheme], []);
+  const extensions = useMemo(() => [python(), ...editorTheme, noWritingAssistant], []);
 
   const left = (
     <div className="flex h-full min-h-0 flex-col bg-bg">
@@ -179,25 +194,11 @@ export default function Workspace(props: Props) {
             {problem.steps.length ? <Steps steps={problem.steps} status={stepStatus} /> : null}
 
             {policy.learnerTests.required ? (
-              <Section title="Write your tests first"
-                       aside={policy.learnerTests.withAssertion ? "Saved with an assertion" : null}>
-                <p className="text-text-dim">
-                  On Extreme the tests come first. Submit stays closed until one of them contains an
-                  assertion.
-                </p>
-                <textarea value={learnerTest} onChange={(e) => setLearnerTest(e.target.value)}
-                          rows={6} aria-label="Your test" spellCheck={false}
-                          className="w-full rounded-control border border-border-control bg-surface
-                                     p-3 font-mono text-meta leading-relaxed text-text outline-none
-                                     focus:border-accent" />
-                <Button size="sm" disabled={busy || !learnerTest.trim()}
-                        onClick={() => void act("learner-tests", {
-                          method: "POST", headers: { "content-type": "application/json" },
-                          body: JSON.stringify({ body: learnerTest }),
-                        }).then((ok) => { if (ok) setLearnerTest(""); })}>
-                  Save this test
-                </Button>
-              </Section>
+              <LearnerTestBox busy={busy} withAssertion={policy.learnerTests.withAssertion}
+                              onSave={async (body) => Boolean(await act("learner-tests", {
+                                method: "POST", headers: { "content-type": "application/json" },
+                                body: JSON.stringify({ body }),
+                              }))} />
             ) : null}
 
             {problem.defenceQuestion ? (
@@ -216,12 +217,15 @@ export default function Workspace(props: Props) {
             kit={problem.kit} hintGate={hintGate} hints={hints} onReveal={reveal} busy={busy}
             coachLog={policy.coach.enabled ? coach.log : null}
             noteSlot={policy.attemptNote.required ? (
-              <NoteBox note={note} setNote={setNote}
+              <NoteBox note={note}
                        required={policy.attemptNote.chars + policy.attemptNote.needed}
-                       onSave={() => void act("note", {
-                         method: "PUT", headers: { "content-type": "application/json" },
-                         body: JSON.stringify({ note }),
-                       })} />
+                       onSave={(text) => {
+                         setNote(text);
+                         void act("note", {
+                           method: "PUT", headers: { "content-type": "application/json" },
+                           body: JSON.stringify({ note: text }),
+                         });
+                       }} />
             ) : null}
             giveUp={policy.giveUp}
             onGiveUp={() => {
@@ -255,9 +259,11 @@ export default function Workspace(props: Props) {
           <span className="hidden md:inline">Python 3.12</span>
           <button type="button" title="Put the starter code back"
                   onClick={() => {
-                    if (confirm("Replace your code with the starter code? Your draft is lost.")) {
-                      onCodeChange(problem.stubCode ?? "");
-                    }
+                    if (!confirm("Replace your code with the starter code? Your draft is lost.")) return;
+                    // Through the editor, as an edit, so it saves and settles
+                    // like any other change and can be undone.
+                    const view = editorView.current;
+                    view?.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: stub } });
                   }}
                   className="inline-flex items-center gap-1 rounded-control px-1.5 py-1 hover:bg-surface-2
                              hover:text-text">
@@ -266,11 +272,9 @@ export default function Workspace(props: Props) {
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-hidden">
-        <CodeMirror value={code} onChange={onCodeChange} height="100%" theme="none"
-                    extensions={extensions} aria-label="Your solution"
-                    // docs/01 S4: tab size four, soft wrap off, which is the default.
-                    basicSetup={{ autocompletion: false, tabSize: 4, highlightActiveLine: true,
-                                  foldGutter: true, bracketMatching: true }}
+        <CodeMirror value={editorDoc} onChange={onCodeChange} height="100%" theme="none"
+                    extensions={extensions} aria-label="Your solution" basicSetup={BASIC_SETUP}
+                    onCreateEditor={(view) => { editorView.current = view; }}
                     className="h-full" />
       </div>
     </div>
@@ -319,6 +323,36 @@ export default function Workspace(props: Props) {
                        dock={dock} editorLabel="Code" editorShare={58}
                        dockSignal={`${view?.id ?? ""}:${view?.status ?? ""}:${coach.current?.say ?? ""}:${notice ?? ""}`} />
     </div>
+  );
+}
+
+/**
+ * Extreme's own tests, written before Submit opens. The text is this box's own
+ * state, so typing a test re-renders the box and not the workspace.
+ */
+function LearnerTestBox({ busy, withAssertion, onSave }: {
+  busy: boolean;
+  withAssertion: boolean;
+  /** Resolves true when the server kept the test. */
+  onSave: (body: string) => Promise<boolean>;
+}) {
+  const [text, setText] = useState("");
+  return (
+    <Section title="Write your tests first" aside={withAssertion ? "Saved with an assertion" : null}>
+      <p className="text-text-dim">
+        On Extreme the tests come first. Submit stays closed until one of them contains an
+        assertion.
+      </p>
+      <textarea value={text} onChange={(e) => setText(e.target.value)}
+                rows={6} aria-label="Your test" spellCheck={false}
+                className="w-full rounded-control border border-border-control bg-surface
+                           p-3 font-mono text-meta leading-relaxed text-text outline-none
+                           focus:border-accent" />
+      <Button size="sm" disabled={busy || !text.trim()}
+              onClick={() => void onSave(text).then((ok) => { if (ok) setText(""); })}>
+        Save this test
+      </Button>
+    </Section>
   );
 }
 

@@ -10,7 +10,7 @@
  * and reads the text with the problem's own patterns, never with a model.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import CodeMirror from "@uiw/react-codemirror";
+import CodeMirror, { type BasicSetupOptions } from "@uiw/react-codemirror";
 import { EditorView } from "@codemirror/view";
 import { CheckCheck, Send } from "lucide-react";
 import { diffCounts, diffLines } from "@/lib/diff";
@@ -25,8 +25,9 @@ import { StatusIcon } from "@/components/ui/status";
 import { cn } from "@/components/ui/cn";
 import { ProblemBar } from "@/components/workspace/problem-bar";
 import { WorkspaceLayout } from "@/components/workspace/layout";
-import { editorTheme } from "@/components/workspace/editor-theme";
+import { editorTheme, noWritingAssistant } from "@/components/workspace/editor-theme";
 import { CoachBar, useCoach } from "@/components/workspace/coach";
+import { useDraft } from "@/components/workspace/draft";
 import { JudgedResults, LocalChecks } from "@/components/workspace/judged-results";
 import {
   AttemptsPanel, GuidePanel, NoteBox, PaneTabs, ProblemIntro, Section, type PaneTab,
@@ -45,14 +46,27 @@ interface Props {
 
 type Mode = "original" | "edited" | "diff";
 
-const DEBOUNCE_MS = 120;
+// Declared here because the editor rebuilds itself whenever this object
+// changes identity.
+const BASIC_SETUP: BasicSetupOptions = {
+  lineNumbers: true, foldGutter: false, autocompletion: false, highlightActiveLine: true,
+};
 
 export default function PromptWorkspace(props: Props) {
   const { problem } = props;
   const original = problem.originalPrompt ?? "";
   const rules = problem.promptRules as PromptRule[];
   const [policy, setPolicy] = useState(props.policy);
-  const [prompt, setPrompt] = useState(original);
+  // The prompt as typed lives in draft.live, out of React state, so a key
+  // re-renders the editor and nothing else. The checklist, the diff and the
+  // coach read `settled`, which follows it after a pause.
+  const storageKey = `fdeprep.prompt.${problem.id}`;
+  const { draft, settled, change } = useDraft(storageKey, original);
+  // What the editor was last told from outside: a restored draft, or the
+  // newest text when the editor mounts again after a mode switch. Never a
+  // copy that lags the typing, because the wrapper writes this value over the
+  // document whenever it changes.
+  const [editorDoc, setEditorDoc] = useState(original);
   const [mode, setMode] = useState<Mode>("edited");
   const [touched, setTouched] = useState(false);
   const [checked, setChecked] = useState(false);
@@ -84,26 +98,26 @@ export default function PromptWorkspace(props: Props) {
     }, ...prior.filter((s) => s.id !== view.id)]);
   }, [view]);
 
-  const storageKey = `fdeprep.prompt.${problem.id}`;
   useEffect(() => {
-    try {
-      const draft = localStorage.getItem(storageKey);
-      if (draft) { setPrompt(draft); setTouched(true); setMode("diff"); }
-    } catch { /* a browser with storage blocked still gets a workspace */ }
-  }, [storageKey]);
+    const saved = draft.saved();
+    if (saved) {
+      draft.replace(saved, { save: false });
+      setEditorDoc(saved);
+      setTouched(true);
+      setMode("diff");
+    }
+  }, [draft]);
 
   const onChange = useCallback((next: string) => {
-    setPrompt(next);
-    setChecked(false);
+    change(next);
+    if (checked) setChecked(false);
     if (!touched) setTouched(true);
-    try { localStorage.setItem(storageKey, next); } catch { /* blocked */ }
-  }, [storageKey, touched]);
+  }, [change, checked, touched]);
 
-  const [settled, setSettled] = useState(original);
-  useEffect(() => {
-    const timer = setTimeout(() => setSettled(prompt), DEBOUNCE_MS);
-    return () => clearTimeout(timer);
-  }, [prompt]);
+  const changeMode = (next: Mode) => {
+    setEditorDoc(draft.live);
+    setMode(next);
+  };
 
   const gate: StaticGate = useMemo(() => evaluatePromptRules(settled, rules), [settled, rules]);
   const diff = useMemo(() => diffLines(original, settled), [original, settled]);
@@ -129,8 +143,8 @@ export default function PromptWorkspace(props: Props) {
     if (policy.confirmBeforeSubmit && !confirm(props.rehearsalId
       ? "One submit per problem in a rehearsal. Submit this one?"
       : "This is your only submit today on an Extreme problem. Submit it?")) return;
-    void send("submit", prompt, { rehearsalId: props.rehearsalId });
-  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, props.rehearsalId, send, prompt]);
+    void send("submit", draft.live, { rehearsalId: props.rehearsalId });
+  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, props.rehearsalId, send, draft]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -143,9 +157,10 @@ export default function PromptWorkspace(props: Props) {
     return () => window.removeEventListener("keydown", onKey, { capture: true });
   }, [submit]);
 
-  const coach = useCoach({ problemId: problem.id, enabled: policy.coach.enabled, text: prompt, settledKey });
+  const coach = useCoach({ problemId: problem.id, enabled: policy.coach.enabled, text: settled, settledKey });
   const hintGate = policy.layers.hints ? policy.hints : null;
-  const extensions = useMemo(() => [...editorTheme, EditorView.lineWrapping], []);
+  const extensions = useMemo(
+    () => [...editorTheme, EditorView.lineWrapping, noWritingAssistant], []);
 
 
   const left = (
@@ -182,12 +197,15 @@ export default function PromptWorkspace(props: Props) {
                         if (h) setHints((prior) => [...prior, h as { ordinal: number; bodyMd: string }]);
                       })}
                       noteSlot={policy.attemptNote.required ? (
-                        <NoteBox note={note} setNote={setNote}
+                        <NoteBox note={note}
                                  required={policy.attemptNote.chars + policy.attemptNote.needed}
-                                 onSave={() => void act("note", {
-                                   method: "PUT", headers: { "content-type": "application/json" },
-                                   body: JSON.stringify({ note }),
-                                 })} />
+                                 onSave={(text) => {
+                                   setNote(text);
+                                   void act("note", {
+                                     method: "PUT", headers: { "content-type": "application/json" },
+                                     body: JSON.stringify({ note: text }),
+                                   });
+                                 }} />
                       ) : null}
                       coachLog={policy.coach.enabled ? coach.log : null}
                       giveUp={policy.giveUp}
@@ -216,7 +234,7 @@ export default function PromptWorkspace(props: Props) {
         <div role="tablist" aria-label="Editor mode" className="flex items-end">
           {(["original", "edited", "diff"] as Mode[]).map((name) => (
             <button key={name} type="button" role="tab" aria-selected={mode === name}
-                    onClick={() => setMode(name)}
+                    onClick={() => changeMode(name)}
                     className={cn("-mb-px h-9 border-b-2 px-3 font-medium capitalize",
                                   mode === name ? "border-text-faint text-text"
                                     : "border-transparent text-text-dim hover:text-text")}>
@@ -235,11 +253,9 @@ export default function PromptWorkspace(props: Props) {
             {original}
           </pre>
         ) : mode === "edited" ? (
-          <CodeMirror value={prompt} height="100%" onChange={onChange} theme="none"
+          <CodeMirror value={editorDoc} height="100%" onChange={onChange} theme="none"
                       extensions={extensions} aria-label="The system prompt"
-                      basicSetup={{ lineNumbers: true, foldGutter: false, autocompletion: false,
-                                    highlightActiveLine: true }}
-                      className="h-full" />
+                      basicSetup={BASIC_SETUP} className="h-full" />
         ) : (
           <DiffPane lines={diff} />
         )}

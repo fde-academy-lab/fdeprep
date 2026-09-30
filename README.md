@@ -8,7 +8,7 @@ The platform exists to produce one signal the placement side can trust: is this 
 |---|---|
 | **Built** | 14 to 20 September 2026, twenty-four merged pull requests |
 | **Size** | 21,103 lines of TypeScript in the web application, 5,248 lines of Python in the runner and judge, 1,083 lines of CDK |
-| **Tests** | 1,745 across four suites, all green: 702 web, 980 Python, 37 infrastructure, 26 voice |
+| **Tests** | 1,760 across four suites, all green: 717 web, 980 Python, 37 infrastructure, 26 voice |
 | **Content** | 92 problems and 12 voice questions, each solved by its author before it shipped |
 | **State** | Runs end to end on a laptop with `docker compose up`. Not yet deployed anywhere. Section 3 is the deploy. |
 
@@ -451,6 +451,8 @@ AUTH_DEV_LEARNER=1 npm run dev
 
 Open <http://localhost:3000>.
 
+`npm run dev` is slower than the deployed site by design. It compiles each screen the first time you open it and runs React's development build, which measured 3.6 to 6.4 MB of script per page against about 0.5 MB in a production build on 30 September 2026. Judge speed on a production build (`npm run build`, then `npm start`), which needs the GitHub sign-in from section 3 because `AUTH_DEV_LEARNER` refuses to run in production.
+
 ```bash
 # 7. Panelist 2's embedding model, 46MB, verified by checksum
 python scripts/fetch_embedding_model.py
@@ -527,7 +529,7 @@ A five-minute path that shows the product's actual argument rather than its scre
 ```bash
 createdb fdeprep_test
 export TEST_DATABASE_URL="postgres://localhost/fdeprep_test"
-cd web   && npm test                   # 702 tests
+cd web   && npm test                   # 717 tests
 cd ../   && .venv/bin/python -m pytest -q   # 980 tests, some skip, see below
 cd voice && npm test                   # 26 tests
 cd ../infra && npm test                # 37 tests
@@ -1156,7 +1158,7 @@ An `error` verdict never consumes a learner's allowance. This is the rule that k
 | Database | PostgreSQL 16 through `pg` | The workload is joins and aggregates: heatmaps, rollups, stuck lists, CSV exports. |
 | Runner and judge | Python 3.12 on Lambda container images | Zero idle cost, a hard kill on hang, one invocation per submission with no shared state. |
 | Voice socket | TypeScript on API Gateway WebSocket, plain `ws` locally | The same session code runs in both, so local development exercises the real thing. |
-| Tests | vitest for the web application, the Node test runner for voice and infrastructure, pytest for Python | 1,745 tests total. |
+| Tests | vitest for the web application, the Node test runner for voice and infrastructure, pytest for Python | 1,760 tests total. |
 
 **Do not introduce a third language.** TypeScript for the web, Python for the runner and judge, and that is the whole list.
 
