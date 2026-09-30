@@ -95,7 +95,8 @@ stub_code: |
       # TODO 4: otherwise call tools["book_redelivery"] with all three fields,
       #         None where the customer said null, and return the booking
 
-      return json.dumps({"action": "ask", "ask_about": ask_about})
+      # Until TODO 3 and TODO 4 are written, this shows what TODO 2 collected.
+      return json.dumps({"ask_about": ask_about})
 
 steps:
   - id: s1
@@ -114,14 +115,14 @@ steps:
 step_checks:
   # Reads a_request_with_no_date_asks_for_one: the date is left out and the
   # safe place is null, so only the date needs asking. needs_asking is called
-  # from s2's loop, so s1 shows once s2 collects the fields.
+  # from s2's loop, so s1 shows once s2 collects the fields. Whether the
+  # answer is an ask is s3's work, so s1 reads the list alone.
   - step_id: s1
     spec:
       assertions:
         - { type: valid_json_return,
-            schema: { type: object, required: [action, ask_about],
-                      properties: { action: { const: ask },
-                                    ask_about: { const: [date] } } } }
+            schema: { type: object, required: [ask_about],
+                      properties: { ask_about: { const: [date] } } } }
   # s2 carries its own case, because no public message leaves more than one
   # field to ask about, so no public case shows the order. Here two fields
   # are left out, and FIELDS puts time_window before safe_place.
@@ -138,10 +139,18 @@ step_checks:
         - { type: valid_json_return,
             schema: { type: object, required: [ask_about],
                       properties: { ask_about: { const: [time_window, safe_place] } } } }
+  # Reads a_request_with_no_date_asks_for_one as s1 does. The stub's last
+  # line shows the list with no action, so the ask, with nothing booked,
+  # shows once s3 returns it.
   - step_id: s3
     spec:
       assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [action, ask_about],
+                      properties: { action: { const: ask },
+                                    ask_about: { const: [date] } } } }
         - { type: returns_matches, value: '"ask_about"\s*:\s*\[\s*"date"\s*\]' }
+        - { type: does_not_call_tool, name: book_redelivery }
   - step_id: s4
     spec:
       assertions:
@@ -243,11 +252,16 @@ coach:
       say: >-
         The date key is there and it holds null. Can a redelivery be booked
         without a day?
+    - id: ask-in-table-order
+      when: { test_failed: the_ask_lists_its_fields_in_the_table_order }
+      say: >-
+        Every field needs asking in that case. The contract lists the ask in
+        the table's order, date first. What order does your list come out in?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
         Write needs_asking for one field first. An absent key is the easy
-        case, and it turns the no-date public test green.
+        case, and the only field the no-date public test asks about is absent.
     - id: see-the-hints
       when: { failed_runs_at_least: 3 }
       say: >-
@@ -348,6 +362,28 @@ tests:
         - { type: does_not_call_tool, name: book_redelivery }
         - { type: returns_matches, value: '"ask_about"\s*:\s*\[\s*"date"\s*\]' }
         - { type: no_exception }
+
+  # All three fields need asking, one of them because its null is not
+  # allowed, so any order other than the table's shows.
+  - name: the_ask_lists_its_fields_in_the_table_order
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Sorry I missed the driver this morning. Please bring the parcel
+          round again as soon as you can.
+      llm_script:
+        - { match: "*", reply: '{"date": null}' }
+      tools:
+        book_redelivery: { returns: { status: 200, booking_ref: "RD-5526" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: book_redelivery }
+        - { type: valid_json_return,
+            schema: { type: object, required: [action, ask_about],
+                      properties: { action: { const: ask },
+                                    ask_about: { const: [date, time_window, safe_place] } } } }
 
 reference_md: |
   Two changes that each fixed a real complaint produced one bug from opposite

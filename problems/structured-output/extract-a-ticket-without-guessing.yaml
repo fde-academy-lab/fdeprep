@@ -117,8 +117,21 @@ step_checks:
     spec:
       assertions:
         - { type: returns_matches, value: '"order_id"\s*:\s*"HW-' }
+  # s4 carries its own case, because every public reply holds only values
+  # the email states, so a stated_in that says yes to everything passes them
+  # all. Here the order number and the address differ from the email in case
+  # alone, and the phone number is one the customer never wrote.
   - step_id: s4
     spec:
+      kind: agent_run
+      input:
+        question: >-
+          The blender from order HW-21163 leaks where the jug meets the base.
+          Please reply to Tom.Reyes@Example.net. Thanks, Tom
+      llm_script:
+        - { match: "*",
+            reply: '{"order_id": "hw-21163", "email": "tom.reyes@example.net", "phone": "07700 900314"}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
         - { type: valid_json_return,
             schema: { type: object, required: [order_id, email, phone],
@@ -126,6 +139,11 @@ step_checks:
                       properties: { order_id: { type: [string, "null"] },
                                     email: { type: [string, "null"] },
                                     phone: { type: [string, "null"] } } } }
+        - { type: valid_json_return,
+            schema: { type: object,
+                      properties: { order_id: { enum: ["hw-21163", "HW-21163"] },
+                                    email: { enum: ["tom.reyes@example.net", "Tom.Reyes@Example.net"] },
+                                    phone: { type: "null" } } } }
 
 hints:
   - The prompt already asks for null. Look at what your code does after the
@@ -223,6 +241,12 @@ coach:
       say: >-
         The model left a field out and added one nobody asked for. Where do
         your ticket's keys come from, the reply or FIELDS?
+    - id: case-differs
+      when: { test_failed: a_value_in_different_capitals_is_still_stated }
+      say: >-
+        The customer wrote the order number in capitals and the model wrote
+        it in lower case. Does stated_in find a value when only the case
+        differs?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -335,6 +359,27 @@ tests:
                                     phone: { type: [string, "null"] } } } }
         - { type: returns_matches, value: '"email"\s*:\s*null' }
         - { type: returns_matches, value: '"phone"\s*:\s*"07700 900772"' }
+
+  # The model's values differ from the email in case alone, so a check that
+  # does not ignore case throws both away.
+  - name: a_value_in_different_capitals_is_still_stated
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Hello, the cafetiere from order HW-20874 arrived with a chip in the
+          glass. Please reply to Ines.Carvalho@example.org.
+      llm_script:
+        - { match: "*",
+            reply: '{"order_id": "hw-20874", "email": "ines.carvalho@example.org", "phone": null}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [order_id, email, phone],
+                      properties: { order_id: { enum: ["hw-20874", "HW-20874"] },
+                                    email: { enum: ["ines.carvalho@example.org", "Ines.Carvalho@example.org"] },
+                                    phone: { type: "null" } } } }
 
 reference_md: |
   The prompt asks for null, and the model still guesses sometimes. Asking

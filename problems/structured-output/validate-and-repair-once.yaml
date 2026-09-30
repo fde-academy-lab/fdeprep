@@ -60,9 +60,10 @@ contract_md: |
       {"status": "ok", "record": {...the valid record...}}
       {"status": "needs_review", "record": null, "errors": ["...", ...]}
 
-  where `errors` lists the problems with the last reply. Never return a record
-  that failed validation, and never change a value yourself: a wrong type goes
-  back to the model to fix.
+  where `errors` lists the problems with the last reply in the same form as
+  the repair: one string per problem, starting with the key it is about.
+  Never return a record that failed validation, and never change a value
+  yourself: a wrong type goes back to the model to fix.
 
   Budget: at most 3 model calls, and a correct solution never needs more than
   2. Allowed imports: json, re.
@@ -158,10 +159,36 @@ step_checks:
     spec:
       assertions:
         - { type: returns_matches, value: '"status"\s*:\s*"ok"' }
+  # s4 carries its own case, because the public repair gets a valid record
+  # back, so no public case shows a repair that fails. The first reply adds a
+  # key and breaks the decision rule, and the model fixes both only when the
+  # repair lists each on a line of its own that starts with its key, after
+  # any list marker. The fixed reply leaves out the reason, so needs_review
+  # has to carry the problem with that second reply.
   - step_id: s4
     spec:
+      kind: agent_run
+      input:
+        question: >-
+          Three keys came off the wireless keyboard I ordered before I had
+          used it. Please send me a new one. Order 7206.
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"decision": "swap", "amount_pence": 0, "reason": "Three keys came off before first use.", "priority": "high"}' }
+        - { match: { all: [ { regex: '(?m)^[ \t]*(?:[-*]|\d+[.)])?[ \t]*decision\b' },
+                            { regex: '(?m)^[ \t]*(?:[-*]|\d+[.)])?[ \t]*priority\b' } ] },
+            reply: '{"decision": "replace", "amount_pence": 0}' }
+        - { match: "*",
+            reply: '{"decision": "swap", "amount_pence": 0, "reason": "Three keys came off before first use.", "priority": "high"}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
         - { type: llm_calls_at_most, value: 2 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, record, errors],
+                      properties: { status: { const: needs_review },
+                                    record: { type: "null" },
+                                    errors: { type: array,
+                                              contains: { type: string, pattern: '\breason\b' } } } } }
 
 hints:
   - json.loads succeeding tells you the reply is JSON. Every record in the
@@ -267,6 +294,13 @@ coach:
       say: >-
         That model never produces a valid record. Count your model calls on
         that case: how many times does your loop ask?
+    - id: problem-lines-key-first
+      when: { test_failed: each_problem_line_starts_with_the_key_it_is_about }
+      say: >-
+        That model fixes a record only when the repair lists every problem on
+        its own line, key first. Its second reply is still wrong, and errors
+        has to name that reply's problems the same way. Print your repair
+        prompt and your errors for a record that breaks three rules.
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -407,6 +441,40 @@ tests:
         - { type: terminates }
         - { type: llm_calls_at_most, value: 2 }
         - { type: returns_matches, value: '"status"\s*:\s*"needs_review"' }
+
+  # The first reply leaves out a key and breaks two rules, and the model fixes
+  # all three only when the repair lists each on a line of its own that
+  # starts with its key, after any list marker. The second reply adds a key
+  # and breaks the amount rule, and errors has to name both, each line
+  # starting with its key. Between them the two replies need every kind of
+  # problem line.
+  - name: each_problem_line_starts_with_the_key_it_is_about
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          The strap on my fitness tracker snapped on the second day. I would
+          like my money back, I paid 59.00. Order 1943.
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"decision": "money_back", "reason": null}' }
+        - { match: { all: [ { regex: '(?m)^[ \t]*(?:[-*]|\d+[.)])?[ \t]*amount_pence\b' },
+                            { regex: '(?m)^[ \t]*(?:[-*]|\d+[.)])?[ \t]*decision\b' },
+                            { regex: '(?m)^[ \t]*(?:[-*]|\d+[.)])?[ \t]*reason\b' } ] },
+            reply: '{"decision": "refund", "amount_pence": -5900, "reason": "The strap snapped on the second day.", "strap_colour": "black"}' }
+        - { match: "*",
+            reply: '{"decision": "money_back", "reason": null}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, record, errors],
+                      properties: { status: { const: needs_review },
+                                    record: { type: "null" },
+                                    errors: { type: array,
+                                              allOf: [ { contains: { type: string, pattern: '^amount_pence\b' } },
+                                                       { contains: { type: string, pattern: '^strap_colour\b' } } ] } } } }
+        - { type: llm_calls_at_most, value: 2 }
 
 reference_md: |
   The warehouse has a schema and no alarm, so the alarm has to live here.

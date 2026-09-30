@@ -136,10 +136,30 @@ step_checks:
     spec:
       assertions:
         - { type: returns_matches, value: '"status"\s*:\s*"complete"' }
+  # s3 carries its own case, because every public stream finishes, so no
+  # public case needs a second request. Both streams here are cut, and the
+  # second stops sooner than the first, so received shows which one it came
+  # from.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Quote 5 pallets from Southampton to Le Havre, collecting on Tuesday." }
+      llm_script:
+        - match: { call_index: 1 }
+          reply: |
+            data: {"text": "{\"lane\": \"Southampton to Le Havre\", \"pallets\": 5, "}
+            data: {"text": "\"price_pence\": 2175"}
+        - match: "*"
+          reply: |
+            data: {"text": "{\"lane\": \"Southampton to Le Ha"}
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
         - { type: llm_calls_at_most, value: 2 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, quote, received],
+                      properties: { status: { const: interrupted },
+                                    quote: { type: "null" },
+                                    received: { const: '{"lane": "Southampton to Le Ha' } } } }
 
 hints:
   - The parser is the wrong judge of whether a stream finished. Look at the
