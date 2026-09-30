@@ -1,5 +1,7 @@
 slug: validate-and-repair-once
-title: Check the record against its schema, repair it once, then stop
+title: Returns stalled silently and 212 customers heard nothing
+day: 4
+skill: Check the record against its schema, repair it once, then stop
 artefact_type: code
 difficulty: medium
 track: structured-output
@@ -123,7 +125,7 @@ steps:
     text: Return the record as ok when validate finds nothing.
     check_id: s3
   - id: s4
-    text: Repair once with every problem listed, then return needs_review.
+    text: Repair once with every problem listed, then return `needs_review`.
     check_id: s4
 
 step_checks:
@@ -191,14 +193,11 @@ step_checks:
                                               contains: { type: string, pattern: '\breason\b' } } } } }
 
 hints:
-  - json.loads succeeding tells you the reply is JSON. Every record in the
-    dead-letter queue was JSON, so the check that matters comes after it.
+  - "`json.loads` succeeding tells you the reply is JSON. Every record in the dead-letter queue was JSON, so the check that matters comes after it."
   - A repair works when the model can see what was wrong. A prompt that only
     says the reply was invalid gives it nothing to change, and it sends the
     same record back.
-  - Count the repairs you have sent. The first invalid reply earns one repair
-    with its problems listed, and a second invalid reply ends the attempt with
-    needs_review.
+  - "Count the repairs you have sent. The first invalid reply earns one repair with its problems listed, and a second invalid reply ends the attempt with `needs_review`."
   - Run the repair through the same validate as the first reply. A reply is
     not valid because it came second.
   - "The amount \"45.00\" is wrong in its type, and it may be wrong in its value
@@ -236,7 +235,7 @@ diagram:
   edges:
     - { from: request, to: service, label: the request, step: 1 }
     - { from: service, to: model, label: prompt, step: 2 }
-    - { from: model, to: service, label: "decision: partial_refund", step: 3 }
+    - { from: model, to: service, label: "decision: `partial_refund`", step: 3 }
     - { from: service, to: check, label: every reply, step: 4 }
     - { from: check, to: model, label: one repair with the problems, step: 5 }
     - { from: check, to: warehouse, label: valid, tone: success }
@@ -254,7 +253,7 @@ approach:
       detail: One repair is a question. A second repair is a loop that has not admitted it yet.
       leaves: [validate the repair as well, a second failure goes to a person]
     - label: Change nothing yourself
-      leaves: [a wrong type goes back to the model, needs_review carries the reasons]
+      leaves: [a wrong type goes back to the model, "`needs_review` carries the reasons"]
 
 coach:
   opening: >-
@@ -310,7 +309,7 @@ coach:
       when: { idle_minutes: 5 }
       say: >-
         Write validate first, one check at a time, and print what it returns
-        for a record with decision set to partial_refund.
+        for a record with decision set to `partial_refund`.
     - id: see-the-hints
       when: { failed_runs_at_least: 3 }
       say: >-
@@ -518,7 +517,7 @@ reference_md: |
   request went round forty times.
 
   A second failure after a precise repair says something about the request.
-  "partial_refund" twice in a row usually means the customer asked for
+  "`partial_refund`" twice in a row usually means the customer asked for
   something the three decisions do not cover, and a person should decide it. `needs_review` with the problems attached is a real
   outcome the next system can route on. Returning the invalid record, raising,
   or asking a third time all put the request back in the silent queue by

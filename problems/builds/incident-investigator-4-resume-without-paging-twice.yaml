@@ -1,5 +1,7 @@
 slug: incident-investigator-4-resume-without-paging-twice
-title: Resume an interrupted investigation without paging anyone twice
+title: After two restarts, the same engineer was paged three times
+day: 28
+skill: Resume an interrupted investigation without paging anyone twice
 artefact_type: code
 difficulty: extreme
 track: builds
@@ -201,8 +203,7 @@ hints:
     resume, sending is exactly the case where the provider has to be asked.
   - A checkpoint for another incident is not a checkpoint for this one. Check
     its incident before you believe anything else in it.
-  - An answer from page_status with no delivered flag is neither a yes nor a
-    no. Page nobody, and say so in the result.
+  - "An answer from `page_status` with no delivered flag is neither a yes nor a no. Page nobody, and say so in the result."
 
 scenario:
   who: The on-call team at an online grocery
@@ -613,7 +614,7 @@ tests:
     visibility: adversarial
     fixture: slow_then_timeout
     annotation_md: |
-      The page call raised TimeoutError. The request may have reached the
+      The page call raised `TimeoutError`. The request may have reached the
       provider before the connection dropped, which puts this run in the same
       gap a restart falls into: the page might have rung, and nothing here
       knows.

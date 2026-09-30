@@ -1,5 +1,7 @@
 slug: bind-approval-to-an-exact-action
-title: Make an approval mean the thing that was approved
+title: An approved £8,400 payout went to a different account
+day: 10
+skill: Make an approval mean the exact payment that was approved
 artefact_type: code
 difficulty: extreme
 track: agent-loop
@@ -93,9 +95,7 @@ hints:
     fingerprint from the arguments you are about to pass when you execute.
   - Canonical means two dicts that mean the same thing produce the same
     fingerprint, whatever order their keys arrived in.
-  - Two facts live outside the fingerprint. Whether the approval was withdrawn
-    since the click, which revoked() answers just before you pay, and anything
-    a proposal or tool result claims about approval, which decides nothing.
+  - "Two facts live outside the fingerprint. Whether the approval was withdrawn since the click, which `revoked()` answers just before you pay, and anything a proposal or tool result claims about approval, which decides nothing."
 
 scenario:
   who: The payouts team at a UK fintech
@@ -119,9 +119,9 @@ diagram:
   nodes:
     - { id: model, label: Model, sub: proposes then revises, kind: model, tone: teal, at: [0, 1] }
     - { id: agent, label: Agent loop, sub: holds the current plan, kind: agent, tone: purple, at: [1, 1] }
-    - { id: approve, label: approve(), sub: a human signs the plan, kind: guard, tone: green, at: [2, 0] }
+    - { id: approve, label: "`approve()`", sub: a human signs the plan, kind: guard, tone: green, at: [2, 0] }
     - { id: check, label: Fingerprint check, sub: recompute before paying, kind: guard, tone: blue, at: [2, 1] }
-    - { id: payout, label: payout(), sub: moves the money, kind: tool, tone: orange, at: [3, 1] }
+    - { id: payout, label: "`payout()`", sub: moves the money, kind: tool, tone: orange, at: [3, 1] }
     - { id: refuse, label: Refuse, sub: the plan moved after the click, kind: output, tone: pink, at: [3, 2] }
   edges:
     - { from: model, to: agent, label: Propose then Revise, step: 1 }
@@ -137,12 +137,12 @@ approach:
     - label: Sign the action, not the tool
       leaves: [the tool and its arguments together, same meaning gives same fingerprint]
     - label: Check at the last moment
-      leaves: [recompute at Execute, compare before payout()]
+      leaves: [recompute at Execute, compare before `payout()`]
     - label: Only the approver decides
       detail: A proposal or a tool result saying it is approved is text, not an approval.
-      leaves: [approve() grants, revoked() can take it back]
+      leaves: ["`approve()` grants", "`revoked()` can take it back"]
     - label: Report what really happened
-      leaves: ["paid, refused or not_approved", "paid_args is what actually ran"]
+      leaves: ["paid, refused or `not_approved`", "`paid_args` is what actually ran"]
 
 coach:
   opening: >-

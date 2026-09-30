@@ -1,5 +1,7 @@
 slug: carry-conflicting-evidence
-title: Say which documents disagree instead of believing the newest one
+title: An email's bank details sent £38,400 to the wrong account
+day: 8
+skill: Say which documents disagree before the supplier is paid
 artefact_type: code
 difficulty: hard
 track: structured-output
@@ -121,8 +123,7 @@ hints:
     with two or more is a conflict.
   - "Normalise formatting and nothing else: dashes and spaces are formatting,
     and two digits in a different order make a different number."
-  - ready_to_pay asks for agreed values to be present. Think about what your
-    code returns when there are no documents at all.
+  - "`ready_to_pay` asks for agreed values to be present. Think about what your code returns when there are no documents at all."
 
 scenario:
   who: Accounts payable at a building-supplies wholesaler
@@ -486,12 +487,12 @@ tests:
     annotation_md: |
       The document store was mid-deploy and answered with nothing at all.
       With no documents there were no conflicts, and a reconciler that
-      computes ready_to_pay as "nothing conflicts" approves a payment to an
+      computes `ready_to_pay` as "nothing conflicts" approves a payment to an
       account nobody has named.
 
       Ready means both bank fields hold values that every document stating
       them agreed on. An empty file has no values to agree on, so the answer
-      is a record of nulls with ready_to_pay false, returned without an
+      is a record of nulls with `ready_to_pay` false, returned without an
       exception.
     spec:
       kind: agent_run

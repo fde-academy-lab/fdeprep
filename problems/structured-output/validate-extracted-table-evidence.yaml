@@ -1,5 +1,7 @@
 slug: validate-extracted-table-evidence
-title: Pay a scanned invoice only when everything printed on it adds up
+title: A misread decimal point paid a garage ten times its invoice
+day: 10
+skill: Pay a scanned invoice only when everything printed on it adds up
 artefact_type: code
 difficulty: extreme
 track: structured-output
@@ -51,7 +53,7 @@ contract_md: |
 
   | Check | Holds when |
   |---|---|
-  | `row` | for each row, qty × unit_price = amount |
+  | `row` | for each row, qty × `unit_price` = amount |
   | `subtotal` | the amounts add up to the subtotal |
   | `total` | subtotal + vat = total |
   | `unreadable` | the reply is a table of that shape, with at least one row, and all its money parses |
@@ -145,12 +147,12 @@ diagram:
   direction: lr
   nodes:
     - { id: scan, label: Scanned invoice, sub: "total printed as £1,060.80", kind: doc, tone: blue, at: [0, 1] }
-    - { id: pagetext, label: page_text, sub: the page as text, kind: tool, tone: neutral, at: [1, 0] }
+    - { id: pagetext, label: "`page_text`", sub: the page as text, kind: tool, tone: neutral, at: [1, 0] }
     - { id: model, label: Table reader, sub: reads rows and totals, kind: model, tone: teal, at: [2, 0] }
     - { id: step, label: Payment step, sub: checks then pays or holds, kind: agent, tone: purple, at: [1, 1] }
     - { id: checks, label: "Every relation holds?", sub: "rows, subtotal, total", kind: guard, tone: green, at: [2, 1] }
-    - { id: pay, label: approve_payment, sub: verified tables only, kind: tool, tone: orange, at: [3, 1] }
-    - { id: hold, label: hold_for_review, sub: issues with line numbers, kind: output, tone: blue, at: [3, 0] }
+    - { id: pay, label: "`approve_payment`", sub: verified tables only, kind: tool, tone: orange, at: [3, 1] }
+    - { id: hold, label: "`hold_for_review`", sub: issues with line numbers, kind: output, tone: blue, at: [3, 0] }
     - { id: wrong, label: "£10,608.00 paid", sub: only the subtotal was checked, kind: output, tone: pink, at: [2, 2] }
   edges:
     - { from: scan, to: pagetext, label: scan, step: 1 }
@@ -183,7 +185,7 @@ coach:
     - id: money-in-floats
       when: { code_matches: '\bfloat\(' }
       say: >-
-        Money is going through float(). Work out 6 * 0.20 in floats and
+        Money is going through `float()`. Work out 6 * 0.20 in floats and
         compare it with 1.20. What does an exact check need instead?
     - id: rows-never-multiplied
       when:

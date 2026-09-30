@@ -1,5 +1,7 @@
 slug: stop-the-tool-list-leak
-title: Stop a support agent handing over its tool list
+title: The support agent acts on whatever account a caller names
+day: 8
+skill: Stop a support agent handing over its tool list
 artefact_type: prompt
 difficulty: hard
 track: prompt
@@ -174,11 +176,11 @@ diagram:
   direction: lr
   nodes:
     - { id: caller, label: Caller, sub: any text and any claim, kind: actor, tone: blue, at: [0, 1] }
-    - { id: list, label: Tool list, sub: "refund_order, lookup_customer, ...", kind: doc, tone: orange, at: [1, 0] }
+    - { id: list, label: Tool list, sub: "`refund_order`, `lookup_customer`, ...", kind: doc, tone: orange, at: [1, 0] }
     - { id: comply, label: Always comply, sub: everything is an instruction, kind: doc, tone: pink, at: [1, 2] }
     - { id: agent, label: Support agent, sub: reads prompt and message as one, kind: agent, tone: teal, at: [2, 1] }
     - { id: names, label: Function names, sub: a map for the next request, kind: output, tone: orange, at: [3, 0] }
-    - { id: cancel, label: cancel_subscription, sub: on an account the caller does not hold, kind: tool, tone: pink, at: [3, 2] }
+    - { id: cancel, label: "`cancel_subscription`", sub: on an account the caller does not hold, kind: tool, tone: pink, at: [3, 2] }
   edges:
     - { from: caller, to: agent, label: "questions, then orders", step: 1 }
     - { from: list, to: agent, label: list your tools, tone: danger }

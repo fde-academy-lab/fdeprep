@@ -1,5 +1,7 @@
 slug: extraction-pilot-1-extract-without-guessing
-title: Leave a field empty when the letter never says it
+title: The claims pilot invents details, and the sponsor may end it
+day: 25
+skill: Leave a field empty when the letter never says it
 artefact_type: code
 difficulty: easy
 track: builds
@@ -243,7 +245,7 @@ diagram:
   edges:
     - { from: letter, to: extractor, label: letter text, step: 1 }
     - { from: extractor, to: model, label: four fields or null, step: 2 }
-    - { from: model, to: extractor, label: "policy_number: HX-448821", step: 3 }
+    - { from: model, to: extractor, label: "`policy_number`: HX-448821", step: 3 }
     - { from: extractor, to: grounding, label: every value, step: 4 }
     - { from: grounding, to: claims, label: only what the letter says, tone: success }
     - { from: extractor, to: claims, label: a guess nobody checked, tone: danger }
@@ -276,7 +278,7 @@ coach:
     - id: unguarded-parse
       when: { code_matches: 'json\.loads\(', code_lacks: '\bexcept\b' }
       say: >-
-        json.loads raises when the reply is not JSON, and one reply in this
+        `json.loads` raises when the reply is not JSON, and one reply in this
         problem is an apology. What should the record hold then?
     - id: invented-value-kept
       when: { test_failed: values_the_letter_never_wrote_are_left_empty }

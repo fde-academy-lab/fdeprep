@@ -1,5 +1,7 @@
 slug: recover-from-soft-tool-errors
-title: Recover from a tool that returns a soft error
+title: The order assistant mistakes failed lookups for answers
+day: 6
+skill: Catch a tool failure that looks like a success, and retry once
 artefact_type: code
 difficulty: medium
 track: agent-loop
@@ -211,16 +213,16 @@ diagram:
   direction: lr
   nodes:
     - { id: customer, label: Customer, sub: asks where order 9 is, kind: actor, tone: blue, at: [0, 1] }
-    - { id: model, label: Model, sub: asks for track(id=9), kind: model, tone: teal, at: [1, 0] }
+    - { id: model, label: Model, sub: asks for `track(id=9)`, kind: model, tone: teal, at: [1, 0] }
     - { id: loop, label: Agent loop, sub: reads the reply, kind: agent, tone: purple, at: [1, 1] }
-    - { id: track, label: track(), sub: answers 200 with an error, kind: tool, tone: orange, at: [2, 1] }
+    - { id: track, label: "`track()`", sub: answers 200 with an error, kind: tool, tone: orange, at: [2, 1] }
     - { id: check, label: Body check, sub: an error key inside a 200, kind: guard, tone: green, at: [3, 1] }
     - { id: retry, label: One retry, sub: the prompt says what failed, kind: decision, tone: blue, at: [3, 0] }
     - { id: degrade, label: Degraded answer, sub: status could not be confirmed, kind: output, tone: green, at: [3, 2] }
   edges:
     - { from: customer, to: loop, label: where is order 9, step: 1 }
     - { from: loop, to: model, label: scratchpad, step: 2 }
-    - { from: model, to: loop, label: "Action: track(id=9)", step: 3 }
+    - { from: model, to: loop, label: "Action: `track(id=9)`", step: 3 }
     - { from: loop, to: track, label: call, step: 4 }
     - { from: track, to: loop, label: 200 read as success, tone: danger }
     - { from: track, to: check, label: read the body, tone: success }
@@ -293,7 +295,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with failed(): return True when the body carries an error key.
+        Start with `failed()`: return True when the body carries an error key.
         Then write TODO 2 and press Run.
     - id: hints
       when: { failed_runs_at_least: 3 }

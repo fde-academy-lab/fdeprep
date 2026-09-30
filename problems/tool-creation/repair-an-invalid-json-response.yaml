@@ -1,5 +1,7 @@
 slug: repair-an-invalid-json-response
-title: Give the downstream system JSON it can actually parse
+title: About one ticket in six fails and never reaches a queue
+day: 4
+skill: Give the downstream system JSON it can actually parse
 artefact_type: code
 difficulty: easy
 track: tool-creation
@@ -142,17 +144,13 @@ step_checks:
 hints:
   - A fence is three backticks and an optional language name. It is not JSON
     and it never was.
-  - json.loads raises. Something has to catch it, and the something is not the
-    client's workflow engine.
+  - "`json.loads` raises. Something has to catch it, and the something is not the client's workflow engine."
   - Telling the model the reply did not parse is a different prompt from
     asking the same question again.
   - Unwrapping and parsing are two separate steps. A reply can be fenced and
     still broken inside the fence, so the repair runs whenever the parse fails,
     whatever the reply was wrapped in.
-  - "In order: take off a fence if there is one, try json.loads, return the
-    object as a JSON string when it parses, and when it does not, append the
-    reply and the parser's message, say it did not parse, and go round once
-    more."
+  - "In order: take off a fence if there is one, try `json.loads`, return the object as a JSON string when it parses, and when it does not, append the reply and the parser's message, say it did not parse, and go round once more."
 
 scenario:
   who: The team running a ticket triage service for a client's workflow engine
@@ -196,12 +194,12 @@ approach:
     - label: Unwrap before you parse
       leaves: [a fence is not JSON, the object inside may still be fine]
     - label: Catch the parse failure
-      leaves: [json.loads raises, the engine must never see the raise]
+      leaves: ["`json.loads` raises", the engine must never see the raise]
     - label: Repair once, with a different prompt
       detail: The same prompt gets the same reply, so the retry has to say what failed.
       leaves: [one retry that carries the parser's message, then stop]
     - label: Invent nothing
-      leaves: [a missing order_id stays null, a JSON fallback when both attempts fail]
+      leaves: [a missing `order_id` stays null, a JSON fallback when both attempts fail]
 
 coach:
   opening: >-
@@ -212,13 +210,13 @@ coach:
     - id: unguarded-parse
       when: { code_matches: 'json\.loads\(', code_lacks: '\bexcept\b' }
       say: >-
-        json.loads raises on anything that is not JSON, and nothing in your
+        `json.loads` raises on anything that is not JSON, and nothing in your
         code catches it. Where should that failure go, if not to the client's
         engine?
     - id: no-fence-handling
       when: { code_lacks: '`|chr\(96\)|\\x60|find\(\s*["'']\{|index\(\s*["'']\{|\\\{' }
       say: >-
-        Nothing in your code deals with a fence. What does json.loads make of a
+        Nothing in your code deals with a fence. What does `json.loads` make of a
         reply that starts with three backticks and the word json?
     - id: returns-the-raw-reply
       when: { code_matches: 'return\s+(reply|output|raw|text)\b' }
@@ -234,7 +232,7 @@ coach:
       when: { test_failed: strips_a_fenced_block }
       say: >-
         That reply arrived inside a fenced code block. Trace what your code
-        hands to json.loads in that case.
+        hands to `json.loads` in that case.
     - id: hidden-trailing-comma
       when: { test_failed: repairs_a_trailing_comma_once }
       say: >-
@@ -256,7 +254,7 @@ coach:
       when: { idle_minutes: 5 }
       say: >-
         Start with TODO 1, TODO 2 and TODO 4: take off a fence, parse, and
-        return json.dumps of the object. Both public tests go green with that
+        return `json.dumps` of the object. Both public tests go green with that
         alone.
     - id: many-failed-runs
       when: { failed_runs_at_least: 3 }

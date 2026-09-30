@@ -1,5 +1,7 @@
 slug: check-trace-invariants-across-valid-paths
-title: Check the rules every valid run keeps, in whatever order it keeps them
+title: The refunds eval fails good runs and passes broken ones
+day: 20
+skill: Check the rules every valid run keeps, in whatever order it keeps them
 artefact_type: code
 difficulty: hard
 track: evals
@@ -186,7 +188,7 @@ coach:
     - id: no-answer-check
       when: { code_lacks: 'call_id' }
       say: >-
-        Nothing reads call_id yet. How would your checker notice a call that
+        Nothing reads `call_id` yet. How would your checker notice a call that
         never got an answer, while the agent told the customer it had?
     - id: hidden-other-order
       when: { test_failed: a_different_valid_order_still_passes }

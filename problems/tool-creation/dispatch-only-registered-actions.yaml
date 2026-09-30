@@ -1,5 +1,7 @@
 slug: dispatch-only-registered-actions
-title: Call only the tools the agent actually has
+title: The account agent crashes asking for tools it lacks
+day: 3
+skill: Call only the tools the agent actually has
 artefact_type: code
 difficulty: easy
 track: tool-creation
@@ -18,7 +20,7 @@ brief_md: |
   prompt somebody edited.
 
   Each time the loop did `tools[name](**args)` and the process died with a
-  KeyError. The on-call engineer sees a stack trace; the user sees nothing.
+  `KeyError`. The on-call engineer sees a stack trace; the user sees nothing.
 
   The model choosing a tool is a suggestion. Write the loop that treats it as
   one.
@@ -138,9 +140,9 @@ scenario:
   who: The operations team behind an internal account agent
   situation: >-
     The agent has two tools. This week it asked twice for one it does not
-    have, delete_account and refund_order_v2, and the loop crashed both times.
+    have, `delete_account` and `refund_order_v2`, and the loop crashed both times.
   stakes: >-
-    The on-call engineer gets a KeyError stack trace. The user gets silence:
+    The on-call engineer gets a `KeyError` stack trace. The user gets silence:
     no answer, and no refusal either.
   metrics:
     - { label: Crashes this week, value: "2" }
@@ -151,7 +153,7 @@ diagram:
   title: Where an invented tool name becomes a crash
   caption: >-
     The check belongs between the model's suggestion and the call. Without it,
-    a made-up name goes straight to a KeyError.
+    a made-up name goes straight to a `KeyError`.
   direction: lr
   nodes:
     - { id: user, label: User, sub: asks for an action, kind: actor, tone: blue, at: [0, 1] }
@@ -159,11 +161,11 @@ diagram:
     - { id: loop, label: Agent loop, sub: reads the Action line, kind: agent, tone: purple, at: [1, 1] }
     - { id: registry, label: tools dict, sub: the only legal names, kind: guard, tone: green, at: [2, 1] }
     - { id: tool, label: lookup, sub: a registered tool, kind: tool, tone: neutral, at: [3, 1] }
-    - { id: crash, label: KeyError, sub: the user hears nothing, kind: output, tone: pink, at: [2, 2] }
+    - { id: crash, label: "`KeyError`", sub: the user hears nothing, kind: output, tone: pink, at: [2, 2] }
   edges:
     - { from: user, to: loop, label: question, step: 1 }
     - { from: loop, to: model, label: scratchpad, step: 2 }
-    - { from: model, to: loop, label: "Action: delete_account", step: 3 }
+    - { from: model, to: loop, label: "Action: `delete_account`", step: 3 }
     - { from: loop, to: registry, label: "name in tools?", step: 4 }
     - { from: registry, to: tool, label: yes, tone: success }
     - { from: loop, to: crash, label: no check, tone: danger }
@@ -196,8 +198,8 @@ coach:
         code_matches: 'tools\[[^\]]+\]\s*\('
         code_lacks: '\bin\s+tools\b|tools\.get\(|tools\.keys\('
       say: >-
-        You call tools[name](...) with nothing in front of it. What happens on
-        that line when the model names delete_account?
+        You call `tools[name](...)` with nothing in front of it. What happens on
+        that line when the model names `delete_account`?
     - id: raises-on-unknown
       when: { code_matches: '^\s*raise\b' }
       say: >-
@@ -213,12 +215,12 @@ coach:
     - id: hidden-invented-tool
       when: { test_failed: an_invented_tool_is_refused_not_raised }
       say: >-
-        That run asked for delete_account first. Trace your loop by hand with
+        That run asked for `delete_account` first. Trace your loop by hand with
         that reply and follow where it goes.
     - id: hidden-names-tool
       when: { test_failed: the_refusal_names_the_tool_it_refused }
       say: >-
-        The model only changed its mind when the prompt named refund_order_v2.
+        The model only changed its mind when the prompt named `refund_order_v2`.
         Does your refusal line include the name it refused?
     - id: hidden-never-stops
       when: { test_failed: a_model_that_never_stops_asking_still_ends_in_an_answer }
@@ -340,7 +342,7 @@ reference_md: |
   turned a documentation change into a production crash.
 
   On the right, the refusal has to reach the model or nothing changes. A loop
-  that catches the KeyError, logs it and continues asks the same question
+  that catches the `KeyError`, logs it and continues asks the same question
   again and gets `delete_account` again, three times, until the budget is
   gone. Naming the refused tool in the scratchpad is what makes the second
   reply different from the first.

@@ -1,5 +1,7 @@
 slug: check-the-policy-before-the-action-runs
-title: Let the written policy say no before the refund runs
+title: The chat agent refunds £420 when the limit is £40
+day: 17
+skill: Let the written policy say no before the refund runs
 artefact_type: code
 difficulty: medium
 track: guardrails
@@ -249,10 +251,10 @@ diagram:
     - { id: customer, label: Customer, sub: asks for the whole year back, kind: actor, tone: blue, at: [0, 1] }
     - { id: model, label: Model, sub: proposes a refund of 420, kind: model, tone: teal, at: [1, 0] }
     - { id: agent, label: Agent loop, sub: reads the Action, kind: agent, tone: purple, at: [1, 1] }
-    - { id: policy, label: policy(), sub: roles and their limits, kind: store, tone: orange, at: [2, 0] }
+    - { id: policy, label: "`policy()`", sub: roles and their limits, kind: store, tone: orange, at: [2, 0] }
     - { id: check, label: Policy check, sub: runs before any call, kind: guard, tone: green, at: [2, 1] }
-    - { id: session, label: session(), sub: the role this chat has, kind: service, tone: neutral, at: [2, 2] }
-    - { id: refund, label: refund(), sub: moves the money, kind: tool, tone: orange, at: [3, 0] }
+    - { id: session, label: "`session()`", sub: the role this chat has, kind: service, tone: neutral, at: [2, 2] }
+    - { id: refund, label: "`refund()`", sub: moves the money, kind: tool, tone: orange, at: [3, 0] }
     - { id: refused, label: "Refused: reason", sub: the model explains the next step, kind: output, tone: green, at: [3, 2] }
   edges:
     - { from: customer, to: agent, label: message, step: 1 }

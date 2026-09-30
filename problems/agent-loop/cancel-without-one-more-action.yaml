@@ -1,5 +1,7 @@
 slug: cancel-without-one-more-action
-title: Cancel a run without it taking one more action
+title: Pressing cancel did not stop 37 texts and 12 late fees
+day: 6
+skill: Cancel a run without it taking one more action
 artefact_type: code
 difficulty: medium
 track: agent-loop
@@ -183,8 +185,8 @@ diagram:
     - { id: console, label: Operations console, sub: stamps every response, kind: guard, tone: green, at: [3, 0] }
     - { id: model, label: Model, sub: plans a text and a fee, kind: model, tone: teal, at: [0, 1] }
     - { id: loop, label: Agent loop, sub: holds the whole plan, kind: agent, tone: purple, at: [1, 1] }
-    - { id: text, label: send_text(), sub: in flight when Cancel lands, kind: tool, tone: orange, at: [2, 1] }
-    - { id: fee, label: apply_late_fee(), sub: the second planned action, kind: tool, tone: pink, at: [3, 1] }
+    - { id: text, label: "`send_text()`", sub: in flight when Cancel lands, kind: tool, tone: orange, at: [2, 1] }
+    - { id: fee, label: "`apply_late_fee()`", sub: the second planned action, kind: tool, tone: pink, at: [3, 1] }
     - { id: held, label: Held, sub: planned and never dispatched, kind: output, tone: green, at: [1, 2] }
   edges:
     - { from: model, to: loop, label: "Run: live, text and fee", step: 1 }

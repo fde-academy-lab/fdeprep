@@ -1,5 +1,7 @@
 slug: choose-evidence-without-repetition
-title: Stop five copies of one paragraph filling the context
+title: A broker asks about surveyors and gets the claim deadline
+day: 12
+skill: Stop five copies of one paragraph filling the context
 artefact_type: code
 difficulty: medium
 track: rag
@@ -101,7 +103,7 @@ steps:
     text: Write each chosen chunk into the scratchpad as [<id>] <text>.
     check_id: s1
   - id: s2
-    text: Make overlap() return the shared words over all the words used.
+    text: Make `overlap()` return the shared words over all the words used.
     check_id: s2
   - id: s3
     text: Keep a candidate only when it is below 0.8 against every block kept, and stop at five.
@@ -305,7 +307,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with TODO 1 so the public tests run. Then write overlap() and try
+        Start with TODO 1 so the public tests run. Then write `overlap()` and try
         it on two copies of the reporting paragraph: it should come out above
         0.8.
     - id: keep-failing

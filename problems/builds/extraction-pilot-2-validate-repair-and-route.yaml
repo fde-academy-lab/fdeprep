@@ -1,5 +1,7 @@
 slug: extraction-pilot-2-validate-repair-and-route
-title: Repair a rejected record once, then hand it to a person
+title: 23 rejected claim records landed in a folder nobody owns
+day: 25
+skill: Repair a rejected record once, then hand it to a person
 artefact_type: code
 difficulty: medium
 track: builds
@@ -241,7 +243,7 @@ diagram:
   edges:
     - { from: letter, to: extractor, label: letter text, step: 1 }
     - { from: extractor, to: model, label: four fields or null, step: 2 }
-    - { from: model, to: extractor, label: "policy_number: CLM-20931", step: 3 }
+    - { from: model, to: extractor, label: "`policy_number`: CLM-20931", step: 3 }
     - { from: extractor, to: grounding, label: every value, step: 4 }
     - { from: grounding, to: validator, label: a grounded record, step: 5 }
     - { from: validator, to: extractor, label: one repair with the reasons, tone: success }
@@ -479,7 +481,7 @@ reference_md: |
   The repair is worth exactly as much as the information it adds. A model at
   temperature zero, given the same prompt, gives the same reply, so asking
   again is a way of paying twice for one answer. The validator's error line is
-  the one thing the first prompt did not contain, and "policy_number: not a
+  the one thing the first prompt did not contain, and "`policy_number`: not a
   policy number" is enough for the model to look again and find HX-448812 in
   the next sentence.
 

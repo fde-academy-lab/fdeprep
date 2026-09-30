@@ -1,5 +1,7 @@
 slug: redact-personal-data-before-the-prompt
-title: Take personal data out before the prompt and put it back in the reply
+title: Customers' card numbers turn up in the model provider's logs
+day: 17
+skill: Take personal data out before the prompt and put it back in the reply
 artefact_type: code
 difficulty: medium
 track: guardrails
@@ -222,7 +224,7 @@ diagram:
     needs.
   direction: lr
   nodes:
-    - { id: ticket, label: read_ticket, sub: body and nested metadata, kind: store, tone: orange, at: [0, 1] }
+    - { id: ticket, label: "`read_ticket`", sub: body and nested metadata, kind: store, tone: orange, at: [0, 1] }
     - { id: redact, label: Redact, sub: placeholders before the prompt, kind: guard, tone: green, at: [1, 1] }
     - { id: map, label: Placeholder map, sub: never leaves your process, kind: store, tone: neutral, at: [1, 2] }
     - { id: gateway, label: Gateway, sub: refuses raw personal data, kind: guard, tone: blue, at: [2, 1] }

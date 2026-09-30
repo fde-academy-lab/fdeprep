@@ -1,5 +1,7 @@
 slug: recover-from-a-partial-stream
-title: Keep a stream that stopped halfway from turning into a quote
+title: A £1,845 job was quoted £184.50 when a connection dropped
+day: 4
+skill: Keep a stream that stopped halfway from turning into a quote
 artefact_type: code
 difficulty: medium
 track: structured-output
@@ -237,7 +239,7 @@ coach:
         code_matches: 'json\.loads\('
         code_lacks: '\btry\s*:'
       say: >-
-        json.loads raises on half an object and on half a line, and nothing
+        `json.loads` raises on half an object and on half a line, and nothing
         here catches it. What should a stream that broke produce instead of an
         exception?
     - id: cut-inside-a-string
@@ -263,7 +265,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Write read_stream first and print what it returns for the first public
+        Write `read_stream` first and print what it returns for the first public
         transcript: the joined text, and whether the stream finished.
     - id: see-the-hints
       when: { failed_runs_at_least: 3 }

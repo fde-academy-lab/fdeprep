@@ -1,5 +1,7 @@
 slug: retry-within-a-deadline
-title: Retry a carrier that is failing, without blowing the deadline
+title: Checkout gave up while the agent was still waiting to retry
+day: 10
+skill: Retry a carrier that is failing, without blowing the deadline
 artefact_type: code
 difficulty: hard
 track: tool-creation
@@ -139,10 +141,10 @@ diagram:
   nodes:
     - { id: checkout, label: Checkout, sub: gives up at 30 s, kind: service, tone: blue, at: [0, 1] }
     - { id: agent, label: Agent loop, sub: books the order, kind: agent, tone: purple, at: [1, 1] }
-    - { id: carrier, label: ship(), sub: "200, 429, 503, 401 or no answer", kind: tool, tone: orange, at: [2, 0] }
+    - { id: carrier, label: "`ship()`", sub: "200, 429, 503, 401 or no answer", kind: tool, tone: orange, at: [2, 0] }
     - { id: check, label: Deadline check, sub: "does the next delay fit?", kind: decision, tone: green, at: [2, 1] }
     - { id: wait, label: Backoff wait, sub: "1, 2, 4 then 8 seconds", kind: queue, tone: teal, at: [3, 1] }
-    - { id: answer, label: JSON answer, sub: "booked, exhausted or not_retryable", kind: output, tone: neutral, at: [3, 2] }
+    - { id: answer, label: JSON answer, sub: "booked, exhausted or `not_retryable`", kind: output, tone: neutral, at: [3, 2] }
     - { id: spinner, label: 47 s spinner, sub: waited first and checked after, kind: output, tone: pink, at: [1, 2] }
   edges:
     - { from: checkout, to: agent, label: order, step: 1 }
@@ -208,7 +210,7 @@ coach:
     - id: adversarial-no-answer
       when: { test_failed: adversarial_the_carrier_stops_responding }
       say: >-
-        In that run ship() never returned a status. Follow the exception from
+        In that run `ship()` never returned a status. Follow the exception from
         the call to the caller, and check what your function returns afterwards.
     - id: stuck
       when: { idle_minutes: 5 }

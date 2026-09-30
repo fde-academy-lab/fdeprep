@@ -1,5 +1,7 @@
 slug: read-a-changed-api-by-its-version
-title: Stop a renamed field telling customers they owe nothing
+title: The billing assistant told 212 customers they owed nothing
+day: 26
+skill: Read each version of a changing API, and hand unreadable bills to a person
 artefact_type: code
 difficulty: medium
 track: fde-practice
@@ -152,7 +154,7 @@ hints:
 scenario:
   who: The customer operations team at a regional water utility
   situation: >-
-    The billing API's version 2 renamed amount to amount_due at two in the
+    The billing API's version 2 renamed amount to `amount_due` at two in the
     morning. The integration read the old name, fell back to zero, and the
     assistant repeated the zero to every customer who asked.
   stakes: >-
@@ -172,13 +174,13 @@ diagram:
   nodes:
     - { id: billing, label: Billing API, sub: "versions 1, 2 and 3 all live", kind: service, tone: blue, at: [0, 1] }
     - { id: integration, label: Integration, sub: reads the bill into the prompt, kind: agent, tone: purple, at: [1, 1] }
-    - { id: version, label: api_version, sub: says where and in what unit, kind: guard, tone: green, at: [2, 0] }
+    - { id: version, label: "`api_version`", sub: says where and in what unit, kind: guard, tone: green, at: [2, 0] }
     - { id: handoff, label: Handoff, sub: a person reads the bill, kind: output, tone: neutral, at: [3, 0] }
     - { id: prompt, label: Prompt, sub: "Amount due: £0.00", kind: doc, tone: orange, at: [2, 2] }
     - { id: model, label: Model, sub: believes the prompt, kind: model, tone: teal, at: [3, 2] }
     - { id: customer, label: Customer, sub: told they owe nothing, kind: actor, tone: pink, at: [4, 2] }
   edges:
-    - { from: billing, to: integration, label: amount_due arrives, step: 1 }
+    - { from: billing, to: integration, label: "`amount_due` arrives", step: 1 }
     - { from: integration, to: prompt, label: "amount missing, so zero", tone: danger, step: 2 }
     - { from: prompt, to: model, label: a number it trusts, step: 3 }
     - { from: model, to: customer, label: nothing to pay, tone: danger, step: 4 }
@@ -206,7 +208,7 @@ coach:
     - id: version-ignored
       when: { code_lacks: 'api_version' }
       say: >-
-        Nothing reads api_version yet. A field name says where a number is.
+        Nothing reads `api_version` yet. A field name says where a number is.
         Which part of the bill says what unit the number is in?
     - id: defaults-to-zero
       when: { code_matches: '\bor\s+0(\.0+)?\b|\.get\([^)]*,\s*0(\.0+)?\s*\)' }

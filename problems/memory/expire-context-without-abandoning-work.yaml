@@ -1,5 +1,7 @@
 slug: expire-context-without-abandoning-work
-title: Expire what you must without stranding the work in flight
+title: Cleanup breaks an open task and ignores an erasure request
+day: 15
+skill: Order the expiry rules so erasure wins and open tasks keep their records
 artefact_type: code
 difficulty: hard
 track: memory
@@ -189,7 +191,7 @@ coach:
     - id: no-dependency-check
       when: { code_lacks: 'needed_by' }
       say: >-
-        Nothing in your sweep reads needed_by. The February record was the only
+        Nothing in your sweep reads `needed_by`. The February record was the only
         evidence for an open task, and age alone removed it.
     - id: unreadable-store-as-empty
       when: { code_matches: 'get\(\s*["'']records["'']\s*\)\s*or\s*\[\s*\]' }
@@ -216,7 +218,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Write decide() first: one record in, kept or removed out, with the
+        Write `decide()` first: one record in, kept or removed out, with the
         rules in the table's order. The sweep is a loop around it.
     - id: many-failed-runs
       when: { failed_runs_at_least: 3 }

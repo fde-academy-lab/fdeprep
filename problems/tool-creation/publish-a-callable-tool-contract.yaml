@@ -1,5 +1,7 @@
 slug: publish-a-callable-tool-contract
-title: Publish a tool the model can call without guessing
+title: A two-hour meeting was asked to leave after thirty minutes
+day: 3
+skill: Publish a tool the model can call without guessing
 artefact_type: code
 difficulty: easy
 track: tool-creation
@@ -199,8 +201,7 @@ hints:
     the parameters a call cannot do without are listed in required.
   - The declaration already says both. room is a Literal of three names, and
     note is the only parameter with a default.
-  - Put the whole contract in the first prompt with json.dumps, so the model
-    reads the same description of the tool on every call.
+  - "Put the whole contract in the first prompt with `json.dumps`, so the model reads the same description of the tool on every call."
   - "Work in this order: a type and a description for every parameter, the
     allowed values for the one with a fixed set, the list of parameters with
     no default, then the contract in the first prompt."
@@ -232,13 +233,13 @@ diagram:
     - { id: contract, label: Tool contract, sub: "types, enum, required", kind: doc, tone: green, at: [1, 0] }
     - { id: agent, label: Agent loop, sub: builds the prompt, kind: agent, tone: purple, at: [1, 1] }
     - { id: model, label: Model, sub: fills in the arguments, kind: model, tone: teal, at: [2, 0] }
-    - { id: tool, label: book_room(), sub: falls back to defaults, kind: tool, tone: orange, at: [3, 1] }
+    - { id: tool, label: "`book_room()`", sub: falls back to defaults, kind: tool, tone: orange, at: [3, 1] }
     - { id: defaults, label: Wrong room or 30 minutes, sub: what a guess turns into, kind: output, tone: pink, at: [2, 2] }
   edges:
     - { from: member, to: agent, label: request, step: 1 }
     - { from: contract, to: agent, label: published once, tone: muted }
     - { from: agent, to: model, label: contract and question, step: 2 }
-    - { from: model, to: agent, label: "Action: book_room({...})", step: 3 }
+    - { from: model, to: agent, label: "Action: `book_room({...})`", step: 3 }
     - { from: agent, to: tool, label: the model's arguments, step: 4 }
     - { from: tool, to: defaults, label: a missing or unknown value, tone: danger }
 
@@ -312,7 +313,7 @@ coach:
       say: >-
         The model did not recognise your contract in that run and guessed the
         argument names. A dict printed as it is comes out in Python's notation,
-        with single quotes. What does json.dumps give the model instead?
+        with single quotes. What does `json.dumps` give the model instead?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-

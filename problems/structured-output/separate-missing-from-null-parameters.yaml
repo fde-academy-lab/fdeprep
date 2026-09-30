@@ -1,5 +1,7 @@
 slug: separate-missing-from-null-parameters
-title: Ask about the field nobody mentioned, and only that one
+title: Nobody was asked where to leave parcels, so 31 went back
+day: 1
+skill: Ask about the field nobody mentioned, and only that one
 artefact_type: code
 difficulty: easy
 track: structured-output
@@ -159,9 +161,7 @@ step_checks:
 hints:
   - Look at the parsed reply for a case that fails. Before you read any value,
     list which keys are there at all.
-  - "extracted.get(name) gives None for a key that is absent and for a key
-    that holds null. After that call the two cases look the same, so the
-    difference has to be read before it."
+  - "`extracted.get(name)` gives None for a key that is absent and for a key that holds null. After that call the two cases look the same, so the difference has to be read before it."
   - An absent key always needs a question. A key holding null needs one only
     when null is not allowed for that field, and FIELDS already says which
     fields allow it.
@@ -194,12 +194,12 @@ diagram:
     - { id: assistant, label: Booking assistant, sub: decides to ask or to book, kind: agent, tone: purple, at: [1, 1] }
     - { id: check, label: "Absent or null?", sub: one decision per field, kind: decision, tone: green, at: [2, 1] }
     - { id: ask, label: Ask the customer, sub: only the absent fields, kind: output, tone: blue, at: [3, 0] }
-    - { id: book, label: book_redelivery, sub: nulls passed through as nulls, kind: tool, tone: orange, at: [3, 1] }
+    - { id: book, label: "`book_redelivery`", sub: nulls passed through as nulls, kind: tool, tone: orange, at: [3, 1] }
     - { id: depot, label: Back to the depot, sub: nobody was asked, kind: output, tone: pink, at: [2, 2] }
   edges:
     - { from: message, to: assistant, label: the message, step: 1 }
     - { from: assistant, to: model, label: prompt, step: 2 }
-    - { from: model, to: assistant, label: "date and time_window: null", step: 3 }
+    - { from: model, to: assistant, label: "date and `time_window`: null", step: 3 }
     - { from: assistant, to: check, label: each field, step: 4 }
     - { from: check, to: ask, label: a key is absent }
     - { from: check, to: book, label: every field answered, tone: success }
@@ -212,7 +212,7 @@ approach:
       leaves: [an absent key was never mentioned, a null value is an answer]
     - label: Null is allowed per field
       detail: Every redelivery needs a day, so a null date is still a gap.
-      leaves: [time_window may be null, safe_place may be null, date may not]
+      leaves: ["`time_window` may be null", "`safe_place` may be null", date may not]
     - label: Ask or book, never both
       leaves: [anything to ask means no booking, nothing to ask means book]
     - label: Keep the answer the customer gave
@@ -228,14 +228,14 @@ coach:
         code_matches: '\.get\('
         code_lacks: '\bnot\s+in\b|\bif\b[^\n]*\bin\s+\w|\.keys\(\)|\.get\([^),]+,\s*(?!None\b)\w'
       say: >-
-        .get() gives None for a key that is missing and for a key that holds
+        .`get()` gives None for a key that is missing and for a key that holds
         null, so after that call the two look identical. Which of them means
         the customer never said?
     - id: needs-asking-unwritten
       when:
         code_matches: 'def needs_asking\([^)]*\)[^\n]*\n(?:[ \t]*(?:#[^\n]*|"""[^\n]*""")?\n)*[ \t]*return False[ \t]*$'
       say: >-
-        needs_asking still says no for every field, so nothing is ever asked.
+        `needs_asking` still says no for every field, so nothing is ever asked.
         Start there: what does an absent key mean for a field?
     - id: safe-place-never-asked
       when: { test_failed: a_safe_place_nobody_mentioned_is_asked_about }
@@ -246,7 +246,7 @@ coach:
       when: { test_failed: any_time_is_fine_is_an_answer }
       say: >-
         The customer said any time is fine, and the model wrote that as null.
-        Is null a gap for time_window, or is it an answer?
+        Is null a gap for `time_window`, or is it an answer?
     - id: null-date-booked
       when: { test_failed: a_null_date_is_still_a_missing_date }
       say: >-
@@ -260,7 +260,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Write needs_asking for one field first. An absent key is the easy
+        Write `needs_asking` for one field first. An absent key is the easy
         case, and the only field the no-date public test asks about is absent.
     - id: see-the-hints
       when: { failed_runs_at_least: 3 }

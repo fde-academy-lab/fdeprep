@@ -1,5 +1,7 @@
 slug: reply-once-to-a-retried-webhook
-title: Reply once when the help desk delivers the same ticket twice
+title: 312 customers got two first replies, some conflicting
+day: 27
+skill: Reply once when the help desk delivers the same ticket twice
 artefact_type: code
 difficulty: medium
 track: fde-practice
@@ -214,7 +216,7 @@ diagram:
     - { id: handler, label: Webhook handler, sub: one delivery at a time, kind: agent, tone: purple, at: [1, 1] }
     - { id: store, label: Idempotency store, sub: shared by every worker, kind: store, tone: green, at: [2, 0] }
     - { id: model, label: Model, sub: twelve seconds on a long ticket, kind: model, tone: teal, at: [2, 2] }
-    - { id: post, label: post_reply, sub: the customer reads this, kind: tool, tone: orange, at: [3, 1] }
+    - { id: post, label: "`post_reply`", sub: the customer reads this, kind: tool, tone: orange, at: [3, 1] }
     - { id: double, label: Second reply, sub: a different promise, kind: output, tone: pink, at: [4, 1] }
   edges:
     - { from: helpdesk, to: handler, label: "attempt 1, then attempt 2", step: 1 }
@@ -257,7 +259,7 @@ coach:
       when: { code_lacks: '["'']release["'']' }
       say: >-
         Nothing in your handler ever gives a key back. What happens to this
-        ticket when post_reply fails after you claimed its key?
+        ticket when `post_reply` fails after you claimed its key?
     - id: hidden-unfinished
       when: { test_failed: an_unfinished_event_is_not_acknowledged }
       say: >-
@@ -274,7 +276,7 @@ coach:
       when: { test_failed: a_reply_that_did_not_post_is_released }
       say: >-
         The reply did not go out in that run. Trace what your handler writes to
-        the store and what it tells the help desk after post_reply fails.
+        the store and what it tells the help desk after `post_reply` fails.
     - id: hidden-posted-reply
       when: { test_failed: a_posted_reply_marks_the_event_done }
       say: >-

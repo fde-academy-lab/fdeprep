@@ -1,5 +1,7 @@
 slug: reject-invalid-action-arguments
-title: Validate what the model asked for before you do it
+title: The refunds agent paid out one penny and reported success
+day: 7
+skill: Validate what the model asked for before you do it
 artefact_type: code
 difficulty: medium
 track: tool-creation
@@ -181,7 +183,7 @@ scenario:
 diagram:
   title: Where a payload that looks valid gets spent
   caption: >-
-    Every check sits between the parse and the call. isinstance(True, int) is
+    Every check sits between the parse and the call. `isinstance(True, int)` is
     true in Python, so a type check that asks Python passes a boolean.
   direction: lr
   nodes:
@@ -189,16 +191,16 @@ diagram:
     - { id: model, label: Model, sub: writes the JSON payload, kind: model, tone: teal, at: [1, 0] }
     - { id: loop, label: Agent loop, sub: parses the Action, kind: agent, tone: purple, at: [1, 1] }
     - { id: checks, label: Argument checks, sub: "keys, types, range", kind: guard, tone: green, at: [2, 1] }
-    - { id: refund, label: refund(), sub: moves real money, kind: tool, tone: orange, at: [3, 1] }
+    - { id: refund, label: "`refund()`", sub: moves real money, kind: tool, tone: orange, at: [3, 1] }
     - { id: penny, label: One penny refunded, sub: true was spent as 1, kind: output, tone: pink, at: [2, 2] }
   edges:
     - { from: customer, to: loop, label: refund request, step: 1 }
     - { from: loop, to: model, label: scratchpad, step: 2 }
-    - { from: model, to: loop, label: "amount_cents: true", step: 3 }
+    - { from: model, to: loop, label: "`amount_cents`: true", step: 3 }
     - { from: loop, to: checks, label: payload, step: 4 }
     - { from: checks, to: refund, label: every check passed, tone: success }
     - { from: checks, to: loop, label: refusal naming the field, tone: muted }
-    - { from: loop, to: penny, label: "isinstance(True, int)", tone: danger }
+    - { from: loop, to: penny, label: "`isinstance(True, int)`", tone: danger }
 
 approach:
   goal: Treat the model's arguments as a claim to check before money moves
@@ -223,7 +225,7 @@ coach:
         code_matches: 'isinstance\([^,()]+,\s*int\s*\)'
         code_lacks: '\bbool\b|type\([^()]*\)\s*(is|==|!=|in)\b'
       say: >-
-        isinstance(value, int) is true for True and False, because bool is a
+        `isinstance(value, int)` is true for True and False, because bool is a
         subclass of int. What does the refunds tool do with an amount of True?
     - id: no-unknown-key-check
       when:
@@ -423,7 +425,7 @@ reference_md: |
   that asks, because a prompt is editable by anyone with access to a text box.
 
   Naming the field in the refusal is what makes the retry different. "Invalid
-  arguments" gets the same payload back. "amount_cents must be an integer
+  arguments" gets the same payload back. "`amount_cents` must be an integer
   between 1 and 20000, and true is not one" gets a number.
 
 complexity: C2
