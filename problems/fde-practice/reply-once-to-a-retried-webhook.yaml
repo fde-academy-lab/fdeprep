@@ -110,16 +110,18 @@ steps:
     check_id: s4
 
 step_checks:
-  # The store's replies are scripted per case and ignore the key, so which id
-  # became the key shows only in the claim's own arguments.
-  # a_new_ticket_gets_one_reply carries evt_870 and dlv_31a0.
+  # The store answers by key, but nothing holds evt_870 in
+  # a_new_ticket_gets_one_reply, so every key there reads absent and can be
+  # claimed. Which id became the key shows only in the claim's own arguments.
+  # That case carries evt_870 and dlv_31a0.
   - step_id: s1
     spec:
       assertions:
         - { type: calls_tool_with, name: claim, args: { key: evt_870 } }
-  # In both public retries the lookup already reads the key as held, so a
+  # In both public retries the lookup already reads the event as held, so a
   # handler that trusts the lookup can pass them. This check runs its own
-  # race: the lookup reads absent and the claim is already taken.
+  # race: every key reads absent to the lookup, and evt_925 is claimed by the
+  # time this delivery tries. Any other key can still be claimed.
   - step_id: s2
     spec:
       kind: agent_run
@@ -129,7 +131,11 @@ step_checks:
         - { match: "*", reply: "Reply: I am sorry about the logouts. The app team is releasing a fix tonight." }
       tools:
         lookup: { returns: { status: 200, state: absent } }
-        claim: { returns: { status: 200, claimed: false, state: in_progress } }
+        claim:
+          by_arg:
+            arg: key
+            values: { evt_925: { status: 200, claimed: false, state: in_progress } }
+            default: { status: 200, claimed: true }
         mark_done: { returns: { status: 200 } }
         release: { returns: { status: 200 } }
         post_reply: { returns: { status: 201, reply_id: "R-7790" } }
@@ -139,8 +145,9 @@ step_checks:
         - { type: llm_calls_at_most, value: 0 }
         - { type: does_not_call_tool, name: post_reply }
   # Reads a_retry_while_the_first_is_drafting_gets_no_second_reply, where
-  # another delivery holds the key. The stub already answers 200 for a
-  # finished event, so the 409 is the half of this step a check can see.
+  # another delivery holds the key. The stub's own lookup answers 200 for a
+  # finished event once the key is right, so the 409 is the half of this
+  # step a check can see.
   - step_id: s3
     spec:
       assertions:
@@ -305,6 +312,8 @@ tests:
         - { type: returns_matches, value: '"http_status":\s*200' }
         - { type: llm_calls_at_most, value: 1 }
 
+  # The first delivery holds evt_881 and every other key reads absent, so a
+  # retry keyed on its delivery id wins a fresh claim and replies again.
   - name: a_retry_while_the_first_is_drafting_gets_no_second_reply
     visibility: public
     spec:
@@ -314,8 +323,16 @@ tests:
       llm_script:
         - { match: "*", reply: "Reply: Sorry about the double charge. Billing will refund the second payment within five days." }
       tools:
-        lookup: { returns: { status: 200, state: in_progress } }
-        claim: { returns: { status: 200, claimed: false, state: in_progress } }
+        lookup:
+          by_arg:
+            arg: key
+            values: { evt_881: { status: 200, state: in_progress } }
+            default: { status: 200, state: absent }
+        claim:
+          by_arg:
+            arg: key
+            values: { evt_881: { status: 200, claimed: false, state: in_progress } }
+            default: { status: 200, claimed: true }
         mark_done: { returns: { status: 200 } }
         release: { returns: { status: 200 } }
         post_reply: { returns: { status: 201, reply_id: "R-7740" } }
@@ -325,6 +342,8 @@ tests:
         - { type: llm_calls_at_most, value: 0 }
         - { type: no_exception }
 
+  # An earlier attempt answered evt_864 and every other key reads absent, so
+  # a retry keyed on its delivery id drafts and posts the reply a second time.
   - name: a_finished_event_is_acknowledged_without_a_second_reply
     visibility: public
     spec:
@@ -334,8 +353,16 @@ tests:
       llm_script:
         - { match: "*", reply: "Reply: Thanks, I have corrected the company name and reissued the invoice." }
       tools:
-        lookup: { returns: { status: 200, state: done } }
-        claim: { returns: { status: 200, claimed: false, state: done } }
+        lookup:
+          by_arg:
+            arg: key
+            values: { evt_864: { status: 200, state: done } }
+            default: { status: 200, state: absent }
+        claim:
+          by_arg:
+            arg: key
+            values: { evt_864: { status: 200, claimed: false, state: done } }
+            default: { status: 200, claimed: true }
         mark_done: { returns: { status: 200 } }
         release: { returns: { status: 200 } }
         post_reply: { returns: { status: 201, reply_id: "R-7702" } }
@@ -345,6 +372,9 @@ tests:
         - { type: returns_matches, value: '"http_status":\s*200' }
         - { type: llm_calls_at_most, value: 0 }
 
+  # Another delivery holds evt_893 and has not finished, so the answer is 409
+  # with no work. Every other key reads absent, so a handler keyed on the
+  # delivery id wins a fresh claim and posts; the claim's argument names it.
   - name: an_unfinished_event_is_not_acknowledged
     visibility: hidden
     spec:
@@ -354,8 +384,16 @@ tests:
       llm_script:
         - { match: "*", reply: "Reply: Sorry about the stuck export. I have restarted it and it should finish within ten minutes." }
       tools:
-        lookup: { returns: { status: 200, state: in_progress } }
-        claim: { returns: { status: 200, claimed: false, state: in_progress } }
+        lookup:
+          by_arg:
+            arg: key
+            values: { evt_893: { status: 200, state: in_progress } }
+            default: { status: 200, state: absent }
+        claim:
+          by_arg:
+            arg: key
+            values: { evt_893: { status: 200, claimed: false, state: in_progress } }
+            default: { status: 200, claimed: true }
         mark_done: { returns: { status: 200 } }
         release: { returns: { status: 200 } }
         post_reply: { returns: { status: 201, reply_id: "R-7751" } }
@@ -367,6 +405,10 @@ tests:
         - { type: does_not_call_tool, name: release }
         - { type: calls_tool_with, name: claim, args: { key: evt_893 } }
 
+  # The race: every key reads absent to the lookup, and evt_902 is claimed by
+  # the time this delivery tries, so a handler that acts on the lookup posts
+  # a second reply. Any other key can be claimed, so one keyed on the
+  # delivery id posts a second reply too; the claim's argument names it.
   - name: two_deliveries_race_past_the_same_lookup
     visibility: hidden
     spec:
@@ -377,7 +419,11 @@ tests:
         - { match: "*", reply: "Reply: Your plan is cancelled and will not renew on Friday." }
       tools:
         lookup: { returns: { status: 200, state: absent } }
-        claim: { returns: { status: 200, claimed: false, state: in_progress } }
+        claim:
+          by_arg:
+            arg: key
+            values: { evt_902: { status: 200, claimed: false, state: in_progress } }
+            default: { status: 200, claimed: true }
         mark_done: { returns: { status: 200 } }
         release: { returns: { status: 200 } }
         post_reply: { returns: { status: 201, reply_id: "R-7760" } }
@@ -388,6 +434,9 @@ tests:
         - { type: returns_matches, value: '"http_status":\s*409' }
         - { type: calls_tool_with, name: claim, args: { key: evt_902 } }
 
+  # The post fails, so the key goes back and the answer is 503. Nothing holds
+  # evt_911, so every key can be claimed and only the claim's argument shows
+  # which id became the key.
   - name: a_reply_that_did_not_post_is_released
     visibility: hidden
     spec:
