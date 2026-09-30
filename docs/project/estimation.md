@@ -43,7 +43,7 @@ Each stage has an optimistic, a likely and a pessimistic figure in person-days. 
 | S7 Install fixes | 8 | 1 | 2 | 4 | 2.2 | 0.5 |
 | S8 Revamp | 82 | 30 | 50 | 90 | 53.3 | 10.0 |
 | S9 Beta on AWS | 35 | 6 | 10 | 18 | 10.7 | 2.0 |
-| S10 Delivery board | 20 | 2 | 3 | 5 | 3.2 | 0.5 |
+| S10 Delivery board | 21 | 2 | 3 | 5 | 3.2 | 0.5 |
 | S11 Beta launch | 26 | 3 | 5 | 10 | 5.5 | 1.2 |
 | S12 Problem pages v2 | 52 | 8 | 14 | 25 | 14.8 | 2.8 |
 | S13 Voice interviewer v2, step 1 | 44 | 10 | 16 | 28 | 17.0 | 3.0 |
@@ -51,7 +51,7 @@ Each stage has an optimistic, a likely and a pessimistic figure in person-days. 
 | S15 First cohort | 73 | 25 | 40 | 70 | 42.5 | 7.5 |
 | S16 Second version | 50 | 30 | 55 | 100 | 58.3 | 11.7 |
 | All built stages | 360 |  |  |  | 203.3 | 14.4 |
-| All planned stages | 302 |  |  |  | 160.8 | 15.1 |
+| All planned stages | 303 |  |  |  | 160.8 | 15.1 |
 <!-- /generated:estimates -->
 
 ## How fast the build moved
@@ -82,7 +82,7 @@ Two readings for each planned epic. The first assumes the build's own pace holds
 <!-- generated:forecast -->
 | Epic | Points | Days at the build's own pace | Person-days for a human team |
 |---|---|---|---|
-| S10 Delivery board | 20 | 0.5 | 3 |
+| S10 Delivery board | 21 | 0.5 | 3 |
 | S11 Beta launch | 26 | 0.7 | 6 |
 | S12 Problem pages v2 | 52 | 1.3 | 15 |
 | S13 Voice interviewer v2, step 1 | 44 | 1.1 | 17 |

@@ -1047,6 +1047,17 @@ stages:
           - The repository secret PROJECT_TOKEN exists and the first sync run is green.
           - The five views that docs/project/board-setup.md describes exist on the Project.
 
+      - id: S10.5
+        title: Retire the skill script that bypassed the reviewed allowlists
+        type: Task
+        status: done
+        pr: 43
+        points: 1
+        area: Docs and process
+        finish: 2026-09-30
+        acceptance:
+          - scripts/sync-skills.sh is gone, and SETUP.md points at bootstrap.sh --with-skills, whose allowlists and pins were reviewed.
+
   - id: S11
     name: Beta launch
     kind: roadmap
@@ -1224,12 +1235,14 @@ stages:
       - id: S12.6
         title: List the tools the agent has, with their arguments and returns
         type: Feature
-        status: todo
+        status: done
+        pr: 43
         points: 5
         area: Web application
-        finish: 2026-10-03
+        finish: 2026-09-30
         acceptance:
-          - Every code problem that scripts tools lists each tool's name, arguments and what it returns, taken from the problem file.
+          - Every code problem that scripts tools lists each tool's name, arguments and what it returns, and the validator checks the list against the public cases and step checks.
+          - A tool that only the hidden cases use stays off the page unless the brief already names it.
       - id: S12.7
         title: Say how each problem comes up in an interview
         type: Feature
@@ -1243,21 +1256,25 @@ stages:
       - id: S12.8
         title: Add a worked example to every problem
         type: Task
-        status: todo
+        status: done
+        pr: 43
         points: 13
         area: Content
-        finish: 2026-10-03
+        finish: 2026-09-30
         acceptance:
-          - Every problem shows one input and the behaviour expected from it, taken from a public case, never a hidden one.
+          - Every code problem shows one input and the behaviour expected from it, copied from a public case, never a hidden one.
+          - Every prompt problem shows one ordinary message that repeats no probe; a design problem shows its rubric instead.
       - id: S12.9
         title: Name the common traps on every problem
         type: Task
-        status: todo
+        status: done
+        pr: 43
         points: 8
         area: Content
-        finish: 2026-10-03
+        finish: 2026-09-30
         acceptance:
-          - Every problem lists the mistakes its hidden and adversarial cases exist to catch, in words that do not give the case away.
+          - Every problem lists two to four mistakes its hidden and adversarial cases exist to catch, in words that do not give the case away, and CI refuses a trap that quotes one.
+          - Easy and Medium show the traps from the start; Hard, Extreme and the rehearsal show them once the attempt closes, and the page does not send them before then.
 
   - id: S13
     name: Voice interviewer v2, step 1
