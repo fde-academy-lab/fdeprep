@@ -216,3 +216,40 @@ export function scoreVoiceSession(input: {
     total: round(content + structure.points + pace.points),
   };
 }
+
+export type TypedScore = {
+  content: { points: number; outOf: number };
+  structure: { points: number; outOf: number; covered: number; total: number };
+  pace: null;
+  total: number;
+};
+
+/**
+ * A typed answer's score. docs/07 section 6, as amended 30 September 2026.
+ *
+ * A typed answer has no clock and no timings, so pace is left out rather than
+ * invented, and structure is beat coverage alone, which is the part of
+ * structure that is about the answer: order and budget are about when things
+ * were said. Content and structure carry eighty points between them, and the
+ * total is scaled from eighty to a hundred so it reads on the same line as a
+ * spoken score. A learner who types gains no clock pressure and loses no pace
+ * points, and the debrief says which of the two it was.
+ *
+ * Like scoreVoiceSession, it has no parameter that could carry a delivery
+ * metric.
+ */
+export function scoreTypedAnswer(input: {
+  contentPoints: number;
+  beats: BeatOutcome[];
+}): TypedScore {
+  const content = Math.max(0, Math.min(CONTENT_WEIGHT, input.contentPoints));
+  const total = input.beats.length;
+  const covered = input.beats.filter((beat) => beat.covered).length;
+  const structure = total === 0 ? 0 : (covered / total) * STRUCTURE_WEIGHT;
+  return {
+    content: { points: round(content), outOf: CONTENT_WEIGHT },
+    structure: { points: round(structure), outOf: STRUCTURE_WEIGHT, covered, total },
+    pace: null,
+    total: round(((content + structure) / (CONTENT_WEIGHT + STRUCTURE_WEIGHT)) * 100),
+  };
+}

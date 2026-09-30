@@ -61,7 +61,8 @@ export async function ensureFollowUpAudio(questionId: number): Promise<number> {
 
   const pool = db();
   const { rows } = await pool.query<{ id: string; text: string }>(
-    "select id, text from voice_follow_up where voice_question_id = $1 and audio_key is null",
+    `select id, text from voice_follow_up
+      where voice_question_id = $1 and audio_key is null and retired_at is null`,
     [questionId],
   );
   if (rows.length === 0) return 0;
@@ -118,7 +119,8 @@ export async function followUpAudio(
   if (!config) return null;
 
   const { rows } = await db().query<{ audio_key: string | null }>(
-    "select audio_key from voice_follow_up where id = $1 and voice_question_id = $2",
+    `select audio_key from voice_follow_up
+      where id = $1 and voice_question_id = $2 and retired_at is null`,
     [followUpId, questionId],
   );
   const key = rows[0]?.audio_key;

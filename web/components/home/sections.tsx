@@ -344,13 +344,14 @@ export function PressurePanel() {
           so the result means something.
         </p>
       </Link>
-      <Link href="/voice/session" className="group rounded-panel border border-border bg-surface p-4 hover:bg-surface-2">
+      <Link href="/voice" className="group rounded-panel border border-border bg-surface p-4 hover:bg-surface-2">
         <p className="flex items-center gap-2 font-medium text-text">
           <Mic aria-hidden className="size-4 text-text-dim" strokeWidth={1.75} /> Answer out loud
         </p>
         <p className="mt-1.5 text-meta leading-relaxed text-text-dim">
-          Interview questions answered by voice, with a pace band while you speak and a debrief
-          after. Nothing is transcribed onto the screen while you talk.
+          Interview questions answered out loud, with a pace band while you speak and a debrief
+          after. Nothing is transcribed onto the screen while you talk, and you can type an
+          answer when you cannot speak.
         </p>
       </Link>
     </div>

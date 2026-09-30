@@ -12,8 +12,12 @@
  * score, a heatmap or the placement export.
  */
 import { inTransaction } from "../db/pool.ts";
+import {
+  release, VOICE_FREE_SHORT_ANSWERS_PER_DAY, voiceAnswerCounts, voiceScope,
+} from "../policy/caps.ts";
 import type { PaceState } from "./cues.ts";
 import type { Segment } from "./delivery.ts";
+import type { VoiceMode } from "./start.ts";
 
 export type TimelineIn = {
   beats: {
@@ -33,11 +37,21 @@ export class SessionNotOpen extends Error {
 
 const PACE_STATES: PaceState[] = ["on_budget", "stretching", "overrun", "never_reached"];
 
+/** Words in a transcript, counted the same way for every answer. */
+export function wordCount(text: string): number {
+  return text.trim().split(/\s+/).filter(Boolean).length;
+}
+
 /**
  * Close the session and store the timeline, in one transaction.
  *
  * Refuses a session that is already finished, so a replayed or duplicated
  * request cannot append a second set of beat results to the same sitting.
+ * An answer that ended before it counted gives its allowance back in the
+ * same transaction, so the unit and the finished row never disagree, and it
+ * is marked as not counted so the scorer never sends it to the judge: two
+ * model calls on an answer that said nothing buy nothing. Past the daily
+ * bound on free short answers, a short answer counts and is scored.
  */
 export async function finishSession(input: {
   sessionId: number;
@@ -49,23 +63,53 @@ export async function finishSession(input: {
   timeline: TimelineIn;
 }): Promise<void> {
   await inTransaction(async (client) => {
-    const { rows } = await client.query<{ id: string }>(
-      `select id from voice_session
+    const { rows } = await client.query<{
+      id: string; mode: VoiceMode; started_at: Date; spent_allowance: boolean; running_ms: number;
+    }>(
+      `select id, mode, started_at, spent_allowance,
+              (extract(epoch from (now() - started_at)) * 1000)::int as running_ms
+         from voice_session
         where id = $1 and enrolment_id = $2 and finished_at is null
         for update`,
       [input.sessionId, input.enrolmentId],
     );
-    if (!rows[0]) {
+    const session = rows[0];
+    if (!session) {
       throw new SessionNotOpen(
         "That voice session is already finished, or it is not yours. Nothing was changed.",
       );
     }
 
+    // The clock is the server's. The word count comes from the browser's
+    // transcript and only matters inside the first thirty seconds, so a
+    // browser that under-reports words saves itself at most half a minute.
+    const counts = voiceAnswerCounts({
+      durationMs: session.running_ms, words: wordCount(input.transcript),
+    });
+    let free = false;
+    if (session.spent_allowance && !counts) {
+      const { rows: earlier } = await client.query<{ n: string }>(
+        `select count(*) as n from voice_session
+          where enrolment_id = $1 and mode = $2 and id <> $3
+            and finished_at > now() - interval '1 day'
+            and judge_result ->> 'skipped' = 'did_not_count'`,
+        [input.enrolmentId, session.mode, input.sessionId]);
+      free = Number(earlier[0]!.n) < VOICE_FREE_SHORT_ANSWERS_PER_DAY;
+    }
+    if (free) {
+      await release(client, {
+        enrolmentId: input.enrolmentId, scope: voiceScope(session.mode), at: session.started_at,
+      });
+    }
+
     await client.query(
       `update voice_session
-          set finished_at = now(), transcript = $2, transcript_segments = $3
+          set finished_at = now(), transcript = $2, transcript_segments = $3,
+              spent_allowance = spent_allowance and not $4,
+              scored_at = case when $4 then now() end,
+              judge_result = case when $4 then '{"skipped":"did_not_count"}'::jsonb end
         where id = $1`,
-      [input.sessionId, input.transcript, JSON.stringify(input.segments ?? [])],
+      [input.sessionId, input.transcript, JSON.stringify(input.segments ?? []), free],
     );
 
     for (const beat of input.timeline.beats) {

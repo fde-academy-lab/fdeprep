@@ -16,7 +16,7 @@ import type { Difficulty } from "./tiers.ts";
 
 export type Scope =
   | "run_hourly" | "submit_daily" | "live_daily" | "rehearsal_weekly"
-  | "defence_daily";
+  | "defence_daily" | "voice_guided_daily" | "voice_unguided_daily";
 
 /** Scopes counted per problem rather than per account. */
 const PER_PROBLEM: ReadonlySet<Scope> = new Set(["run_hourly", "submit_daily"]);
@@ -36,8 +36,13 @@ export function problemScoped(scope: Scope): boolean {
   return PER_PROBLEM.has(scope);
 }
 
+/**
+ * The policy row for a scope. `difficulty` is left out for the scopes that
+ * are not tiered, such as the voice caps, and then only a row with no
+ * difficulty matches.
+ */
 export async function policyRow(
-  client: Pool | PoolClient, scope: Scope, difficulty: Difficulty,
+  client: Pool | PoolClient, scope: Scope, difficulty?: Difficulty,
 ): Promise<{ max_count: number; window_s: number } | null> {
   const { rows } = await client.query<{ max_count: number; window_s: number }>(
     `select max_count, window_s from rate_limit_policy
@@ -45,7 +50,7 @@ export async function policyRow(
         and (difficulty is null or difficulty::text = $2)
       order by difficulty nulls last
       limit 1`,
-    [scope, difficulty]);
+    [scope, difficulty ?? null]);
   return rows[0] ?? null;
 }
 
@@ -59,7 +64,7 @@ export async function policyRow(
 export async function allowanceFor(options: {
   enrolmentId: number;
   problemId?: number;
-  difficulty: Difficulty;
+  difficulty?: Difficulty;
   scope: Scope;
   client?: Pool | PoolClient;
 }): Promise<Allowance> {
@@ -116,10 +121,13 @@ export class RateLimitError extends Error {
  */
 export async function consume(client: PoolClient, options: {
   enrolmentId: number;
-  problemId: number;
-  difficulty: Difficulty;
+  problemId?: number;
+  difficulty?: Difficulty;
   scope: Scope;
 }): Promise<Allowance> {
+  if (problemScoped(options.scope) && options.problemId === undefined) {
+    throw new Error(`${options.scope} is counted per problem, so it needs a problemId.`);
+  }
   const policy = await policyRow(client, options.scope, options.difficulty);
   if (!policy) {
     return {
@@ -178,6 +186,85 @@ export async function consume(client: PoolClient, options: {
 }
 
 /**
+ * Give back one unit that was claimed at `at`, from the window open then.
+ *
+ * For a claim that turns out not to count, such as a voice answer abandoned
+ * before it said anything (docs/07 section 12, item 9). Scoped to the window
+ * the claim went into, so a unit claimed yesterday is never handed back out
+ * of today's allowance. A window that has already closed has nothing left to
+ * give back, and the learner lost nothing, because it reset.
+ *
+ * `at` has been through a JavaScript Date, which keeps milliseconds, while the
+ * window's start keeps the microseconds Postgres wrote. A claim made in the
+ * same transaction as the window opens at the same instant, so without the
+ * millisecond of slack below the window reads as opening after the claim and
+ * nothing is given back.
+ */
+export async function release(client: PoolClient, options: {
+  enrolmentId: number;
+  scope: Scope;
+  at: Date;
+  problemId?: number;
+  difficulty?: Difficulty;
+}): Promise<void> {
+  const policy = await policyRow(client, options.scope, options.difficulty);
+  if (!policy) return;
+  await client.query(
+    `update rate_limit_counter set count = count - 1
+      where id = (select id from rate_limit_counter
+                   where enrolment_id = $1 and scope = $2::limit_scope
+                     and problem_id is not distinct from $3
+                     and window_start <= $4::timestamptz + interval '1 millisecond'
+                     and window_start > $4::timestamptz - make_interval(secs => $5)
+                     and window_start > now() - make_interval(secs => $5)
+                     and count > 0
+                   order by window_start desc limit 1)`,
+    [options.enrolmentId, options.scope,
+     problemScoped(options.scope) ? (options.problemId ?? null) : null, options.at,
+     policy.window_s]);
+}
+
+/**
+ * Which allowance a voice session spends. docs/07 section 10: guided and
+ * unguided have a daily cap each, and pressure shares the rehearsal
+ * allowance, because it is the expensive mode in both tokens and nerves.
+ */
+export function voiceScope(mode: "guided" | "unguided" | "pressure"): Scope {
+  if (mode === "pressure") return "rehearsal_weekly";
+  return mode === "guided" ? "voice_guided_daily" : "voice_unguided_daily";
+}
+
+/**
+ * Whether a voice answer counts against its allowance.
+ *
+ * docs/07 section 12 item 9 says a session abandoned mid-answer does not
+ * consume the daily allowance, and the only abandonment the server can verify
+ * is one that ended early. So an answer counts once it has run thirty seconds
+ * or said forty words, whichever comes first. Thirty seconds is the first
+ * beat's budget in the worked example, and forty words is about fifteen
+ * seconds of speech, enough to have made a claim. Both are this build's own
+ * numbers. The duration is measured on the server, so a browser claiming an
+ * early end still pays after thirty seconds.
+ */
+export const VOICE_COUNTS_AFTER = { ms: 30_000, words: 40 };
+
+export function voiceAnswerCounts(answer: { durationMs: number; words: number }): boolean {
+  return answer.durationMs >= VOICE_COUNTS_AFTER.ms || answer.words >= VOICE_COUNTS_AFTER.words;
+}
+
+/**
+ * How many answers that did not count each mode gives back in a rolling day.
+ *
+ * Each one is up to thirty seconds of metered speech to text that costs the
+ * learner nothing, so without a bound a start-and-stop loop is unlimited
+ * transcription. Six matches the daily cap on guided and unguided answers, so
+ * a learner who abandons a start every time still has their allowance, and
+ * the seventh short answer counts and is scored like any other. This build's
+ * own number.
+ */
+export const VOICE_FREE_SHORT_ANSWERS_PER_DAY = 6;
+
+/**
  * docs/03 section 8: an error verdict never consumes an allowance. A learner
  * who loses their one daily Extreme attempt to infrastructure stops trusting
  * every score.
@@ -218,6 +305,10 @@ function describeExhausted(scope: Scope, max: number, resetInS: number): string 
       return `You have used all ${max} rehearsals this week. More in ${when}.`;
     case "defence_daily":
       return `You have used all ${max} defence attempts today. More in ${when}.`;
+    case "voice_guided_daily":
+      return `You have used all ${max} guided voice answers today. More in ${when}.`;
+    case "voice_unguided_daily":
+      return `You have used all ${max} unguided voice answers today. More in ${when}.`;
   }
 }
 

@@ -27,6 +27,8 @@ export async function POST() {
       cohortId: learner.cohortId,
       voiceQuestionId: await labQuestionId(),
       mode: "unguided",
+      // A transport check carries no answer, so it spends no learner cap.
+      capped: false,
     });
     return NextResponse.json(started);
   } catch (error) {

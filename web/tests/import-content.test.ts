@@ -15,7 +15,9 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "../lib/db/pool.ts";
 import { importVoiceQuestion, VoiceImportRejected } from "../lib/voice/import.ts";
-import { publishedQuestionId, publishedQuestions } from "../lib/voice/question.ts";
+import {
+  QuestionNotFound, VOICE_TRACK_ORDER, publishedQuestions, resolvePublishedQuestion,
+} from "../lib/voice/question.ts";
 import { fixtureQuestionId } from "../lib/voice/fixture.ts";
 import path from "node:path";
 import { importAllContent } from "../scripts/import-content.ts";
@@ -184,18 +186,21 @@ exemplars:
 
 describe("which question a learner gets", WHOLE_CATALOGUE, () => {
   it("is nothing at all before the content has been imported", async () => {
-    // A fresh checkout has an empty table, and the session page falls back to
-    // the docs/07 fixture so the cockpit still renders while you work locally.
-    await expect(publishedQuestionId()).resolves.toBeNull();
+    // A fresh checkout has an empty table. The picker says to run
+    // `npm run import:content`, and the session page sends a learner there
+    // rather than filing an answer under the docs/07 fixture.
+    await expect(publishedQuestions()).resolves.toEqual([]);
+    await expect(resolvePublishedQuestion("say-no-to-the-date"))
+      .rejects.toBeInstanceOf(QuestionNotFound);
   });
 
   it("is an authored question once it has, never the fixture", async () => {
     const fixture = await fixtureQuestionId();
     await importAllContent(quiet);
 
-    const chosen = await publishedQuestionId();
-    expect(chosen).not.toBeNull();
-    expect(chosen).not.toBe(fixture);
+    const ids = (await publishedQuestions()).map((q) => q.id);
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids).not.toContain(fixture);
 
     // The fixture stays unpublished, which is what keeps it out of the way.
     const { rows } = await db().query<{ is_published: boolean }>(
@@ -205,25 +210,28 @@ describe("which question a learner gets", WHOLE_CATALOGUE, () => {
 
   it("honours a slug so a learner can be sent a particular question", async () => {
     await importAllContent(quiet);
-    const id = await publishedQuestionId("say-no-to-the-date");
+    const id = await resolvePublishedQuestion("say-no-to-the-date");
     const { rows } = await db().query<{ slug: string }>(
       "select slug from voice_question where id = $1", [id]);
     expect(rows[0]!.slug).toBe("say-no-to-the-date");
   });
 
-  it("gives the same learner the same question twice", async () => {
+  it("keeps the picker's order across a second import", async () => {
     // Ordered by slug rather than id, so an import that renumbers rows does not
-    // quietly change what everybody is answering.
+    // quietly change the order Next question walks.
     await importAllContent(quiet);
-    const first = await publishedQuestionId();
+    const first = (await publishedQuestions()).map((q) => q.slug);
     await importAllContent(quiet);
-    expect(await publishedQuestionId()).toBe(first);
+    expect((await publishedQuestions()).map((q) => q.slug)).toEqual(first);
   });
 
-  it("lists all twelve for a picker", async () => {
+  it("lists all twelve for a picker, by track and then by slug", async () => {
     await importAllContent(quiet);
     const all = await publishedQuestions();
     expect(all).toHaveLength(12);
-    expect(all.map((q) => q.slug)).toEqual([...all.map((q) => q.slug)].sort());
+    const rank = (q: { track: string; slug: string }) =>
+      `${VOICE_TRACK_ORDER.indexOf(q.track as never)}:${q.slug}`;
+    expect(all.map(rank)).toEqual([...all.map(rank)].sort());
+    expect(new Set(all.map((q) => q.track))).toEqual(new Set(VOICE_TRACK_ORDER));
   });
 });

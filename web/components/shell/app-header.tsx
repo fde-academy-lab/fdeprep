@@ -21,7 +21,7 @@ const SECTIONS: NavItem[] = [
   { href: "/", label: "Home" },
   { href: "/problems", label: "Problems" },
   { href: "/rehearsal", label: "Rehearsal" },
-  { href: "/voice/session", label: "Voice", also: ["/voice"] },
+  { href: "/voice", label: "Voice" },
   { href: "/progress", label: "Progress", also: ["/traces"] },
 ];
 

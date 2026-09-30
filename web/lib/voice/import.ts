@@ -11,8 +11,10 @@
  *
  * Idempotent on the slug. An operator reruns this after every content change,
  * so a second run updates in place and a beat the author deleted is deleted
- * here too.
+ * here too. Follow-ups are the exception, below: a pressure session's record
+ * points at them, so they are updated in place and retired, never deleted.
  */
+import type { PoolClient } from "pg";
 import { inTransaction } from "../db/pool.ts";
 import { validateVoiceYaml } from "./validate-question.ts";
 
@@ -68,9 +70,9 @@ export async function importVoiceQuestion(source: string, file: string): Promise
 
     // Delete then insert, rather than upsert and leave the rest. A beat the
     // author removed has to leave the database too, or the cockpit renders a
-    // segment nothing will ever cue.
-    for (const table of ["voice_beat", "voice_rubric_criterion", "voice_follow_up",
-                         "voice_exemplar"]) {
+    // segment nothing will ever cue. Nothing holds a foreign key to these
+    // three: a beat result names its beat by key.
+    for (const table of ["voice_beat", "voice_rubric_criterion", "voice_exemplar"]) {
       await client.query(`delete from ${table} where voice_question_id = $1`, [id]);
     }
 
@@ -89,12 +91,7 @@ export async function importVoiceQuestion(source: string, file: string): Promise
         [id, c.criterion_key, c.label, c.weight, c.descriptor_md ?? null, index + 1]);
     }
 
-    for (const [index, f] of (q.follow_ups ?? []).entries()) {
-      await client.query(
-        `insert into voice_follow_up (voice_question_id, trigger_after_beat, text, ordinal)
-         values ($1, $2, $3, $4)`,
-        [id, f.trigger_after_beat, f.text, index + 1]);
-    }
+    await syncFollowUps(client, id, q.follow_ups ?? []);
 
     for (const e of q.exemplars ?? []) {
       await client.query(
@@ -105,4 +102,38 @@ export async function importVoiceQuestion(source: string, file: string): Promise
 
     return id;
   });
+}
+
+/**
+ * Follow-ups by position, updated in place.
+ *
+ * voice_interruption points at a follow-up, so the delete-then-insert the
+ * other tables use failed on the first re-import after any pressure session,
+ * and it threw away the cached speech with it. So each authored follow-up
+ * keeps its row and its id. Its cached audio survives while its words are
+ * unchanged, and is cleared when they change, so the line is synthesised
+ * again. A follow-up the file no longer has is retired: the cockpit stops
+ * serving it, and the past sessions that heard it keep their record.
+ */
+async function syncFollowUps(
+  client: PoolClient,
+  questionId: number,
+  followUps: Array<{ trigger_after_beat: string; text: string }>,
+): Promise<void> {
+  for (const [index, f] of followUps.entries()) {
+    await client.query(
+      `insert into voice_follow_up (voice_question_id, trigger_after_beat, text, ordinal)
+       values ($1, $2, $3, $4)
+       on conflict (voice_question_id, ordinal) do update
+         set trigger_after_beat = excluded.trigger_after_beat,
+             text = excluded.text,
+             audio_key = case when voice_follow_up.text = excluded.text
+                              then voice_follow_up.audio_key end,
+             retired_at = null`,
+      [questionId, f.trigger_after_beat, f.text, index + 1]);
+  }
+  await client.query(
+    `update voice_follow_up set retired_at = now()
+      where voice_question_id = $1 and ordinal > $2 and retired_at is null`,
+    [questionId, followUps.length]);
 }

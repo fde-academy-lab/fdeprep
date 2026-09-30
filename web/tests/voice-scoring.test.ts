@@ -168,6 +168,12 @@ describe("the pipeline, from a finished session to a debrief", () => {
       voiceQuestionId: questionId,
       mode: "unguided",
     });
+    // The timeline below reaches b3 at 42 seconds, so the answer ran at least
+    // that long. Started a minute ago, it counts under docs/07 section 10 and
+    // goes to the judge; finished the instant it opened, it would not.
+    await db().query(
+      "update voice_session set started_at = now() - interval '60 seconds' where id = $1",
+      [started.sessionId]);
 
     await finishSession({
       sessionId: started.sessionId,
@@ -228,16 +234,18 @@ describe("the pipeline, from a finished session to a debrief", () => {
     expect(debrief.scored).toBe(true);
     expect(debrief.score!.content).toBeGreaterThan(0);
     expect(debrief.score!.structure).toBeGreaterThan(0);
+    // A spoken answer always carries a pace score; only a typed one has none.
+    expect(debrief.score!.pace).not.toBeNull();
     expect(debrief.score!.total).toBe(
-      debrief.score!.content + debrief.score!.structure + debrief.score!.pace,
+      debrief.score!.content + debrief.score!.structure + debrief.score!.pace!,
     );
 
     expect(debrief.beats.map((b) => b.covered)).toEqual([true, true, true, false, false]);
-    // docs/07 section 6: the TERRITORY NOT ENTERED panel is the anchors of
-    // beats the answer never reached.
-    expect(debrief.territoryNotEntered).toContain("same tool");
+    // docs/07 section 6: the TERRITORY NOT ENTERED panel names, per beat, the
+    // anchors the answer never said.
+    expect(debrief.depth.find((beat) => beat.key === "b4")!.missing).toContain("same tool");
     expect(debrief.judgeSummary).toMatch(/never reached/);
-    expect(debrief.delivery.wordsPerMinute).toBeGreaterThan(0);
+    expect(debrief.delivery!.wordsPerMinute).toBeGreaterThan(0);
     expect(debrief.transcript).toMatch(/step budget/);
   });
 

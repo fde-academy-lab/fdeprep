@@ -4,8 +4,9 @@
  *
  * | Rule | Where it lives |
  * |---|---|
- * | Retention 30 days | An S3 lifecycle rule on the bucket, in infra/. This
- *   module records the deletion in audio_deleted_at when the object is gone. |
+ * | Retention 30 days | An S3 lifecycle rule on the bucket's voice/answers/
+ *   prefix, in infra/, and markExpiredAudio below, which deletes the object
+ *   itself and records the deletion in audio_deleted_at. |
  * | The learner can delete their own audio at any time | deleteAudio, below.
  *   Immediate, irreversible, and the score stays: nothing here touches a
  *   score column. |
@@ -193,4 +194,43 @@ export async function setShare(input: {
       [input.sessionId],
     );
   }
+}
+
+/**
+ * Delete learner audio past its retention and record that it is gone.
+ *
+ * docs/07 section 9: "S3 lifecycle rule, then the object is deleted and
+ * audio_deleted_at is set." The rule deletes on S3's own schedule, which
+ * rounds up to the next midnight UTC, and nothing ever set the column, so the
+ * debrief kept offering a recording that no longer existed. This deletes each
+ * object itself before marking it, so the column is true the moment it is
+ * set, and the lifecycle rule stays as the backstop for anything this misses.
+ * Transcripts and scores are not in the update, so they survive.
+ *
+ * Returns how many recordings it retired. Runs on the voice scorer's loop.
+ */
+export async function markExpiredAudio(days: number = RETENTION_DAYS): Promise<number> {
+  const { rows } = await db().query<{ id: string; audio_s3_key: string }>(
+    `select id, audio_s3_key from voice_session
+      where audio_s3_key is not null and audio_deleted_at is null
+        and coalesce(finished_at, started_at) < now() - make_interval(days => $1)
+      order by id
+      limit 500`,
+    [days],
+  );
+  if (rows.length === 0) return 0;
+
+  const config = audioConfig();
+  const s3 = config ? new S3Client({ region: config.region }) : null;
+  for (const row of rows) {
+    if (config && s3) {
+      await s3.send(new DeleteObjectCommand({ Bucket: config.bucket, Key: row.audio_s3_key }));
+    }
+    await db().query(
+      `update voice_session set audio_deleted_at = now(), audio_s3_key = null
+        where id = $1 and audio_s3_key = $2`,
+      [row.id, row.audio_s3_key],
+    );
+  }
+  return rows.length;
 }
