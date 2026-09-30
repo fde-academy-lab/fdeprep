@@ -24,6 +24,7 @@ The last six rows land with `eval/` and are not enforced today, because no probl
 | A coach signal with no condition, a pattern that does not compile, or a `test_failed` naming a test the problem does not have | A signal that can never fire, or always fires, is noise the learner learns to ignore |
 | A `track` outside the vocabulary in `web/lib/problems/vocabulary.ts` | The journey map groups problems by track, and an invented track is a problem nobody can find |
 | Steps present without matching `step_check` entries | The Easy checklist would show items that never turn green |
+| A `step_check` with no assertions | It holds for any code, the stub's included, so its step reads unchecked forever. Added 30 September 2026. |
 | Fewer than three rubric exemplars on a design problem | The judge drifts without anchors |
 | An exemplar outside the problem's `word_range` | The structural gate refuses such an answer before grading, and the exemplars anchor the pass threshold and the neighbour vote, so the band would rest on an answer the platform never grades. Added 29 September 2026, when two strong exemplars sat below their own floor. |
 | A test assertion type the runner does not evaluate | The runner raises on it, and the learner sees an infrastructure error on the one case that uses it. To check that something is absent from the answer, use `returns_lacks` rather than a negative lookahead in `returns_matches`: its failure names the text it found. |
@@ -106,9 +107,16 @@ hints:                                      # L4, three to five, every tier;
   - A retry that sends an identical prompt will get an identical reply.
   - Change something in the prompt before the retry, and say what failed.
 
-step_checks:
-  - step_id: s1
-    spec: { ... }
+step_checks:                                # one per step, run on every Run
+  - step_id: s1                             # read against the public cases:
+    spec:                                   # green when any one satisfies all
+      assertions: [ ... ]                   # of these
+  - step_id: s2                             # or a case of its own, shaped like
+    spec:                                   # a test's spec and marked by kind,
+      kind: agent_run                       # for a step no public case exercises
+      input: { ... }
+      llm_script: [ ... ]
+      assertions: [ ... ]
 
 tests:
   - name: terminates_on_final
@@ -498,3 +506,4 @@ Before opening a pull request on a new problem, confirm each of these.
 7. The reference walkthrough explains why, not what. The code is already visible by then.
 8. The stub does not pass. Run it through the battery: a stub that already passes the public tests hands the learner a finished problem.
 9. The kit is complete and the coach clears both CI checks: quiet on the reference solution or strong exemplar, and firing on the naive solution, the weak exemplar or the original prompt.
+10. Every step turns green on the reference and stays short of green on the stub. A check any code passes, such as `no_exception` alone, reads unchecked forever. Check what the step's work changes in the answer or the calls, on a public case that exercises it, or give the step its own case when none does; a step case uses its own names and values, because its input is staged in the learner's process. CI enforces this since 30 September 2026.
