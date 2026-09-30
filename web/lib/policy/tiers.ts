@@ -80,7 +80,7 @@ export interface Tier {
   coach: CoachRule;
   /**
    * Whether the traps, the mistakes the hidden cases catch, show before the
-   * attempt closes. Added 1 October 2026. Easy and Medium name them up front
+   * attempt closes. Added 30 September 2026. Easy and Medium name them up front
    * as teaching; Hard and Extreme keep the hidden battery a test of judgement
    * and name them once the attempt is solved or given up.
    */

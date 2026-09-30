@@ -1,5 +1,5 @@
 -- The storyline and the interview angle, docs/04 section 1 as amended
--- 1 October 2026.
+-- 30 September 2026.
 --
 -- problem.day places a problem in a learner's first 30 days as an FDE and
 -- problem.skill says what it practises. Both are copied from the problem file

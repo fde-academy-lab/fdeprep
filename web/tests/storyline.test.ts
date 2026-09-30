@@ -1,7 +1,7 @@
 /**
  * The catalogue told as a learner's first 30 days as an FDE: every problem has
  * a day, a title that says what the client sees and a skill line. docs/04
- * section 1, as amended 1 October 2026. Problem addresses do not change, so no
+ * section 1, as amended 30 September 2026. Problem addresses do not change, so no
  * link a learner saved breaks.
  */
 import { readFile } from "node:fs/promises";

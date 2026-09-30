@@ -2,7 +2,7 @@
  * The tools the agent has, one case worked in the open, and the traps the
  * hidden cases catch: what a problem page spells out so a learner does not
  * have to piece it together from the brief. docs/04 section 2.1, as amended
- * 1 October 2026.
+ * 30 September 2026.
  *
  * Hidden means unpublished (CLAUDE.md), so every check here that reads the
  * hidden battery exists to keep it off the page.

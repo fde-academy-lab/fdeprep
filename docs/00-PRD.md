@@ -96,7 +96,7 @@ Every tier also has a live coach, a deterministic reader of the learner's work t
 | Extreme | Nudges that read the code wait for two failed runs, the same currency hints cost. |
 | Screen conditions | Off. An interviewer does not coach. |
 
-Every problem also names its traps, the two to four mistakes its hidden and adversarial cases exist to catch, in words that give no case away (`04-PROBLEM-AUTHORING.md` section 2.1). Added 1 October 2026. When they show is a tier rule:
+Every problem also names its traps, the two to four mistakes its hidden and adversarial cases exist to catch, in words that give no case away (`04-PROBLEM-AUTHORING.md` section 2.1). Added 30 September 2026. When they show is a tier rule:
 
 | Difficulty | Traps |
 |---|---|
