@@ -504,6 +504,9 @@ describe("learner audio", () => {
     assert.ok(expiry, "the audio bucket expires its objects");
     assert.equal(expiry.ExpirationInDays, 30);
     assert.equal(expiry.Status, "Enabled");
+    // Learner answers only, so the cached follow-up speech survives the rule.
+    assert.equal(expiry.Prefix, "voice/answers/");
+    assert.equal(rules.filter((rule) => rule.ExpirationInDays !== undefined).length, 1);
   });
 
   test("nothing versions a recording, because a deleted one has to be gone", () => {
