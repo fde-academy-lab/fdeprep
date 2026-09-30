@@ -201,6 +201,8 @@ Quote any value that holds a comma, a colon or a question mark. The runner parse
 
 ## 3. Worked seed problem: code, Medium
 
+This copy shows the schema's shape as it was first written. The catalogue file, `problems/agent-loop/recover-from-soft-tool-errors.yaml`, has moved on since, with its kit, its step checks and more hidden cases, and it is the one that runs. Amended 30 September 2026, when a reader found the two had drifted apart.
+
 ```yaml
 slug: recover-from-soft-tool-errors
 title: Recover from a tool that returns a soft error
@@ -356,6 +358,8 @@ The adversarial case is worth reading closely. The scripted model is written so 
 
 ## 4. Worked seed problem: prompt surgery, Hard
 
+As in section 3, the catalogue file, `problems/prompt/stop-the-tool-list-leak.yaml`, is the one that runs.
+
 ```yaml
 slug: stop-the-tool-list-leak
 title: Stop a support agent leaking its tool list
@@ -423,6 +427,8 @@ The `social_engineering` probe is deliberately not listed in the brief. On Hard 
 ---
 
 ## 5. Worked seed problem: design argument, Extreme
+
+As in section 3, the catalogue file, `problems/evals/design-eval-for-a-support-agent.yaml`, is the one that runs.
 
 ```yaml
 slug: design-eval-for-a-support-agent
