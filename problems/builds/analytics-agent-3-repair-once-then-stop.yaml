@@ -323,6 +323,11 @@ coach:
       say: >-
         The guard refused that query, and your agent went back to the model.
         A refusal is not a database error, so nothing gets repaired.
+    - id: hidden-repair-worked
+      when: { test_failed: a_repair_that_runs_answers_with_its_rows }
+      say: >-
+        The repaired query in that run came back with rows. What did your
+        agent report to the manager, and which query does your sql field name?
     - id: adversarial-nothing
       when: { test_failed: adversarial_the_database_answers_with_nothing }
       say: >-
@@ -516,6 +521,51 @@ tests:
         - { type: valid_json_return,
             schema: { type: object, required: [status, sql],
                       properties: { status: { const: refused }, sql: { type: "null" } } } }
+
+  # The one case where a repair works. run_query rejects the first query for a
+  # misspelt column and answers the repaired one with rows, so the question is
+  # answered with those rows, and sql is the repaired query, the last one that
+  # ran. An agent that reports every repaired query as failed passes every
+  # other case, because in each of them the repair fails or never runs.
+  # run_query answers by call, whatever the query says, so the case also
+  # reads that the same query never went twice.
+  - name: a_repair_that_runs_answers_with_its_rows
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which three products sold the most units in August?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "products"]}' }
+        - { match: { contains: "column l.quantiy does not exist" },
+            reply: "SELECT p.name AS product, SUM(l.quantity) AS units FROM order_lines l JOIN products p ON p.product_id = l.product_id WHERE l.sold_on >= '2026-08-01' AND l.sold_on < '2026-09-01' GROUP BY p.name ORDER BY units DESC LIMIT 3" }
+        - { match: "*",
+            reply: "SELECT p.name AS product, SUM(l.quantiy) AS units FROM order_lines l JOIN products p ON p.product_id = l.product_id WHERE l.sold_on >= '2026-08-01' AND l.sold_on < '2026-09-01' GROUP BY p.name ORDER BY units DESC LIMIT 3" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query:
+          sequence:
+            - { status: 400, error: "column l.quantiy does not exist" }
+            - { status: 200, columns: [product, units],
+                rows: [["Peat-free compost 50L", 2315], ["Wild bird seed 2kg", 1790], ["Lavender Hidcote 2L", 1466]] }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_repeated_identical_tool_call, max_repeats: 1 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql, rows],
+                      properties: { status: { const: answered },
+                                    sql: { type: string, pattern: 'SUM\(l\.quantity\)' },
+                                    rows: { const: [["Peat-free compost 50L", 2315], ["Wild bird seed 2kg", 1790], ["Lavender Hidcote 2L", 1466]] } } } }
 
   - name: adversarial_the_database_answers_with_nothing
     visibility: adversarial

@@ -207,7 +207,7 @@ coach:
       say: >-
         That record was pinned, under a deletion request and needed by an
         active task. Walk it through your rules in order, then ask what the
-        task has left.
+        task has left and whether your prompt to the model names that task.
     - id: adversarial-shape-change
       when: { test_failed: adversarial_the_case_store_changes_shape_mid_sweep }
       say: >-
@@ -302,6 +302,10 @@ tests:
         - { type: returns_matches, value: "\"removed\": \\[\\s*\"r-old\"" }
         - { type: returns_matches, value: "\"blocked_tasks\": \\[\\]" }
 
+  # The pinned record under a deletion request is removed, which leaves
+  # task-3 with nothing, so the model is asked for an operator message. The
+  # script answers any prompt that says blocked, and the contract says that
+  # prompt names the blocked tasks, which only the prompt itself shows.
   - name: erasure_outranks_a_pin_and_blocks_the_task
     visibility: hidden
     spec:
@@ -324,6 +328,7 @@ tests:
         - { type: returns_matches, value: "\"removed\": \\[\\s*\"r-erase\"" }
         - { type: returns_matches, value: "\"blocked_tasks\": \\[\\s*\"task-3\"" }
         - { type: returns_matches, value: "(?i)reassign it to a human" }
+        - { type: prompt_contains, value: 'blocked[^\n]*task-3|task-3[^\n]*blocked' }
 
   - name: adversarial_the_case_store_changes_shape_mid_sweep
     visibility: adversarial

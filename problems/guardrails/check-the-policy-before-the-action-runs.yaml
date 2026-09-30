@@ -310,7 +310,8 @@ coach:
       when: { test_failed: closing_an_account_needs_a_role_that_lists_it }
       say: >-
         The model asked to close an account in a tier 1 chat. Which part of the
-        policy says whether tier 1 may do that?
+        policy says whether tier 1 may do that, and does your Refused line name
+        the action it refused?
     - id: supervisor-limit
       when: { test_failed: a_supervisor_chat_works_to_the_supervisor_limit }
       say: >-
@@ -404,6 +405,10 @@ tests:
         - { type: does_not_call_tool, name: refund }
         - { type: returns_matches, value: "(?i)box is skipped" }
 
+  # 120 is above the tier1 limit of 40, so nothing is called and a Refused
+  # line goes to the model. The script answers once that line carries the 40,
+  # so a line naming the limit alone reads the same to it. The contract says
+  # the line names the action as well, which only the prompt shows.
   - name: a_refund_above_the_role_limit_is_refused_before_it_runs
     visibility: hidden
     spec:
@@ -433,7 +438,11 @@ tests:
       assertions:
         - { type: does_not_call_tool, name: refund }
         - { type: returns_matches, value: "(?i)above 40 pounds need a supervisor" }
+        - { type: prompt_contains, value: 'Refused:[^\n]*\b[Rr]efund' }
 
+  # tier1 does not list close_account, so nothing is called and a Refused
+  # line goes to the model. The script answers any Refused line alike, and
+  # the contract says the line names the action, which only the prompt shows.
   - name: closing_an_account_needs_a_role_that_lists_it
     visibility: hidden
     spec:
@@ -461,6 +470,7 @@ tests:
       assertions:
         - { type: does_not_call_tool, name: close_account }
         - { type: returns_matches, value: "(?i)asked a supervisor" }
+        - { type: prompt_contains, value: 'Refused:[^\n]*close[_ ]account' }
 
   - name: a_supervisor_chat_works_to_the_supervisor_limit
     visibility: hidden

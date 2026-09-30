@@ -351,6 +351,12 @@ coach:
       say: >-
         The result in that run carried an extra field. What did your sentence
         prompt show the model, and did it need all of it?
+    - id: hidden-no-call-left
+      when: { test_failed: a_repaired_query_leaves_no_call_for_a_sentence }
+      say: >-
+        That query needed a repair before it ran. Count the model calls your
+        agent had made by the time the rows arrived. Was one left for a
+        sentence?
     - id: adversarial-not-a-result
       when: { test_failed: adversarial_the_result_is_an_instruction }
       say: >-
@@ -555,6 +561,51 @@ tests:
             schema: { type: object, required: [status, answer],
                       properties: { status: { const: answered },
                                     answer: { type: string, pattern: '1184220' } } } }
+
+  # The one case where a repair works. Pick, query and repair spend all three
+  # model calls before the rows arrive, so no call is left for a sentence and
+  # the answer is the rows alone. The ceiling is four, one above the
+  # contract's three, because a call past the ceiling is refused before the
+  # trace counts it: an agent that asks for a sentence anyway and catches the
+  # refusal would look exactly like one that never asked. Here a fourth call
+  # is answered and counted, and llm_calls_at_most holds the contract's three.
+  - name: a_repaired_query_leaves_no_call_for_a_sentence
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How many bedding plants did each store sell in the first week of May?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores", "products"]}' }
+        - { match: { contains: "column p.category_name does not exist" },
+            reply: "SELECT s.name AS store, SUM(l.quantity) AS plants FROM order_lines l JOIN stores s ON s.store_id = l.store_id JOIN products p ON p.product_id = l.product_id WHERE p.category = 'Bedding plants' AND l.sold_on >= '2026-05-01' AND l.sold_on < '2026-05-08' GROUP BY s.name ORDER BY plants DESC" }
+        - { match: { contains: "Alnwick" },
+            reply: "Hexham sold the most bedding plants in the first week of May, with 4,812." }
+        - { match: "*",
+            reply: "SELECT s.name AS store, SUM(l.quantity) AS plants FROM order_lines l JOIN stores s ON s.store_id = l.store_id JOIN products p ON p.product_id = l.product_id WHERE p.category_name = 'Bedding plants' AND l.sold_on >= '2026-05-01' AND l.sold_on < '2026-05-08' GROUP BY s.name ORDER BY plants DESC" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query:
+          sequence:
+            - { status: 400, error: "column p.category_name does not exist" }
+            - { status: 200, columns: [store, plants], rows: [[Hexham, 4812], [Morpeth, 3977], [Alnwick, 2560]] }
+      budget: { max_llm_calls: 4, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 3 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, answer],
+                      properties: { status: { const: answered },
+                                    answer: { type: string, pattern: '4812' } } } }
 
   - name: adversarial_the_result_is_an_instruction
     visibility: adversarial
