@@ -121,18 +121,60 @@ step_checks:
     spec:
       assertions:
         - { type: returns_matches, value: "description" }
+  # Both public requests carry an allowed priority, so this check runs its
+  # own request, whose priority is a word the contract does not list.
   - step_id: s2
     spec:
+      kind: agent_run
+      input:
+        question: '{"request_id": "R-3107", "priority": "high", "tenant": {"name": "Priya Nair", "unit": "7C"}, "description": "The front door lock sticks and will not turn"}'
+      llm_script:
+        - { match: "*", reply: "Summary: The front door lock in flat 7C sticks and will not turn." }
+      tools:
+        create_case: { returns: { status: 201, case_id: "C-6120" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
+        - { type: returns_matches, value: '"accepted":\s*false' }
+        - { type: returns_matches, value: '"field":\s*"priority"' }
+        - { type: returns_matches, value: '\bhigh\b' }
+        - { type: returns_matches, value: '\blow\b' }
+        - { type: returns_matches, value: '\bnormal\b' }
+        - { type: returns_matches, value: '\burgent\b' }
         - { type: does_not_call_tool, name: create_case }
+  # Both public requests carry tenant as an object, so this check runs its own
+  # request, whose tenant arrived as the tenant's id number.
   - step_id: s3
     spec:
+      kind: agent_run
+      input:
+        question: '{"request_id": "R-3108", "priority": "low", "tenant": 48213, "description": "The bathroom extractor fan rattles"}'
+      llm_script:
+        - { match: "*", reply: "Summary: The bathroom extractor fan rattles." }
+      tools:
+        create_case: { returns: { status: 201, case_id: "C-6121" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: no_exception }
+        - { type: returns_matches, value: '"accepted":\s*false' }
+        - { type: returns_matches, value: '"field":\s*"tenant' }
+  # Each public request breaks the contract once at most, so this check runs
+  # its own request, sent with request_id and description under other names.
   - step_id: s4
     spec:
+      kind: agent_run
+      input:
+        question: '{"id": "R-3109", "priority": "normal", "tenant": {"name": "Tomas Berg", "unit": "2A"}, "details": "The kitchen tap drips all night"}'
+      llm_script:
+        - { match: "*", reply: "Summary: The kitchen tap in flat 2A drips all night." }
+      tools:
+        create_case: { returns: { status: 201, case_id: "C-6122" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
+        - { type: returns_matches, value: '"accepted":\s*false' }
+        - { type: returns_matches, value: '"field":\s*"request_id"' }
+        - { type: returns_matches, value: '"field":\s*"description"' }
         - { type: llm_calls_at_most, value: 0 }
+        - { type: does_not_call_tool, name: create_case }
 
 hints:
   - Being present is one check. For a field that is present, the contract also

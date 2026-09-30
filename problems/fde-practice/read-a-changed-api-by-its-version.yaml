@@ -103,14 +103,39 @@ step_checks:
     spec:
       assertions:
         - { type: returns_matches, value: '£118\.50' }
+  # Both public bills already hold pounds, so the stub writes £42.00 without
+  # converting anything. This check runs its own version 3 bill, whose
+  # amount_due is in pence, and the model says £64.75 only when that is what
+  # reached the prompt.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "What do I need to pay this month? My account is ACC-8830." }
+      llm_script:
+        - { match: { contains: "£64.75" }, reply: "You owe £64.75, due on 9 June." }
+        - { match: { regex: "£6,?475\\.00" }, reply: "You owe £6,475.00, due on 9 June." }
+        - { match: "*", reply: "Your balance is £0.00, so there is nothing to pay this month." }
+      tools:
+        billing:
+          returns: { status: 200, api_version: "3", account: "ACC-8830", amount_due: 6475, due: "2026-06-09" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: returns_matches, value: '£42\.00' }
+        - { type: returns_matches, value: '£64\.75' }
+  # Both public bills can be read, so this check runs its own: a version 1
+  # bill with no amount field, sent while a final meter reading is pending.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "I moved out last week. What is my final bill? My account is ACC-9147." }
+      llm_script:
+        - { match: "*", reply: "Your balance is £0.00, so there is nothing to pay this month." }
+      tools:
+        billing:
+          returns: { status: 200, api_version: "1", account: "ACC-9147", meter_reading: pending, due: "2026-06-30" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: llm_calls_at_most, value: 1 }
+        - { type: returns_matches, value: '^\s*Handoff:' }
+        - { type: llm_calls_at_most, value: 0 }
 
 hints:
   - Two of the three versions put the amount under the same name. Something

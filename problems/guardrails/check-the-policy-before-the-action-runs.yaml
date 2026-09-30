@@ -112,18 +112,96 @@ steps:
     check_id: s4
 
 step_checks:
+  # Both public actions are ones the tier1 role lists, so this check runs its
+  # own chat, where the model proposes an action only the supervisor role
+  # lists. The answer it reads comes back after a Refused line.
   - step_id: s1
     spec:
+      kind: agent_run
+      input: { question: "I am in hospital for a month. Can you pause my subscription until I am home?" }
+      llm_script:
+        - { match: { contains: "Refused:" },
+            reply: "Final Answer: A supervisor has to approve a pause, so I have asked one to set it up. They will message you by this evening." }
+        - { match: { contains: "paused" },
+            reply: "Final Answer: Your subscription is paused for four weeks." }
+        - { match: "*",
+            reply: 'Action: {"tool": "pause_subscription", "args": {"customer": "C-3391", "weeks": 4}}' }
+      tools:
+        session: { returns: { status: 200, role: "tier1" } }
+        policy:
+          returns:
+            status: 200
+            roles:
+              tier1: { refund: { max: { amount: 40 } }, skip_delivery: {} }
+              supervisor: { refund: { max: { amount: 250 } }, skip_delivery: {}, close_account: {}, pause_subscription: {} }
+        refund: { returns: { status: 200, refunded: true } }
+        skip_delivery: { returns: { status: 200, skipped: true } }
+        close_account: { returns: { status: 200, closed: true } }
+        pause_subscription: { returns: { status: 200, paused: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: does_not_call_tool, name: pause_subscription }
+        - { type: returns_matches, value: "(?i)asked one to set it up" }
+  # The one public action with a limit carries its amount as a number, so
+  # this check runs its own chat, where the model proposes a refund with the
+  # amount left null. The answer it reads comes back after a Refused line.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "The pasta in Friday's box was mouldy. Please refund that meal." }
+      llm_script:
+        - { match: { contains: "Refused:" },
+            reply: "Final Answer: I could not tell how much to refund, so I have asked a supervisor to check your order and refund you today." }
+        - { match: { contains: "refunded" },
+            reply: "Final Answer: I have refunded that meal to your card." }
+        - { match: "*",
+            reply: 'Action: {"tool": "refund", "args": {"order": "MK-8264", "amount": null}}' }
+      tools:
+        session: { returns: { status: 200, role: "tier1" } }
+        policy:
+          returns:
+            status: 200
+            roles:
+              tier1: { refund: { max: { amount: 40 } }, skip_delivery: {} }
+              supervisor: { refund: { max: { amount: 250 } }, skip_delivery: {}, close_account: {} }
+        refund: { returns: { status: 200, refunded: true } }
+        skip_delivery: { returns: { status: 200, skipped: true } }
+        close_account: { returns: { status: 200, closed: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
+        - { type: does_not_call_tool, name: refund }
+        - { type: returns_matches, value: "(?i)could not tell how much to refund" }
+  # No public action is refused, so this check runs its own chat, where the
+  # model proposes a refund above the tier1 limit. The answer it reads comes
+  # back only when the Refused line names the refund and the limit of 40.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "The courier left my box out in the rain and everything was soaked. Please refund the 65 pounds." }
+      llm_script:
+        - { match: { all: [ { regex: 'Refused:[^\n]*\b[Rr]efund' }, { regex: 'Refused:[^\n]*\b40\b' } ] },
+            reply: "Final Answer: I can refund up to 40 pounds from this chat, so I have asked a supervisor to approve the full 65. You will hear from them today." }
+        - { match: { contains: "Refused:" },
+            reply: "Final Answer: That refund did not go through, and I cannot see why." }
+        - { match: { contains: "refunded" },
+            reply: "Final Answer: I have refunded 65 pounds to your card." }
+        - { match: "*",
+            reply: 'Action: {"tool": "refund", "args": {"order": "MK-9057", "amount": 65}}' }
+      tools:
+        session: { returns: { status: 200, role: "tier1" } }
+        policy:
+          returns:
+            status: 200
+            roles:
+              tier1: { refund: { max: { amount: 40 } }, skip_delivery: {} }
+              supervisor: { refund: { max: { amount: 250 } }, skip_delivery: {}, close_account: {} }
+        refund: { returns: { status: 200, refunded: true } }
+        skip_delivery: { returns: { status: 200, skipped: true } }
+        close_account: { returns: { status: 200, closed: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
       assertions:
-        - { type: returns_nonempty }
+        - { type: does_not_call_tool, name: refund }
+        - { type: returns_matches, value: "(?i)asked a supervisor to approve the full 65" }
   - step_id: s4
     spec:
       assertions:

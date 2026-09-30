@@ -102,10 +102,10 @@ steps:
     text: Record each placeholder and the value it replaced, one placeholder per distinct value.
     check_id: s2
   - id: s3
-    text: Send the redacted ticket as JSON in one prompt.
+    text: Put every placeholder in the draft back by the field rules, so a card goes back as its last four digits.
     check_id: s3
   - id: s4
-    text: Put every placeholder in the draft back by the field rules, then return the draft.
+    text: Return the finished draft.
     check_id: s4
 
 step_checks:
@@ -116,17 +116,63 @@ step_checks:
     spec:
       assertions:
         - { type: returns_matches, value: '(?i)line test tonight' }
-  # s2 cannot be told apart from the stub on the public cases: neither public
-  # draft carries a placeholder to put back. Its check stays as it was.
+  # Neither public ticket repeats a value or holds two of one kind, so this
+  # check runs its own ticket: two phone numbers, one of them written three
+  # times. The model uses both placeholders only when each number reached it
+  # as one placeholder. The draft may still hold them, because putting them
+  # back is step 3, and where it does not, each has to be the number it
+  # replaced.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Draft a reply to this ticket." }
+      llm_script:
+        - { match: { regex: '07700 ?900 ?318|07700 ?900 ?542' },
+            reply: "Blocked: personal data in prompt" }
+        - { match: { contains: "[PHONE_3]" },
+            reply: "Final Answer: You gave us several numbers. Which one should the engineer use?" }
+        - { match: { all: [ { contains: "[PHONE_1]" }, { contains: "[PHONE_2]" } ] },
+            reply: "Final Answer: We will call and text you on [PHONE_2] from now on, and [PHONE_1] is off your account." }
+        - { match: "*",
+            reply: "Final Answer: Which number should we use from now on?" }
+      tools:
+        read_ticket:
+          returns:
+            status: 200
+            id: "T-2306"
+            body: "Please stop calling my old mobile, 07700 900318. Use 07700 900542 from now on, and text 07700 900542 when the engineer is on the way."
+            metadata: { channel: "chat", callback: "07700 900542" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
-  # The stub already sends the ticket as JSON in one prompt.
+        - { type: returns_matches, value: 'text you on (?:07700 900542|\[PHONE_2\]) from now on' }
+        - { type: returns_matches, value: '(?:07700 900318|\[PHONE_1\]) is off your account' }
+  # The stub already sends the ticket as JSON in one prompt, so this step
+  # names the work after the model call. Neither public draft carries a
+  # placeholder, so this check runs its own ticket with a card number and an
+  # email address in it.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Draft a reply to this ticket." }
+      llm_script:
+        - { match: { regex: '5500[ -]?0000[ -]?0000[ -]?0004|lena\.v@example\.com' },
+            reply: "Blocked: personal data in prompt" }
+        - { match: { all: [ { contains: "[CARD_1]" }, { contains: "[EMAIL_1]" } ] },
+            reply: "Final Answer: From this month your bill will be taken from [CARD_1], and the confirmation will go to [EMAIL_1] today." }
+        - { match: "*",
+            reply: "Final Answer: Which card should we take your bill from, and where should the confirmation go?" }
+      tools:
+        read_ticket:
+          returns:
+            status: 200
+            id: "T-2307"
+            body: "Please take my bill from my new card 5500 0000 0000 0004 from this month, and send the confirmation to lena.v@example.com."
+            metadata: { channel: "email" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: llm_calls_at_most, value: 1 }
+        - { type: returns_matches, value: 'taken from card ending 0004' }
+        - { type: returns_matches, value: 'confirmation will go to lena\.v@example\.com' }
+        - { type: returns_lacks, value: '(?:\d{4}[ -]){3}\d{4}' }
   # Reads an_account_reference_is_left_for_the_model.
   - step_id: s4
     spec:

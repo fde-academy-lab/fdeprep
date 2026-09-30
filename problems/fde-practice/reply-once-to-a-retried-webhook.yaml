@@ -97,7 +97,7 @@ stub_code: |
 
 steps:
   - id: s1
-    text: Key on the id that every retry of the same event shares.
+    text: Key on the id that every retry of the same event shares, and claim that key.
     check_id: s1
   - id: s2
     text: Claim the key before the model call, in one step.
@@ -110,22 +110,64 @@ steps:
     check_id: s4
 
 step_checks:
+  # Which id becomes the key shows nowhere a check can read: the store's
+  # replies are scripted per case and ignore the key they are given. That the
+  # key is claimed does show, and a_new_ticket_gets_one_reply reads it.
   - step_id: s1
     spec:
       assertions:
-        - { type: calls_tool, name: post_reply }
+        - { type: calls_tool, name: claim }
+  # In both public retries the lookup already reads the key as held, so a
+  # handler that trusts the lookup can pass them. This check runs its own
+  # race: the lookup reads absent and the claim is already taken.
   - step_id: s2
     spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_e6b1", "attempt": 2, "event_id": "evt_925", "type": "ticket.created", "ticket": {"id": "T-5167", "subject": "The mobile app logs me out every few minutes"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: I am sorry about the logouts. The app team is releasing a fix tonight." }
+      tools:
+        lookup: { returns: { status: 200, state: absent } }
+        claim: { returns: { status: 200, claimed: false, state: in_progress } }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 201, reply_id: "R-7790" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
       assertions:
         - { type: calls_tool, name: claim }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: does_not_call_tool, name: post_reply }
+  # Reads a_retry_while_the_first_is_drafting_gets_no_second_reply, where
+  # another delivery holds the key. The stub already answers 200 for a
+  # finished event, so the 409 is the half of this step a check can see.
   - step_id: s3
     spec:
       assertions:
-        - { type: llm_calls_at_most, value: 1 }
+        - { type: returns_matches, value: '"http_status":\s*409' }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: does_not_call_tool, name: post_reply }
+        - { type: does_not_call_tool, name: mark_done }
+        - { type: does_not_call_tool, name: release }
+  # Every public reply posts, so this check runs its own delivery, whose post
+  # the help desk refuses with a 429.
   - step_id: s4
     spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_0d4a", "attempt": 1, "event_id": "evt_931", "type": "ticket.created", "ticket": {"id": "T-5174", "subject": "My invoice shows an old VAT number"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: You are right about the VAT number. I have corrected it and sent you a new invoice." }
+      tools:
+        lookup: { returns: { status: 200, state: absent } }
+        claim: { returns: { status: 200, claimed: true } }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 429, error: "rate limited, retry in 30 seconds" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
       assertions:
-        - { type: calls_tool, name: mark_done }
+        - { type: calls_tool, name: release }
+        - { type: does_not_call_tool, name: mark_done }
 
 hints:
   - Put two deliveries of the same ticket side by side. Only one of their ids
