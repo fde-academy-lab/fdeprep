@@ -82,9 +82,25 @@ step_checks:
     spec:
       assertions:
         - { type: calls_tool, name: lookup }
+  # No public case names a tool the dict lacks, so s3 carries its own case:
+  # a registered name that has to be called, then an invented one that must
+  # not crash the loop. The registered name comes first, so the check holds
+  # whatever the loop does after the refusal, which is step 4's work.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Which plan is account 530 on? Pause its billing while you are there." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: lookup(account=530)" }
+        - { match: { call_index: 2 }, reply: "Action: pause_billing(account=530)" }
+        - { match: "*",
+            reply: "Final Answer: Account 530 is on the starter plan. I cannot pause billing from here." }
+      tools:
+        lookup: { returns: { status: 200, plan: "starter" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
       assertions:
+        - { type: calls_tool, name: lookup }
         - { type: no_exception }
   - step_id: s4
     spec:

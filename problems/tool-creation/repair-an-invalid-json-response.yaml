@@ -54,8 +54,8 @@ stub_code: |
 
           # TODO 1: strip a fenced code block if there is one
           # TODO 2: try to parse what is left
-          # TODO 3: on success, return it as a JSON string
-          # TODO 4: on failure, append what went wrong and ask once more
+          # TODO 3: on failure, append what went wrong and ask once more
+          # TODO 4: on success, return it as a JSON string
           pass
 
       return json.dumps({"category": "unknown", "priority": "unknown", "order_id": None})
@@ -75,18 +75,48 @@ steps:
     check_id: s4
 
 step_checks:
+  # Both public replies are clean JSON, so steps 1 to 3 each carry their own
+  # case: a fenced reply, a reply that does not parse followed by one that
+  # does, and a cut-off reply the model repairs only once it is told the
+  # reply did not parse.
   - step_id: s1
     spec:
+      kind: agent_run
+      input: { question: "Discount code SPRING10 was not applied to order 6035" }
+      llm_script:
+        - { match: "*", reply: "```json\n{\"category\": \"pricing\", \"priority\": \"low\", \"order_id\": \"6035\"}\n```" }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: valid_json_return,
+            schema: { type: object, required: [category, priority, order_id] } }
+        - { type: returns_matches, value: "pricing" }
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "The tracking link for order 3158 opens a blank page" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"category": "tracking", "priority": "low", "order_id": "3158"' }
+        - { match: "*", reply: '{"category": "tracking", "priority": "low", "order_id": "3158"}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
         - { type: no_exception }
+        - { type: valid_json_return,
+            schema: { type: object, required: [category, priority, order_id] } }
+        - { type: returns_matches, value: "tracking" }
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "The gift message on order 9024 was printed in the wrong language" }
+      llm_script:
+        - { match: { contains: "did not parse" },
+            reply: '{"category": "gifting", "priority": "low", "order_id": "9024"}' }
+        - { match: "*", reply: '{"category": "gifting", "priority": "low", "order_id":' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
-        - { type: llm_calls_at_most, value: 3 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [category, priority, order_id] } }
+        - { type: returns_matches, value: "9024" }
+        - { type: llm_calls_at_most, value: 2 }
   - step_id: s4
     spec:
       assertions:
@@ -202,8 +232,9 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with TODO 1 and TODO 2: take off a fence, parse, and return
-        json.dumps of the object. Both public tests go green with that alone.
+        Start with TODO 1, TODO 2 and TODO 4: take off a fence, parse, and
+        return json.dumps of the object. Both public tests go green with that
+        alone.
     - id: many-failed-runs
       when: { failed_runs_at_least: 3 }
       say: >-

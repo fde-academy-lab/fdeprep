@@ -92,14 +92,43 @@ step_checks:
     spec:
       assertions:
         - { type: returns_nonempty }
+  # A parsed payload shows only in the arguments refund receives, and the one
+  # assertion that reads arguments needs two calls, so s2 carries its own
+  # case: two refunds whose arguments differ only if each came from its Action.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Refund fifteen pounds on order D-4 and eight pounds on order D-5" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: 'Action: refund({"amount_cents": 1500, "order_id": "D-4"})' }
+        - { match: { call_index: 2 }, reply: 'Action: refund({"amount_cents": 800, "order_id": "D-5"})' }
+        - { match: "*", reply: "Final Answer: I refunded 1500 pence to order D-4 and 800 pence to order D-5." }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: calls_tool, name: refund }
+        - { type: no_repeated_identical_tool_call }
+        - { type: returns_matches, value: "(?i)refunded 1500 pence to order D-4 and 800 pence to order D-5" }
+  # A loop that never calls refund also refuses everything, so s3's case
+  # sends a payload with a key the tool does not take, then a clean one. The
+  # step holds when only the clean payload reached refund.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Refund thirty one pounds on order C-58. The parcel arrived damaged." }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: 'Action: refund({"amount_cents": 3100, "order_id": "C-58", "reason": "arrived damaged"})' }
+        - { match: { call_index: 2 }, reply: 'Action: refund({"amount_cents": 3100, "order_id": "C-58"})' }
+        - { match: "*", reply: "Final Answer: I refunded 3100 pence to order C-58." }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: does_not_call_tool, name: refund }
+        - { type: calls_tool, name: refund }
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: returns_matches, value: "(?i)refunded 3100 pence to order C-58" }
   - step_id: s4
     spec:
       assertions:

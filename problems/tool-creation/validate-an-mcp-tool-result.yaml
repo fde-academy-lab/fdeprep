@@ -143,22 +143,83 @@ steps:
     check_id: s4
 
 step_checks:
+  # Both public results succeed and match the schema, so steps 1 to 3 each
+  # carry their own case. The stub lets nothing from a result in, so what
+  # tells a solution from the stub is what the contract says goes in instead:
+  # the error text for an isError result, and the line saying a result was
+  # rejected. Each script lists the leaks first, so a prompt that carries
+  # both a leak and that line still gets the wrong answer.
+  #
+  # s1: a count of true, which isinstance(value, int) accepts.
   - step_id: s1
     spec:
+      kind: agent_run
+      input: { question: "Do you have the RN-45 running shoe at Bath?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: check_stock(sku=RN-45, store=Bath)" }
+        - { match: { regex: '["'']on_hand["'']:\s*(true|True)\b' },
+            reply: "Final Answer: Bath has 1 pair of the RN-45 left." }
+        - { match: { regex: '(?i)rejected' },
+            reply: "Final Answer: The stock system sent a count for Bath that I could not use, so I cannot confirm the RN-45 there right now." }
+        - { match: "*", reply: "Final Answer: I have no stock figure for Bath yet." }
+      tools:
+        check_stock:
+          returns:
+            content: [ { type: text, text: '{"sku": "RN-45", "store": "Bath", "on_hand": true}' } ]
+            structuredContent: { sku: RN-45, store: Bath, on_hand: true }
+            isError: false
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: calls_tool, name: check_stock }
+        - { type: returns_matches, value: "(?i)count for Bath that I could not use" }
+  # s2: a failed call whose structuredContent matches the schema.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Is the RN-45 running shoe in stock at Derby?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: check_stock(sku=RN-45, store=Derby)" }
+        - { match: { regex: '["'']on_hand["'']:\s*12\b' },
+            reply: "Final Answer: Derby has 12 pairs of the RN-45 in stock." }
+        - { match: { contains: "count is locked" },
+            reply: "Final Answer: The stock system reported an error for Derby, so I cannot give you a count. Please ask a colleague to look in the stockroom." }
+        - { match: "*", reply: "Final Answer: I have no stock figure for Derby yet." }
+      tools:
+        check_stock:
+          returns:
+            content: [ { type: text, text: "The Derby count is locked while the nightly audit runs." } ]
+            structuredContent: { sku: RN-45, store: Derby, on_hand: 12 }
+            isError: true
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
+        - { type: calls_tool, name: check_stock }
+        - { type: returns_matches, value: "(?i)reported an error for Derby" }
+  # s3: a result with no count, whose text block and structuredContent both
+  # carry something the model would use.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Can I collect the RN-45 running shoe at Exeter this afternoon?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: check_stock(sku=RN-45, store=Exeter)" }
+        - { match: { contains: "held for collection" },
+            reply: "Final Answer: Exeter has 6 pairs of the RN-45, and 2 of them are held for collection." }
+        - { match: { regex: '["'']store["'']:\s*["'']Exeter["'']' },
+            reply: "Final Answer: Exeter has no RN-45 running shoes left." }
+        - { match: { regex: '(?i)rejected' },
+            reply: "Final Answer: The stock system sent a result for Exeter that I could not use, so I cannot promise you a pair this afternoon." }
+        - { match: "*", reply: "Final Answer: I have no stock figure for Exeter yet." }
+      tools:
+        check_stock:
+          returns:
+            content: [ { type: text, text: "RN-45 at Exeter: 6 pairs, 2 held for collection" } ]
+            structuredContent: { sku: RN-45, store: Exeter }
+            isError: false
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: returns_nonempty }
-  # Reads a_result_that_matches_its_schema_reaches_the_model. s1, s2 and s3
-  # cannot be told apart from the stub on the public cases: both public
-  # results are successful and match the schema, and the stub's
-  # matches_schema already accepts them. Their checks stay as they were.
+        - { type: calls_tool, name: check_stock }
+        - { type: returns_matches, value: "(?i)result for Exeter that I could not use" }
+  # Reads a_result_that_matches_its_schema_reaches_the_model.
   - step_id: s4
     spec:
       assertions:

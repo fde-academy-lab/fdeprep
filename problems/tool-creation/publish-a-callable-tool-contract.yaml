@@ -120,22 +120,73 @@ steps:
     check_id: s5
 
 step_checks:
+  # The public tool books whatever arguments arrive, so no public case shows
+  # what the contract says. Steps 1 to 4 each carry their own case, where the
+  # model answers well only when the published contract carries that step's
+  # part. Steps 1 to 3 accept the contract in either quote style, so each one
+  # reports its own part; step 4 asks for JSON.
+  #
+  # s1 reads each parameter's object: a type (integer for minutes, string for
+  # the rest) and a description that is not empty.
   - step_id: s1
     spec:
+      kind: agent_run
+      input: { question: "What do you need from me to book a room?" }
+      llm_script:
+        - { match: { regex: '(?=[\s\S]*["'']room["'']:\s*\{(?=[^{}]*["'']type["'']:\s*["'']string["''])(?=[^{}]*["'']description["'']:\s*["''][^"'']))(?=[\s\S]*["'']start["'']:\s*\{(?=[^{}]*["'']type["'']:\s*["'']string["''])(?=[^{}]*["'']description["'']:\s*["''][^"'']))(?=[\s\S]*["'']minutes["'']:\s*\{(?=[^{}]*["'']type["'']:\s*["'']integer["''])(?=[^{}]*["'']description["'']:\s*["''][^"'']))(?=[\s\S]*["'']note["'']:\s*\{(?=[^{}]*["'']type["'']:\s*["'']string["''])(?=[^{}]*["'']description["'']:\s*["''][^"'']))' },
+            reply: "Final Answer: Tell me which room, the start as YYYY-MM-DDTHH:MM and the length in whole minutes, plus any note for the screen by the door." }
+        - { match: "*",
+            reply: "Final Answer: I cannot tell what a booking needs from you, so please ask at the front desk." }
+      tools:
+        book_room: { returns: { status: 200, booking: "BK-4417" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)length in whole minutes" }
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Book the Library on Wednesday 14 October at 09:00 for 30 minutes" }
+      llm_script:
+        - { match: { regex: '["'']room["'']:\s*\{[^{}]*["'']enum["'']:\s*\[(?=[^\]]*["'']Cedar["''])(?=[^\]]*["'']Birch["''])(?=[^\]]*["'']Oak["''])' },
+            reply: "Final Answer: The Library cannot be booked. The rooms I can book are Cedar, Birch and Oak." }
+        - { match: "*",
+            reply: 'Action: book_room({"room": "Library", "start": "2026-10-14T09:00", "minutes": 30})' }
+      tools:
+        book_room: { returns: { status: 200, booking: "BK-5108" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: returns_nonempty }
+        - { type: does_not_call_tool, name: book_room }
+        - { type: returns_matches, value: "(?i)Library cannot be booked" }
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Book Birch for the budget review on Tuesday 13 October at 11:30" }
+      llm_script:
+        - { match: { regex: '["'']required["'']:\s*\[(?=[^\]]*["'']room["''])(?=[^\]]*["'']start["''])(?=[^\]]*["'']minutes["''])(?![^\]]*["'']note["''])' },
+            reply: "Final Answer: How many minutes do you need Birch for? Once I have a length I can book it." }
+        - { match: "*",
+            reply: 'Action: book_room({"room": "Birch", "start": "2026-10-13T11:30"})' }
+      tools:
+        book_room: { returns: { status: 200, booking: "BK-5109" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
+        - { type: does_not_call_tool, name: book_room }
+        - { type: returns_matches, value: "(?i)how many minutes" }
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "Can you book meeting rooms for me here?" }
+      llm_script:
+        - { match: { regex: '(?=[\s\S]*"name":\s*"book_room")(?=[\s\S]*"input_schema":\s*\{)' },
+            reply: "Final Answer: I can book a meeting room for you. Tell me which room, when it starts and how long you need it." }
+        - { match: "*",
+            reply: "Final Answer: I have no way to book rooms from here, so please ask at the front desk." }
+      tools:
+        book_room: { returns: { status: 200, booking: "BK-5110" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: llm_calls_at_most, value: 3 }
+        - { type: returns_matches, value: "(?i)I can book a meeting room" }
+        - { type: llm_calls_at_most, value: 1 }
   - step_id: s5
     spec:
       assertions:

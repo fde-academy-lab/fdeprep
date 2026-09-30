@@ -123,18 +123,64 @@ steps:
     check_id: s4
 
 step_checks:
+  # Both public tools return a value, so steps 1 to 3 each carry their own
+  # case: a tool that raises, one that returns an error body, and one that
+  # returns an empty list. The model answers well only when the envelope
+  # says what happened.
   - step_id: s1
     spec:
+      kind: agent_run
+      input: { question: "Has the refund for order G-8841 gone through?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: refund_status(order=G-8841)" }
+        - { match: { regex: '["'']outcome["'']:\s*["'']error["'']' },
+            reply: "Final Answer: The refunds system did not answer, so I cannot see order G-8841 yet. Please ask again in an hour." }
+        - { match: "*", reply: "Final Answer: The refund for order G-8841 has gone through." }
+      tools:
+        refund_status:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the refunds ledger did not answer within 2000 ms" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
+        - { type: calls_tool, name: refund_status }
         - { type: no_exception }
+        - { type: returns_matches, value: "(?i)cannot see order G-8841 yet" }
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Can I still add bread to order G-3307 before it is packed?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: basket_editor(order=G-3307)" }
+        - { match: { contains: "pick-api.internal" },
+            reply: "Final Answer: The basket editor said that pick-api.internal:8443 refused the connection." }
+        - { match: { regex: '["'']outcome["'']:\s*["'']error["'']' },
+            reply: "Final Answer: The basket editor could not take changes just now, so order G-3307 is unchanged. Please try again shortly." }
+        - { match: "*", reply: "Final Answer: Bread has been added to order G-3307." }
+      tools:
+        basket_editor:
+          returns:
+            status: 503
+            error: { code: UPSTREAM_REFUSED, detail: "pick-api.internal:8443 refused the connection for order G-3307" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
+        - { type: returns_matches, value: "(?i)could not take changes" }
+        - { type: returns_lacks, value: "pick-api" }
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Did any prices change in order G-2604 since I placed it?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: price_changes(order=G-2604)" }
+        - { match: { regex: '["'']outcome["'']:\s*["'']empty["'']' },
+            reply: "Final Answer: No prices changed in order G-2604. You will pay what you saw at checkout." }
+        - { match: "*",
+            reply: "Final Answer: The price check failed, so I cannot tell you whether anything in order G-2604 changed." }
+      tools:
+        price_changes: { returns: [] }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: returns_nonempty }
+        - { type: calls_tool, name: price_changes }
+        - { type: returns_matches, value: "(?i)no prices changed" }
   - step_id: s4
     spec:
       assertions:
