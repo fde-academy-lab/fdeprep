@@ -21,7 +21,7 @@ The order you will see built is the one the product owner set on 30 September: t
 | Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
 |---|---|---|---|---|---|---|
 | S13 Voice interviewer v2, step 1 | The first beta tester found the voice practice shallow and brittle: no way to move on, no fallback, and questions that did not connect. | 44 | 17 (11 to 23) | 339 | 3 to 7 Oct 2026 | Medium |
-| S12 Problem pages v2 | The first beta tester found the problem names hard to follow and the function names lost in the prose around them. | 52 | 15 (9 to 20) | 194 | 1 to 3 Oct 2026 | Medium |
+| S12 Problem pages v2 | The first beta tester found the problem names hard to follow and the function names lost in the prose around them. | 52 | 15 (9 to 20) | 194 | 30 Sep to 3 Oct 2026 | Medium |
 | S14 Voice interviewer v2, step 2 | Real interviewers dig into what you just said and into what your resume claims, and practice that cannot do either leaves the hardest part untested. | 37 | 20 (11 to 28) | 185 | 7 to 12 Oct 2026 | High |
 
 ### Later
@@ -63,13 +63,13 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S11.7 | Run the 200-submission burst test against staging | Task | 3 | Planned | npm run burst completes 200 concurrent submissions against the deployed stack, and the result is recorded in docs/project/quality.md. |
 | S11.8 | Fetch the embedding model on every worker host | Task | 1 | Planned | The worker starts without EVAL_DEGRADED_PANELISTS and reports all three evaluators available. |
 | S11.9 | Invite the first testers and collect their feedback every week | Task | 3 | Planned | The first invited students have signed in, and their feedback is a story on this board within a week. |
-| S12.1 | Tell the catalogue as a storyline: your first 30 days as an FDE | Feature | 8 | Planned | Every problem has a day in the storyline, a plain title that says what the client sees, and a skill line that says what is practised.<br>Problem addresses stay the same, so no link breaks. |
-| S12.2 | Render inline code in every field a learner reads | Feature | 5 | Planned | Backticked text renders as code in the scenario card, the steps, the coach, the diagram labels and the approach map. |
-| S12.3 | Mark the bare identifiers in 286 fields as code | Task | 5 | Planned | A check fails on a snake_case name, a dotted call or an exception name outside backticks in any learner-facing field. |
-| S12.4 | Colour Python in code blocks | Feature | 3 | Planned | Fenced Python in a brief, a contract or a walkthrough uses the editor's syntax colours, with no new dependency. |
-| S12.5 | Show the constraints: call budget, time limit, imports and Python version | Feature | 3 | Planned | Every code problem shows its call budget, its time limit, the imports it allows and the Python version in one section. |
+| S12.1 | Tell the catalogue as a storyline: your first 30 days as an FDE | Feature | 8 | Done | Every problem has a day in the storyline, a plain title that says what the client sees, and a skill line that says what is practised.<br>Problem addresses stay the same, so no link breaks. |
+| S12.2 | Render inline code in every field a learner reads | Feature | 5 | Done | Backticked text renders as code in the scenario card, the steps, the coach, the diagram labels and the approach map. |
+| S12.3 | Mark the bare identifiers in 286 fields as code | Task | 5 | Done | A check fails on a snake_case name, a dotted call or an exception name outside backticks in any learner-facing field. |
+| S12.4 | Colour Python in code blocks | Feature | 3 | Done | Fenced Python in a brief, a contract or a walkthrough uses the editor's syntax colours, with no new dependency. |
+| S12.5 | Show the constraints: call budget, time limit, imports and Python version | Feature | 3 | Done | Every code problem shows its call budget, its time limit, the imports it allows and the Python version in one section. |
 | S12.6 | List the tools the agent has, with their arguments and returns | Feature | 5 | Planned | Every code problem that scripts tools lists each tool's name, arguments and what it returns, taken from the problem file. |
-| S12.7 | Say how each problem comes up in an interview | Feature | 2 | Planned | The interview question each problem declares appears on its page. |
+| S12.7 | Say how each problem comes up in an interview | Feature | 2 | Done | The interview question each problem declares appears on its page. |
 | S12.8 | Add a worked example to every problem | Task | 13 | Planned | Every problem shows one input and the behaviour expected from it, taken from a public case, never a hidden one. |
 | S12.9 | Name the common traps on every problem | Task | 8 | Planned | Every problem lists the mistakes its hidden and adversarial cases exist to catch, in words that do not give the case away. |
 | S13.1 | Move to the next question when an answer ends early | Feature | 2 | Planned | A Next question control ends the current answer, scores it on what was said, and starts the next question. |
