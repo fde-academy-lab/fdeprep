@@ -404,7 +404,7 @@ tests:
       tools:
         find_order:
           fixture: slow_then_timeout
-          params: { succeeds: 0, message: "the order lookup timed out before the orders database answered" }
+          params: { succeeds: 0, message: "the order lookup did not answer in time" }
         open_case: { returns: { status: 200, case_id: "CS-315" } }
         issue_refund: { returns: { status: 200, refund_id: "RF-2260" } }
         book_collection: { returns: { status: 200, slot: "Wed 12:00-14:00" } }
