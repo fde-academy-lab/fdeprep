@@ -9,8 +9,9 @@
  * "in range" is a count the server agrees with.
  */
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Send } from "lucide-react";
+import { ListTree, Send } from "lucide-react";
 import { evaluateDesignStructure, wordCount } from "@/lib/gate";
+import { answerOutline } from "@/lib/problems/outline";
 import type { Decision } from "@/lib/policy";
 import type { PaletteProblem } from "@/lib/problems/catalogue";
 import type { AttemptHistory, PastSubmission, WorkspaceProblem } from "@/lib/problems/workspace";
@@ -70,12 +71,23 @@ export default function DesignWorkspace(props: Props) {
     }, ...prior.filter((s) => s.id !== view.id)]);
   }, [view]);
 
+  // No blank page. The guided tiers (the ones with a steps layer) open on the
+  // outline; the others offer it on a button; a rehearsal has neither. The
+  // policy's layers decide, never the difficulty.
+  const outline = useMemo(() => answerOutline({
+    requiredHeadings: problem.requiredHeadings, approach: problem.kit.approach,
+  }), [problem.requiredHeadings, problem.kit.approach]);
+  const outlineMode = !outline ? "none"
+    : policy.layers.steps ? "prefill" : policy.layers.stub ? "offer" : "none";
+
   const storageKey = `fdeprep.design.${problem.id}`;
   useEffect(() => {
     try {
       const draft = localStorage.getItem(storageKey);
-      if (draft) setBody(draft);
+      if (draft) { setBody(draft); return; }
     } catch { /* a browser with storage blocked still gets a workspace */ }
+    if (outlineMode === "prefill" && outline) setBody(outline);
+    // Only on arrival: a learner who clears the outline has chosen a blank page.
   }, [storageKey]);
 
   const onChange = useCallback((next: string) => {
@@ -205,6 +217,16 @@ export default function DesignWorkspace(props: Props) {
         <WordMeter words={words} range={problem.wordRange} />
       </div>
       <div className="relative min-h-0 flex-1 overflow-y-auto">
+        {outlineMode !== "none" && outline && !body.trim() ? (
+          <div className="mx-auto flex max-w-[72ch] items-center justify-between gap-3 px-6 pt-4">
+            <p className="text-meta text-text-faint">
+              The approach map, as headings to write under.
+            </p>
+            <Button size="sm" variant="secondary" onClick={() => onChange(outline)}>
+              <ListTree aria-hidden /> Start from the outline
+            </Button>
+          </div>
+        ) : null}
         <textarea value={body} onChange={(event) => onChange(event.target.value)} spellCheck
                   aria-label="Your answer"
                   placeholder="Write it the way you would send it. Open on the recommendation, then the reasons."
