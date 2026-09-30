@@ -207,6 +207,10 @@ Rules:
 
 Two panes. Brief on the left, a plain markdown editor on the right with a live word count against the declared range. Submit runs the structural checks and then the rubric judge. The result renders the rubric criteria with a score and one line of evidence per criterion.
 
+**Amended 30 September 2026.** The editor never opens blank: see the L2 row in `00-PRD.md` section 3.2 for the outline and which tiers open on it.
+
+**All three workspaces, amended 30 September 2026.** Below 768px the panes stop splitting, because a split leaves each one too narrow for a sentence. They become three full-screen tabs: the problem, the editor, and the coach with the results. All three stay mounted, so the editor keeps its text and undo history, and the last tab carries a dot when a run lands or the coach speaks while another tab is open.
+
 ---
 
 ## S7. Trace replay viewer
