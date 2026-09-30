@@ -1,0 +1,102 @@
+# Roadmap
+
+What comes after the beta build, in three horizons. Now is committed and in hand. Next is scoped and ordered but not started. Later is direction, and its dates will move. Every number on this page is an estimate.
+
+## How the order was chosen
+
+Each epic has a RICE score: how many people it reaches in a quarter, times its impact (3 massive, 2 high, 1 medium, 0.5 low), times the confidence in both guesses, divided by the effort in person-months. RICE ranks value per unit of effort, and it cannot see dependencies. The beta launch scores below the first voice step and still goes first, because no voice work reaches a learner until there is a deployment to reach them through.
+
+The order you will see built is the one the product owner set on 30 September: the delivery board, then problem pages, then the two voice steps.
+
+<!-- generated:roadmap -->
+### Now
+
+| Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
+|---|---|---|---|---|---|---|
+| S11 Beta launch | Four integrations have never made a live call, so without this the first learner to touch one becomes the test. | 26 | 6 (3 to 8) | 262 | 1 to 9 Oct 2026 | High |
+| S10 Delivery board | Management and non-technical teams need to see what was built, when, how big it was and what comes next. | 20 | 3 (2 to 4) | 63 | 30 Sep to 1 Oct 2026 | Low |
+
+### Next
+
+| Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
+|---|---|---|---|---|---|---|
+| S13 Voice interviewer v2, step 1 | The first beta tester found the voice practice shallow and brittle: no way to move on, no fallback, and questions that did not connect. | 44 | 17 (11 to 23) | 339 | 3 to 7 Oct 2026 | Medium |
+| S12 Problem pages v2 | The first beta tester found the problem names hard to follow and the function names lost in the prose around them. | 52 | 15 (9 to 20) | 194 | 1 to 3 Oct 2026 | Medium |
+| S14 Voice interviewer v2, step 2 | Real interviewers dig into what you just said and into what your resume claims, and practice that cannot do either leaves the hardest part untested. | 37 | 20 (11 to 28) | 185 | 7 to 12 Oct 2026 | High |
+
+### Later
+
+| Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
+|---|---|---|---|---|---|---|
+| S15 First cohort | The platform exists to produce one signal a placement team trusts, and today that signal is implied instead of computed. | 73 | 42 (28 to 58) | 136 | 12 Oct to 30 Nov 2026 | Medium |
+| S16 Second version | Each item answers a need the first cohort is expected to expose, and none of them is worth building before that cohort confirms it. | 50 | 58 (35 to 82) | 62 | 1 Dec to 31 Mar 2027 | Medium |
+<!-- /generated:roadmap -->
+
+## Dependencies
+
+| Epic | Depends on | What happens if it slips |
+|---|---|---|
+| S11 Beta launch | An AWS account with Bedrock access, a domain, and a GitHub OAuth application | No learner sees anything below this row until it lands. |
+| S13 and S14 Voice interviewer | S11, for the live proof of Transcribe and Polly | The voice work can be built and tested against the scripted transcription adapter, and it cannot be trusted with learners until S11.3 passes. |
+| S14.2 Resume cross-questioning | A privacy decision recorded in docs/07 (S14.6) | It ships last within its epic, behind the consent screen. |
+| S15 First cohort | Feedback from the beta testers (S11.9) | The later horizon is shaped by what the beta shows, and its scope will change. |
+
+## Capacity
+
+The build so far delivered its work in bursts, and [estimation.md](estimation.md) shows the rate. Plans on this page assume 70 to 80 percent of that rate, since review, deployment and learner feedback take time the build did not have to spend.
+
+## Every planned story
+
+<!-- generated:roadmap-stories -->
+| Story | Title | Type | Points | Status | Done when |
+|---|---|---|---|---|---|
+| S10.1 | Keep the backlog as a file that CI checks | Task | 5 | In progress | The pull requests of the build,<br>CI fails on a size off the scale, a bug that does not say how it was found, planned work without acceptance criteria, or a stale generated page. |
+| S10.2 | Sync the backlog to GitHub issues and the Project board | Task | 8 | In progress | A sync creates one issue per stage and story, nests each story under its stage, and closes delivered work as completed.<br>A second sync with nothing changed writes nothing.<br>Every card shows Stage, Level, Area, Priority, Points, Start, Finish, Pull request, Found by, Risk and Sprint. |
+| S10.3 | Write the project pages for management | Task | 5 | In progress | docs/project holds the summary, the delivery history, the roadmap, the estimation method, quality, risks, decisions and setup.<br>Every figure is marked as a fact from git or GitHub, or as an estimate. |
+| S10.4 | Add the token, run the first sync and create the views | Task | 2 | Planned | The repository secret PROJECT_TOKEN exists and the first sync run is green.<br>The five views that docs/project/board-setup.md describes exist on the Project. |
+| S11.1 | Deploy route C: the stack, the web host, DNS, GitHub sign-in and HTTPS | Task | 8 | Planned | README route C steps C0 to C10 are done and the site answers on its public address over HTTPS.<br>The first admin signs in through an invite minted on the host. |
+| S11.2 | Prove the Bedrock judge with one live submission | Task | 2 | Planned | One design submission comes back with a band from the live judge, and the judge's cost appears in the spend alarm's metric. |
+| S11.3 | Prove Transcribe, Polly and S3 with one real voice session | Task | 3 | Planned | A spoken answer is transcribed live, a pressure-mode follow-up plays aloud, and the recording can be fetched from the bucket afterwards. |
+| S11.4 | Run the database restore drill once | Task | 3 | Planned | A backup restores into a scratch database, and the time it took is written in README section 4. |
+| S11.5 | Brief a second operator and run one practice drill | Task | 2 | Planned | A second person pauses grading, requeues a submission and reads an alarm without help. |
+| S11.6 | Set the Bedrock budget alarm at 50 and 80 percent | Task | 1 | Planned | An AWS Budgets alarm on the Bedrock line notifies at 50 and 80 percent of the monthly limit. |
+| S11.7 | Run the 200-submission burst test against staging | Task | 3 | Planned | npm run burst completes 200 concurrent submissions against the deployed stack, and the result is recorded in docs/project/quality.md. |
+| S11.8 | Fetch the embedding model on every worker host | Task | 1 | Planned | The worker starts without EVAL_DEGRADED_PANELISTS and reports all three evaluators available. |
+| S11.9 | Invite the first testers and collect their feedback every week | Task | 3 | Planned | The first invited students have signed in, and their feedback is a story on this board within a week. |
+| S12.1 | Tell the catalogue as a storyline: your first 30 days as an FDE | Feature | 8 | Planned | Every problem has a day in the storyline, a plain title that says what the client sees, and a skill line that says what is practised.<br>Problem addresses stay the same, so no link breaks. |
+| S12.2 | Render inline code in every field a learner reads | Feature | 5 | Planned | Backticked text renders as code in the scenario card, the steps, the coach, the diagram labels and the approach map. |
+| S12.3 | Mark the bare identifiers in 286 fields as code | Task | 5 | Planned | A check fails on a snake_case name, a dotted call or an exception name outside backticks in any learner-facing field. |
+| S12.4 | Colour Python in code blocks | Feature | 3 | Planned | Fenced Python in a brief, a contract or a walkthrough uses the editor's syntax colours, with no new dependency. |
+| S12.5 | Show the constraints: call budget, time limit, imports and Python version | Feature | 3 | Planned | Every code problem shows its call budget, its time limit, the imports it allows and the Python version in one section. |
+| S12.6 | List the tools the agent has, with their arguments and returns | Feature | 5 | Planned | Every code problem that scripts tools lists each tool's name, arguments and what it returns, taken from the problem file. |
+| S12.7 | Say how each problem comes up in an interview | Feature | 2 | Planned | The interview question each problem declares appears on its page. |
+| S12.8 | Add a worked example to every problem | Task | 13 | Planned | Every problem shows one input and the behaviour expected from it, taken from a public case, never a hidden one. |
+| S12.9 | Name the common traps on every problem | Task | 8 | Planned | Every problem lists the mistakes its hidden and adversarial cases exist to catch, in words that do not give the case away. |
+| S13.1 | Move to the next question when an answer ends early | Feature | 2 | Planned | A Next question control ends the current answer, scores it on what was said, and starts the next question. |
+| S13.2 | Type the answer when the microphone or transcription fails | Feature | 5 | Planned | When the microphone or the transcription fails, the session offers a text box, and a typed answer is scored on content and structure but not pace. |
+| S13.3 | Pick a question instead of taking the first one | Feature | 3 | Planned | The voice screen lists every published question by track and interviewer, and a learner can start any of them. |
+| S13.4 | Choose who interviews you: nine interviewer personas | Feature | 8 | Planned | A learner picks an engineering lead, a CTO, a CEO, a solution architect, a senior AI engineer, a hiring manager, a client, a panel or a bar raiser.<br>Each persona has its own focus, questions, follow-up style and voice. |
+| S13.5 | Rewrite the question bank around real FDE interview loops | Task | 13 | Planned | Every question names the scenario, the competency it tests and what a strong answer contains, and validates in CI. |
+| S13.6 | Teach a framework and the tips people miss on every question | Task | 8 | Planned | Every question shows a framework to answer with, a worked example, and the tips people overlook, including how to handle a question you cannot answer. |
+| S13.7 | Show in the debrief where an answer stayed shallow | Feature | 5 | Planned | The debrief marks the beats with no evidence, no number or no trade-off, and names what the learner could have volunteered. |
+| S14.1 | Follow up like an interviewer: five levels of why, and stress probes | Feature | 13 | Planned | Each follow-up is generated from the answer just given and the persona, capped per question, and never shown as text while the learner speaks.<br>When the model cannot answer in time, a prewritten follow-up takes its place and the session carries on. |
+| S14.2 | Cross-question an optional resume, kept only for the session | Feature | 8 | Planned | A pasted or uploaded resume becomes a list of claims for that session, the file is deleted at once, and nothing from it is used in scoring.<br>The resume reaches the model as data, so instructions written in it change nothing. |
+| S14.3 | Run a panel of interviewers who take turns | Feature | 5 | Planned | A panel session rotates between two or three personas, and the debrief says which interviewer asked what. |
+| S14.4 | Draw the interview room in the lobby and the debrief | Feature | 5 | Planned | The lobby and the debrief show a pixel-art room with the chosen interviewer, and the live cockpit keeps its five-instrument limit. |
+| S14.5 | Measure the cost and latency of a session before rollout | Task | 3 | Planned | The model cost and the follow-up latency of ten sessions are recorded, priced from Bedrock's published rates on the day. |
+| S14.6 | Amend docs/07 and the privacy notice | Task | 3 | Planned | docs/07 describes generated follow-ups and resume handling, and the consent screen says what happens to a resume. |
+| S15.1 | A baseline diagnostic that sets a learner's persona | Feature | 8 | Planned | A new learner's persona comes from a short diagnostic instead of an admin's hand. |
+| S15.2 | Author constraint lists, so the unnamed-constraint check can fire | Task | 5 | Planned | Every C3 and C4 problem declares its constraints, and names_no_constraint fires on an answer that names none. |
+| S15.3 | Re-grade past submissions against a new judge prompt version | Feature | 8 | Planned | A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it. |
+| S15.4 | Replace the import screen with something that works on a deployment | Feature | 5 | Planned | An admin publishes content on a deployed host without a shell. |
+| S15.5 | Build analytics: cohort views, the stuck list, calibration and panel health | Feature | 13 | Planned | Faculty can see which topic a cohort failed without writing SQL. |
+| S15.6 | Issue the report card as a dated, hashed snapshot | Feature | 8 | Planned | A report card never changes after it is issued, and its hash proves it. |
+| S15.7 | Move the competency write into eval/, and make progress a pure reader | Task | 5 | Planned | Only eval/ writes a grade, a band or a competency state, and a test fails if anything else does. |
+| S15.8 | Compute the readiness signal with its four counts and three bands | Feature | 8 | Planned | Each learner has a readiness band computed from the four counts in docs/12, shown to the learner and to placement. |
+| S15.9 | Write more content where the cohort actually fails | Task | 13 | Planned | New problems target the three topics with the lowest pass rate in the first cohort. |
+| S16.1 | A problem family where the agent drives a real browser | Feature | 21 | Planned | A learner's agent fills a form or extracts data in a real browser, graded deterministically. |
+| S16.2 | An export built for placement instead of a CSV | Feature | 8 | Planned | A placement team reads a learner's readiness without re-interpreting a spreadsheet. |
+| S16.3 | Run several cohorts and tracks at once | Feature | 8 | Planned | Two cohorts on different tracks run at the same time without either seeing the other. |
+| S16.4 | Peer review of design answers | Feature | 8 | Planned | A second learner can review a design answer, and the review is recorded apart from the grade. |
+| S16.5 | A mobile reading view without the workspace | Feature | 5 | Planned | A learner can read a brief, check progress and review a debrief on a phone. |
+<!-- /generated:roadmap-stories -->
