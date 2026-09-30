@@ -445,7 +445,9 @@ tests:
               - { job: "INC-8144/deploys/payments-api", verdict: lead, finding: "payments-api deploy d-5520 at 00:55", next: [{ check: diff, args: { deploy: "d-5520" } }] }
               - { job: "INC-8144/logs/payments-api", verdict: lead, finding: "connection timeouts to the payments database", next: [] }
               - { job: "INC-8144/metrics/payments-api", verdict: clear, finding: "payments-api CPU and memory normal", next: [] }
-        trace: { fixture: slow_then_timeout, params: { succeeds: 0 } }
+        trace:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the tracing backend timed out on the trace lookup" }
         diff: { returns: { status: 200, verdict: definitive, finding: "d-5520 cut the database connection pool from 50 to 5", next: [] } }
       budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
       assertions:

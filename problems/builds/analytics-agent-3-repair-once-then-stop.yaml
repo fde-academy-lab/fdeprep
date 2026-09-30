@@ -590,7 +590,9 @@ tests:
                   description: "One row per product line, with its category." }
               - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
                   description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
-        run_query: { fixture: slow_then_timeout, params: { succeeds: 0 } }
+        run_query:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the sales database did not answer before the connection timed out" }
       budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: no_exception }

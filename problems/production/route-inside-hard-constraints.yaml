@@ -399,7 +399,9 @@ tests:
               - { id: us-large, residency: us, p95_ms: 900, usd_per_1k_tokens: 0.0015 }
               - { id: eu-large, residency: eu, p95_ms: 1400, usd_per_1k_tokens: 0.0020 }
               - { id: eu-medium, residency: eu, p95_ms: 1000, usd_per_1k_tokens: 0.0010 }
-        eu-small: { fixture: slow_then_timeout, params: { succeeds: 0 } }
+        eu-small:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the eu-small model timed out before answering" }
         us-large: { returns: { status: 200, text: "Garage damage from a fallen tree is covered." } }
         eu-large: { returns: { status: 503, error: overloaded } }
         eu-medium:

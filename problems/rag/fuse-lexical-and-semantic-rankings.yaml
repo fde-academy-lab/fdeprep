@@ -416,7 +416,9 @@ tests:
               - { id: "kb-422", score: 14.8, text: "M400 tray 2 not feeding with E-4102: the tray 2 pick roller is worn. Replace it with part PR-22 and reset the feed counter." }
               - { id: "kb-205", score: 12.1, text: "Error code index for the C900 series: E-4102 means the duplex unit has jammed." }
               - { id: "kb-310", score: 11.0, text: "Firmware 4.1 release notes: error codes E-4101 to E-4109 now show on the front panel as well as in the log." }
-        vector_search: { fixture: slow_then_timeout, params: { succeeds: 0 } }
+        vector_search:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the vector index timed out during a rebuild" }
       budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
       assertions:
         - { type: no_exception }

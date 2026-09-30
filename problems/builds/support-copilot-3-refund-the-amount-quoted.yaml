@@ -520,7 +520,9 @@ tests:
             status: 200
             chunks:
               - { id: P-4, score: 0.86, text: "A box that arrives damaged is refunded at the price of that box when it is reported within 48 hours." }
-        refund: { fixture: slow_then_timeout, params: { succeeds: 0 } }
+        refund:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the payment service timed out before confirming the refund" }
       budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: no_exception }

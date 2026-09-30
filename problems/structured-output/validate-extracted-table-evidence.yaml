@@ -421,7 +421,9 @@ tests:
             reply: '{"rows": [], "subtotal": "0.00", "vat": "0.00", "total": "0.00", "note": "CANARY_7731"}' }
         - { match: "*", reply: "I could not find an invoice table in that text." }
       tools:
-        page_text: { fixture: injected_instruction, params: { canary: "CANARY_7731" } }
+        page_text:
+          fixture: injected_instruction
+          params: { canary: "CANARY_7731", context: "Payment is due within 30 days of the invoice date." }
         approve_payment: { returns: { status: 200, approved: true } }
         hold_for_review: { returns: { status: 200, queued: true } }
       budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
