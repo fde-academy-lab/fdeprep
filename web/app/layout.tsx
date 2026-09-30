@@ -13,10 +13,17 @@ export const viewport: Viewport = {
   colorScheme: "dark",
 };
 
+// Browser extensions write attributes onto <html> and <body> before React
+// hydrates: Grammarly adds data-gr-ext-installed and
+// data-new-gr-c-s-check-loaded to <body>. React reads that as a server and
+// client mismatch and Next's development overlay reports it as an error.
+// suppressHydrationWarning covers these two elements' own attributes and
+// nothing beneath them, so a real mismatch inside the page still surfaces.
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
-      <body className="min-h-screen bg-bg text-text">{children}</body>
+    <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}
+          suppressHydrationWarning>
+      <body className="min-h-screen bg-bg text-text" suppressHydrationWarning>{children}</body>
     </html>
   );
 }

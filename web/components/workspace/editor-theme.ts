@@ -58,3 +58,16 @@ const highlight = HighlightStyle.define([
 ]);
 
 export const editorTheme = [base, syntaxHighlighting(highlight)];
+
+/**
+ * Keep writing assistants out of the editor. The learner is the one being
+ * assessed, which is why the editor has no autocomplete, and Grammarly attaches
+ * itself to any contenteditable element, which CodeMirror's content is. These
+ * are the three attributes editor vendors document for turning it off.
+ * Grammarly publishes no contract for them, so this is a best effort.
+ */
+export const noWritingAssistant = EditorView.contentAttributes.of({
+  "data-gramm": "false",
+  "data-gramm_editor": "false",
+  "data-enable-grammarly": "false",
+});

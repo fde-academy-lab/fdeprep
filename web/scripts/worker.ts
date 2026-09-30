@@ -1,23 +1,26 @@
 /**
- * The background worker, for running the platform outside AWS.
+ * The background worker.
  *
  * Nothing grades without this. The submit route queues a message and returns
  * 202; this drains the queue, runs the battery, judges what needs a model and
- * commits the verdict. In the deployed shape those stages are Lambdas behind
- * SQS, and this is the process that stands in for them on a laptop, in a demo
- * and on a single box.
+ * commits the verdict.
  *
  *   npm run worker            loop until interrupted
  *   npm run worker -- --once  one pass of every stage, then exit
  *
- * The runner subprocess executes learner code, so run this where that is
- * acceptable: your own machine, or a container you are willing to lose. It is
- * not the sandbox the runner Lambda gives you.
+ * Where learner code runs is the one thing to get right. With RUNNER_FUNCTION
+ * set, every submission goes to the runner Lambda, in a VPC with no route out,
+ * and nothing learners wrote runs on this host. Without it the battery runs
+ * here as a subprocess, which is fine on your own machine and nowhere else, so
+ * a production worker refuses to start that way (lib/queue/placement.ts).
+ * JUDGE_FUNCTION does the same for the judge, which keeps the model
+ * credential off this host too.
  */
 import { dispatchOnce, reapExpiredLeases } from "../lib/queue/dispatcher.ts";
 import { judgeOnce } from "../lib/queue/judge-worker.ts";
 import { runOnce, writeResultsOnce } from "../lib/queue/runner-worker.ts";
 import { preflight } from "../lib/eval/preflight.ts";
+import { runnerPlacement } from "../lib/queue/placement.ts";
 import { closeDb, db } from "../lib/db/pool.ts";
 
 /** Long enough that an idle worker is quiet, short enough that a learner
@@ -80,6 +83,10 @@ async function loop(): Promise<void> {
  * a panel and nobody told.
  */
 async function startable(): Promise<boolean> {
+  const placement = runnerPlacement();
+  console.log(placement.message);
+  if (!placement.ok) return false;
+
   const report = await preflight(db());
   console.log(report.message);
   return report.ok;

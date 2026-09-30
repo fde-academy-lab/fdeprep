@@ -31,6 +31,8 @@ The platform exists to produce one number the placement side can trust: is this 
 
 Offboarding a learner is removing them from the GitHub organisation. There is no second user list to keep in step.
 
+**Amended 30 September 2026, for a controlled beta.** The beta's testers hold GitHub accounts outside the organisation, so the organisation check can be switched off with `GITHUB_ORG_CHECK=off`, and an invite stands in for it. An admin makes a one-time invite link on the Roster screen and sends it by hand; signing in with GitHub through it enrols that account in the invite's cohort with the invite's role and persona. An invite can name one GitHub login, can expire and can be withdrawn. With the check off, only someone already enrolled or holding a valid invite gets in, and offboarding is ending the enrolment. There is still no password and no second user list: GitHub remains the only identity.
+
 ### Personas
 
 Every enrolment carries one persona, set from the baseline diagnostic and changeable by an admin.

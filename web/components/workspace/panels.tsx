@@ -9,7 +9,7 @@
  */
 import Link from "next/link";
 import type { Route } from "next";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ArrowUpRight, BookOpen, Check, Clock3, Compass, Flag, History, Lock,
 } from "lucide-react";
@@ -265,10 +265,19 @@ export function AttemptsPanel({ submissions }: { submissions: PastSubmission[] }
 }
 
 /** The attempt note that gates hints on the top tier. */
-export function NoteBox({ note, setNote, required, onSave }: {
-  note: string; setNote: (v: string) => void; required: number; onSave: () => void;
+/**
+ * The attempt note. The text is this box's own state, so typing re-renders
+ * the box and not the workspace; the workspace gets the note on blur, which
+ * is also when it is saved.
+ */
+export function NoteBox({ note, required, onSave }: {
+  /** The note as last saved. */
+  note: string;
+  required: number;
+  onSave: (text: string) => void;
 }) {
-  const needed = Math.max(0, required - note.length);
+  const [text, setText] = useState(note);
+  const needed = Math.max(0, required - text.length);
   return (
     <div className="space-y-2 rounded-panel border border-border bg-surface p-3.5">
       <p className="text-text">Say what you have tried and where it stops working.</p>
@@ -276,12 +285,13 @@ export function NoteBox({ note, setNote, required, onSave }: {
         Hints on this tier open after the note reaches its length. Faculty read it to tell whether
         you are stuck on the idea or on the Python.
       </p>
-      <textarea value={note} onChange={(e) => setNote(e.target.value)} onBlur={onSave} rows={5}
+      <textarea value={text} onChange={(e) => setText(e.target.value)} onBlur={() => onSave(text)}
+                rows={5}
                 aria-label="Attempt note"
                 className="w-full rounded-control border border-border-control bg-bg p-3 leading-relaxed
                            text-text outline-none focus:border-accent" />
       <p className="tnum text-meta text-text-faint">
-        {note.length} characters{needed > 0 ? `, ${needed} to go` : ", enough to unlock hints"}
+        {text.length} characters{needed > 0 ? `, ${needed} to go` : ", enough to unlock hints"}
       </p>
     </div>
   );

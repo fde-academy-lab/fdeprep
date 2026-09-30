@@ -6,9 +6,10 @@
  */
 import { NextResponse } from "next/server";
 import { SESSION_COOKIE } from "@/lib/auth/session";
+import { publicUrl } from "@/lib/http/public-url";
 
 export async function POST(request: Request): Promise<NextResponse> {
-  const response = NextResponse.redirect(new URL("/signin?error=signed_out", request.url), 303);
+  const response = NextResponse.redirect(publicUrl("/signin?error=signed_out", request.url), 303);
   response.cookies.delete(SESSION_COOKIE);
   return response;
 }

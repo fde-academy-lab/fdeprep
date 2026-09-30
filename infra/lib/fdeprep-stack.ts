@@ -1,32 +1,46 @@
 /**
- * The FDE Prep stack, from docs/05 section 4.
+ * The FDE Prep stack, from docs/05 section 4 as amended on 30 September 2026.
  *
- * One stack: two SQS queues plus two dead letter queues, two Lambda functions,
- * two S3 buckets with lifecycle policies, one VPC with two private subnets and
- * no NAT gateway, VPC endpoints for S3 and SQS, IAM roles, CloudWatch alarms,
- * one ECR repository for the runner image.
+ * One stack: the runner and the judge as container-image Lambdas, one VPC with
+ * two isolated subnets and nothing else in it, the learner audio bucket, the
+ * role the web host launches with, three alarms, and the voice socket once its
+ * signing secret exists.
+ *
+ * The web host's worker calls the two functions directly, with a signed Lambda
+ * Invoke, and takes the result from the reply. There is no SQS between them:
+ * the application's own Postgres queue already carries delivery, retries and
+ * leases, and a queue here would add a second one to watch.
  *
  * The two roles never merge, which is the control the whole security model
- * rests on. The runner executes learner code and has no Bedrock permission and
- * no database credential. The judge calls Bedrock and executes nothing. Neither
- * grant is written in a way that could widen by accident: the runner's policy
- * names no Bedrock action at all, and a test asserts it.
+ * rests on. The runner executes learner code and holds no permission beyond
+ * running in its VPC: no Bedrock, no bucket, no queue, no database. The judge
+ * calls Bedrock and executes nothing. Neither grant is written in a way that
+ * could widen by accident, and the tests assert both.
+ *
+ * `cdk deploy` builds and pushes both images itself, into the asset repository
+ * `cdk bootstrap` made, so a first deploy never points a function at an image
+ * that does not exist yet.
  */
+import path from "node:path";
 import {
-  Aspects, CfnOutput, Duration, RemovalPolicy, Stack, StackProps, Tags,
+  Aspects, CfnOutput, Duration, IgnoreMode, RemovalPolicy, Stack, StackProps, Tags,
 } from "aws-cdk-lib";
 import * as cloudwatch from "aws-cdk-lib/aws-cloudwatch";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
-import * as ecr from "aws-cdk-lib/aws-ecr";
+import * as ecrAssets from "aws-cdk-lib/aws-ecr-assets";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
-import * as eventsources from "aws-cdk-lib/aws-lambda-event-sources";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as cwactions from "aws-cdk-lib/aws-cloudwatch-actions";
-import * as sqs from "aws-cdk-lib/aws-sqs";
 import { Construct } from "constructs";
 import { VoiceSocket } from "./voice-socket.js";
+
+// This package is transpiled to CommonJS by tsx, which is why this is
+// __dirname rather than import.meta.dirname. The repository root is the build
+// context for both images, and the excludes below cut it down to what each
+// Dockerfile copies.
+const REPO_ROOT = path.join(__dirname, "..", "..");
 
 export interface FdePrepStackProps extends StackProps {
   /**
@@ -38,9 +52,14 @@ export interface FdePrepStackProps extends StackProps {
   readonly judgeModelId: string;
   /** Where the three alarms go. docs/05 section 6: a channel, not a person. */
   readonly alarmEmail?: string;
-  /** Tag on the runner image to deploy. The deploy workflow moves this. */
-  readonly runnerImageTag?: string;
-  readonly judgeImageTag?: string;
+  /**
+   * Concurrency held back for each function. Off by default: AWS keeps part
+   * of an account's concurrency unreserved and a new account starts with a
+   * lower quota, so a reservation there fails the deploy. The worker bounds
+   * how many invocations it makes at once in any case.
+   */
+  readonly runnerReservedConcurrency?: number;
+  readonly judgeReservedConcurrency?: number;
   /**
    * Secrets Manager ARN of the voice session token signing key. When it is
    * absent the voice socket is not created at all, which is what keeps this
@@ -50,8 +69,6 @@ export interface FdePrepStackProps extends StackProps {
 }
 
 /** docs/05 section 6. Three, and no more, because an alarm nobody reads is worse than no alarm. */
-const QUEUE_AGE_ALARM_SECONDS = 120;
-const QUEUE_AGE_ALARM_PERIODS = 5;
 const RUNNER_ERROR_RATE = 0.05;
 const RUNNER_ERROR_WINDOW_MINUTES = 15;
 
@@ -69,16 +86,11 @@ const JUDGE_MEMORY_MB = 512;
 const JUDGE_TIMEOUT_SECONDS = 300;
 
 export class FdePrepStack extends Stack {
-  readonly submissionsQueue: sqs.Queue;
-  readonly judgementsQueue: sqs.Queue;
-  readonly resultsQueue: sqs.Queue;
   readonly runner: lambda.Function;
   readonly judge: lambda.Function;
-  readonly tracesBucket: s3.Bucket;
-  readonly bundlesBucket: s3.Bucket;
-  readonly runnerRepository: ecr.Repository;
   readonly voice?: VoiceSocket;
   readonly voiceAudioBucket: s3.Bucket;
+  readonly boxRole: iam.Role;
 
   constructor(scope: Construct, id: string, props: FdePrepStackProps) {
     super(scope, id, props);
@@ -87,11 +99,12 @@ export class FdePrepStack extends Stack {
 
     /* ------------------------------------------------------------ network */
 
-    // No NAT gateway, deliberately. docs/05 section 4: "It removes the largest
-    // fixed line on the AWS bill and it removes the runner's route to the
-    // internet in one move." The runner reaches S3 and SQS through endpoints
-    // and can reach nothing else, which is what makes the trust boundary real
-    // rather than a matter of the runner's code behaving.
+    // No NAT gateway and no endpoint, deliberately. docs/05 section 4: the
+    // absence of a NAT "removes the runner's route to the internet". The
+    // runner needs no AWS service from inside the VPC either: its submission
+    // arrives in the invocation, its result leaves in the reply, and Lambda
+    // ships its logs from outside the VPC. So learner code in here can reach
+    // nothing at all, which is the control rather than the code behaving.
     const vpc = new ec2.Vpc(this, "Vpc", {
       maxAzs: 2,
       natGateways: 0,
@@ -102,83 +115,18 @@ export class FdePrepStack extends Stack {
       }],
     });
 
-    vpc.addGatewayEndpoint("S3Endpoint", { service: ec2.GatewayVpcEndpointAwsService.S3 });
-    vpc.addInterfaceEndpoint("SqsEndpoint", {
-      service: ec2.InterfaceVpcEndpointAwsService.SQS,
-      privateDnsEnabled: true,
-    });
+    /* ------------------------------------------------------------- images */
 
-    /* ------------------------------------------------------------- queues */
-
-    // docs/05 section 2: SQS standard, with a dead letter queue after three
-    // receives, so submissions survive a runner failure instead of vanishing.
-    const { queue: submissionsQueue, dlq: submissionsDlq } =
-      this.queueWithDlq("Submissions", RUNNER_TIMEOUT_SECONDS);
-    const { queue: judgementsQueue, dlq: judgementsDlq } =
-      this.queueWithDlq("Judgements", JUDGE_TIMEOUT_SECONDS);
-    const resultsQueue = new sqs.Queue(this, "ResultsQueue", {
-      retentionPeriod: Duration.days(14),
-      enforceSSL: true,
-      visibilityTimeout: Duration.seconds(60),
-    });
-
-    this.submissionsQueue = submissionsQueue;
-    this.judgementsQueue = judgementsQueue;
-    this.resultsQueue = resultsQueue;
-
-    /* ------------------------------------------------------------ buckets */
-
-    // Traces are the only large object and lifecycle rules handle them.
-    this.tracesBucket = new s3.Bucket(this, "TracesBucket", {
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: true,
-      versioned: false,
-      removalPolicy: RemovalPolicy.RETAIN,
-      lifecycleRules: [{
-        id: "age-out-traces",
-        enabled: true,
-        transitions: [{
-          storageClass: s3.StorageClass.INFREQUENT_ACCESS,
-          transitionAfter: Duration.days(30),
-        }],
-        expiration: Duration.days(180),
-        abortIncompleteMultipartUploadAfter: Duration.days(7),
-      }],
-    });
-
-    this.bundlesBucket = new s3.Bucket(this, "ProblemBundlesBucket", {
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: true,
-      // A problem bundle a submission ran against has to stay readable for as
-      // long as that submission's result is meaningful, so old versions are
-      // kept rather than expired.
-      versioned: true,
-      removalPolicy: RemovalPolicy.RETAIN,
-      lifecycleRules: [{
-        id: "age-out-old-bundle-versions",
-        enabled: true,
-        noncurrentVersionExpiration: Duration.days(365),
-        abortIncompleteMultipartUploadAfter: Duration.days(7),
-      }],
-    });
-
-    /* --------------------------------------------------------------- ecr */
-
-    this.runnerRepository = new ecr.Repository(this, "RunnerRepository", {
-      repositoryName: "fdeprep-runner",
-      imageScanOnPush: true,
-      removalPolicy: RemovalPolicy.RETAIN,
-      lifecycleRules: [{ maxImageCount: 20, description: "Keep the last twenty images" }],
-    });
+    const runnerImage = imageAsset(this, "RunnerImage", "Dockerfile", "runner", "requirements.txt");
+    const judgeImage = imageAsset(
+      this, "JudgeImage", "Dockerfile.judge", "judge", "requirements-judge.txt");
 
     /* ------------------------------------------------------------ lambdas */
 
     const runnerRole = new iam.Role(this, "RunnerRole", {
       assumedBy: new iam.ServicePrincipal("lambda.amazonaws.com"),
       description:
-        "Runs learner code. No Bedrock, no database. Reads problem bundles and writes traces.",
+        "Runs learner code. No Bedrock, no database, no bucket, no queue: it answers the invoke.",
       managedPolicies: [
         iam.ManagedPolicy.fromAwsManagedPolicyName(
           "service-role/AWSLambdaVPCAccessExecutionRole"),
@@ -193,31 +141,27 @@ export class FdePrepStack extends Stack {
       ],
     });
 
-    this.runner = new lambda.Function(this, "Runner", {
-      runtime: lambda.Runtime.FROM_IMAGE,
-      handler: lambda.Handler.FROM_IMAGE,
-      code: lambda.Code.fromEcrImage(this.runnerRepository, {
-        tagOrDigest: props.runnerImageTag ?? "latest",
+    this.runner = new lambda.DockerImageFunction(this, "Runner", {
+      code: lambda.DockerImageCode.fromEcr(runnerImage.repository, {
+        tagOrDigest: runnerImage.imageTag,
       }),
       role: runnerRole,
       memorySize: RUNNER_MEMORY_MB,
       timeout: Duration.seconds(RUNNER_TIMEOUT_SECONDS),
-      // In the VPC with no internet route. This is the control, not the code.
+      // In the VPC with no route out. This is the control, not the code.
       vpc,
       vpcSubnets: { subnetType: ec2.SubnetType.PRIVATE_ISOLATED },
       environment: {
-        TRACES_BUCKET: this.tracesBucket.bucketName,
-        BUNDLES_BUCKET: this.bundlesBucket.bucketName,
-        RESULTS_QUEUE_URL: resultsQueue.queueUrl,
+        // Written into every result, so an appeal can name the image that
+        // graded it and a rollback can name the one to go back to.
+        RUNNER_IMAGE_TAG: runnerImage.imageTag,
       },
-      reservedConcurrentExecutions: 50,
+      reservedConcurrentExecutions: props.runnerReservedConcurrency,
     });
 
-    this.judge = new lambda.Function(this, "Judge", {
-      runtime: lambda.Runtime.FROM_IMAGE,
-      handler: lambda.Handler.FROM_IMAGE,
-      code: lambda.Code.fromEcrImage(this.runnerRepository, {
-        tagOrDigest: props.judgeImageTag ?? "judge-latest",
+    this.judge = new lambda.DockerImageFunction(this, "Judge", {
+      code: lambda.DockerImageCode.fromEcr(judgeImage.repository, {
+        tagOrDigest: judgeImage.imageTag,
       }),
       role: judgeRole,
       memorySize: JUDGE_MEMORY_MB,
@@ -229,23 +173,13 @@ export class FdePrepStack extends Stack {
       environment: {
         JUDGE_MODEL_ID: props.judgeModelId,
         JUDGE_THINKING: "disabled",
-        RESULTS_QUEUE_URL: resultsQueue.queueUrl,
       },
-      reservedConcurrentExecutions: 20,
+      reservedConcurrentExecutions: props.judgeReservedConcurrency,
     });
 
     /* --------------------------------------------------------------- iam */
 
-    // The runner: read bundles, write traces, send results, receive its own
-    // queue. Nothing else, and nothing that reaches a model.
-    this.bundlesBucket.grantRead(runnerRole);
-    this.tracesBucket.grantPut(runnerRole);
-    resultsQueue.grantSendMessages(runnerRole);
-    submissionsQueue.grantConsumeMessages(runnerRole);
-
-    // The judge: its own queue, the results queue, and one model.
-    judgementsQueue.grantConsumeMessages(judgeRole);
-    resultsQueue.grantSendMessages(judgeRole);
+    // The judge: one model, through its inference profile.
     judgeRole.addToPrincipalPolicy(new iam.PolicyStatement({
       actions: ["bedrock:InvokeModel", "bedrock:InvokeModelWithResponseStream"],
       // Scoped to the configured model and its foundation model, because an
@@ -256,14 +190,72 @@ export class FdePrepStack extends Stack {
       ],
     }));
 
-    this.runner.addEventSource(new eventsources.SqsEventSource(submissionsQueue, {
-      batchSize: 1,
-      reportBatchItemFailures: true,
-    }));
-    this.judge.addEventSource(new eventsources.SqsEventSource(judgementsQueue, {
-      batchSize: 1,
-      reportBatchItemFailures: true,
-    }));
+    /* -------------------------------------------------------- learner audio */
+
+    /**
+     * Learner audio. docs/07 section 9.
+     *
+     * Thirty days and then the object is gone, which is a promise made to a
+     * learner on the consent screen and so is enforced by the bucket rather
+     * than by anything that could forget. Nothing transitions to a cheaper
+     * class first: an object with a month to live spends less than the
+     * minimum billing period of infrequent access, so the transition would
+     * cost more than it saved.
+     *
+     * Versioned is off on purpose. A deleted recording that a version kept is
+     * a recording that was not deleted, and section 9 promises immediate and
+     * irreversible.
+     *
+     * RetainExceptOnCreate: deleting the stack keeps the bucket, whose own
+     * rule still empties it, and a failed first deploy removes it, so a retry
+     * never trips over a leftover.
+     */
+    this.voiceAudioBucket = new s3.Bucket(this, "VoiceAudioBucket", {
+      encryption: s3.BucketEncryption.S3_MANAGED,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      enforceSSL: true,
+      versioned: false,
+      removalPolicy: RemovalPolicy.RETAIN_ON_UPDATE_OR_DELETE,
+      lifecycleRules: [{
+        id: "delete-learner-audio-after-30-days",
+        enabled: true,
+        expiration: Duration.days(VOICE_AUDIO_RETENTION_DAYS),
+        abortIncompleteMultipartUploadAfter: Duration.days(1),
+      }],
+    });
+
+    /* ------------------------------------------------------------ web host */
+
+    // What the host running the web application and the worker may do: call
+    // the two functions, keep learner audio, and have Polly speak a pressure
+    // mode follow-up. No model and no learner code, so a compromise of the
+    // host is a database problem and not a bill.
+    const boxPolicy = new iam.ManagedPolicy(this, "BoxPolicy", {
+      description: "The FDE Prep web host: invoke the runner and the judge, keep learner audio, " +
+                   "speak follow-ups.",
+      statements: [
+        new iam.PolicyStatement({
+          actions: ["lambda:InvokeFunction"],
+          resources: [this.runner.functionArn, this.judge.functionArn],
+        }),
+        new iam.PolicyStatement({
+          actions: ["s3:PutObject", "s3:GetObject", "s3:DeleteObject"],
+          resources: [this.voiceAudioBucket.arnForObjects("*")],
+        }),
+        new iam.PolicyStatement({
+          actions: ["polly:SynthesizeSpeech"],
+          resources: ["*"],
+        }),
+      ],
+    });
+    this.boxRole = new iam.Role(this, "BoxRole", {
+      assumedBy: new iam.ServicePrincipal("ec2.amazonaws.com"),
+      description: "Launch the FDE Prep web host with this role's instance profile.",
+      managedPolicies: [boxPolicy],
+    });
+    const boxProfile = new iam.InstanceProfile(this, "BoxInstanceProfile", {
+      role: this.boxRole,
+    });
 
     /* ------------------------------------------------------------- alarms */
 
@@ -277,22 +269,21 @@ export class FdePrepStack extends Stack {
     }
     const action = new cwactions.SnsAction(topic);
 
-    // 1. Queue backing up: ApproximateAgeOfOldestMessage over 120 seconds for
-    //    5 minutes.
-    const queueAge = new cloudwatch.Alarm(this, "QueueBackingUpAlarm", {
-      alarmName: `${this.stackName}-queue-backing-up`,
+    // 1. Work waiting. With no SQS queue there is no queue age to watch; a
+    //    submission waits when Lambda refuses the worker's call for want of
+    //    capacity, and that refusal is the Throttles metric.
+    const throttled = new cloudwatch.Alarm(this, "RunnerThrottledAlarm", {
+      alarmName: `${this.stackName}-runner-throttled`,
       alarmDescription:
-        "Submissions are waiting. Check the runner error rate, then the Lambda concurrency limit.",
-      metric: submissionsQueue.metricApproximateAgeOfOldestMessage({
-        period: Duration.minutes(1),
-        statistic: "Maximum",
-      }),
-      threshold: QUEUE_AGE_ALARM_SECONDS,
-      evaluationPeriods: QUEUE_AGE_ALARM_PERIODS,
+        "Submissions are waiting for Lambda capacity. Check the account's concurrent executions " +
+        "quota in Service Quotas, then any reserved concurrency on the runner.",
+      metric: this.runner.metricThrottles({ period: Duration.minutes(5), statistic: "Sum" }),
+      threshold: 0,
+      evaluationPeriods: 1,
       comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
       treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
     });
-    queueAge.addAlarmAction(action);
+    throttled.addAlarmAction(action);
 
     // 2. Runner failing: error rate over 5 percent over 15 minutes. A rate
     //    rather than a count, so a quiet night with two errors does not page
@@ -300,7 +291,7 @@ export class FdePrepStack extends Stack {
     const runnerErrorRate = new cloudwatch.Alarm(this, "RunnerFailingAlarm", {
       alarmName: `${this.stackName}-runner-failing`,
       alarmDescription:
-        "Read the last runner_event rows, then roll the runner image tag back.",
+        "Read the last runner_event rows, then redeploy the previous commit with cdk deploy.",
       metric: new cloudwatch.MathExpression({
         expression: "IF(invocations > 0, errors / invocations, 0)",
         usingMetrics: {
@@ -339,45 +330,12 @@ export class FdePrepStack extends Stack {
 
     /* ------------------------------------------------------------ outputs */
 
-    new CfnOutput(this, "SubmissionsQueueUrl", { value: submissionsQueue.queueUrl });
-    new CfnOutput(this, "JudgementsQueueUrl", { value: judgementsQueue.queueUrl });
-    new CfnOutput(this, "ResultsQueueUrl", { value: resultsQueue.queueUrl });
-    /**
-     * Learner audio. docs/07 section 9.
-     *
-     * Thirty days and then the object is gone, which is a promise made to a
-     * learner on the consent screen and so is enforced by the bucket rather
-     * than by anything that could forget. Nothing transitions to a cheaper
-     * class first: an object with a month to live spends less than the
-     * minimum billing period of infrequent access, so the transition would
-     * cost more than it saved.
-     *
-     * Versioned is off on purpose. A deleted recording that a version kept is
-     * a recording that was not deleted, and section 9 promises immediate and
-     * irreversible.
-     */
-    this.voiceAudioBucket = new s3.Bucket(this, "VoiceAudioBucket", {
-      encryption: s3.BucketEncryption.S3_MANAGED,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      enforceSSL: true,
-      versioned: false,
-      removalPolicy: RemovalPolicy.RETAIN,
-      lifecycleRules: [{
-        id: "delete-learner-audio-after-30-days",
-        enabled: true,
-        expiration: Duration.days(VOICE_AUDIO_RETENTION_DAYS),
-        abortIncompleteMultipartUploadAfter: Duration.days(1),
-      }],
-    });
-
-    new CfnOutput(this, "VoiceAudioBucketName", { value: this.voiceAudioBucket.bucketName });
-    new CfnOutput(this, "TracesBucketName", { value: this.tracesBucket.bucketName });
-    new CfnOutput(this, "BundlesBucketName", { value: this.bundlesBucket.bucketName });
-    new CfnOutput(this, "RunnerRepositoryUri", { value: this.runnerRepository.repositoryUri });
+    // Everything the web host's settings file needs, by the names it uses.
     new CfnOutput(this, "RunnerFunctionName", { value: this.runner.functionName });
     new CfnOutput(this, "JudgeFunctionName", { value: this.judge.functionName });
-    new CfnOutput(this, "SubmissionsDlqUrl", { value: submissionsDlq.queueUrl });
-    new CfnOutput(this, "JudgementsDlqUrl", { value: judgementsDlq.queueUrl });
+    new CfnOutput(this, "VoiceAudioBucketName", { value: this.voiceAudioBucket.bucketName });
+    new CfnOutput(this, "BoxInstanceProfileName", { value: boxProfile.instanceProfileName });
+    new CfnOutput(this, "RunnerImageTag", { value: runnerImage.imageTag });
 
     /* -------------------------------------------------------- voice socket */
 
@@ -392,22 +350,32 @@ export class FdePrepStack extends Stack {
 
     Aspects.of(this).add({ visit: () => {} });
   }
+}
 
-  /** A queue and its dead letter queue, with the visibility timeout the consumer needs. */
-  private queueWithDlq(name: string, consumerTimeoutSeconds: number) {
-    const dlq = new sqs.Queue(this, `${name}Dlq`, {
-      retentionPeriod: Duration.days(14),
-      enforceSSL: true,
-    });
-    const queue = new sqs.Queue(this, `${name}Queue`, {
-      // Six times the consumer's own timeout, which is the margin AWS
-      // recommends for a Lambda consumer and stops a slow run being delivered
-      // twice while the first is still going.
-      visibilityTimeout: Duration.seconds(consumerTimeoutSeconds * 6),
-      retentionPeriod: Duration.days(4),
-      enforceSSL: true,
-      deadLetterQueue: { queue: dlq, maxReceiveCount: 3 },
-    });
-    return { queue, dlq };
-  }
+/**
+ * One image, built by `cdk deploy` from the repository root with everything
+ * but its own Dockerfile, requirements and package excluded. The build context
+ * is then a few hundred kilobytes rather than the repository's node_modules,
+ * and the asset hash, which decides whether a deploy rebuilds, changes only
+ * when that image's own code does.
+ */
+function imageAsset(
+  scope: Construct, id: string, dockerfile: string, packageDir: string, requirements: string,
+): ecrAssets.DockerImageAsset {
+  return new ecrAssets.DockerImageAsset(scope, id, {
+    directory: REPO_ROOT,
+    file: dockerfile,
+    // Lambda's default architecture. An Apple Silicon Mac builds this under
+    // emulation, which is slower and otherwise the same.
+    platform: ecrAssets.Platform.LINUX_AMD64,
+    ignoreMode: IgnoreMode.DOCKER,
+    exclude: [
+      "*",
+      `!${dockerfile}`,
+      `!${requirements}`,
+      `!${packageDir}`,
+      "**/__pycache__",
+      "**/*.pyc",
+    ],
+  });
 }

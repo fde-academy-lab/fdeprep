@@ -17,7 +17,9 @@ import { devLearnerEnabled } from "./lib/auth/config.ts";
 
 /** Reachable with no session: the sign-in screen and the OAuth round trip
  *  itself, or signing in would require being signed in. */
-const OPEN = ["/signin", "/api/auth/"];
+// The invite page is open because the person holding the link has not
+// signed in yet; it says whether the link is still good and nothing more.
+const OPEN = ["/signin", "/api/auth/", "/invite/"];
 
 export function proxy(request: NextRequest): NextResponse {
   const { pathname } = request.nextUrl;
