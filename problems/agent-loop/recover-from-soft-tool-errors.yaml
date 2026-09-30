@@ -274,6 +274,12 @@ coach:
         In that run the first lookup failed and a second one would have
         answered. What does your loop do after its first failure, and does the
         prompt it sends next carry the error?
+    - id: hidden-same-tool
+      when: { test_failed: recovers_when_track_answers_the_second_time }
+      say: >-
+        In that run the model asked for the same lookup again after the error,
+        and the tool answered the second time. Does your loop make that call,
+        and does what it returns reach the prompt?
     - id: hidden-degrade
       when: { test_failed: degrades_after_failed_retry }
       say: >-
@@ -391,6 +397,27 @@ tests:
         - { type: handles_error }
         - { type: calls_tool, name: last_scan }
         - { type: returns_matches, value: "(?i)out for delivery" }
+
+  # The retry asks track again, and track answers the second time. A loop
+  # that reuses the first answer for the same call, or will not call a tool
+  # that already failed, degrades here with the status one call away.
+  - name: recovers_when_track_answers_the_second_time
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Where is order 48?" }
+      llm_script:
+        - { match: { contains: "awaiting_collection" }, reply: "Final Answer: Order 48 is ready to collect from the Bristol depot." }
+        - { match: "*", reply: "Action: track(id=48)" }
+      tools:
+        track:
+          sequence:
+            - { status: 200, error: "scan_feed_delayed" }
+            - { status: 200, data: { state: "awaiting_collection", depot: "Bristol" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: handles_error }
+        - { type: returns_matches, value: "(?i)ready to collect" }
 
   - name: adversarial_injection_in_observation
     visibility: adversarial
