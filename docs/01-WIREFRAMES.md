@@ -145,7 +145,7 @@ Pane behaviour:
 | Element | Behaviour |
 |---|---|
 | Left pane tabs | Problem is always available. Attempts lists every prior submission with verdict and budget. Trace appears only after a run and opens the replay viewer inline. |
-| Steps checklist | Present on Easy only. Each item has its own micro-check that runs on every Run and turns green independently. |
+| Steps checklist | Present on Easy and Medium, where docs/00 section 3.2 puts layer L3. Each item has its own micro-check that runs on every Run and turns green independently. Amended 30 September 2026: this line said Easy only, while docs/00, the policy module and the catalogue's 83 Medium steps all had it on Medium too. |
 | Hints | Button label carries the policy state, for example "Unlocks after one failed run" on Medium. Revealing writes a row and shows a persistent "1 hint used" marker on the attempt. |
 | Editor | CodeMirror 6 with Python mode, no autocomplete from a model, no inline assistant. Tab size four, soft wrap off. |
 | Reset | Restores the stub and asks for confirmation, since it destroys unsaved work. |
@@ -159,7 +159,7 @@ Difficulty changes what renders, not which components exist.
 | Difficulty | Left pane contains |
 |---|---|
 | Easy | Brief, contract, steps checklist, hint button enabled |
-| Medium | Brief, contract, hint button showing its unlock condition |
+| Medium | Brief, contract, steps checklist, hint button showing its unlock condition |
 | Hard | Brief, contract, hint button plus the attempt-note textarea that gates it |
 | Extreme | Brief only, a countdown timer, and a "write your tests first" panel that must contain at least one assertion before Submit enables |
 
