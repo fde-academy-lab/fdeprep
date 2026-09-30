@@ -115,6 +115,7 @@ A fixture with no matching rule and no `"*"` fallback is an authoring error. The
 | `llm_calls_at_most` | Model call count |
 | `tool_calls_at_most` | Tool call count |
 | `calls_tool` | A named tool was called at least once |
+| `calls_tool_with` | One call to a named tool carried every argument in `args`, with that value. Arguments the case does not name are ignored, and 40 and "40" differ. Added 30 September 2026: the retried-webhook problem could not tell a handler keyed on the delivery id, new on every retry, from one keyed on the event id, and that was the bug its brief is about |
 | `does_not_call_tool` | A named tool was never called |
 | `no_repeated_identical_tool_call` | Same tool with same arguments called no more than n times consecutively |
 | `handles_error` | After an error-returning tool call, the next model prompt differs from the previous one |

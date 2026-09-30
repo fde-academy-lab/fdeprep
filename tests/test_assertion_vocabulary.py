@@ -76,3 +76,52 @@ def test_the_web_validator_knows_every_assertion_the_runner_evaluates():
     assert block, "validate.ts has no CODE_ASSERTIONS mirror"
     mirrored = set(re.findall(r'"([a-z_]+)"', block.group(1)))
     assert mirrored == set(REGISTRY)
+
+
+# calls_tool_with, added 30 September 2026. calls_tool could say a tool ran and
+# never what it was asked, so the retried-webhook problem could not tell a
+# handler keyed on the delivery id, new on every retry, from one keyed on the
+# event id every retry shares. That was the bug its brief is about.
+
+def _called(*calls):
+    steps = tuple({"seq": n, "type": "tool_call", "tool": name, "args": args, "ms": 0}
+                  for n, (name, args) in enumerate(calls, 1))
+    return Observed(outcome="returned", return_value="x", exception=None, steps=steps,
+                    llm_calls=0, tool_calls=len(steps))
+
+
+CLAIM_EVENT = {"type": "calls_tool_with", "name": "claim", "args": {"key": "evt_881"}}
+
+
+def test_calls_tool_with_passes_when_one_call_carries_every_named_argument():
+    observed = _called(("lookup", {"key": "evt_881"}), ("claim", {"key": "evt_881", "ttl": 30}))
+    assert evaluate(CLAIM_EVENT, observed)["status"] == "pass"
+
+
+def test_calls_tool_with_ignores_arguments_the_case_does_not_name():
+    observed = _called(("claim", {"key": "evt_881", "owner": "worker-3"}))
+    assert evaluate(CLAIM_EVENT, observed)["status"] == "pass"
+
+
+def test_calls_tool_with_says_what_the_call_carried_when_no_call_matches():
+    result = evaluate(CLAIM_EVENT, _called(("claim", {"key": "dlv_7f2c"})))
+    assert result["status"] == "fail"
+    assert "dlv_7f2c" in result["message"]
+    assert "evt_881" in result["message"]
+
+
+def test_calls_tool_with_needs_the_same_call_to_carry_every_argument():
+    spec = {"type": "calls_tool_with", "name": "refund", "args": {"order": "MK-1", "amount": 40}}
+    observed = _called(("refund", {"order": "MK-1", "amount": 65}), ("refund", {"order": "MK-2", "amount": 40}))
+    assert evaluate(spec, observed)["status"] == "fail"
+
+
+def test_calls_tool_with_fails_when_the_tool_never_ran():
+    result = evaluate(CLAIM_EVENT, _called(("lookup", {"key": "evt_881"})))
+    assert result["status"] == "fail"
+    assert "never called claim" in result["message"]
+
+
+def test_calls_tool_with_does_not_read_a_number_as_its_string():
+    spec = {"type": "calls_tool_with", "name": "refund", "args": {"amount": 40}}
+    assert evaluate(spec, _called(("refund", {"amount": "40"})))["status"] == "fail"

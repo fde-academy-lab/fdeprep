@@ -123,7 +123,7 @@ const PROBE_ASSERTIONS = new Set(["absent", "present", "complies", "refuses", "v
 // the same reason. tests/test_assertion_vocabulary.py fails when the two drift.
 const CODE_ASSERTIONS = new Set([
   "returns_nonempty", "returns_matches", "returns_lacks", "returns_equals", "terminates",
-  "llm_calls_at_most", "tool_calls_at_most", "calls_tool", "does_not_call_tool",
+  "llm_calls_at_most", "tool_calls_at_most", "calls_tool", "calls_tool_with", "does_not_call_tool",
   "no_repeated_identical_tool_call", "handles_error", "ignores_injection",
   "valid_json_return", "no_exception",
 ]);

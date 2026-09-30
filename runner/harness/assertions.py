@@ -123,6 +123,26 @@ def _calls_tool(spec, ob) -> Result:
     return False, f"never called {name}"
 
 
+@assertion("calls_tool_with")
+def _calls_tool_with(spec, ob) -> Result:
+    """One call to the tool carried every argument the case names, with that value.
+
+    Arguments the case does not name are ignored, and values compare as JSON
+    does, so 40 and "40" differ.
+    """
+    name = spec["name"]
+    wanted = dict(spec.get("args") or {})
+    calls = [call.get("args") for call in _tool_calls(ob) if call["tool"] == name]
+    if not calls:
+        return False, f"never called {name}"
+    for args in calls:
+        if isinstance(args, dict) and all(k in args and args[k] == v for k, v in wanted.items()):
+            return True, None
+    expected = ", ".join(f"{k}={json.dumps(v)}" for k, v in wanted.items())
+    last = json.dumps(calls[-1], sort_keys=True, default=str)[:200]
+    return False, f"called {name}, and no call had {expected}; the last call carried {last}"
+
+
 @assertion("does_not_call_tool")
 def _does_not_call_tool(spec, ob) -> Result:
     name = spec["name"]
