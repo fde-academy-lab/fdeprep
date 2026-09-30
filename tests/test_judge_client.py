@@ -160,6 +160,18 @@ class TestConfig:
             load_config()
         assert "inference profile" in str(excinfo.value)
 
+    @pytest.mark.parametrize("model_id", [
+        "in.anthropic.claude-opus-5",
+        "jp.anthropic.claude-opus-5-5",
+        "global.anthropic.claude-opus-5",
+    ])
+    def test_every_geo_profile_the_model_cards_list_is_accepted(self, monkeypatch, model_id):
+        """The Opus 5 card lists India's `in.` profile and the Opus 5.5 card
+        Japan's `jp.` one (read 30 September 2026). The prefix list refused
+        both, so a deployment near its learners could not name its own geo."""
+        monkeypatch.setenv("JUDGE_MODEL_ID", model_id)
+        assert load_config().model_id == model_id
+
     def test_an_unset_model_is_refused(self, monkeypatch):
         monkeypatch.delenv("JUDGE_MODEL_ID", raising=False)
         with pytest.raises(ValueError):

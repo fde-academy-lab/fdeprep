@@ -21,7 +21,11 @@ from dataclasses import dataclass
 # list a bare ID, but a prefixed one works for both and a bare ID that is not
 # supported fails at run time with a validation error that names nothing
 # useful. So the prefix is required here and the failure happens at start-up.
-PROFILE_PREFIXES = ("us.", "eu.", "au.", "apac.", "global.", "us-gov.")
+#
+# `in.` and `jp.` added on 30 September 2026: the Opus 5 card lists India's
+# geo profile and the Opus 5.5 card Japan's, and without them a deployment
+# near its learners could not name its own geo.
+PROFILE_PREFIXES = ("us.", "eu.", "au.", "apac.", "in.", "jp.", "global.", "us-gov.")
 
 # AWS on extended thinking: "Thinking isn't compatible with temperature, top_p,
 # or top_k modifications." AWS on adaptive thinking: "Adaptive thinking is on by
