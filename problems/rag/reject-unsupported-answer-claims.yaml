@@ -123,12 +123,30 @@ step_checks:
       assertions:
         - { type: returns_matches, value: 'online or by phone' }
         - { type: returns_lacks, value: 'advisers' }
-  # s2 cannot be told apart from the stub on the public cases: every number in
-  # a public sentence appears in the chunk it cites. Its check stays as it was.
+  # s2 carries its own case, because every number in a public sentence
+  # appears in the chunk it cites. Here the second sentence cites a real chunk
+  # and changes its fee from 15 to 35 pounds. s2 shows once s3 filters the
+  # sentences.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "What happens if I miss a monthly payment?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=missed monthly payment)" }
+        - { match: { contains: "A reminder letter is sent" },
+            reply: "Final Answer: A reminder letter is sent 7 days after a missed payment [m-21]. A late payment fee of 35 pounds is added to the next statement [m-22]." }
+        - { match: "*", reply: "Action: search(query=missed monthly payment)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "m-21", text: "A reminder letter is sent 7 days after a payment is missed." }
+              - { id: "m-22", text: "A late payment fee of 15 pounds is added to the next monthly statement." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: returns_nonempty }
+        - { type: returns_matches, value: "7 days after a missed payment" }
+        - { type: returns_lacks, value: "35 pounds" }
   - step_id: s3
     spec:
       assertions:

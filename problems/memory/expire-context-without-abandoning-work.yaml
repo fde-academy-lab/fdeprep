@@ -347,6 +347,13 @@ tests:
         - { type: terminates }
         - { type: valid_json_return,
             schema: { type: object, required: [kept, removed, blocked_tasks, note] } }
+        # The sweep asks the store, removes nothing it could not read, and
+        # says in the note that nothing was swept.
+        - { type: calls_tool, name: records }
+        - { type: valid_json_return,
+            schema: { type: object, required: [removed, note],
+                      properties: { removed: { const: [] },
+                                    note: { type: string, pattern: '\S' } } } }
 
 reference_md: |
   Five rules that every engineer would have written, in an order only one of

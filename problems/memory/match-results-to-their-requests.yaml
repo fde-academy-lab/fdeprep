@@ -104,14 +104,50 @@ step_checks:
     spec:
       assertions:
         - { type: returns_nonempty }
+  # s2 and s3 carry their own cases. The stub already calls batch, and no
+  # public case shows the order of the ids or returns results out of order.
+  # Both show once s4 writes the lines. s2's case returns the results in the
+  # order they were asked for, so a lookup by position does not change it.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Where are my three orders?" }
+      llm_script:
+        - { match: { regex: '31=\w+\n7=\w+\n19=\w+' },
+            reply: "Final Answer: Order 31 is packed, order 7 is out for delivery and order 19 is at the depot." }
+        - { match: "*", reply: "Action: batch(ids=31,7,19)" }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "31", state: "packed" }
+              - { ref: "7", state: "out_for_delivery" }
+              - { ref: "19", state: "at_depot" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: calls_tool, name: batch }
+        - { type: returns_matches, value: "(?i)order 31 is packed" }
+  # s3's case returns the results in a different order from the ids, as the
+  # carriers do, so a lookup by position gives order 44 the wrong state.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Where is order 44?" }
+      llm_script:
+        - { match: { contains: "44=returned_to_sender" },
+            reply: "Final Answer: Order 44 is on its way back to our warehouse." }
+        - { match: { contains: "44=delivered" }, reply: "Final Answer: Order 44 was delivered." }
+        - { match: "*", reply: "Action: batch(ids=44,52)" }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "52", state: "delivered" }
+              - { ref: "44", state: "returned_to_sender" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)back to our warehouse" }
   - step_id: s4
     spec:
       assertions:

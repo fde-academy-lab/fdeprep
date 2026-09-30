@@ -105,12 +105,28 @@ step_checks:
     spec:
       assertions:
         - { type: returns_matches, value: '(?i)name a beneficiary' }
-  # s2 cannot be told apart from the stub on the public cases: no public
-  # policy is over its window. Its check stays as it was.
+  # s2 carries its own case, because no public policy is over its window. The
+  # stub calls the model on every conversation, so it fails both assertions.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Can you move my standing order to the first of the month?" }
+      llm_script:
+        - { match: "*", reply: "I have moved your standing order to the first of the month." }
+      tools:
+        conversation:
+          returns:
+            status: 200
+            window: 50
+            policy:
+              text: "POLICY: Never change a payment date until the customer has heard the new date read back and has confirmed it."
+              tokens: 60
+            turns:
+              - { n: 1, role: customer, text: "I pay my rent by standing order.", tokens: 10 }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: returns_matches, value: "(?i)needs a person" }
   # Reads the_oldest_turns_leave_first.
   - step_id: s3
     spec:

@@ -112,15 +112,32 @@ steps:
     check_id: s4
 
 step_checks:
+  # Reads a_request_with_no_date_asks_for_one: the date is left out and the
+  # safe place is null, so only the date needs asking. needs_asking is called
+  # from s2's loop, so s1 shows once s2 collects the fields.
   - step_id: s1
     spec:
       assertions:
-        - { type: no_exception }
+        - { type: valid_json_return,
+            schema: { type: object, required: [action, ask_about],
+                      properties: { action: { const: ask },
+                                    ask_about: { const: [date] } } } }
+  # s2 carries its own case, because no public message leaves more than one
+  # field to ask about, so no public case shows the order. Here two fields
+  # are left out, and FIELDS puts time_window before safe_place.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Could you try again on Wednesday 14 October?" }
+      llm_script:
+        - { match: "*", reply: '{"date": "2026-10-14"}' }
+      tools:
+        book_redelivery: { returns: { status: 200, booking_ref: "RD-7310" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
         - { type: valid_json_return,
-            schema: { type: object, required: [action] } }
+            schema: { type: object, required: [ask_about],
+                      properties: { ask_about: { const: [time_window, safe_place] } } } }
   - step_id: s3
     spec:
       assertions:

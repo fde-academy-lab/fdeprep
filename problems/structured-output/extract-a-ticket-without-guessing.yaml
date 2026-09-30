@@ -97,10 +97,17 @@ steps:
     check_id: s4
 
 step_checks:
+  # Reads a_complete_email_fills_every_field. Parsing changes nothing on the
+  # ticket until s3 copies a value, so s1 shows once the model's three values
+  # reach the ticket unchanged.
   - step_id: s1
     spec:
       assertions:
-        - { type: no_exception }
+        - { type: valid_json_return,
+            schema: { type: object, required: [order_id, email, phone],
+                      properties: { order_id: { const: "HW-20417" },
+                                    email: { const: "dana.whitfield@example.com" },
+                                    phone: { const: "07700 900418" } } } }
   - step_id: s2
     spec:
       assertions:

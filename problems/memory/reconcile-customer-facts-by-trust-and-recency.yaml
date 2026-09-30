@@ -115,13 +115,34 @@ step_checks:
     spec:
       assertions:
         - { type: returns_matches, value: 'Call 07700 900456' }
-  # s2 cannot be told apart from the stub on the public cases: no public
-  # record loses to a more trusted source while being newer and different, so
-  # nothing is ever held back. Its check stays as it was.
+  # s2 carries its own case, because no public record loses to a more trusted
+  # source while being newer and different, so nothing is ever held back.
+  # Here the chat email is newer than the verified one and differs, so it is
+  # held back. The agent's email is older than the fact, so it is dropped, and
+  # holding it back too gets the first reply.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Which email address should the claim documents go to?" }
+      llm_script:
+        - { match: { contains: "\nunconfirmed email: j.barker@example.org" },
+            reply: "Confirm every email address on file with the customer before sending anything." }
+        - { match: { contains: "\nunconfirmed email: jo.barker.home@example.net" },
+            reply: "Send them to jo.barker@example.com, and confirm jo.barker.home@example.net with the customer before using it." }
+        - { match: { contains: "\nemail: jo.barker.home@example.net" },
+            reply: "Send them to jo.barker.home@example.net." }
+        - { match: "*", reply: "Send them to jo.barker@example.com." }
+      tools:
+        facts:
+          returns:
+            status: 200
+            records:
+              - { field: email, value: "jo.barker@example.com", source: verified, at: "2026-04-14" }
+              - { field: email, value: "jo.barker.home@example.net", source: chat, at: "2026-09-02" }
+              - { field: email, value: "j.barker@example.org", source: agent, at: "2026-01-20" }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: returns_matches, value: '(?i)confirm jo\.barker\.home@example\.net with the customer' }
 
 hints:
   - Look at what each record says about where it came from, before you look at

@@ -109,22 +109,89 @@ steps:
 
 step_checks:
   # Reads keeps_five_distinct_chunks, whose answer needs the first and the
-  # fifth block in the prompt. s2 and s3 cannot be told apart from the stub on
-  # the public cases: every public chunk is distinct, and neither search
-  # returns more than five, so the stub's first five are already the right
-  # five. Their checks stay as they were.
+  # fifth block in the prompt.
   - step_id: s1
     spec:
       assertions:
         - { type: returns_matches, value: '(?i)poor repair' }
+  # s2 and s3 carry their own cases, because every public chunk is distinct
+  # and neither public search returns more than five, so the stub's first
+  # five are already the right five. Both show once s3 uses overlap().
+  #
+  # In s2's case the answer needs w-3 and w-6. w-2 is a copy of w-1, with
+  # overlap 0.9, so an overlap of 0 keeps it and w-6 does not fit in five.
+  # w-3 shares 18 words with w-1 and states a different fact: its overlap is
+  # 18/23, below 0.8, while shared words over the shorter text, the longer
+  # text or their average all come to 0.8 or more, so those formulas drop it.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Does the landlord policy cover a burst pipe while the flat is empty?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=burst pipe in an empty flat)" }
+        - { match: { contains: "[w-2]" },
+            reply: "Final Answer: Landlord cover pays for damage from a burst pipe while the flat is empty for up to 60 days in a row [w-1]." }
+        - { match: { regex: '\[w-3\][\s\S]*\[w-6\]' },
+            reply: "Final Answer: Landlord cover pays for the damage [w-1] and for tracing and fixing the pipe [w-3] while the flat is empty for up to 60 days in a row, as long as the flat is inspected once a week [w-6]." }
+        - { match: "*", reply: "Final Answer: I could not find that in the policy wording." }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "w-1", source: "Landlord cover", score: 0.91,
+                  text: "Landlord cover pays for damage from a burst pipe while the flat is empty for up to 60 days in a row." }
+              - { id: "w-2", source: "Home cover", score: 0.90,
+                  text: "Home cover pays for damage from a burst pipe while the flat is empty for up to 60 days in a row." }
+              - { id: "w-3", source: "Landlord cover", score: 0.86,
+                  text: "Landlord cover pays for tracing and fixing the burst pipe while the flat is empty for up to 60 days in a row." }
+              - { id: "w-4", source: "Landlord cover", score: 0.74,
+                  text: "Lost rent is paid for up to 9 months while the flat cannot be let after an escape of water." }
+              - { id: "w-5", source: "Landlord cover", score: 0.69,
+                  text: "Landlord cover carries a 350 pound excess on every escape of water claim." }
+              - { id: "w-6", source: "Landlord cover", score: 0.63,
+                  text: "An empty flat must be inspected inside and out at least once a week, and each visit must be written down." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: returns_matches, value: 'tracing and fixing the pipe[\s\S]*inspected once a week' }
+  # In s3's case v-3 is a copy of v-1 with another block ranked between
+  # them, so a check against the last block kept lets it in. Six distinct
+  # blocks remain, so a loop that does not stop at five lets v-7 in.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "What should a shop owner do with stock ruined in a flood?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=stock ruined in a flood)" }
+        - { match: { contains: "[v-3]" },
+            reply: "Final Answer: Shop cover pays for stock damaged by flood water once the loss adjuster has seen it [v-1]." }
+        - { match: { contains: "[v-7]" },
+            reply: "Final Answer: Refrigerated stock is covered if it spoils after a power cut of more than 6 hours [v-7]." }
+        - { match: { contains: "[v-6]" },
+            reply: "Final Answer: Keep the damaged stock until the loss adjuster has inspected it, and photograph it before any of it is thrown away [v-6]. Shop cover then pays for it [v-1]." }
+        - { match: "*", reply: "Final Answer: I could not find that in the policy wording." }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "v-1", source: "Shop cover", score: 0.92,
+                  text: "Shop cover pays for stock damaged by flood water once the loss adjuster has seen it." }
+              - { id: "v-2", source: "Shop cover", score: 0.88,
+                  text: "Stock in a basement store must be kept at least 15 centimetres off the floor." }
+              - { id: "v-3", source: "Office cover", score: 0.87,
+                  text: "Office cover pays for stock damaged by flood water once the loss adjuster has seen it." }
+              - { id: "v-4", source: "Shop cover", score: 0.81,
+                  text: "Glass in the shop front is covered up to 10,000 pounds for each pane." }
+              - { id: "v-5", source: "Business interruption", score: 0.77,
+                  text: "Business interruption after a flood is paid for up to 24 months." }
+              - { id: "v-6", source: "Shop cover", score: 0.72,
+                  text: "Keep damaged stock until the loss adjuster has inspected it, and photograph it before any of it is thrown away." }
+              - { id: "v-7", source: "Shop cover", score: 0.64,
+                  text: "Refrigerated stock is covered for spoiling after a power cut of more than 6 hours." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
+        - { type: returns_matches, value: '(?i)photograph it before any of it is thrown away' }
 
 hints:
   - Print the ids and the first ten words of the five blocks your loop sends

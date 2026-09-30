@@ -126,10 +126,30 @@ steps:
     check_id: s4
 
 step_checks:
+  # s1 carries its own case, because every public reply that parses is
+  # valid, so no public case shows what validate names. Here every reply
+  # breaks four rules, one on each of four keys, and the names show in the
+  # errors once s4 stops after the repair.
   - step_id: s1
     spec:
+      kind: agent_run
+      input:
+        question: >-
+          The webcam I ordered will not connect to my laptop, so I would like
+          my money back. It cost 24.99, and the order number is 4418.
+      llm_script:
+        - { match: "*",
+            reply: '{"decision": "store_credit", "amount_pence": "24.99", "reason": "", "note": "It came back in its box."}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, errors],
+                      properties: { status: { const: needs_review },
+                                    errors: { type: array,
+                                              allOf: [ { contains: { type: string, pattern: '^decision\b' } },
+                                                       { contains: { type: string, pattern: '^amount_pence\b' } },
+                                                       { contains: { type: string, pattern: '^reason\b' } },
+                                                       { contains: { type: string, pattern: '^note\b' } } ] } } } }
   - step_id: s2
     spec:
       assertions:

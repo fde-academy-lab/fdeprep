@@ -117,10 +117,21 @@ steps:
     check_id: s3
 
 step_checks:
+  # Reads pieces_split_mid_word_still_join_up, whose events split "lane",
+  # "pallets" and 96400 between them, and which ends in [DONE]. The joined
+  # text shows once s2 accepts the stream as a quote.
   - step_id: s1
     spec:
       assertions:
-        - { type: no_exception }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, quote],
+                      properties: { status: { const: complete },
+                                    quote: { type: object,
+                                             required: [lane, pallets, price_pence, valid_until],
+                                             properties: { lane: { const: "Hull to Zeebrugge" },
+                                                           pallets: { const: 2 },
+                                                           price_pence: { const: 96400 },
+                                                           valid_until: { const: "2026-10-20" } } } } } }
   - step_id: s2
     spec:
       assertions:

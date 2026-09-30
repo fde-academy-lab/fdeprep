@@ -90,10 +90,30 @@ step_checks:
     spec:
       assertions:
         - { type: calls_tool, name: search }
+  # s2 carries its own case, because no public answer changes when a weak
+  # chunk reaches the prompt. Here the weak chunk contradicts the only chunk
+  # that survives, which scores exactly 0.55. s2 shows once s3 writes the
+  # survivors into the scratchpad.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Can I return headphones I have opened?" }
+      llm_script:
+        - { match: { contains: "can never be returned" },
+            reply: "Final Answer: Opened headphones can never be returned." }
+        - { match: { contains: "within 21 days if they are undamaged" },
+            reply: "Final Answer: Opened headphones can be returned within 21 days if they are undamaged." }
+        - { match: "*", reply: "Action: search(query=returning opened headphones)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "h1", score: 0.41, text: "Opened audio products can never be returned." }
+              - { id: "h2", score: 0.55, text: "Opened headphones can be returned within 21 days if they are undamaged." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)within 21 days if they are undamaged" }
   - step_id: s3
     spec:
       assertions:
