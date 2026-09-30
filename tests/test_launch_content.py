@@ -168,10 +168,14 @@ def test_the_reference_turns_every_step_green_and_the_stub_does_not(path):
     steps = run_battery(problem, reference)["steps"]
     red = [s["id"] for s in steps if s["status"] == "fail"]
     assert not red, (path.stem, "the reference leaves these steps red", red)
-    # A step the stub already satisfies reads unchecked, never green, so what
-    # this guards is that the checklist checks something at all.
-    assert any(s["status"] == "pass" for s in steps), (
-        path.stem, "the public cases cannot tell any step apart from the stub")
+    # A step the stub already satisfies reads unchecked, never green. On 30
+    # September 2026 that was 76 of 160 steps, most of them checked by an
+    # assertion any code passes, such as no_exception. A step whose work no
+    # public case exercises carries its own case instead (docs/04 section 2).
+    unchecked = [s["id"] for s in steps if s["status"] == "unchecked"]
+    assert not unchecked, (
+        path.stem, "the stub already satisfies these steps' checks, so they can never "
+        "turn green", unchecked)
 
 
 @pytest.mark.parametrize("path", CODE, ids=IDS)
