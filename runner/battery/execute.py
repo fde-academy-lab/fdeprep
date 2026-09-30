@@ -262,7 +262,8 @@ def _judge(name: str, spec: dict, document: dict, exchange: Exchange,
            recorded: Trace, step_checks=()) -> dict[str, Any]:
     steps = tuple(recorded.steps)
 
-    # Counts come from the steps the runner recorded while answering calls.
+    # Counts come from the steps the runner recorded while answering calls,
+    # and from the calls it refused, which the trace keeps a count of.
     observed = Observed(
         outcome=document["outcome"],
         return_value=document.get("return_value"),
@@ -271,6 +272,8 @@ def _judge(name: str, spec: dict, document: dict, exchange: Exchange,
         llm_calls=sum(1 for s in steps if s.get("type") == "llm_call"),
         tool_calls=sum(1 for s in steps if s.get("type") == "tool_call"),
         prompts=tuple(recorded.prompts),
+        llm_refused=recorded.refused["llm"],
+        tool_refused=recorded.refused["tool"],
     )
 
     results = [evaluate(a, observed) for a in (spec.get("assertions") or [])]
@@ -281,7 +284,6 @@ def _judge(name: str, spec: dict, document: dict, exchange: Exchange,
     )
     trace = truncate(flagging.annotate(
         recorded.as_dict(),
-        budget=spec.get("budget") or {},
         had_tools=bool(spec.get("tools")),
         canary=canary,
     ))
@@ -308,8 +310,10 @@ def _judge(name: str, spec: dict, document: dict, exchange: Exchange,
         "outcome": observed.outcome,
         "assertions": results,
         "trace": trace,
-        "llm_calls": observed.llm_calls,
-        "tool_calls": observed.tool_calls,
+        # Calls asked for, which is what a budget measures. The trace shows
+        # which of them were refused.
+        "llm_calls": observed.llm_calls + observed.llm_refused,
+        "tool_calls": observed.tool_calls + observed.tool_refused,
         "wall_ms": wall,
         "stdout": exchange.stdout,
     }

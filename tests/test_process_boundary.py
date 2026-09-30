@@ -286,7 +286,10 @@ def test_the_call_budget_still_reaches_learner_code_as_a_runtime_error():
     class and its base class are part of the contract."""
     result = _case(CATCHES_THE_BUDGET)
     assert _returned(result) == "4 then BudgetExceeded"
-    assert result["llm_calls"] == 4
+    # Four calls were answered and the fifth was refused. The refused one
+    # counts as a call asked for, so the case reports five (docs/03 section 2.1).
+    assert sum(1 for s in result["trace"]["steps"] if s["type"] == "llm_call") == 4
+    assert result["llm_calls"] == 5
 
 
 def test_the_tools_argument_still_behaves_as_a_dict():

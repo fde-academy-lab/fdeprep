@@ -11,10 +11,12 @@ from typing import Any
 
 ANNOTATIONS = {
     "soft_error": "This observation carried an error in a 200 body.",
+    "budget_exceeded": "This call was past the case's budget, so the runner refused it and it "
+                       "never ran. It still counts as a call asked for.",
 }
 
 
-def annotate(trace: dict[str, Any], *, budget: dict[str, Any], had_tools: bool,
+def annotate(trace: dict[str, Any], *, had_tools: bool,
              canary: str | None = None) -> dict[str, Any]:
     steps = trace.get("steps", [])
     flags: list[str] = []
@@ -29,11 +31,16 @@ def annotate(trace: dict[str, Any], *, budget: dict[str, Any], had_tools: bool,
     if _repeats(steps):
         flags.append("repeated_identical_tool_call")
 
+    # The ceiling refuses the call that would pass it, so a count of answered
+    # calls never can. A refused step is what says the budget was passed.
+    for step in steps:
+        if step.get("type") == "refused":
+            step["flags"] = sorted(set(step.get("flags") or []) | {"budget_exceeded"})
+            step["annotation"] = ANNOTATIONS["budget_exceeded"]
+            if "budget_exceeded" not in flags:
+                flags.append("budget_exceeded")
+
     tool_calls = sum(1 for s in steps if s.get("type") == "tool_call")
-    llm_calls = sum(1 for s in steps if s.get("type") == "llm_call")
-    if llm_calls > int(budget.get("max_llm_calls", 10**9)) or \
-       tool_calls > int(budget.get("max_tool_calls", 10**9)):
-        flags.append("budget_exceeded")
 
     if had_tools and tool_calls == 0:
         flags.append("no_tool_used")

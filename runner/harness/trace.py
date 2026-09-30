@@ -26,6 +26,10 @@ class Trace:
         # the trace stays small; an assertion about what reached the model
         # reads these, and as_dict never serialises them.
         self.prompts: list[str] = []
+        # Calls the budget refused, by kind. They count toward every budget
+        # measure, and a refused prompt never joins the prompts above.
+        self.refused: dict[str, int] = {"llm": 0, "tool": 0}
+        self._refused_step: dict[str, dict[str, Any]] = {}
 
     def _next_seq(self) -> int:
         return len(self.steps) + 1
@@ -58,6 +62,34 @@ class Trace:
             "flags": [],
             "annotation": None,
         })
+
+    def refusal(self, op: str, message: str, *, prompt: str | None = None,
+                tool: str | None = None, args: Any = None) -> None:
+        """A call past the case's ceiling, which the runner refused.
+
+        The first refusal of each kind gets a step. Every later call of that
+        kind is refused too, so it raises the step's repeat count instead of
+        adding a step: a loop that swallows the refusal cannot grow the trace,
+        or the runner's memory, no matter how long it runs.
+        """
+        self.refused[op] += 1
+        if op in self._refused_step:
+            self._refused_step[op]["repeats"] = self.refused[op] - 1
+            return
+        step: dict[str, Any] = {
+            "seq": self._next_seq(),
+            "type": "refused",
+            "op": op,
+            "message": clip(message, 2000),
+        }
+        if prompt is not None:
+            step["prompt"] = clip(prompt)
+            step["prompt_chars"] = len(prompt)
+        if tool is not None:
+            step["tool"] = tool
+            step["args"] = _plain(args if args is not None else {})
+        self._refused_step[op] = step
+        self.steps.append(step)
 
     def final(self, value: Any) -> None:
         self.steps.append({
