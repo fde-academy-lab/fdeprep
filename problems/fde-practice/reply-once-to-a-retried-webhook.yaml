@@ -275,6 +275,11 @@ coach:
       say: >-
         The reply did not go out in that run. Trace what your handler writes to
         the store and what it tells the help desk after post_reply fails.
+    - id: hidden-posted-reply
+      when: { test_failed: a_posted_reply_marks_the_event_done }
+      say: >-
+        The reply went out in that run. Which key did your handler mark done,
+        and is it the one the next retry of that ticket will claim?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -436,7 +441,9 @@ tests:
 
   # The post fails, so the key goes back and the answer is 503. Nothing holds
   # evt_911, so every key can be claimed and only the claim's argument shows
-  # which id became the key.
+  # which id became the key. release answers alike for every key too, so only
+  # its argument shows that the key given back is evt_911, the one the next
+  # retry will claim.
   - name: a_reply_that_did_not_post_is_released
     visibility: hidden
     spec:
@@ -457,6 +464,31 @@ tests:
         - { type: does_not_call_tool, name: mark_done }
         - { type: returns_matches, value: '"http_status":\s*503' }
         - { type: calls_tool_with, name: claim, args: { key: evt_911 } }
+        - { type: calls_tool_with, name: release, args: { key: evt_911 } }
+
+  # The reply posts, so the event is marked done under the key the next retry
+  # of it will claim. mark_done answers alike for every key, so only its
+  # argument shows which id was marked. A handler that marks the delivery id
+  # leaves evt_958 in progress, and every later retry answers 409 until the
+  # help desk gives up. Nothing holds evt_958, so every key can be claimed.
+  - name: a_posted_reply_marks_the_event_done
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_68d3", "attempt": 1, "event_id": "evt_958", "type": "ticket.created", "ticket": {"id": "T-5192", "subject": "Our team invite links have expired"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: Sorry about the expired links. I have sent fresh invites to everyone on your list." }
+      tools:
+        lookup: { returns: { status: 200, state: absent } }
+        claim: { returns: { status: 200, claimed: true } }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 201, reply_id: "R-7815" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"http_status":\s*200' }
+        - { type: calls_tool_with, name: mark_done, args: { key: evt_958 } }
 
 reference_md: |
   The handler had a duplicate check, and it failed twice over. It was keyed on
