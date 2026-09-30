@@ -48,6 +48,23 @@ function exemplar(problem: ParsedProblem, band: string): string | undefined {
   return problem.exemplars.find((e) => e.band === band)?.body_md;
 }
 
+describe("the catalogue these checks read", () => {
+  // Every check below reads the parsed problem, and a file the validator
+  // rejects has none, so a broken problem used to drop out of every coach
+  // check without a word. Three content authors found the silence on 29
+  // September 2026. Failing here names the file instead.
+  it("validates in full, so no coach check skips a problem", async () => {
+    const unread: string[] = [];
+    for (const { file, source } of await catalogue()) {
+      const report = validateProblemYaml(source, file);
+      if (!report.problem?.kit.coach) {
+        unread.push(`${path.basename(file)}: ${report.errors.map((e) => e.rule).join(", ") || "no coach"}`);
+      }
+    }
+    expect(unread).toEqual([]);
+  });
+});
+
 describe("every coach script in the catalogue", () => {
   it("stays quiet on the reference solution", async () => {
     const noisy: string[] = [];
