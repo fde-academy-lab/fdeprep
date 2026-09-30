@@ -131,9 +131,9 @@ Two reasons, both hard. Environment variables are readable by anyone using the e
 |---|---|
 | Writing CDK, Lambda handlers, the runner image | Cloud session |
 | `cdk synth`, unit tests, `docker build`, running the runner locally | Cloud session, no credentials needed |
-| `cdk deploy`, pushing images to ECR, migrating a real database | GitHub Actions with an OIDC role, or your own machine |
+| `cdk deploy`, which builds and pushes both Lambda images, and migrating a real database | Your own machine, with Docker running |
 
-Claude writes `.github/workflows/deploy.yml` in Phase 6 and prints the exact IAM trust policy you need. You create the role once in the console. No long-lived key ever exists.
+Amended 30 September 2026: the image workflow in `.github/workflows/deploy.yml` is retired, because `cdk deploy` now builds and pushes the images itself and a second path to the same functions would fight it over which image is live. README route C is the deploy, step by step.
 
 On Pro and Max, if a session later needs to call a non-AWS API, the environment's **API credentials** feature attaches the key outside the sandbox so Claude never sees it. Not available on Team or Enterprise yet.
 

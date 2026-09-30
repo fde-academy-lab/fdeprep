@@ -20,7 +20,8 @@ fde-prep/
     auth/                  Auth.js config, org membership check
     db/                    schema, migrations, queries
     grading/               scoring, result contract types
-    queue/                 SQS publish and receive
+    queue/                 the queue, a Postgres table since 30 September 2026, and the
+                           direct Lambda invoke (docs/03 section 1)
   runner/                  Lambda container, Python 3.12
     harness/               mock LLM, tool fixtures, assertion registry
     battery/               test execution, trace capture
@@ -82,7 +83,7 @@ Build:
 - Import action writing `problem` and `problem_version` rows, with a diff preview before publish.
 - Problems catalogue, screen S3, with all four filter groups and the three sort options.
 - Code workspace, screen S4, with the three panes, the editor, Run, and the output pane.
-- SQS publish on Run, runner consumption, result writer Lambda, result delivery to the client over server-sent events with polling as the fallback.
+- SQS publish on Run, runner consumption, result writer Lambda, result delivery to the client over server-sent events with polling as the fallback. Amended 30 September 2026: what was built is a Postgres queue drained by the worker, which invokes the runner Lambda directly and writes the result itself (docs/03 section 1, docs/05 section 1).
 
 Acceptance:
 1. Eight problems import from YAML and appear in the catalogue.

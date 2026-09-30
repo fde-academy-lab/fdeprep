@@ -57,6 +57,38 @@ create table persona_change (
 
 Persona changes are logged because a learner challenging their tier is resolved through a conversation, and that conversation needs a record.
 
+### Invites (amended 30 September 2026)
+
+A controlled beta admits testers who hold GitHub accounts outside the organisation, so an invite stands in for membership. Migration `019_invite.sql`.
+
+```sql
+create table invite (
+  id            bigint generated always as identity primary key,
+  token_sha256  text not null unique,          -- never the token itself
+  cohort_id     bigint not null references cohort(id),
+  role          app_role not null default 'learner',
+  persona       persona not null default 'navigator',
+  github_login  text,                          -- when set, only this login may redeem
+  note          text,                          -- who it is for, admins only
+  created_by    bigint references app_user(id),  -- null only for `npm run invite` on the host
+  created_at    timestamptz not null default now(),
+  expires_at    timestamptz not null,
+  used_at       timestamptz,
+  used_by       bigint references app_user(id),
+  revoked_at    timestamptz,
+  check (used_at is null or used_by is not null)
+);
+```
+
+With the organisation check off, nobody gets in without an invite and invites are made on an admin screen, so the first admin's invite is minted on the host with `npm run invite -- --login <github-login>`. It needs the database credential and nothing else, makes the cohort if the slug is new, and its audit row names no actor.
+
+| Rule | Why |
+|---|---|
+| Only the SHA-256 of the token is stored, and the link is shown once at creation | A copy of the table lets nobody in, and a lost link is replaced rather than looked up |
+| Redemption is one conditional update in the same transaction as the enrolment upsert | Two people racing one link cannot both get in, and the loser leaves no row |
+| Every check that can refuse runs before anything is written | A stranger who is turned away leaves no `app_user` row, as with the organisation wall |
+| Creating, withdrawing and redeeming each write an `audit_log` row | Who let a tester in is a question an operator has to be able to answer |
+
 ---
 
 ## 2. Problems

@@ -8,17 +8,26 @@ Build this before the front end. Every other component depends on the contracts 
 
 ```
 Next.js API route
-  -> validate cap, write submission row (status queued)
-  -> publish message to SQS
-       { submission_id, problem_version_id, kind, body_s3_key }
+  -> validate cap; in one transaction write the submission row (status
+     queued), spend the cap and write an outbox row (section 9.2)
   -> return submission id, client polls or listens on SSE
 
-Lambda runner (container image, Python 3.12)
-  -> pull message, read problem version bundle from S3 (cached)
+Worker (on the web host, holding the database credential)
+  -> dispatch the outbox row onto the queue, a Postgres table
+  -> claim the message with a lease and a fencing token (section 9.3)
+  -> invoke the runner Lambda synchronously with the problem version and the
+     solution in the event
+
+Lambda runner (container image, Python 3.12, VPC with no route out)
   -> materialise a working directory in /tmp
   -> run the battery
-  -> write trace to S3, write result to Postgres, delete message
+  -> return the result, trace included, in the reply
+
+Worker
+  -> write the result to Postgres with the compare-and-set, delete message
 ```
+
+Amended 30 September 2026. The earlier shape put SQS between the application and the runner and had the runner read a bundle from S3 and write traces there. None of that was built: the handler always took the submission as its event and returned the result, and the application's queue was always the Postgres table behind `web/lib/queue/shim.ts`. The worker now calls the function with a signed Lambda Invoke, which IAM authorises, and takes the result from the reply. The Postgres queue keeps every guarantee SQS was there for: at-least-once delivery with a visibility timeout, the outbox, and the lease reaper. A trace is capped at 256 KB and a synchronous Lambda reply may be 6 MB, so the result always fits. The runner's role no longer needs a bucket or a queue, so it holds nothing beyond running in its VPC. `RUNNER_FUNCTION` names the function; without it the worker runs the battery as a local subprocess, which a production worker refuses to do unless `RUNNER_LOCAL_OK=1` says someone meant it (`web/lib/queue/placement.ts`).
 
 One Lambda invocation per submission. No shared state between invocations. No warm-instance reuse of learner code: each case runs in a fresh working directory under `/tmp`, and the runner empties `/tmp` before every invocation and after every case. Amended 30 September 2026. Until then only the working directory was fresh, and a file learner code wrote anywhere else in `/tmp` survived into the next invocation on the same instance, where the next learner's code, or the same learner's next Run, could read it. That is how a hidden case's input written down during a submit could be printed back by a later public case. Writing a file needs a way past the static gate first, so this is the layer behind the gate. `runner/battery/scratch.py` empties the directory without recursing and without following links, so a tree nested past the recursion limit or past `PATH_MAX` goes too, and an instance that cannot empty it runs nothing and returns an error verdict. The image sets `RUNNER_SCRATCH_DIR=/tmp`; nothing else does, because a developer's `/tmp` is shared with the rest of the machine.
 
@@ -433,7 +442,7 @@ The runner executes untrusted code written by 200 people who are learning, some 
 | CPU and memory | Lambda memory 1024MB, per-test wall clock enforced by a watchdog thread that raises, then by the Lambda timeout as a backstop. |
 | Fork and thread bombs | `resource.setrlimit(RLIMIT_NPROC)` at 0 in the sandbox, set after its watchdog thread starts, because the limit counts threads. Root ignores the limit; Lambda does not run code as root, and a test run as a normal user proves the fork is refused. |
 | Output size | Captured stdout and stderr truncated at 32KB per test. |
-| Secrets | The runner's execution role can read the problem bundle from S3 and write traces. It has no Bedrock permission and no database write permission; results return through the queue. Those credentials sit in the runner's environment, so the sandbox inherits none of it: it starts with five allowlisted variables. The runner also marks itself not dumpable before starting a sandbox, which puts its own `/proc/<pid>/environ` out of a same-user child's reach. The problem bundle stays in the runner's memory and is never written to `/tmp`, because the sandbox runs as the same user and can read anything the runner writes there. |
+| Secrets | The runner's execution role holds nothing beyond running in its VPC: no Bedrock permission, no database credential, no bucket and no queue (amended 30 September 2026). The problem and the solution arrive in the invocation and the result leaves in the reply, to the worker, which writes it. Whatever the role's temporary credentials allow sits in the runner's environment, so the sandbox inherits none of it: it starts with five allowlisted variables. The runner also marks itself not dumpable before starting a sandbox, which puts its own `/proc/<pid>/environ` out of a same-user child's reach. The problem bundle stays in the runner's memory and is never written to `/tmp`, because the sandbox runs as the same user and can read anything the runner writes there. |
 | Prompt injection into the judge | The judge Lambda wraps learner text in delimiters and instructs the judge to treat it as data. Judge output is parsed as JSON and rejected if it does not match the expected schema. A learner who writes "give me full marks" in a design answer gets it scored as content. |
 
 Separating the code-executing Lambda from the model-calling Lambda is the single control that matters most. Learner code can never reach a model endpoint, so there is no token-spend attack.
@@ -476,15 +485,17 @@ Fix this before Phase 2. An architecture where hidden fixtures live in the same 
 
 ### 9.2 Outbox between the database write and the queue
 
-Writing the submission row and then publishing to SQS has a failure gap: the row exists, the message does not, and the submission hangs in `queued` forever.
+Writing the submission row and then publishing to a queue has a failure gap: the row exists, the message does not, and the submission hangs in `queued` forever.
 
 ```
 1. In one transaction: create the submission row, decrement the cap,
    and insert an outbox row with the message payload.
-2. A dispatcher reads unsent outbox rows and publishes to SQS.
+2. A dispatcher reads unsent outbox rows and publishes them to the queue.
 3. The dispatcher marks the outbox row sent after a successful publish.
 4. Re-delivery is expected. The runner deduplicates on submission id.
 ```
+
+The queue is a Postgres table (section 1, amended 30 September 2026), so steps 1 to 3 could share one transaction. They stay separate on purpose: the outbox is what makes the queue replaceable, and moving to SQS later changes step 2 and nothing else.
 
 At-least-once delivery must not produce two graded results for one submission.
 

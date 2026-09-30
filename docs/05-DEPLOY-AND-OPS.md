@@ -2,28 +2,31 @@
 
 Target scale is one cohort of 150 to 200 learners, peak roughly 30 concurrent submissions in the hour after a session ends. That scale is small enough that the only thing worth optimising is how few components can wake someone at night.
 
+**Amended 30 September 2026 for the controlled beta.** The first deployment is a beta with a small group of students, all on AWS. Three decisions changed this document, and each is marked where it lands: the worker calls the runner and the judge Lambdas directly rather than through SQS; the web application, the worker and Postgres run on one EC2 instance behind Caddy; and invites replace organisation membership as the sign-in wall (`00-PRD.md` section 2). Vercel with managed Postgres remains a valid web tier, and README route A still describes it.
+
 ---
 
 ## 1. Architecture
 
 ```mermaid
 graph TD
-  L[Learner browser] --> V[Next.js on Vercel]
-  V --> G[GitHub OAuth and org membership check]
-  V --> P[(Postgres, managed)]
-  V --> Q[SQS submissions queue]
-  Q --> R[Lambda: runner, VPC with no internet route]
-  R --> S3T[S3 traces bucket]
-  R --> RQ[SQS results queue]
-  RQ --> W[Lambda: result writer]
-  W --> P
-  V --> J[Lambda: judge and probe, no learner code executed]
+  L[Learner browser] --> C[Caddy on EC2, HTTPS]
+  C --> V[Next.js on the same instance]
+  V --> G[GitHub OAuth, then an invite or an enrolment]
+  V --> P[(Postgres on the instance: data and the queue)]
+  P --> K[Worker on the instance]
+  K --> R[Lambda: runner, VPC with no route and no endpoint]
+  K --> J[Lambda: judge, no learner code executed]
   J --> B[Amazon Bedrock]
-  R --> S3P[S3 problem bundles, read only]
-  V --> CW[CloudWatch metrics and alarms]
+  V --> A[S3: learner audio, deleted after 30 days]
+  L --> WS[API Gateway WebSocket: voice]
+  WS --> T[Voice Lambdas and Amazon Transcribe]
+  R --> CW[CloudWatch alarms]
 ```
 
-Two Lambdas that never share a role. The runner executes learner code and cannot reach a model or the database. The judge calls models and never executes learner code.
+Two Lambdas that never share a role. The runner executes learner code and cannot reach a model, the database or anything else. The judge calls models and never executes learner code. The worker invokes both with a signed Lambda Invoke and writes what comes back, so neither function holds a credential to write a result anywhere. The web host holds no model credential; the judge function does.
+
+The earlier shape put SQS between the application and both Lambdas, with a result-writer Lambda behind a results queue. It was never wired: the application's queue was always a Postgres table, and the handlers always took a submission as their event and returned the result. The Postgres queue keeps what SQS was for, at-least-once delivery with a visibility timeout, the outbox and the lease reaper (`03-RUNNER-AND-GRADING.md` sections 9.2 and 9.3), so the direct call removes a second queue rather than a guarantee.
 
 ---
 
@@ -31,13 +34,13 @@ Two Lambdas that never share a role. The runner executes learner code and cannot
 
 | Layer | Choice | Why this one |
 |---|---|---|
-| Web app | Next.js App Router on Vercel | Preview deployment per branch, no server to patch, rollback is one click. Vercel is already connected on this account. |
-| Auth | GitHub OAuth through Auth.js, plus an organisation membership call on sign-in and on session refresh | Learners already hold GitHub accounts inside `FDE-Academy-Hub`, so offboarding is removing them from the organisation and no second user list drifts out of step |
-| Database | Managed Postgres, Neon or Supabase, single region | Relational data, small volume, point-in-time restore included, no operator required |
-| Queue | Amazon SQS standard, with a dead letter queue after three receives | Submissions survive a runner failure instead of vanishing |
-| Runner | Lambda container image, Python 3.12, 1024MB, 60s timeout, VPC with no NAT | Zero idle cost, hard kill on hang, one invocation per submission with no shared state |
-| Judge | Separate Lambda with Bedrock permission only | Keeps token spend outside any code path a learner can influence |
-| Object storage | S3, one bucket for traces, one for problem bundles | Traces are the only large object and lifecycle rules handle them |
+| Web app | Next.js with `next start` on one EC2 instance behind Caddy, for the beta. Vercel remains an option (README route A). | Everything in one AWS account the operator already has. Caddy obtains the certificate itself. `APP_URL` names the public address, because behind any proxy Next.js builds URLs from its own listening address. |
+| Auth | GitHub OAuth, then an invite or an existing enrolment. The organisation check is on by default and off for the beta (`GITHUB_ORG_CHECK=off`). | Every tester holds a GitHub account, so there is still no password and no second user list. An invite admits a tester outside the organisation, once. |
+| Database | Postgres 16 on the same instance, with a daily snapshot of its volume, for the beta. Managed Postgres with point-in-time restore before the cohort. | Small volume and one operator. The snapshot is the restore path until then. |
+| Queue | The Postgres queue behind `web/lib/queue/shim.ts`: outbox, visibility timeout, lease and reaper. | Submissions survive a runner failure instead of vanishing, with nothing extra to deploy or watch. |
+| Runner | Lambda container image, Python 3.12, 1024MB, 60s timeout, in a VPC with no NAT and no endpoint, invoked directly by the worker. | Zero idle cost, hard kill on hang, one invocation per submission with no shared state, and nothing reachable from inside. |
+| Judge | Separate Lambda with Bedrock permission only, invoked directly by the worker. | Keeps token spend outside any code path a learner can influence, and keeps the model credential off the web host. |
+| Object storage | S3, one bucket for learner audio. | Traces come back in the runner's reply and live in Postgres, and the problem travels in the invocation, so neither needs a bucket. |
 | Observability | CloudWatch metrics, logs and three alarms | Enough for this scale, and nothing new to learn |
 | CI | GitHub Actions | Already the delivery platform |
 
@@ -62,6 +65,7 @@ Re-check the pricing page before committing budget. These rates have moved more 
 | Environment | Web | Database | Runner | Purpose |
 |---|---|---|---|---|
 | `local` | `next dev` | Docker Postgres | Docker container invoked directly, no queue | Development |
+| `beta` | `next start` on EC2 behind Caddy | Postgres on the instance | Lambda, invoked by the worker | The controlled beta, from 30 September 2026 |
 | `preview` | Vercel preview per pull request | Neon branch, reset nightly | Shared dev Lambda | Review |
 | `prod` | Vercel production | Neon primary with PITR | Prod Lambda | The cohort |
 
@@ -73,21 +77,24 @@ Preview environments must never point at the production database. Enforce it wit
 
 AWS CDK in TypeScript, in the same repository as the application, under `infra/`. One stack.
 
-Resources: two SQS queues plus two dead letter queues, two Lambda functions, two S3 buckets with lifecycle policies, one VPC with two private subnets and no NAT gateway, VPC endpoints for S3 and SQS, IAM roles, CloudWatch alarms, one ECR repository for the runner image.
+Resources, as amended on 30 September 2026: two container-image Lambda functions, one VPC with two isolated subnets and no NAT gateway, no internet gateway and no endpoint, the learner audio bucket with its lifecycle rule, IAM roles for the runner and the judge, a role and instance profile for the web host, three CloudWatch alarms and their SNS topic, and the voice socket once its signing secret exists. No SQS queue, no traces or bundles bucket, and no ECR repository of the stack's own.
 
-The absence of a NAT gateway is deliberate. It removes the largest fixed line on the AWS bill and it removes the runner's route to the internet in one move.
+The absence of a NAT gateway is deliberate. It removes the largest fixed line on the AWS bill and it removes the runner's route to the internet in one move. With no endpoint either, learner code inside the VPC reaches nothing at all.
+
+`cdk deploy` builds both images from the repository's Dockerfiles and pushes them to the asset repository that `cdk bootstrap` created, so a first deploy never points a function at an image that does not exist yet. The earlier stack created its own repository and, in the same deploy, functions pointing at tags nothing had pushed, and Lambda refuses to create a function from an image that does not exist; a rollback then kept the named repository and blocked every retry. Each build context holds only that image's Dockerfile, requirements and package.
 
 Deploy sequence:
 
 ```
-1. cdk deploy FdePrepStack          # first time, or on infra change
-2. docker build -t runner:<tag> runner/ && push to ECR
-3. aws lambda update-function-code --image-uri ...
-4. npx prisma migrate deploy        # or your migration tool of choice
-5. git push                         # Vercel builds and promotes
+1. cdk bootstrap                  once per account and region
+2. cdk deploy FdePrepStack        builds and pushes both images, then updates
+                                  whatever changed
+3. npm run migrate                on the web host
+4. npm run import:content         on the web host, after a content change
+5. git pull, npm run build and a service restart on the web host
 ```
 
-Steps 2 and 3 run from GitHub Actions on a tag push. Step 5 is automatic. Steps 1 and 4 are manual and rare.
+A person runs every step. The earlier deploy workflow that pushed image tags from GitHub Actions is retired, since `cdk deploy` now does that job and a second path to the same functions would fight it over which image is live.
 
 ---
 
@@ -97,11 +104,10 @@ Unit rates change, so verify each line before budgeting. The shape below is what
 
 | Line | Driver | Shape at 200 learners |
 |---|---|---|
-| Vercel | Flat team plan | Fixed, small, and the same whether 20 or 200 people use it |
-| Managed Postgres | Compute hours plus storage | Fixed, small. Data volume here is measured in hundreds of megabytes. |
+| EC2 instance for the beta, or Vercel later | Instance hours, or a flat team plan | Fixed and small either way |
+| Postgres | On the instance for the beta; compute hours plus storage once managed | Fixed, small. Data volume here is measured in hundreds of megabytes. |
 | Lambda runner | Invocations times duration | Roughly 200 learners times 15 submissions per week times 2 seconds at 1GB. This is the cheapest line on the bill and will stay under pocket change. |
-| S3 | Trace volume | 256KB cap per trace, lifecycle to cold storage at 180 days |
-| SQS | Message count | Negligible at this volume |
+| S3 | Learner audio | Deleted after 30 days by the bucket's own rule |
 | Bedrock tokens | Probes, judging, live runs | The only line that can surprise you |
 
 ### The token arithmetic, done out loud
@@ -128,7 +134,7 @@ Three, and no more, because an alarm nobody reads is worse than no alarm.
 
 | Alarm | Condition | Response |
 |---|---|---|
-| Queue backing up | SQS `ApproximateAgeOfOldestMessage` over 120 seconds for 5 minutes | Check runner error rate, then Lambda concurrency limit |
+| Runner throttled (was: queue backing up, amended 30 September 2026) | Lambda `Throttles` on the runner above zero in 5 minutes. With no SQS queue there is no queue age; a submission waits when Lambda refuses the worker's call for want of capacity. | Check the account's concurrent executions quota in Service Quotas, then any reserved concurrency on the runner. Queue depth is on the admin Ops screen. |
 | Runner failing | Lambda error rate over 5 percent over 15 minutes | Read the last `runner_event` rows, roll back the runner image tag |
 | Token spend | AWS Budgets at 80 percent of the monthly figure | Lower the `live_daily` cap in the admin screen |
 
@@ -152,7 +158,7 @@ The `error` verdict does not consume an allowance, so this should not happen. If
 
 ### Rolling back
 
-The web application rolls back from the Vercel dashboard. The runner rolls back by pointing the Lambda at the previous image tag. Migrations roll forward only; write every migration so the previous application version still runs against the new schema, which means adding columns before using them and dropping them a release later.
+The web application rolls back by checking out the previous commit on the web host, rebuilding and restarting, or from the Vercel dashboard on that route. The runner and the judge roll back by running `cdk deploy` from the previous commit, which rebuilds the previous images from source; each result records the runner image tag that graded it. Migrations roll forward only; write every migration so the previous application version still runs against the new schema, which means adding columns before using them and dropping them a release later.
 
 ### Restoring the database
 
@@ -160,8 +166,8 @@ Point-in-time restore to a new branch, verify against a known submission id, the
 
 ### Before each cohort starts
 
-1. Create the cohort row and import the roster.
-2. Confirm every learner is in the GitHub organisation. Sign-in failures on day one are almost always this.
+1. Create the cohort row and import the roster. For the beta, create the cohort row and send each tester an invite from the Roster screen instead.
+2. Confirm every learner is in the GitHub organisation, or, with the organisation check off, holds an unused invite. Sign-in failures on day one are almost always this.
 3. Set the persona for every enrolment from the baseline diagnostic.
 4. Publish the problem set and open one problem at each difficulty yourself, from a learner account.
 5. Run a burst test of 200 concurrent submissions against a staging problem.

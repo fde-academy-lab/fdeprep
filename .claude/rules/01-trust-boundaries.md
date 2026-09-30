@@ -6,8 +6,15 @@ security model and needs saying out loud in the pull request, not a silent edit.
 ## The two Lambdas never merge
 
 The runner executes learner code. It has no Bedrock permission, no database
-write permission, and sits in a VPC with no internet route. The judge calls
-models and never executes learner code. Results return through a queue.
+credential, no bucket and no queue, and sits in a VPC with no internet route
+and no endpoint. The judge calls models and never executes learner code. The
+worker invokes each one directly and writes what comes back; neither function
+writes a result anywhere itself (amended 30 September 2026, when results
+stopped travelling through a queue).
+
+The web host holds no model credential either: the judge function does. A
+production worker refuses to run learner code on its own host unless
+`RUNNER_LOCAL_OK=1` says somebody meant it.
 
 If a task seems to need learner code to call a model, use the step protocol in
 `docs/03-RUNNER-AND-GRADING.md` section 9.4 instead.

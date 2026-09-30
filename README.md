@@ -8,8 +8,8 @@ The platform exists to produce one signal the placement side can trust: is this 
 |---|---|
 | **Built** | 14 to 20 September 2026, twenty-four merged pull requests |
 | **Size** | 21,103 lines of TypeScript in the web application, 5,248 lines of Python in the runner and judge, 1,083 lines of CDK |
-| **Tests** | 710 across four suites, all green: 421 web, 233 Python, 30 infrastructure, 26 voice |
-| **Content** | 25 problems and 12 voice questions, each solved by its author before it shipped |
+| **Tests** | 1,745 across four suites, all green: 702 web, 980 Python, 37 infrastructure, 26 voice |
+| **Content** | 92 problems and 12 voice questions, each solved by its author before it shipped |
 | **State** | Runs end to end on a laptop with `docker compose up`. Not yet deployed anywhere. Section 3 is the deploy. |
 
 ---
@@ -21,6 +21,7 @@ The platform exists to produce one signal the placement side can trust: is this 
 3. [Deploy it for a beta cohort](#3-deploy-it-for-a-beta-cohort)
    - [Route A: Vercel and managed Postgres](#3a-route-a-vercel-and-managed-postgres)
    - [Route B: one AWS box](#3b-route-b-one-aws-box-no-subscriptions)
+   - [Route C: the beta on AWS](#3c-route-c-the-beta-on-aws)
 4. [Maintain it](#4-maintain-it)
 5. [Fix it when it breaks](#5-fix-it-when-it-breaks)
 6. [What to use in code](#6-what-to-use-in-code)
@@ -279,8 +280,8 @@ Everything below runs on a laptop with PostgreSQL and no cloud account.
 
 | Capability | Where |
 |---|---|
-| Sign in with GitHub, checked against organisation membership and an active enrolment. | `/signin` |
-| Browse 25 problems filtered by track, difficulty, type and status. | `/problems` |
+| Sign in with GitHub, checked against organisation membership and an active enrolment, or, for a beta with the organisation check off, through a one-time invite. | `/signin`, `/invite/[token]` |
+| Browse 92 problems filtered by track, difficulty, type and status. | `/problems` |
 | Solve code problems in CodeMirror with the scaffold ladder applied by difficulty. | `/problems/[slug]` |
 | Run against public tests, submit against the full battery, watch the verdict arrive over SSE. | Same screen |
 | Edit a system prompt against static checks, a probe battery and a rubric judge. | Same screen, prompt problems |
@@ -291,7 +292,7 @@ Everything below runs on a laptop with PostgreSQL and no cloud account.
 | Read a voice debrief with beat timings, pace, filler counts and a rubric score. | `/voice/sessions/[id]` |
 | Sit a timed rehearsal under Extreme rules and get a report. | `/rehearsal` |
 | See the competency heatmap and export attempt history as CSV. | `/progress` |
-| Administer the roster, bulk-change personas from a CSV, read submissions, requeue a stuck one, and flip degraded mode. | `/admin/*` |
+| Administer the roster, invite testers with one-time links, bulk-change personas from a CSV, read submissions, requeue a stuck one, and flip degraded mode. | `/admin/*` |
 | Work a faculty queue of the answers the panel argued about, seeing which panelist said what and recording what you concluded. | `/admin/disagreements` |
 | Correct a grade the panel got wrong, which moves the learner's verdict, their score and their competency heatmap, and tells the learner it moved. | Same screen, on a row marked disputed |
 | Grade a written answer against rules that need no model: restating the brief, arguing no trade, a long answer in one block, a code answer at double its call budget. | The worker, inside panelist 1 |
@@ -300,7 +301,7 @@ Content authored and validated in CI:
 
 | | Count | Breakdown |
 |---|---|---|
-| Problems | 25 | 17 code, 5 prompt, 3 design. By difficulty: 8 Easy, 8 Medium, 6 Hard, 3 Extreme. By complexity: 17 C2, 5 C3, 3 C4. |
+| Problems | 92 | 70 code, 9 prompt, 13 design. By difficulty: 23 Easy, 32 Medium, 24 Hard, 13 Extreme. By complexity: 70 C2, 10 C3, 12 C4. |
 | Voice questions | 12 | Across five tracks: agent loop (3), client communication (3), evaluation design (2), system design (2), tool schema design (2). Budgets run 125 to 155 seconds. |
 
 Every code problem ships with a reference solution that passes and a naive solution that provably fails a hidden test. CI runs both, so a problem that a lazy answer would pass cannot merge.
@@ -315,7 +316,7 @@ Four integrations are written, unit-tested against recorded fixtures, and have n
 
 | Integration | State | What could go wrong on first contact |
 |---|---|---|
-| Bedrock rubric judge | Code complete, 253 Python tests green, `JUDGE_LIVE=1` never run. | A model id, a region, an inference profile prefix or the thinking-mode combination is wrong, and every design and prompt submission errors. |
+| Bedrock rubric judge | Code complete and tested against recorded replies, `JUDGE_LIVE=1` never run. | A model id, a region, an inference profile prefix or the thinking-mode combination is wrong, and every design and prompt submission errors. |
 | Amazon Transcribe streaming | Adapter written against the documented API, exercised only through the scripted adapter. | The live stream shape differs and the cockpit shows a dead microphone. |
 | Amazon Polly | Pressure-mode follow-up audio. Never synthesised. | Follow-ups arrive as silence. |
 | S3 audio storage | Written, never exercised against a real bucket. | Voice sessions finish and the audio is unreachable. |
@@ -348,7 +349,7 @@ Twenty minutes from clone to a working product, with no cloud account and no cre
 
 ## 2.1 The fastest way, one command
 
-Docker, and nothing else installed.
+Docker with its Compose plugin, and nothing else installed. Docker Desktop ships both. Homebrew's `docker` package is the command-line tool alone, and there `docker compose up` stops with `docker: unknown command: docker compose`; section 2.2 has the two fixes.
 
 ```bash
 git clone https://github.com/fde-academy-lab/fdeprep.git
@@ -356,7 +357,9 @@ cd fdeprep
 docker compose up
 ```
 
-Open <http://localhost:3000>. Four services come up in order: Postgres, then a one-shot `init` that installs dependencies, migrates, imports the content and fetches panelist 2's embedding model, then the web application and the worker. Expect `published 25 problems and 12 voice questions.` in the `init` log on a first run.
+In a clone you already have, run `git checkout main` and `git pull` instead of the first two lines, and `docker compose up --build` so a changed image is rebuilt.
+
+Open <http://localhost:3000>. Four services come up in order: Postgres, then a one-shot `init` that installs dependencies, migrates, imports the content and fetches panelist 2's embedding model, then the web application and the worker. Expect `published 92 problems and 12 voice questions.` in the `init` log on a first run.
 
 The model fetch is the one step allowed to fail. On a laptop with no network the stack still comes up: the worker carries `EVAL_DEGRADED_PANELISTS=pretrained`, so it starts without panelist 2 and says so in its log rather than refusing. Outside the demo the refusal is the point, and section 3 step 5 covers it.
 
@@ -380,21 +383,46 @@ The repository is bind-mounted, so an edit on your machine is live in the contai
 | PostgreSQL | 16 | `psql --version` |
 | Git | Any recent version | `git --version` |
 
-On a Mac, zsh is the default shell, and it passes a trailing `# comment` to the command as extra arguments unless `interactivecomments` is set. Most command blocks in this README carry one, so the first two lines below turn that on for this shell and every later one. PostgreSQL 16 comes from Homebrew. The `postgresql@16` formula is keg-only because it is a versioned formula, so its tools stay off your PATH until you add them, and `createdb` in step 3 fails with `command not found` until you do:
+On a Mac, zsh is the default shell, and it passes a trailing `# comment` to the command as extra arguments unless `interactivecomments` is set. Most command blocks in this README carry one, so the first two lines below turn that on for this shell and every later one. Homebrew comes first if you do not have it: `/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"`, then the three lines it prints under "Next steps". `node@22` and `postgresql@16` are keg-only because they are versioned formulae, so their tools stay off your PATH until you add them, and `createdb` in step 3 fails with `command not found` until you do:
 
 ```bash
 setopt interactivecomments
 echo 'setopt interactivecomments' >> ~/.zshrc
-brew install postgresql@16
+brew install node@22 python@3.12 postgresql@16
 brew services start postgresql@16          # starts it now and at every login
-echo "export PATH=\"$(brew --prefix postgresql@16)/bin:\$PATH\"" >> ~/.zshrc
+echo "export PATH=\"$(brew --prefix node@22)/bin:$(brew --prefix postgresql@16)/bin:\$PATH\"" >> ~/.zshrc
 source ~/.zshrc
 pg_isready                                  # accepting connections
 ```
 
-The install runs `initdb` as you, so your macOS user is the database superuser and `postgres://localhost/fdeprep` needs no username or password. Checked against the Homebrew formula on 29 September 2026, when it was at 16.15, and the comment behaviour against zsh 5.9.
+The install runs `initdb` as you, so your macOS user is the database superuser and `postgres://localhost/fdeprep` needs no username or password. Checked against the Homebrew formulae on 30 September 2026: `node@22` at 22.23.3 and `postgresql@16` at 16.15, both keg-only, and `python@3.12` at 3.12.14, which is not keg-only and installs `python3.12` on the Homebrew path.
+
+On Ubuntu, the apt Postgres accepts your login over its socket and refuses a password-less network connection, and node-postgres reads `postgres://localhost/...` and `postgres:///...` as network connections. Create a role for yourself with `sudo -u postgres createuser -s "$USER"`, then use `DATABASE_URL="postgres://$USER@/fdeprep?host=/var/run/postgresql"` wherever this README says `postgres://localhost/fdeprep`. Both behaviours were reproduced against PostgreSQL 16 with Ubuntu's default `pg_hba.conf` on 30 September 2026.
+
+For the Docker route in 2.1, when `docker compose` is missing, either install Docker Desktop (`brew install --cask docker-desktop`, after `brew uninstall docker` so only one `docker` command exists; free for businesses under 250 employees and under $10 million in revenue, and for personal and education use, per Docker's licence page on 30 September 2026), or keep the command-line tool and add the open source pieces:
+
+```bash
+brew install colima docker-compose
+mkdir -p ~/.docker
+python3.12 - <<'PY'
+import json, os, subprocess
+path = os.path.expanduser("~/.docker/config.json")
+config = json.load(open(path)) if os.path.exists(path) else {}
+plugins = subprocess.run(["brew", "--prefix"], capture_output=True, text=True).stdout.strip() + "/lib/docker/cli-plugins"
+dirs = config.setdefault("cliPluginsExtraDirs", [])
+if plugins not in dirs:
+    dirs.append(plugins)
+json.dump(config, open(path, "w"), indent=2)
+PY
+colima start --cpu 4 --memory 4
+docker compose version
+```
+
+The Python lines add the plugin folder Homebrew's `docker-compose` caveat asks for, and keep anything already in `~/.docker/config.json`.
 
 ## 2.3 Six commands, and an optional seventh
+
+In a clone you already have, replace the first two lines with `cd fdeprep`, `git checkout main` and `git pull`.
 
 ```bash
 git clone https://github.com/fde-academy-lab/fdeprep.git
@@ -414,7 +442,7 @@ export DATABASE_URL="postgres://localhost/fdeprep"
 # 4. Schema
 npm run migrate
 
-# 5. Content: 25 problems and 12 voice questions
+# 5. Content: 92 problems and 12 voice questions
 npm run import:content
 
 # 6. The application
@@ -431,7 +459,7 @@ python scripts/fetch_embedding_model.py
 The worker refuses to start without it, because the published catalogue holds 8 problems that require panelist 2 and grading those without it drops most of the evidence behind every band. It says so at boot and names both ways out:
 
 ```
-The pretrained panelist cannot run here: model_missing. 8 of 25 published
+The pretrained panelist cannot run here: model_missing. 22 of 92 published
 problems require it, and grading them without it would quietly drop most of
 the evidence behind every band.
   Fix it:          cd /path/to/fdeprep && .venv/bin/python scripts/fetch_embedding_model.py
@@ -440,11 +468,11 @@ the evidence behind every band.
 
 A host with the model and without the runtime reads `dependency_missing` instead, and its fix line is a pip install. Both lines name the interpreter the worker spawns, which is `RUNNER_PYTHON`, then `.venv/bin/python`, then `python3`. Activating a virtualenv in your shell changes none of those, so run the line as printed.
 
-`requirements-dev.txt` installs that runtime through `requirements-embed.txt`. onnxruntime 1.30.0 publishes Python 3.12 wheels for Apple Silicon on macOS 14 or newer, Linux x86_64 and aarch64, and Windows, and nothing else, so on an Intel Mac or an older macOS the install stops at onnxruntime. There, delete the `-r requirements-embed.txt` line from your local copy of `requirements-dev.txt`, install, and start the worker with `EVAL_DEGRADED_PANELISTS=pretrained`. The 17 code problems grade fully without panelist 2.
+`requirements-dev.txt` installs that runtime through `requirements-embed.txt`. onnxruntime 1.30.0 publishes Python 3.12 wheels for Apple Silicon on macOS 14 or newer, Linux x86_64 and aarch64, and Windows, and nothing else, so on an Intel Mac or an older macOS the install stops at onnxruntime. There, delete the `-r requirements-embed.txt` line from your local copy of `requirements-dev.txt`, install, and start the worker with `EVAL_DEGRADED_PANELISTS=pretrained`. The 70 code problems grade fully without panelist 2.
 
 `EVAL_DEGRADED_PANELISTS=pretrained` starts anyway and prints what you gave up. Use it for a demo or a box that only serves code problems; those evaluations carry `medium` confidence rather than `high` until the panelist runs. The script pins a model revision and verifies a SHA-256 before it writes, so a model that changed underneath you is a failure rather than a silent change to every band the panel assigns.
 
-`AUTH_DEV_LEARNER=1` creates one development learner with the admin role, so every screen opens without a GitHub application. The switch refuses to work whenever `GITHUB_CLIENT_ID` is set and refuses outright when `NODE_ENV` is production, so it cannot follow you into a deployment.
+`AUTH_DEV_LEARNER=1` creates one development learner with the admin role, so every screen opens without a GitHub application. With `NODE_ENV` unset, the worker runs the test battery on your machine as a subprocess, and says so when it starts. The switch refuses to work whenever `GITHUB_CLIENT_ID` is set and refuses outright when `NODE_ENV` is production, so it cannot follow you into a deployment.
 
 ## 2.4 The second terminal, which is not optional
 
@@ -499,15 +527,15 @@ A five-minute path that shows the product's actual argument rather than its scre
 ```bash
 createdb fdeprep_test
 export TEST_DATABASE_URL="postgres://localhost/fdeprep_test"
-cd web   && npm test              # 548 tests
-cd ../   && python -m pytest -q   # 262 tests: 3 skip without JUDGE_LIVE=1, 3 more without the model
-cd voice && npm test              # 26 tests
-cd ../infra && npm test           # 30 tests
+cd web   && npm test                   # 702 tests
+cd ../   && .venv/bin/python -m pytest -q   # 980 tests, some skip, see below
+cd voice && npm test                   # 26 tests
+cd ../infra && npm test                # 37 tests
 ```
 
 The web suite truncates every table in the database it runs against. It uses `TEST_DATABASE_URL` when that is set, and it refuses any database whose name does not end in `_test`, so `fdeprep` and everything in it survive a test run.
 
-The three Bedrock tests skip unless `JUDGE_LIVE=1`, because each run spends money, and the three MiniLM tests skip until `scripts/fetch_embedding_model.py` has put the weights on disk. A skipped test is honest; a test that quietly passes without the thing it claims to test is not.
+The three Bedrock tests skip unless `JUDGE_LIVE=1`, because each run spends money, and the three MiniLM tests skip until `scripts/fetch_embedding_model.py` has put the weights on disk. Three permission tests skip when the suite runs as root, as it does in a cloud session, because root reads a locked file anyway; CI runs them as a normal user. The last 27 are one check repeated for every problem, and it skips on the problems that have no steps. A skipped test is honest; a test that quietly passes without the thing it claims to test is not.
 
 ---
 
@@ -515,19 +543,19 @@ The three Bedrock tests skip unless `JUDGE_LIVE=1`, because each run spends mone
 
 **Nothing in this repository deploys itself.** No agent, no script and no CI job runs `cdk deploy`, `aws lambda update-function-code` or `vercel deploy`. A human runs every deploy, and that is a standing rule in `CLAUDE.md` rather than an accident.
 
-## Two routes, and how to pick
+## Three routes, and how to pick
 
 There is no Vercel lock-in anywhere in this codebase: no `@vercel/*` package, no `VERCEL_*` variable, no platform-specific API. A production build serves fine under plain `next start`, so any box that runs Node can host it.
 
-| | Route A: Vercel and managed Postgres | Route B: one AWS box |
-|---|---|---|
-| What you sign up for | Vercel Pro and a Neon or Supabase project. | Nothing. It all sits in an AWS account you already have. |
-| Time to first screen | About thirty minutes. | About an hour. |
-| Who patches the server | Nobody, since there is no server. | You do. |
-| Rollback | One click in the Vercel dashboard. | `git checkout` the previous commit and rebuild. |
-| Suits | A beta with students, and anything you want to stop thinking about. | Your own testing, a demo to a company, a pilot with people you know by name. |
+| | Route A: Vercel and managed Postgres | Route B: one AWS box | Route C: the beta on AWS |
+|---|---|---|---|
+| What you sign up for | Vercel Pro and a Neon or Supabase project. | Nothing. It all sits in an AWS account you already have. | Nothing beyond AWS, a domain and a GitHub organisation. |
+| Where learner code runs | On the worker's host, until you add the runner Lambda from Route C. | On the box, beside the database. | In the runner Lambda, in a VPC with no route out. |
+| Who patches the server | Nobody for the web tier; you for the worker's host. | You do. | You do, for the web host only. |
+| Rollback | One click in the Vercel dashboard. | `git checkout` the previous commit and rebuild. | The same on the web host, and `cdk deploy` from the previous commit for the Lambdas. |
+| Suits | A cohort, once the worker's host runs the Lambdas. | Your own testing, a demo to a company, a pilot with people you know by name. | A beta with students, and the cohort after it. |
 
-Route B has a security limit that decides it for a real cohort. The last part of this section says exactly what that limit is, and skipping it would be the expensive kind of mistake.
+Route B has a security limit that decides it for students, and its last part says exactly what that limit is. Route C removes it.
 
 ---
 
@@ -554,7 +582,7 @@ Steps 1 to 5 put a working product in front of students. Steps 6 and 7 are the o
 
 Neon's free computes scale to zero after five minutes of inactivity, so the first learner of the morning waits through a cold start. That is an acceptable beta trade and a bad cohort-day trade.
 
-**A first beta can skip AWS entirely.** Deploy the web application, the database and the worker, and run code problems only. The worker executes the battery as a local Python subprocess when `RUNNER_ENDPOINT` is unset, so 17 of the 25 problems grade with no AWS account at all. Add AWS when you want the rubric judge and the Voice Screen.
+**Without AWS, learner code runs on the worker's host.** The worker executes the battery as a local Python subprocess when `RUNNER_FUNCTION` is unset, so the 70 code problems grade with no AWS account at all, next to the database credential. That suits people you trust; for students, deploy the Lambdas from Route C and set `RUNNER_FUNCTION`.
 
 ## Step 1: the database
 
@@ -606,16 +634,18 @@ npm run migrate
 npm run import:content
 ```
 
-Expect `published 25 problems and 12 voice questions`. Re-run it after every content change; it updates in place and duplicates nothing.
+Expect `published 92 problems and 12 voice questions`. Re-run it after every content change; it updates in place and duplicates nothing.
 
 ## Step 5: the worker
 
-Nothing grades without it. One process, one environment variable.
+Nothing grades without it.
 
 ```bash
 cd web
-DATABASE_URL="<production>" npm run worker
+NODE_ENV=production DATABASE_URL="<production>" RUNNER_LOCAL_OK=1 npm run worker
 ```
+
+A production worker refuses to run learner code on its own host unless `RUNNER_LOCAL_OK=1` says you meant it. With the Lambdas from Route C deployed, drop that and set `RUNNER_FUNCTION`, `JUDGE_FUNCTION` and `AWS_REGION` instead, with credentials on this host that the stack's `BoxPolicy` allows.
 
 For a first beta, a `systemd` service or a `tmux` session on a small VM is enough. Anything that restarts it on exit will do. Confirm it is alive by submitting once and watching the verdict arrive.
 
@@ -637,12 +667,12 @@ The worker is also where panelist 2 runs, so run `python scripts/fetch_embedding
 
 ## Step 7: AWS, when you want the judge and the Voice Screen
 
-The infrastructure is written as CDK in `infra/` and the image build is `.github/workflows/deploy.yml`. **A human runs the deploy.**
+The infrastructure is written as CDK in `infra/`, and `cdk deploy` builds both Lambda images itself. **A human runs the deploy.**
 
-1. Bootstrap CDK in your account and region, then `npx cdk deploy` from `infra/`. Read `docs/05-DEPLOY-AND-OPS.md` section 4 first.
-2. Set `JUDGE_MODEL_ID` to a Bedrock inference profile id, for example `us.anthropic.claude-opus-5`. A bare model id is refused at start-up with an error that says why, because on-demand throughput on `bedrock-runtime` needs a geo or global profile prefix. Verified against AWS documentation on 14 September 2026.
-3. Point the web application at the deployed functions with `JUDGE_ENDPOINT` and `RUNNER_ENDPOINT`.
-4. For voice, set `VOICE_SOCKET_URL` to the API Gateway WebSocket URL and `VOICE_TOKEN_SECRET` to the same value on both ends.
+1. Deploy the stack exactly as Route C steps C1 to C4 describe. Read `docs/05-DEPLOY-AND-OPS.md` section 4 first.
+2. Give the worker's host credentials that the stack's `BoxPolicy` allows, then set `RUNNER_FUNCTION`, `JUDGE_FUNCTION` and `AWS_REGION` on the worker from the stack's outputs. The worker calls each function with a signed Lambda Invoke; `RUNNER_ENDPOINT` and `JUDGE_ENDPOINT` are for the local runtime interface emulator only, since the stack gives the functions no URL.
+3. The judge's model is set on the stack with `JUDGE_MODEL_ID`, an inference profile id such as `us.anthropic.claude-opus-5`. A bare model id is refused at start-up with an error that says why.
+4. For voice, set `VOICE_SOCKET_URL` to the stack's `VoiceSocketUrl` output and `VOICE_TOKEN_SECRET` to the value stored in the secret the stack reads.
 5. **Spend one attempt on each live integration yourself.** Submit one design problem to prove the judge, and answer one voice question with a real microphone to prove Transcribe. These four integrations have never made a live call, so the first learner to touch them is otherwise your first test.
 
 ## Step 8: the two things people skip
@@ -698,8 +728,8 @@ Node comes from NodeSource, documented at <https://github.com/nodesource/distrib
 git clone https://github.com/fde-academy-lab/fdeprep.git && cd fdeprep
 python3.12 -m venv .venv && ./.venv/bin/pip install -r requirements-dev.txt
 
-sudo -u postgres createuser -s ubuntu && createdb fdeprep
-export DATABASE_URL="postgres:///fdeprep"
+sudo -u postgres createuser ubuntu && sudo -u postgres createdb -O ubuntu fdeprep
+export DATABASE_URL="postgres://ubuntu@/fdeprep?host=/var/run/postgresql"
 
 cd web && npm ci
 npm run migrate
@@ -724,10 +754,13 @@ The guard is working. On a box, use real GitHub OAuth.
 export NODE_ENV=production
 export AUTH_SECRET="$(openssl rand -base64 32)"
 export GITHUB_CLIENT_ID=...  GITHUB_CLIENT_SECRET=...  GITHUB_ORG=your-org
+export RUNNER_LOCAL_OK=1
 
 npx next start        # terminal one
 npm run worker        # terminal two, or nothing ever grades
 ```
+
+`RUNNER_LOCAL_OK=1` is you saying, on purpose, that learner code may run on this box. A production worker refuses to start without it or a runner function.
 
 From your laptop, `ssh -L 3000:localhost:3000 ubuntu@<instance-ip>`, then open <http://localhost:3000>.
 
@@ -743,7 +776,7 @@ Three prerequisites catch people out, all from the [Bedrock model access documen
 2. The account needs a **valid payment method** configured for AWS Marketplace. A spare account with no card attached fails here.
 3. The role needs `aws-marketplace:Subscribe` on the first invocation. Bedrock starts the subscription in the background and it can take up to fifteen minutes, during which calls return `AccessDeniedException`, so a first failure is not automatically a bug.
 
-**Skip all of that for a first look.** The 17 code problems grade with no AWS service at all, because the worker runs the battery as a local Python subprocess whenever `RUNNER_ENDPOINT` is unset. You get the whole loop of write, run, submit, verdict and trace without a single Bedrock call.
+**Skip all of that for a first look.** The 70 code problems grade with no AWS service at all, because the worker runs the battery as a local Python subprocess whenever `RUNNER_FUNCTION` is unset. You get the whole loop of write, run, submit, verdict and trace without a single Bedrock call.
 
 ## Where one box stops being acceptable
 
@@ -758,7 +791,273 @@ On one box, learner code runs as a subprocess on the same machine as your databa
 | A pilot with people you know by name | Acceptable. | Better. |
 | A beta with students | **No.** | Yes. |
 
-Moving up is additive rather than a rebuild. Run `npx cdk deploy` from `infra/`, which creates the VPC, both Lambdas with separate roles, three queues with dead-letter queues and the S3 buckets, then set `RUNNER_ENDPOINT` and `JUDGE_ENDPOINT` on the box. Same instance, same commands, one boundary added.
+Moving up is Route C, and it keeps the same instance: deploy the stack, attach its instance profile to the box, set `RUNNER_FUNCTION` and `JUDGE_FUNCTION`, and remove `RUNNER_LOCAL_OK`. Learner code then runs in the Lambda and nowhere near the database.
+
+---
+
+# 3C. Route C: the beta on AWS
+
+The web application, the worker and Postgres on one EC2 instance behind Caddy; the runner and the judge as Lambdas the worker calls directly; the Voice Screen through API Gateway and Amazon Transcribe. Learner code runs only in the runner Lambda, in a VPC with no route out, and the web host holds no model credential. Sign-in is GitHub plus a one-time invite, so testers do not have to join your GitHub organisation.
+
+```
+learner browser --https--> Caddy --> next start (EC2) --> Postgres (EC2)
+                                          |
+                                     npm run worker --invoke--> runner Lambda (VPC, no route out)
+                                                    --invoke--> judge Lambda --> Bedrock
+learner browser --wss--> API Gateway --> voice Lambdas --> Transcribe
+```
+
+Everything below uses `us-east-1`. Replace `prep.example.com`, `YOUR_GITHUB_LOGIN` and every `PASTE_` value as you go. This route has never run against a real account: the stack synthesises and its tests pass, and the proxy, sign-in and invite steps were run in a sandbox, so the first deploy is its first live test, and step C12 is there to catch what that finds.
+
+## C0: what you need on your laptop
+
+| Tool | Why | Check |
+|---|---|---|
+| AWS CLI v2, signed in as an administrator of the account | `cdk deploy` creates roles, functions and a VPC. | `aws sts get-caller-identity` |
+| Node.js 22 | The CDK command line runs on it. | `node --version` |
+| Docker, running | `cdk deploy` builds both Lambda images. On an Apple Silicon Mac it builds them for x86 under emulation, which is slower and otherwise the same. | `docker info` |
+| This repository on `main` | Everything deploys from your clone. | `git pull` |
+| A domain you can add a DNS record to | Caddy needs a name to get a certificate for. | |
+| Admin rights on a GitHub organisation | The OAuth application is registered under it. | |
+
+## C1: turn on Claude in Bedrock
+
+AWS documentation, read on 30 September 2026: model access is on by default in commercial regions; Anthropic models need a one-time use case form, which the Bedrock console shows when you select an Anthropic model in its model catalog; and the account needs a valid payment method for AWS Marketplace, because the first call starts a Marketplace subscription that can take up to fifteen minutes, during which calls can return `AccessDeniedException`. Make that first call yourself, since Marketplace permissions are needed only for the first use in an account:
+
+```bash
+aws bedrock-runtime converse --region us-east-1 --model-id us.anthropic.claude-opus-5 --messages '[{"role":"user","content":[{"text":"Reply with the word ready."}]}]'
+```
+
+`us.anthropic.claude-opus-5` is the default and a valid id on the Opus 5 model card. The judge accepts `us.`, `eu.`, `au.`, `apac.`, `in.`, `jp.`, `global.` and `us-gov.` profiles. Opus 5.5 reached Bedrock on 22 September 2026; nobody has yet checked that it accepts the judge's request with thinking off and temperature 0, so stay on Opus 5 until one judged submission has run on it.
+
+## C2: the voice signing secret (skip without voice)
+
+```bash
+VOICE_SECRET="$(openssl rand -base64 32)"
+aws secretsmanager create-secret --region us-east-1 --name fdeprep/voice-token --secret-string "$VOICE_SECRET" --query ARN --output text
+echo "$VOICE_SECRET"
+```
+
+Keep both lines it prints. The ARN goes to `cdk deploy` in C3; the value goes into the web host's settings in C8, because the web application signs each session token with it and the socket checks the signature against the copy in Secrets Manager.
+
+## C3: deploy the stack
+
+```bash
+cd fdeprep
+git checkout main
+git pull
+cd voice
+npm ci
+cd ../infra
+npm ci
+export AWS_REGION=us-east-1
+npx cdk bootstrap
+JUDGE_MODEL_ID=us.anthropic.claude-opus-5 ALARM_EMAIL=you@example.com VOICE_TOKEN_SECRET_ARN=PASTE_ARN_FROM_C2 npx cdk deploy
+```
+
+`cdk bootstrap` is once per account and region. `cdk deploy` builds the runner and judge images, pushes them to the repository bootstrap made, and creates the stack; leave out `VOICE_TOKEN_SECRET_ARN` to deploy without the Voice Screen. Accept the email the alarm topic sends. Keep the outputs it prints:
+
+| Output | Goes to |
+|---|---|
+| `RunnerFunctionName` | `RUNNER_FUNCTION` in C8 |
+| `JudgeFunctionName` | `JUDGE_FUNCTION` in C8 |
+| `VoiceAudioBucketName` | `VOICE_AUDIO_BUCKET` in C8 |
+| `VoiceSocketUrl` | `VOICE_SOCKET_URL` in C8 |
+| `BoxInstanceProfileName` | The instance profile in C4 |
+
+Nothing reserves Lambda concurrency, because AWS keeps part of an account's concurrency unreserved and new accounts start with a lower quota. Set `RUNNER_RESERVED_CONCURRENCY` or `JUDGE_RESERVED_CONCURRENCY` on the deploy once your account's quota allows it.
+
+## C4: launch the web host
+
+| Setting | Value |
+|---|---|
+| Image | Ubuntu Server 24.04 LTS, which ships Python 3.12 and PostgreSQL 16 in its main archive. |
+| Type | t3.medium. `next build` starts failing near 2 GB of memory, which is a judgement from Route B rather than a measurement. |
+| Disk | 30 GB gp3. |
+| Security group | SSH on 22 from your own address only; HTTP on 80 and HTTPS on 443 from anywhere, which Caddy needs to get and serve its certificate. |
+| IAM instance profile | `BoxInstanceProfileName` from C3. It may invoke the two functions, keep learner audio and call Polly, and it holds no model permission. |
+| Metadata | IMDSv2 required, which Ubuntu 24.04 images already set. |
+
+Allocate an Elastic IP and associate it, so the address survives a stop and start.
+
+## C5: DNS and the GitHub application
+
+1. Point an A record for `prep.example.com` at the Elastic IP.
+2. Register the OAuth application under your organisation, in its Settings, Developer settings, OAuth Apps. GitHub's documentation says new organisations restrict third-party OAuth applications by default and exempt the ones the organisation owns. Homepage `https://prep.example.com`, callback `https://prep.example.com/api/auth/callback`, then generate a client secret.
+
+## C6: the toolchain on the host
+
+SSH in with `ssh -i your-key.pem ubuntu@prep.example.com`. The Caddy lines are from caddyserver.com/docs/install, with `-y` added.
+
+```bash
+sudo apt update
+sudo apt install -y python3.12-venv postgresql-16 git
+curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+sudo apt install -y nodejs
+sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+sudo chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+sudo chmod o+r /etc/apt/sources.list.d/caddy-stable.list
+sudo apt update
+sudo apt install -y caddy
+```
+
+## C7: the code, the database and the build
+
+A private repository needs a read-only deploy key: run `ssh-keygen -t ed25519 -f ~/.ssh/fdeprep_deploy -N ""`, paste `~/.ssh/fdeprep_deploy.pub` into the repository's Settings, Deploy keys, with write access off, then:
+
+```bash
+GIT_SSH_COMMAND="ssh -i ~/.ssh/fdeprep_deploy" git clone git@github.com:fde-academy-lab/fdeprep.git
+cd fdeprep
+git config core.sshCommand "ssh -i ~/.ssh/fdeprep_deploy"
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements-dev.txt
+.venv/bin/python scripts/fetch_embedding_model.py
+sudo -u postgres createuser ubuntu
+sudo -u postgres createdb -O ubuntu fdeprep
+export DATABASE_URL="postgres://ubuntu@/fdeprep?host=/var/run/postgresql"
+cd web
+npm ci
+npm run migrate
+npm run import:content
+npm run build
+```
+
+The import prints `published 92 problems and 12 voice questions.` The database role owns the database and is not a superuser, which is all the migrations need. `DATABASE_URL` uses the socket, because node-postgres reads `postgres:///fdeprep` as a network connection, which Ubuntu's Postgres refuses without a password. Python stays on the host for panelist 2's encoder, which reads written answers and never runs learner code.
+
+## C8: the settings file
+
+```bash
+sudo mkdir -p /etc/fdeprep
+sudo tee /etc/fdeprep/env > /dev/null <<SETTINGS
+NODE_ENV=production
+APP_URL=https://prep.example.com
+DATABASE_URL=postgres://ubuntu@/fdeprep?host=/var/run/postgresql
+AUTH_SECRET=$(openssl rand -base64 32)
+GITHUB_CLIENT_ID=PASTE_CLIENT_ID
+GITHUB_CLIENT_SECRET=PASTE_CLIENT_SECRET
+GITHUB_ORG_CHECK=off
+AWS_REGION=us-east-1
+RUNNER_FUNCTION=PASTE_RunnerFunctionName
+JUDGE_FUNCTION=PASTE_JudgeFunctionName
+VOICE_AUDIO_BUCKET=PASTE_VoiceAudioBucketName
+VOICE_SOCKET_URL=PASTE_VoiceSocketUrl
+VOICE_TOKEN_SECRET=PASTE_THE_VALUE_FROM_C2
+SETTINGS
+sudo chmod 600 /etc/fdeprep/env
+sudo nano /etc/fdeprep/env
+```
+
+Replace every `PASTE_` value and the domain in the editor.
+
+| Setting | Why it is there |
+|---|---|
+| `APP_URL` | Behind Caddy, Next.js builds URLs from its own address, `https://localhost:3000`. Every redirect and the GitHub callback are built from this instead. |
+| `GITHUB_ORG_CHECK=off` | Testers are outside the organisation, so an invite is the wall. GitHub is then asked for `read:user` only. |
+| `RUNNER_FUNCTION`, `JUDGE_FUNCTION` | The worker calls the Lambdas and never runs learner code or the judge here. A production worker without `RUNNER_FUNCTION` refuses to start. |
+| `AWS_REGION` | The audio, speech and Lambda clients read it. The audio and speech code falls back to `eu-west-1` without it. |
+
+## C9: three services
+
+```bash
+unit() {
+  sudo tee /etc/systemd/system/fdeprep-$1.service > /dev/null <<UNIT
+[Unit]
+Description=FDE Prep $1
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+User=ubuntu
+WorkingDirectory=/home/ubuntu/fdeprep/web
+EnvironmentFile=/etc/fdeprep/env
+ExecStart=$2
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+}
+unit web "$(command -v npx) next start -H 127.0.0.1 -p 3000"
+unit worker "$(command -v npm) run worker"
+unit scorer "$(command -v npm) run scorevoice"
+sudo systemctl daemon-reload
+sudo systemctl enable --now fdeprep-web fdeprep-worker fdeprep-scorer
+journalctl -u fdeprep-worker -n 5 --no-pager
+```
+
+The worker's first line names the runner Lambda it will use. `fdeprep-scorer` scores finished voice answers through the judge Lambda; leave it out without voice.
+
+## C10: HTTPS
+
+```bash
+sudo tee /etc/caddy/Caddyfile > /dev/null <<'CADDY'
+prep.example.com {
+  reverse_proxy 127.0.0.1:3000
+}
+CADDY
+sudo systemctl reload caddy
+```
+
+Caddy gets the certificate itself once the A record points at the host and ports 80 and 443 are open, and it passes the app's server-sent events through immediately (Caddy documentation, read on 30 September 2026).
+
+## C11: the first admin, then everyone else
+
+With the organisation check off, nobody gets in without an invite, and invites are made on an admin screen. So the first one is minted on the host:
+
+```bash
+cd ~/fdeprep/web
+export DATABASE_URL="postgres://ubuntu@/fdeprep?host=/var/run/postgresql" APP_URL=https://prep.example.com
+npm run invite -- --login YOUR_GITHUB_LOGIN
+```
+
+It creates the cohort `pilot-1` if it does not exist and prints a link that works once, for that login, as admin. Open it, press Continue with GitHub, and you land signed in. Invite every tester from `/admin/roster`, under Invites: each link is shown once, works once, can name a GitHub login, and can be withdrawn until it is used.
+
+## C12: test each live connection once
+
+| Do this | It proves |
+|---|---|
+| Submit an Easy code problem. | The worker reaches the runner Lambda, and learner code runs there. |
+| Submit a design problem. | The judge Lambda reaches Bedrock. |
+| Answer one question at `/voice/session?mode=guided` with a real microphone. | The socket, Transcribe and the scorer work together. |
+
+Logs: `journalctl -u fdeprep-worker -f` on the host, and `aws logs tail /aws/lambda/PASTE_RunnerFunctionName --follow` from your laptop.
+
+## C13: before anyone relies on it
+
+- Create an AWS Budgets cost budget on Amazon Bedrock, alerting at 50 and 80 percent, as `docs/05` section 5 asks.
+- Postgres lives on the instance's disk, so schedule a daily snapshot of that volume in EC2's Lifecycle Manager.
+- Give a second person console access and this section. The box otherwise makes you its only operator, which `docs/05` section 8 names as the real outage risk.
+
+## C14: updating
+
+When `runner/`, `judge/`, `voice/` or `infra/` changed, redeploy from your laptop:
+
+```bash
+cd fdeprep
+git pull
+cd infra
+npx cdk deploy
+```
+
+Then, on the host:
+
+```bash
+cd ~/fdeprep
+git pull
+.venv/bin/pip install -r requirements-dev.txt
+export DATABASE_URL="postgres://ubuntu@/fdeprep?host=/var/run/postgresql"
+cd web
+npm ci
+npm run migrate
+npm run import:content
+npm run build
+sudo systemctl restart fdeprep-web fdeprep-worker fdeprep-scorer
+```
+
+Do not load `/etc/fdeprep/env` into that shell: its `NODE_ENV=production` makes `npm ci` skip the development packages, and the worker runs on two of them, `tsx` and `typescript`.
 
 ---
 
@@ -857,7 +1156,7 @@ An `error` verdict never consumes a learner's allowance. This is the rule that k
 | Database | PostgreSQL 16 through `pg` | The workload is joins and aggregates: heatmaps, rollups, stuck lists, CSV exports. |
 | Runner and judge | Python 3.12 on Lambda container images | Zero idle cost, a hard kill on hang, one invocation per submission with no shared state. |
 | Voice socket | TypeScript on API Gateway WebSocket, plain `ws` locally | The same session code runs in both, so local development exercises the real thing. |
-| Tests | vitest for TypeScript, pytest for Python | 685 tests total. |
+| Tests | vitest for the web application, the Node test runner for voice and infrastructure, pytest for Python | 1,745 tests total. |
 
 **Do not introduce a third language.** TypeScript for the web, Python for the runner and judge, and that is the whole list.
 
@@ -1028,14 +1327,14 @@ Three horizons. Everything in short term is a known gap with a known fix, and no
 | Item | What it fixes |
 |---|---|
 | A baseline diagnostic that sets a learner's persona. | Personas work today and nothing assigns them. An admin sets them by hand or by CSV, which does not scale past one cohort. |
-| No problem authors a `constraints` list yet. | `names_no_constraint` is in the registry, validated and tested, and stays silent on all 25 problems because it has nothing to compare against. An author turns it on by writing the list. |
+| No problem authors a `constraints` list yet. | `names_no_constraint` is in the registry, validated and tested, and stays silent on all 92 problems because it has nothing to compare against. An author turns it on by writing the list. |
 | Re-grading past submissions against a new judge prompt version. | There is no mechanism today, which means changing a prompt mid-cohort leaves two populations graded differently with nothing recording that. |
 | A replacement for `/admin/import` that works on a deployment. | Content publishing is an operator command today. That is correct and it is also a person who has to be awake. |
 | Build `analytics/`: cohort views, the stuck list, problem calibration and panel health. | Specified in `docs/11`. The heatmap answers "is this learner ready". Nobody can currently answer "which topic did this cohort fail" without SQL. |
 | Build the report card as a dated, hashed snapshot. | Specified in `docs/11` section 3. The heatmap is live and a placement team needs a document that does not change after they read it. |
 | Move the `competency_score` write into `eval/` and make `progress/` a pure reader. | Specified in `docs/12` section 3. Additive and backward compatible for one release, per the standing rule. |
 | Compute the readiness signal, with its four counts and its three bands. | Specified in `docs/12` section 2. The platform has always implied one number and never produced it. |
-| More content, driven by what the cohort actually fails. | 25 problems is a launch set rather than a catalogue. `docs/source-pack/05-problem-catalog.json` holds topic material. Do not treat a count as a goal. |
+| More content, driven by what the cohort actually fails. | 92 problems is a launch set rather than a catalogue. `docs/source-pack/05-problem-catalog.json` holds topic material. Do not treat a count as a goal. |
 
 ## 8.3 Long term: what a second version would be
 
@@ -1066,9 +1365,9 @@ Named because a roadmap that only grows is a roadmap nobody trusts.
 | `runner/` | The Python battery, harness and static gate. Executes learner code and reaches nothing else. |
 | `judge/` | The Bedrock judge, with its prompts as versioned files. |
 | `voice/` | The voice session socket, its STT adapters and the session protocol. |
-| `infra/` | CDK for the Lambdas, the queues, the buckets and the WebSocket. |
+| `infra/` | CDK for the two Lambdas, their VPC, the learner audio bucket, the web host's role and the WebSocket. |
 | `docker-compose.yml` | The one-command local stack: Postgres, content import, the application and the worker. |
-| `problems/` | 25 problems as YAML, plus fixtures under `_fixtures/` that never publish. |
+| `problems/` | 92 problems as YAML, plus fixtures under `_fixtures/` that never publish. |
 | `voice-questions/` | 12 questions as YAML across five tracks. |
 | `docs/` | The specification, which is authoritative. Thirteen numbered documents. |
 | `.claude/rules/` | Trust boundaries and writing rules, loaded into every session. |

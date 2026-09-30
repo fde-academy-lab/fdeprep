@@ -31,6 +31,16 @@ Behaviour: OAuth to GitHub, then check organisation membership and roster presen
 | Member but not on a roster | Your account is not enrolled in an active cohort. |
 | Enrolment marked inactive | Your enrolment has ended. Past submissions stay readable for thirty days. |
 
+**Amended 30 September 2026: the invite link.** An invite lands on `/invite/<token>`, which is open without a session. It says whether the link can still be used and offers Continue with GitHub, and it names nothing else about the invite, since whoever holds the link may not be who it was sent to. The token travels through GitHub in an httpOnly cookie and is spent in the callback. Three more refusals, each naming the next action:
+
+| Failure | Message |
+|---|---|
+| Invite already used | That invite link has already been used. Ask whoever sent it for a new one. |
+| Invite expired, withdrawn or unknown | That invite link is no longer valid. Ask whoever sent it for a new one. |
+| Invite names another GitHub login | That invite is for a different GitHub account. Sign in with the account it was sent to, or ask for a new invite. |
+
+With `GITHUB_ORG_CHECK=off` the organisation refusal never appears and GitHub is asked for `read:user` only, without `read:org`.
+
 ---
 
 ## S2. Home, which is the roadmap
@@ -278,7 +288,7 @@ Four screens, each a plain table with an action column.
 
 | Screen | Contents |
 |---|---|
-| Roster | Cohort members, persona, enrolment state, last activity. Bulk persona change from a CSV upload. |
+| Roster | Cohort members, persona, enrolment state, last activity. Bulk persona change from a CSV upload. For admins, an Invites table: make a one-time link with an optional GitHub login, role, persona, lifetime and note, see each invite's state, and withdraw one nobody has used. The link is shown once, when it is made. |
 | Problems | Catalogue with an import action that reads YAML from a Git path, validates it, and shows a diff before publishing. |
 | Submissions | Filterable by learner, problem, verdict and date, with a link to every trace. |
 | Ops | Queue depth, runner error rate for the last hour, live-run token spend today, cap overrides. |
