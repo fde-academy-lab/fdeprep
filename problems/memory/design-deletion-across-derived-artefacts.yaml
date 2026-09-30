@@ -363,8 +363,8 @@ reference_md: |
   Provenance inverts it. If every derived artefact records what it was built
   from, deletion is a query over artefacts rather than a broadcast to systems,
   and an artefact nobody remembers is still found, because it was written by
-  code that had to declare its inputs. The control belongs at write time, not
-  at deletion time, which is the general shape of every problem like this one.
+  code that had to declare its inputs. The control belongs at write time,
+  before anything is derived, which is the general shape of every problem like this one.
 
   The classes matter because the remedies are not the same and one of them is
   not a remedy. Regenerable and droppable artefacts are engineering. A frozen

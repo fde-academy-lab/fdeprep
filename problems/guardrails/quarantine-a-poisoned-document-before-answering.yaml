@@ -42,8 +42,8 @@ contract_md: |
   and a source can answer in some other shape. A response without a results
   list contributes no documents.
 
-  The model uses every document it is given as evidence, however the document
-  is wrapped. A poisoned post that reaches the prompt decides the answer.
+  The model uses every document it is given as evidence, whatever wrapper it
+  arrives in. A poisoned post that reaches the prompt decides the answer.
 
   A forum post is poisoned when its text, normalised, contains any of the
   security team's markers:

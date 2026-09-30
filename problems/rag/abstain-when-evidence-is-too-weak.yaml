@@ -295,9 +295,8 @@ tests:
         - { type: terminates }
 
 reference_md: |
-  The score was always there. The loop that ignored it was not missing
-  information, it was declining to use information it already had, which is
-  the version of this bug that reaches production, because nothing about the
+  The score was always there. The loop that ignored it had the information and
+  declined to use it, which is the version of this bug that reaches production, because nothing about the
   code looks wrong.
 
   Two orderings matter and only one of them works. Filter, then assemble the

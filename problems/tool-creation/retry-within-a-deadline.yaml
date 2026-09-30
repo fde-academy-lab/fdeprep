@@ -25,7 +25,7 @@ brief_md: |
   The same loop also retried a 401 eleven times. The credentials were not
   going to become valid.
 
-  Write the retry policy. It is not a prompt, it is arithmetic, and the
+  Write the retry policy. It is arithmetic rather than wording, and the
   arithmetic is where this went wrong.
 
 contract_md: |
@@ -333,9 +333,9 @@ reference_md: |
   that waits 15000 ms against an 8000 ms deadline and then notices, because
   the delay that broke it is the biggest one and it has already been spent.
 
-  Stopping at 7000 rather than waiting the last 1000 is deliberate. A shortened
-  delay is not a retry, it is a request sent at exactly the moment the policy
-  said not to send one, and it turns a predictable eight second worst case
+  Stopping at 7000 rather than waiting the last 1000 is deliberate. A
+  shortened delay sends a request at exactly the moment the policy said not to
+  send one, and it turns a predictable eight second worst case
   into an unpredictable one. Predictability is what the service in front of
   you is buying.
 
