@@ -120,10 +120,23 @@ step_checks:
     spec:
       assertions:
         - { type: calls_tool, name: book }
+  # No public reply lacks both markers, so s4 carries its own case too. The
+  # first reply is small talk, and the model answers only once the prompt
+  # carries the line the contract names.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "Do you have room for a birthday group next week?" }
+      llm_script:
+        - { match: { contains: "not a valid action" },
+            reply: "Final Answer: Tell me the day and the number of guests and I will check." }
+        - { match: "*", reply: "What a lovely thing to celebrate!" }
+      tools:
+        book: { returns: { status: 200, reference: "BK-3318" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 5000 }
       assertions:
         - { type: terminates }
+        - { type: returns_matches, value: "(?i)number of guests" }
 
 hints:
   - One reply can hold two markers. Find out which are present before any

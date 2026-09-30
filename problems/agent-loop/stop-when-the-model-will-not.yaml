@@ -111,10 +111,22 @@ step_checks:
     spec:
       assertions:
         - { type: calls_tool, name: lookup }
+  # No public case runs out of calls either, so s4 carries its own case. The
+  # model asks for one more lookup every time, and the check is that the
+  # answer the loop returns when the calls run out carries what the lookup
+  # found.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "Which of our suppliers charge for late payment?" }
+      llm_script:
+        - { match: "*", reply: "Action: lookup(topic=late payment fees)" }
+      tools:
+        lookup: { returns: { status: 200, text: "Brightwell Packaging adds 2 percent a month after 30 days." } }
+      budget: { max_llm_calls: 5, max_tool_calls: 8, wall_ms: 5000 }
       assertions:
         - { type: terminates }
+        - { type: returns_matches, value: "Brightwell Packaging adds 2 percent" }
 
 hints:
   - Count the ways out of your loop, and ask who controls each one.

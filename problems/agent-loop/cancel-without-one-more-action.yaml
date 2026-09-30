@@ -238,6 +238,12 @@ coach:
         In that run the cancel arrived on the response to the first text, and
         your loop then asked the model for another turn. What could that turn
         be for?
+    - id: hidden-calls-run-out
+      when: { test_failed: the_model_calls_run_out_before_the_work_does }
+      say: >-
+        In that run the state stayed live and every reply planned one more
+        action, so the model calls ran out before the work did. Read the report
+        your loop returns after its last turn: does it say why the run ended?
     - id: adversarial-missing-state
       when: { test_failed: adversarial_the_gateway_answers_with_nothing }
       say: >-

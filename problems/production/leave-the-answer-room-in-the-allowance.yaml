@@ -244,10 +244,15 @@ step_checks:
         - { type: valid_json_return, schema: { type: object, required: [label, reason] } }
         - { type: returns_matches, value: '"label":\s*"fault"' }
         - { type: returns_matches, value: 'should arrive by Thursday' }
+  # s3 reads the_offers_sheet_goes_before_anything_useful, the public case
+  # that is over its limit by any count. Its reply is whole JSON naming the
+  # coverage check only when the rank 3 offers sheet went and the rank 1 note
+  # on home moves stayed. The case that fits whole cannot show dropping.
   - step_id: s3
     spec:
       assertions:
-        - { type: valid_json_return }
+        - { type: valid_json_return, schema: { type: object, required: [label, reason] } }
+        - { type: returns_matches, value: 'coverage check' }
   - step_id: s4
     spec:
       assertions:

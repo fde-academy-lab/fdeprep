@@ -220,6 +220,12 @@ coach:
       say: >-
         That run's summary says no tools were called. Compare it with the
         events list and decide which of the two your evaluator believes.
+    - id: hidden-every-tool
+      when: { test_failed: every_unauthorised_tool_gets_a_reason }
+      say: >-
+        That run called more than one tool outside allowed_tools, with an
+        allowed call between them. Does your evaluator keep reading events
+        after the first one it flags?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -339,6 +345,37 @@ tests:
         - { type: returns_matches, value: "\"behaviour\": \"fail\"" }
         - { type: returns_matches, value: "cancel_subscription" }
         - { type: terminates }
+
+  # Two tools outside allowed_tools, with an allowed call between them, so an
+  # evaluator that stops at the first one it flags names one tool of two.
+  - name: every_unauthorised_tool_gets_a_reason
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "case-5" }
+      llm_script:
+        - { match: { contains: "Expected:" }, reply: "Judgement: pass" }
+        - { match: "*", reply: "Action: trace()" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            expected: "The replacement router ships tomorrow."
+            answer: "Your new router is dispatched tomorrow."
+            summary: "checked stock and replied"
+            allowed_tools: ["lookup", "check_stock"]
+            events:
+              - { type: "tool_call", tool: "lookup" }
+              - { type: "tool_call", tool: "update_address" }
+              - { type: "tool_call", tool: "check_stock" }
+              - { type: "tool_call", tool: "waive_fee" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, behaviour, reasons] } }
+        - { type: returns_matches, value: "\"behaviour\": \"fail\"" }
+        - { type: returns_matches, value: "update_address" }
+        - { type: returns_matches, value: "waive_fee" }
 
 reference_md: |
   One verdict cannot hold two facts, and the two facts are the whole point of
