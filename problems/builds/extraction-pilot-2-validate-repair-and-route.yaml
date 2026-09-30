@@ -140,23 +140,62 @@ steps:
     text: Submit a clean record, and queue anything that still fails together with its errors.
     check_id: s2
   - id: s3
-    text: Return the status, the record and the errors as JSON.
+    text: Return the status that matches where the record went, with the record and its errors.
     check_id: s3
 
 step_checks:
+  # No public script answers a repair differently from the first prompt, so
+  # s1 runs a case of its own. The first reply writes the amount in words and
+  # leaves the date null, which fails two rules. The model corrects the amount
+  # only when the repair carries that reply and both error lines, and it fills
+  # the date with one the letter never gives, which grounding has to drop.
+  # The stub already returns the record and its errors, so this reads TODO 1
+  # alone.
   - step_id: s1
     spec:
+      kind: agent_run
+      input:
+        question: |
+          13 February 2026
+
+          Dear claims team,
+
+          The storm last Thursday night brought the chimney stack down through
+          the roof of our back bedroom. My policy number is HX-512603. The
+          builder has quoted two thousand seven hundred and sixty pounds to
+          rebuild the stack and repair the roof, which his quote writes as
+          £2,760.00.
+
+          Yours sincerely,
+          Owen Hughes
+      llm_script:
+        - { match: { regex: '^(?=[\s\S]*"amount_claimed": "two thousand seven hundred and sixty pounds")(?=[\s\S]*incident_date: missing)(?=[\s\S]*amount_claimed: not an amount)' },
+            reply: '{"policy_number": "HX-512603", "claimant": "Owen Hughes", "incident_date": "2026-02-12", "amount_claimed": "£2,760.00"}' }
+        - { match: "*",
+            reply: '{"policy_number": "HX-512603", "claimant": "Owen Hughes", "incident_date": null, "amount_claimed": "two thousand seven hundred and sixty pounds"}' }
+      tools:
+        submit: { returns: { status: 200, claim: "C-6120" } }
+        human_queue: { returns: { status: 200, ticket: "HQ-4012" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: llm_calls_at_most, value: 2 }
+        - { type: returns_matches, value: '"amount_claimed":\s*"[^"]*2,760\.00"' }
+        - { type: returns_matches, value: '"incident_date":\s*null' }
   - step_id: s2
     spec:
       assertions:
         - { type: calls_tool, name: submit }
+  # Reads a_record_that_stays_invalid_goes_to_the_human_queue. The stub
+  # already returns the three fields with its status fixed at submitted, so
+  # what is left is a status that says where the record went.
   - step_id: s3
     spec:
       assertions:
+        - { type: calls_tool, name: human_queue }
         - { type: valid_json_return,
-            schema: { type: object, required: [status, record, errors] } }
+            schema: { type: object, required: [status, record, errors],
+                      properties: { status: { const: queued },
+                                    errors: { type: array, minItems: 1 } } } }
 
 hints:
   - Compare your second prompt with your first. If it adds nothing, the model

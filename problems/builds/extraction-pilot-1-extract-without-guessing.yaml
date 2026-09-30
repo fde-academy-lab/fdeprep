@@ -97,14 +97,41 @@ steps:
     check_id: s4
 
 step_checks:
-  # s1 and s4 cannot be told apart from the stub on the public cases: the
-  # scripted model replies the same whatever the prompt says, and every public
-  # value sits on one line in the letter's own case. s2 shows only once s3
-  # keeps a value, because the stub writes null for every field until then.
+  # s1 and s4 cannot be told apart from the stub on the public cases. The
+  # public scripts reply the same whatever the prompt says, and every public
+  # value sits on one line in the letter's own case. So each runs a case of
+  # its own. The stub writes null for every field until TODO 3 keeps a value,
+  # so s1 and s2 show only once s3 does.
+  #
+  # s1's model answers with the record only when the prompt names all four
+  # fields and asks for null, and answers in prose otherwise.
   - step_id: s1
     spec:
+      kind: agent_run
+      input:
+        question: |
+          9 February 2026
+
+          Dear claims team,
+
+          High winds on 6 February 2026 brought the oak in our back garden down
+          across the greenhouse. My policy number is HX-205316. The glazier is
+          coming on Monday to measure up, and I will send his quote as soon as I
+          have it.
+
+          Yours sincerely,
+          Ruth Pennington
+      llm_script:
+        - { match: { regex: '(?i)^(?=[\s\S]*policy_number)(?=[\s\S]*claimant)(?=[\s\S]*incident_date)(?=[\s\S]*amount_claimed)(?=[\s\S]*\bnull\b)' },
+            reply: '{"policy_number": "HX-205316", "claimant": "Ruth Pennington", "incident_date": "6 February 2026", "amount_claimed": null}' }
+        - { match: "*",
+            reply: "This letter is from Ruth Pennington. An oak tree fell on her greenhouse in high winds, and she will send the glazier's quote later." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
         - { type: llm_calls_at_most, value: 1 }
+        - { type: returns_matches, value: '"policy_number":\s*"HX-205316"' }
+        - { type: returns_matches, value: '"incident_date":\s*"6 February 2026"' }
+        - { type: returns_matches, value: '"amount_claimed":\s*null' }
   # Reads extracts_the_four_fields_from_a_complete_letter.
   - step_id: s2
     spec:
@@ -122,10 +149,33 @@ step_checks:
       assertions:
         - { type: returns_matches, value: '"policy_number":\s*"HX-301977"' }
         - { type: returns_matches, value: '"amount_claimed":\s*null' }
+  # The claimant signs in capitals and the date wraps across a line, so both
+  # values reach the record only when the comparison normalises case and
+  # whitespace.
   - step_id: s4
     spec:
+      kind: agent_run
+      input:
+        question: |
+          23 January 2026
+
+          Dear claims team,
+
+          Somebody forced the back door of our house on the evening of 21
+          January 2026 and took a laptop and two bicycles. My policy number is
+          HX-639058, and replacing what was taken will cost £2,315.00.
+
+          Yours faithfully,
+
+          MEGAN PRICE
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-639058", "claimant": "Megan Price", "incident_date": "21 January 2026", "amount_claimed": "£2,315.00"}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
         - { type: returns_nonempty }
+        - { type: returns_matches, value: '"claimant":\s*"Megan Price"' }
+        - { type: returns_matches, value: '"incident_date":\s*"21 January 2026"' }
 
 hints:
   - The model's reply cannot tell you which of its values it made up. Something

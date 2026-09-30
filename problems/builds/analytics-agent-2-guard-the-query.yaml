@@ -172,19 +172,97 @@ steps:
     check_id: s4
 
 step_checks:
+  # The stub refuses every query and gives no reason, so a refusal counts
+  # only when it carries one and run_query never saw the query. guard() is
+  # reached only through run_agent, so s1 to s3 can turn green only once
+  # TODO 4 calls it.
+  #
+  # No public query holds a second statement, so s1 runs a case of its own.
+  # Both statements read only picked tables and write nothing, so the one
+  # statement rule is the only one that refuses it.
   - step_id: s1
     spec:
+      kind: agent_run
+      input: { question: "Which product categories sold the most units in August, and which sold the fewest?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "products"]}' }
+        - { match: "*",
+            reply: "SELECT p.category, SUM(l.quantity) AS units FROM order_lines l JOIN products p ON p.product_id = l.product_id WHERE l.sold_on >= '2026-08-01' AND l.sold_on < '2026-09-01' GROUP BY p.category ORDER BY units DESC LIMIT 3; SELECT p.category, SUM(l.quantity) AS units FROM order_lines l JOIN products p ON p.product_id = l.product_id WHERE l.sold_on >= '2026-08-01' AND l.sold_on < '2026-09-01' GROUP BY p.category ORDER BY units ASC LIMIT 3" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query:
+          returns:
+            status: 200
+            columns: [category, units]
+            rows: [[Compost, 18240], [Bird food, 9315], [Bedding plants, 7702]]
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: no_exception }
+        - { type: does_not_call_tool, name: run_query }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql, reason],
+                      properties: { status: { const: refused }, sql: { type: "null" },
+                                    reason: { type: string, minLength: 1 } } } }
+  # Reads a_delete_never_reaches_the_database. The DELETE is one statement
+  # over a picked table, so only this step's rule refuses it.
   - step_id: s2
     spec:
       assertions:
         - { type: returns_matches, value: '"status":\s*"(answered|refused)"' }
+        - { type: does_not_call_tool, name: run_query }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql, reason],
+                      properties: { status: { const: refused }, sql: { type: "null" },
+                                    reason: { type: string, minLength: 1 } } } }
+  # No public query reads a table outside the pick, so s3 runs a case of its
+  # own. The query joins products, which the schema describes and the model
+  # left out of its pick. It is one statement and writes nothing.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Which five garden centres sold the most bags of compost in August?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores"]}' }
+        - { match: "*",
+            reply: "SELECT s.name, SUM(l.quantity) AS bags FROM order_lines l JOIN stores s ON s.store_id = l.store_id JOIN products p ON p.product_id = l.product_id WHERE p.category = 'Compost' AND l.sold_on >= '2026-08-01' AND l.sold_on < '2026-09-01' GROUP BY s.name ORDER BY bags DESC LIMIT 5" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query:
+          returns:
+            status: 200
+            columns: [name, bags]
+            rows: [[Harrogate, 1204], [Ludlow, 1133], [Stamford, 987], [Kendal, 941], [Wells, 902]]
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: valid_json_return,
             schema: { type: object, required: [status, tables, sql, columns, rows, reason] } }
+        - { type: does_not_call_tool, name: run_query }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql, reason],
+                      properties: { status: { const: refused }, sql: { type: "null" },
+                                    reason: { type: string, minLength: 1 } } } }
   - step_id: s4
     spec:
       assertions:
