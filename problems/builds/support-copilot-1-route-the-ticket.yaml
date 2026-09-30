@@ -118,11 +118,17 @@ steps:
     text: Build the route, sending an unreadable reply to triage.
     check_id: s4
 
+# The stub routes every ticket to triage with no order number. That is also
+# the right route for an unreadable reply, a label no queue has and an order
+# number the ticket never mentions, so no case can tell those halves of the
+# steps from the stub. Each check reads the half a public case shows: the
+# reply read, the label kept, the order number kept, and the route built from
+# both.
 step_checks:
   - step_id: s1
     spec:
       assertions:
-        - { type: no_exception }
+        - { type: returns_matches, value: '"intent":\s*"(billing|delivery|plan|refund)"|"order_id":\s*"MK-\d+"' }
   - step_id: s2
     spec:
       assertions:
@@ -130,12 +136,14 @@ step_checks:
   - step_id: s3
     spec:
       assertions:
-        - { type: returns_matches, value: '"order_id":\s*("MK-\d+"|null)' }
+        - { type: returns_matches, value: '"order_id":\s*"MK-\d+"' }
   - step_id: s4
     spec:
       assertions:
         - { type: valid_json_return,
-            schema: { type: object, required: [intent, order_id] } }
+            schema: { type: object, required: [intent, order_id],
+                      properties: { intent: { enum: [billing, delivery, plan, refund] },
+                                    order_id: { type: string, pattern: '^MK-\d+$' } } } }
 
 hints:
   - The reply can go wrong in three separate ways, and each one needs its own

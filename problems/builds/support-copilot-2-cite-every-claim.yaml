@@ -140,10 +140,10 @@ stub_code: |
 
 steps:
   - id: s1
-    text: Hand a triage ticket to a person without searching.
+    text: Hand a triage ticket to a person, and search the policy library for any other ticket.
     check_id: s1
   - id: s2
-    text: Search, and keep only chunks scoring 0.6 or above.
+    text: Keep only chunks scoring 0.6 or above, and ask for no draft when none do.
     check_id: s2
   - id: s3
     text: Ask for a draft, showing each kept chunk with its id.
@@ -152,15 +152,40 @@ steps:
     text: Send the draft only when every sentence cites a chunk you showed.
     check_id: s4
 
+# The stub searches for no ticket, so a triage ticket gets the same result from
+# the stub as from a finished solution, whatever the case. s1 checks the other
+# half of the same decision: a ticket routed to a queue is searched.
 step_checks:
   - step_id: s1
     spec:
       assertions:
         - { type: no_exception }
+        - { type: calls_tool, name: search }
+  # Every public case has a chunk at 0.6 or above, so s2 carries its own case:
+  # a ticket routed to a queue whose best chunk scores 0.57.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Please ask the driver to ring twice. The doorbell is hard to hear from the kitchen." }
+      llm_script:
+        - { match: { contains: "safe place when nobody answers" },
+            reply: "The driver will ring twice and wait at the door [P-12]." }
+        - { match: "*", reply: '{"intent": "delivery", "order_id": null}' }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: P-12, score: 0.57, text: "Drivers leave the box in a safe place when nobody answers the door." }
+              - { id: P-15, score: 0.34, text: "Delivery windows are shown on the account page two days ahead." }
+      budget: { max_llm_calls: 3, max_tool_calls: 3, wall_ms: 5000 }
       assertions:
         - { type: calls_tool, name: search }
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [intent, answer, citations],
+                      properties: { intent: { const: delivery }, answer: { type: "null" },
+                                    citations: { type: array, maxItems: 0 } } } }
   - step_id: s3
     spec:
       assertions:

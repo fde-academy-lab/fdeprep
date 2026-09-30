@@ -139,14 +139,59 @@ step_checks:
     spec:
       assertions:
         - { type: calls_tool, name: dispatch }
+  # The public results arrive in dispatch order, so s2 carries its own case:
+  # finishing order, and a result from another investigation after this
+  # run's own result for the same check and service.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8161", "services": ["orders-api", "slots-api"]}' }
+      llm_script:
+        - { match: { contains: "nightly cleanup" },
+            reply: "The slots database disk is at 40 percent after its nightly cleanup, so slots-api has room. No cause found yet." }
+        - { match: { regex: '(?i)metrics\W+orders-api\W+definitive' },
+            reply: "The orders database disk is full. Tell the orders team." }
+        - { match: { regex: '(?i)metrics\W+slots-api\W+definitive' },
+            reply: "The slots database disk has been full since 03:10, so no delivery slot can be booked. Tell the slots team." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8161/metrics/slots-api", verdict: definitive, finding: "the slots database disk has been full since 03:10", next: [] }
+              - { job: "INC-8161/deploys/orders-api", verdict: clear, finding: "orders-api last deployed on Monday", next: [] }
+              - { job: "INC-8161/logs/slots-api", verdict: lead, finding: "slot bookings failing with a no-space error", next: [] }
+              - { job: "INC-8161/logs/orders-api", verdict: lead, finding: "orders waiting on slots-api since 03:10", next: [] }
+              - { job: "INC-8161/metrics/orders-api", verdict: clear, finding: "orders-api CPU at 35 percent and memory steady", next: [] }
+              - { job: "INC-8157/metrics/slots-api", verdict: clear, finding: "slots database disk at 40 percent after the nightly cleanup", next: [] }
+              - { job: "INC-8161/deploys/slots-api", verdict: clear, finding: "slots-api last deployed four days ago", next: [] }
+      budget: { max_llm_calls: 2, max_tool_calls: 10, wall_ms: 5000 }
       assertions:
         - { type: calls_tool, name: collect }
+        - { type: returns_matches, value: '(?i)tell the slots team' }
+  # Every public job has a result, so s3 carries its own case: the results
+  # arrive in dispatch order and the last job never reports.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8162", "services": ["search-api"]}' }
+      llm_script:
+        - { match: { regex: '(?i)metrics\W+search-api\W+(?:no result|no report|missing|did not report|not reported)' },
+            reply: "No cause found yet. The search-api metrics check never reported, so its load is still unknown." }
+        - { match: "*", reply: "No cause found. The search-api checks came back clear." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8162/deploys/search-api", verdict: clear, finding: "search-api last deployed six days ago", next: [] }
+              - { job: "INC-8162/logs/search-api", verdict: clear, finding: "search errors at the usual background rate", next: [] }
+      budget: { max_llm_calls: 2, max_tool_calls: 10, wall_ms: 5000 }
       assertions:
-        - { type: returns_nonempty }
+        - { type: returns_matches, value: '(?i)never reported' }
 
 hints:
   - In stage 1 a result came back from the call that asked for it. Ask what

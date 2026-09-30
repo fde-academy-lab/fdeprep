@@ -112,17 +112,54 @@ step_checks:
     spec:
       assertions:
         - { type: calls_tool, name: metrics }
+  # No public case has a check after a definitive verdict, so s3 carries its
+  # own: a lead, then the cause, then a check that must not run.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8151", "service": "stock-api"}' }
+      llm_script:
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        deploys: { returns: { status: 200, verdict: lead, finding: "stock-api deploy d-4610 at 04:05, thirteen minutes before the alert", next: [] } }
+        logs: { returns: { status: 200, verdict: definitive, finding: "every stock lookup fails with a 401 because the warehouse feed key expired at 04:18", next: [] } }
+        metrics: { returns: { status: 200, verdict: lead, finding: "stock-api p99 latency up 30 percent since 04:18", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 5000 }
       assertions:
         - { type: terminates }
+        - { type: calls_tool, name: logs }
+        - { type: does_not_call_tool, name: metrics }
+  # No public case returns next checks, so s4 carries its own. The second
+  # follow-up is definitive: in order and at the front, logs never runs.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8152", "service": "promotions-api"}' }
+      llm_script:
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        deploys:
+          returns:
+            status: 200
+            verdict: lead
+            finding: "promotions-api deploy d-4620 at 05:10, twelve minutes before the alert"
+            next: [{ check: config, args: { deploy: "d-4620" } }, { check: flags, args: { deploy: "d-4620" } }]
+        config: { returns: { status: 200, verdict: clear, finding: "d-4620 changed no configuration values", next: [] } }
+        flags: { returns: { status: 200, verdict: definitive, finding: "d-4620 switched on the multibuy flag, and every basket with a voucher now fails its price check", next: [] } }
+        logs: { returns: { status: 200, verdict: lead, finding: "voucher price check errors in 88 percent of failed checkouts", next: [] } }
+        metrics: { returns: { status: 200, verdict: clear, finding: "promotions-api CPU at 30 percent and memory steady", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 5000 }
       assertions:
         - { type: no_exception }
+        - { type: calls_tool, name: config }
+        - { type: calls_tool, name: flags }
+        - { type: does_not_call_tool, name: logs }
+  # Reads the_last_check_in_the_runbook_finds_the_cause: only the model's reply
+  # says to raise the pool limit.
   - step_id: s5
     spec:
       assertions:
+        - { type: returns_matches, value: '(?i)raise the pool limit' }
         - { type: llm_calls_at_most, value: 1 }
 
 hints:
