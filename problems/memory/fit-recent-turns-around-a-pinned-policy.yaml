@@ -99,18 +99,23 @@ steps:
     check_id: s3
 
 step_checks:
+  # Reads a_short_chat_fits_whole, whose reply needs the policy and the chat
+  # in one prompt, so s1 shows once s3 adds the turns too.
   - step_id: s1
     spec:
       assertions:
-        - { type: returns_nonempty }
+        - { type: returns_matches, value: '(?i)name a beneficiary' }
+  # s2 cannot be told apart from the stub on the public cases: no public
+  # policy is over its window. Its check stays as it was.
   - step_id: s2
     spec:
       assertions:
         - { type: no_exception }
+  # Reads the_oldest_turns_leave_first.
   - step_id: s3
     spec:
       assertions:
-        - { type: terminates }
+        - { type: returns_matches, value: '(?i)open the one-year fixed term online' }
 
 hints:
   - Look at the list your trimming works on, and at what sits at the front of
