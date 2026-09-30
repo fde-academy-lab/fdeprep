@@ -13,6 +13,8 @@ from typing import Any
 
 import yaml
 
+from runner.harness import fixtures
+
 ALWAYS_ALLOWED_IMPORTS = ("json", "re", "math", "typing", "dataclasses", "collections")
 
 VISIBILITIES = ("public", "hidden", "adversarial")
@@ -85,6 +87,7 @@ def from_dict(data: dict[str, Any], source: str = "<dict>") -> Problem:
         if not isinstance(spec, dict):
             raise ProblemError(f"{source}: test {entry['name']} has no spec mapping")
         _check_script(spec, entry["name"], source)
+        _check_tools(spec, entry["name"], source)
         cases.append(
             TestCase(
                 name=entry["name"],
@@ -129,8 +132,38 @@ def _step_check(check: dict[str, Any], source: str) -> dict[str, Any]:
     case = None
     if "kind" in spec:
         _check_script(spec, f"the check for step {step_id}", source)
+        _check_tools(spec, f"the check for step {step_id}", source)
         case = spec
     return {"step_id": step_id, "assertions": list(spec.get("assertions") or []), "case": case}
+
+
+TOOL_FORMS = ("returns", "fixture", "sequence", "by_arg")
+
+
+def _check_tools(spec: dict[str, Any], case_name: str, source: str) -> None:
+    """Each tool is exactly one known form, so a typo cannot become a silent None."""
+    for name, tool in (spec.get("tools") or {}).items():
+        where = f"{source}: tool {name} in {case_name}"
+        if not isinstance(tool, dict):
+            raise ProblemError(f"{where} is not a mapping")
+        forms = [form for form in TOOL_FORMS if form in tool]
+        extra = set(tool) - set(TOOL_FORMS) - ({"params"} if "fixture" in tool else set())
+        if len(forms) != 1 or extra:
+            raise ProblemError(
+                f"{where} needs exactly one of {', '.join(TOOL_FORMS)}, and params only with "
+                f"a fixture; it has {sorted(tool)}")
+        if "fixture" in tool and tool["fixture"] not in fixtures.FIXTURES:
+            raise ProblemError(f"{where} names the unknown fixture {tool['fixture']!r}")
+        if "sequence" in tool and (not isinstance(tool["sequence"], list) or not tool["sequence"]):
+            raise ProblemError(f"{where} has a sequence that is not a list with at least one value")
+        if "by_arg" in tool:
+            rule = tool["by_arg"]
+            if (not isinstance(rule, dict) or not isinstance(rule.get("arg"), str)
+                    or not isinstance(rule.get("values"), dict)
+                    or set(rule) - {"arg", "values", "default"}):
+                raise ProblemError(
+                    f"{where} has a by_arg that needs arg, the argument's name, and values, a "
+                    "mapping from its value to the answer, with an optional default")
 
 
 def _check_script(spec: dict[str, Any], case_name: str, source: str) -> None:

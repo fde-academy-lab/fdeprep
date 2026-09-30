@@ -21,7 +21,7 @@ import { validateKit, type Kit, type KitRule } from "./kit.ts";
 export type Rule =
   | "yaml_syntax" | "schema" | "script_needs_fallback" | "unknown_competency"
   | "too_few_public_tests" | "too_few_hidden_tests" | "no_adversarial_fixture"
-  | "step_without_check" | "step_check_without_assertions" | "too_few_exemplars"
+  | "step_without_check" | "step_check_without_assertions" | "too_few_exemplars" | "bad_tool_spec"
   | "no_prompt_rules" | "no_probes" | "unknown_rule_kind" | "unknown_assertion_type"
   | "bad_pattern" | "rule_pattern_absent" | "no_adequate_exemplar"
   | "no_word_range" | "no_rubric" | "rubric_weights" | "no_defence_question"
@@ -127,6 +127,12 @@ const CODE_ASSERTIONS = new Set([
   "no_repeated_identical_tool_call", "handles_error", "ignores_injection",
   "valid_json_return", "no_exception",
 ]);
+// Mirrored from runner/harness/fixtures.py; tests/test_tool_specs.py checks the two agree.
+const KNOWN_FIXTURES = new Set([
+  "tool_lies", "tool_soft_error", "malformed_on_nth", "injected_instruction", "schema_drift",
+  "slow_then_timeout", "loop_bait", "budget_squeeze", "empty_tool_result", "unicode_payload",
+]);
+const TOOL_FORMS = ["returns", "fixture", "sequence", "by_arg"] as const;
 const RULE_KINDS = new Set(["must_remove", "must_keep", "max_words", "min_words"]);
 const RUBRIC_WEIGHT_TOTAL = 100;
 
@@ -273,7 +279,10 @@ export function validateProblemYaml(
           "turn green. Name what the step's work changes in the answer or the calls.",
           lineOf(["step_checks", index]));
     }
-    if ("kind" in spec) validateScript(spec, label, ["step_checks", index, "spec"], lineOf, add);
+    if ("kind" in spec) {
+      validateScript(spec, label, ["step_checks", index, "spec"], lineOf, add);
+      validateTools(spec, label, ["step_checks", index, "spec"], lineOf, add);
+    }
   });
 
   // Rule: steps present without matching step_check entries.
@@ -373,7 +382,61 @@ function validateTests(
           lineOf(["tests", index, "spec", "assertions", position]));
     });
     validateScript(spec, String(test["name"] ?? index), ["tests", index, "spec"], lineOf, add);
+    validateTools(spec, String(test["name"] ?? index), ["tests", index, "spec"], lineOf, add);
   });
+}
+
+/**
+ * Rule: each tool is exactly one known form. runner/problem.py refuses the
+ * same things at load; this names the line before a problem is imported. A
+ * typo such as return: used to load as a tool that answers null.
+ */
+function validateTools(
+  spec: Record<string, unknown>,
+  label: string,
+  at: Array<string | number>,
+  lineOf: (path: Array<string | number>) => number,
+  add: (rule: Rule, message: string, line: number) => void,
+): void {
+  const tools = spec["tools"];
+  if (!tools || typeof tools !== "object" || Array.isArray(tools)) return;
+  for (const [name, raw] of Object.entries(tools as Record<string, unknown>)) {
+    const line = lineOf([...at, "tools", name]);
+    const where = `tool ${name} in ${label}`;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      add("bad_tool_spec", `${where} is not a mapping`, line);
+      continue;
+    }
+    const tool = raw as Record<string, unknown>;
+    const forms = TOOL_FORMS.filter((form) => form in tool);
+    const allowed = new Set<string>([...TOOL_FORMS, ...("fixture" in tool ? ["params"] : [])]);
+    const extra = Object.keys(tool).filter((key) => !allowed.has(key));
+    if (forms.length !== 1 || extra.length) {
+      add("bad_tool_spec",
+          `${where} needs exactly one of ${TOOL_FORMS.join(", ")}, and params only with a ` +
+          `fixture; it has ${Object.keys(tool).sort().join(", ")}`, line);
+      continue;
+    }
+    if ("fixture" in tool && !KNOWN_FIXTURES.has(String(tool["fixture"]))) {
+      add("bad_tool_spec",
+          `${where} names the fixture ${String(tool["fixture"])}, which the runner does not have. ` +
+          `Known fixtures: ${[...KNOWN_FIXTURES].join(", ")}`, line);
+    }
+    if ("sequence" in tool && (!Array.isArray(tool["sequence"]) || !tool["sequence"].length)) {
+      add("bad_tool_spec", `${where} has a sequence that is not a list with at least one value`, line);
+    }
+    if ("by_arg" in tool) {
+      const rule = tool["by_arg"] as Record<string, unknown> | null;
+      const ok = !!rule && typeof rule === "object" && typeof rule["arg"] === "string"
+        && !!rule["values"] && typeof rule["values"] === "object" && !Array.isArray(rule["values"])
+        && Object.keys(rule).every((key) => ["arg", "values", "default"].includes(key));
+      if (!ok) {
+        add("bad_tool_spec",
+            `${where} has a by_arg that needs arg, the argument's name, and values, a mapping ` +
+            "from its value to the answer, with an optional default", line);
+      }
+    }
+  }
 }
 
 /**

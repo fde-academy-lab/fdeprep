@@ -25,6 +25,7 @@ The last six rows land with `eval/` and are not enforced today, because no probl
 | A `track` outside the vocabulary in `web/lib/problems/vocabulary.ts` | The journey map groups problems by track, and an invented track is a problem nobody can find |
 | Steps present without matching `step_check` entries | The Easy checklist would show items that never turn green |
 | A `step_check` with no assertions | It holds for any code, the stub's included, so its step reads unchecked forever. Added 30 September 2026. |
+| A tool that is not exactly one of `returns`, `fixture`, `sequence` or `by_arg`, or that names a fixture the runner does not have | A typo such as `return:` used to load as a tool that answers null. docs/03 section 3 has the forms. Added 30 September 2026. |
 | Fewer than three rubric exemplars on a design problem | The judge drifts without anchors |
 | An exemplar outside the problem's `word_range` | The structural gate refuses such an answer before grading, and the exemplars anchor the pass threshold and the neighbour vote, so the band would rest on an answer the platform never grades. Added 29 September 2026, when two strong exemplars sat below their own floor. |
 | A test assertion type the runner does not evaluate | The runner raises on it, and the learner sees an infrastructure error on the one case that uses it. To check that something is absent from the answer, use `returns_lacks` rather than a negative lookahead in `returns_matches`: its failure names the text it found. |

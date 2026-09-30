@@ -13,6 +13,8 @@ rather than as a learner exception.
 
 from __future__ import annotations
 
+import copy
+
 import time
 from typing import Any, Callable
 
@@ -61,8 +63,33 @@ class ToolTable:
 
     @staticmethod
     def _build(spec: dict[str, Any]) -> Callable[..., Any]:
+        """One of four forms, which runner/problem.py checks at load.
+
+        `returns` answers every call alike. `sequence` answers call n with its
+        nth value and repeats the last. `by_arg` answers by one argument's
+        value, compared as text because YAML keys are text, and falls back to
+        `default`. A named `fixture` does whatever its Python does.
+        """
         if "fixture" in spec:
             return fixtures.build(spec["fixture"], spec.get("params") or {})
+        if "sequence" in spec:
+            values = list(spec["sequence"])
+
+            def in_turn(call_index: int, **kwargs: Any) -> Any:
+                return copy.deepcopy(values[min(call_index, len(values)) - 1])
+
+            return in_turn
+        if "by_arg" in spec:
+            arg = spec["by_arg"]["arg"]
+            answers = {str(k): v for k, v in spec["by_arg"]["values"].items()}
+            default = spec["by_arg"].get("default")
+
+            def by_value(call_index: int, **kwargs: Any) -> Any:
+                key = kwargs.get(arg)
+                found = answers.get(str(key), default) if key is not None else default
+                return copy.deepcopy(found)
+
+            return by_value
         static = spec.get("returns")
 
         def inner(call_index: int, **kwargs: Any) -> Any:

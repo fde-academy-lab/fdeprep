@@ -129,6 +129,17 @@ Add an assertion type by adding a function to the assertion registry and a valid
 
 ## 3. Adversarial fixture library
 
+A tool in a case is one of four forms, and the loader refuses anything else:
+
+| Form | What each call gets |
+|---|---|
+| `returns: <value>` | The same value, whatever it was asked. |
+| `sequence: [<value>, ...]` | Call n gets the nth value, and the last one repeats. For a tool that fails and then recovers. |
+| `by_arg: {arg: <name>, values: {<value>: <answer>}, default: <answer>}` | The answer for that argument's value, compared as text because YAML keys are text, or `default`, which is null when absent. For a store that answers by key. |
+| `fixture: <slug>` with optional `params` | Whatever the named fixture below does. |
+
+`sequence` and `by_arg` were added on 30 September 2026. Until then a scripted tool answered every call alike, so one recovery case had to ask a second tool, and the retried-webhook store could not tell one key from another.
+
 Shipped fixtures, referenced by `fixture_slug`, parameterised through `params`.
 
 | Slug | Behaviour | Default assertion |

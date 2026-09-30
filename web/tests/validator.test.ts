@@ -240,6 +240,33 @@ step_checks:
     expect(error?.line).toBeGreaterThan(1);
   });
 
+  it("rejects a tool that is not exactly one known form, naming the tool and the line", () => {
+    // A typo such as return: used to load as a tool that answers null.
+    const report = validateProblemYaml(
+      CODE.replace('llm_script: [{ match: "*", reply: "Final Answer: x" }]\n      assertions: [{ type: returns_nonempty }]\n  - name: p2',
+                   'llm_script: [{ match: "*", reply: "Final Answer: x" }]\n      tools: { track: { return: { ok: true } } }\n      assertions: [{ type: returns_nonempty }]\n  - name: p2'),
+      "a.yaml");
+    const error = report.errors.find((e) => e.rule === "bad_tool_spec");
+    expect(error?.message).toContain("track");
+    expect(error?.line).toBeGreaterThan(1);
+  });
+
+  it("accepts a sequence, a by_arg and a known fixture, and rejects an unknown fixture", () => {
+    const withTools = (tools: string) => CODE.replace(
+      'llm_script: [{ match: "*", reply: "Final Answer: x" }]\n      assertions: [{ type: returns_nonempty }]\n  - name: p2',
+      `llm_script: [{ match: "*", reply: "Final Answer: x" }]\n      tools: ${tools}\n      assertions: [{ type: returns_nonempty }]\n  - name: p2`);
+    const good = withTools(
+      '{ a: { sequence: [1, 2] }, b: { by_arg: { arg: key, values: { k1: 1 }, default: 0 } }, ' +
+      'c: { fixture: tool_soft_error }, d: { fixture: slow_then_timeout, params: { succeeds: 1 } } }');
+    expect(validateProblemYaml(good, "a.yaml").errors).toEqual([]);
+    const unknown = validateProblemYaml(withTools("{ a: { fixture: tool_that_sings } }"), "a.yaml");
+    expect(unknown.errors.find((e) => e.rule === "bad_tool_spec")?.message).toContain("tool_that_sings");
+    const emptySequence = validateProblemYaml(withTools("{ a: { sequence: [] } }"), "a.yaml");
+    expect(emptySequence.errors.map((e) => e.rule)).toContain("bad_tool_spec");
+    const noArg = validateProblemYaml(withTools("{ a: { by_arg: { values: { k: 1 } } } }"), "a.yaml");
+    expect(noArg.errors.map((e) => e.rule)).toContain("bad_tool_spec");
+  });
+
   it("accepts returns_lacks, the absence check", () => {
     const report = validateProblemYaml(
       CODE.replace("type: returns_nonempty }", "type: returns_lacks, value: 'secret' }"), "a.yaml");
