@@ -90,13 +90,30 @@ steps:
     check_id: s3
 
 step_checks:
-  # s1 cannot be told apart from the stub on the public cases: every public
-  # trial is answered, so missing stays 0 whatever the loop decides. Its check
-  # stays as it was.
+  # Every public trial is answered, so missing stays 0 there whatever the loop
+  # decides, and s1 carries its own case. One trial errors, one comes back
+  # empty, and both answered trials pass, so failed stays 0 unless a missing
+  # trial is also graded.
   - step_id: s1
     spec:
+      kind: agent_run
+      input: { question: "flexible-changes" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Error: the provider timed out after 30 seconds" }
+        - { match: { call_index: 3 }, reply: "" }
+        - { match: "*", reply: "Two." }
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "How many free date changes come with a flexible fare?"
+            expected: "Two"
+            trials: 4
+      budget: { max_llm_calls: 5, max_tool_calls: 4, wall_ms: 5000 }
       assertions:
         - { type: no_exception }
+        - { type: returns_matches, value: '"missing":\s*2\b' }
+        - { type: returns_matches, value: '"failed":\s*0\b' }
   # s2 and s3 read a_case_that_passes_every_trial. On the other public case
   # the stub's rate of [0.0, 0.0] and its verdict of fail are already right.
   - step_id: s2

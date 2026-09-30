@@ -111,19 +111,55 @@ steps:
     check_id: s3
 
 step_checks:
+  # Reads the_same_question_asked_twice_reaches_the_model_once: r2 is served
+  # the answer r1 was given, for one model call between them.
   - step_id: s1
     spec:
       assertions:
+        - { type: returns_matches, value: '"r2":\s*"Parental leave at the trust is 26 weeks' }
         - { type: llm_calls_at_most, value: 1 }
   - step_id: s2
     spec:
       assertions:
         - { type: returns_matches, value: '"r1":\s*"[^"]+' }
+  # No public case varies anything but the question, so s3 carries its own
+  # case. Requests differ from r2 in scope (r1), in tenant (r3), and in prompt
+  # version and model together (r4), and each needs its own answer. r5 is r2
+  # again with different case and spacing, so a key that never hits fails too.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "HR queue, Friday 09:30" }
+      llm_script:
+        - { match: { contains: "Scope: hr" }, reply: "Full pay covers 20 days of sick leave a year. For HR only: three absences in six months starts a formal review." }
+        - { match: { contains: "Tenant: tenant-452" }, reply: "Full pay covers 10 days of sick leave a year at the depot, then statutory sick pay." }
+        - { match: { contains: "Prompt: hr-v12" }, reply: "You get 20 days of sick leave at full pay each year, then 20 days at half pay." }
+        - { match: "*", reply: "You get 20 days of sick leave at full pay each year." }
+      tools:
+        requests:
+          returns:
+            status: 200
+            requests:
+              - { id: r1, tenant: tenant-318, scope: hr, prompt_version: hr-v11,
+                  model: fast-2026-06, question: "How many days of sick leave are paid in full?" }
+              - { id: r2, tenant: tenant-318, scope: staff, prompt_version: hr-v11,
+                  model: fast-2026-06, question: "How many days of sick leave are paid in full?" }
+              - { id: r3, tenant: tenant-452, scope: staff, prompt_version: hr-v11,
+                  model: fast-2026-06, question: "How many days of sick leave are paid in full?" }
+              - { id: r4, tenant: tenant-318, scope: staff, prompt_version: hr-v12,
+                  model: fast-2026-08, question: "How many days of sick leave are paid in full?" }
+              - { id: r5, tenant: tenant-318, scope: staff, prompt_version: hr-v11,
+                  model: fast-2026-06, question: "how many days of sick leave are  paid in full? " }
+      budget: { max_llm_calls: 6, max_tool_calls: 3, wall_ms: 5000 }
       assertions:
         - { type: valid_json_return }
         - { type: no_exception }
+        - { type: returns_matches, value: '"r1":\s*"Full pay covers 20 days of sick leave a year\. For HR only' }
+        - { type: returns_matches, value: '"r2":\s*"You get 20 days of sick leave at full pay each year\."' }
+        - { type: returns_matches, value: '"r3":\s*"Full pay covers 10 days of sick leave a year at the depot' }
+        - { type: returns_matches, value: '"r4":\s*"You get 20 days of sick leave at full pay each year, then 20 days at half pay\."' }
+        - { type: returns_matches, value: '"r5":\s*"You get 20 days of sick leave at full pay each year\."' }
+        - { type: llm_calls_at_most, value: 4 }
 
 hints:
   - Every wrong answer in the brief was right for somebody. Write down who, and

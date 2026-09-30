@@ -340,6 +340,9 @@ tests:
         - { type: terminates }
         - { type: valid_json_return,
             schema: { type: object, required: [first_failure, kind, later_symptoms, note] } }
+        - { type: calls_tool, name: trace }
+        - { type: returns_matches, value: '"first_failure":\s*null' }
+        - { type: returns_matches, value: '"later_symptoms":\s*\[\]' }
 
 reference_md: |
   Walk forwards, stop at the first match, and list the rest without

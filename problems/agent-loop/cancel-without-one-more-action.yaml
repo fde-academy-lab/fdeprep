@@ -337,6 +337,31 @@ tests:
         - { type: returns_matches, value: '"dispatched": \[\s*"send_text\(account=A-3\)"\s*\]' }
         - { type: returns_matches, value: '"outcome": "cancelled"' }
 
+  - name: the_model_calls_run_out_before_the_work_does
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Work through the overdue list, starting with A-12" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Run: live\nAction: lookup(account=A-12)" }
+        - { match: { call_index: 2 }, reply: "Run: live\nAction: send_text(account=A-12)" }
+        - { match: { call_index: 3 }, reply: "Run: live\nAction: apply_late_fee(account=A-12)" }
+        - { match: "*", reply: "Run: live\nAction: lookup(account=A-13)" }
+      tools:
+        lookup: { returns: { status: 200, run: live, balance_cents: 4150, days_overdue: 27 } }
+        send_text: { returns: { status: 200, run: live, sent: true } }
+        apply_late_fee: { returns: { status: 200, run: live, applied: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 4 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, dispatched, held, note],
+                      properties: { note: { type: string, minLength: 1 } } } }
+        - { type: returns_matches, value: '"outcome": "unfinished"' }
+        - { type: returns_matches, value: '"dispatched": \[\s*"lookup\(account=A-12\)",\s*"send_text\(account=A-12\)",\s*"apply_late_fee\(account=A-12\)",\s*"lookup\(account=A-13\)"\s*\]' }
+        - { type: returns_matches, value: '"held": \[\s*\]' }
+
   - name: adversarial_the_gateway_answers_with_nothing
     visibility: adversarial
     fixture: empty_tool_result

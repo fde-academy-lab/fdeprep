@@ -87,9 +87,21 @@ steps:
     check_id: s4
 
 step_checks:
+  # Every public case ends on a Final Answer, so s1 carries its own case: the
+  # model asks for one more lookup on every call. The budget refuses a sixth
+  # call, so a loop with no exit of its own ends on the budget and never
+  # returns.
   - step_id: s1
     spec:
+      kind: agent_run
+      input: { question: "List every freight quote we received this year" }
+      llm_script:
+        - { match: "*", reply: "Action: lookup(topic=freight quotes)" }
+      tools:
+        lookup: { returns: { status: 200, text: "Quote Q-2210 covers 18 pallets to Rotterdam." } }
+      budget: { max_llm_calls: 5, max_tool_calls: 8, wall_ms: 5000 }
       assertions:
+        - { type: terminates }
         - { type: llm_calls_at_most, value: 5 }
   - step_id: s2
     spec:

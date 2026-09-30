@@ -101,14 +101,149 @@ steps:
     check_id: s4
 
 step_checks:
+  # Neither public case tells the answer's reserve or the tokenizer's count
+  # apart from the stub: the first fits whole and the second is over 400 by
+  # any count. So s1 and s2 carry their own cases, each written so that only
+  # its own step decides whether the rank 3 block goes.
+  #
+  # s1: English blocks, where four characters a token is close. The blocks
+  # cost 337 by either count, which fits 400 and not 320.
   - step_id: s1
     spec:
+      kind: agent_run
+      input: { question: "ticket 90412" }
+      llm_script:
+        - { match: { contains: "TV and sports add-ons this month" },
+            reply: '{"label": "billing", "reason": "The 30-day notice given on 2 September ends on 2 October, so' }
+        - { match: { contains: "The notice period is 30 days" },
+            reply: '{"label": "billing", "reason": "The 30-day notice given on 2 September ends on 2 October, so the October bill covers two days."}' }
+        - { match: { contains: "still a bill for October" },
+            reply: '{"label": "billing", "reason": "The customer says they gave notice, so check the account history."}' }
+        - { match: "*", reply: "There is no ticket in this request to triage." }
+      tools:
+        prompt_parts:
+          returns:
+            status: 200
+            allowance: 400
+            answer_tokens: 80
+            blocks:
+              - id: instructions
+                kind: instructions
+                tokens: 88
+                text: >-
+                  You triage support tickets for a broadband provider. Use the ticket and
+                  the context blocks. Reply with one JSON object and nothing else, with the
+                  keys label and reason. The label is one of billing, fault, known_fault,
+                  moving, cancel or other. The reason is one sentence a support agent can
+                  act on. Never promise a refund, a credit or an engineer visit.
+              - id: account
+                kind: context
+                rank: 1
+                tokens: 38
+                text: >-
+                  Account history: the customer gave notice to cancel on 2 September. The
+                  notice period is 30 days, so the service and the billing both end on 2
+                  October.
+              - id: payments
+                kind: context
+                rank: 2
+                tokens: 19
+                text: >-
+                  Payment method: direct debit, taken on the first working day of each month.
+              - id: add_ons
+                kind: context
+                rank: 3
+                tokens: 174
+                text: >-
+                  TV and sports add-ons this month, for customers who ask about them. The
+                  sports pack costs 22 pounds a month and includes every live football and
+                  rugby channel. The film pack costs 11 pounds a month and adds four new
+                  releases each week. Both packs need a set-top box, which is free on a
+                  24-month contract and costs 60 pounds on a rolling one. Customers can add
+                  a pack in the app, and it starts within two hours. A pack can be removed
+                  at the end of any month without a fee. Customers on a social tariff can
+                  add the film pack and cannot add the sports pack. A customer who adds both
+                  packs in one order pays half price for the second pack for three months.
+                  Business accounts cannot add either pack.
+              - id: ticket
+                kind: ticket
+                tokens: 18
+                text: >-
+                  I gave notice to cancel last month. Why is there still a bill for October?
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 5000 }
       assertions:
         - { type: calls_tool, name: prompt_parts }
+        - { type: valid_json_return, schema: { type: object, required: [label, reason] } }
+        - { type: returns_matches, value: '"label":\s*"billing"' }
+        - { type: returns_matches, value: 'ends on 2 October' }
+  # s2: an account note from the Hindi support line, 127 characters that the
+  # tokenizer measured at 180 tokens. By the tokens field the blocks cost 427,
+  # over 320 and 400 alike. By four characters a token they cost 279, under
+  # both, so a character count keeps the rank 3 block whatever it reserves.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "ticket 90413" }
+      llm_script:
+        - { match: { contains: "Help centre article on Wi-Fi extenders" },
+            reply: '{"label": "fault", "reason": "A replacement router was sent yesterday and' }
+        - { match: { contains: "Account note from the Hindi support line" },
+            reply: '{"label": "fault", "reason": "A replacement router was sent yesterday and should arrive by Thursday."}' }
+        - { match: { contains: "When will the new one get here" },
+            reply: '{"label": "fault", "reason": "The router has stopped working, so check whether a replacement was sent."}' }
+        - { match: "*", reply: "There is no ticket in this request to triage." }
+      tools:
+        prompt_parts:
+          returns:
+            status: 200
+            allowance: 400
+            answer_tokens: 80
+            blocks:
+              - id: instructions
+                kind: instructions
+                tokens: 88
+                text: >-
+                  You triage support tickets for a broadband provider. Use the ticket and
+                  the context blocks. Reply with one JSON object and nothing else, with the
+                  keys label and reason. The label is one of billing, fault, known_fault,
+                  moving, cancel or other. The reason is one sentence a support agent can
+                  act on. Never promise a refund, a credit or an engineer visit.
+              - id: note
+                kind: context
+                rank: 1
+                tokens: 180
+                text: >-
+                  Account note from the Hindi support line: ग्राहक ने शनिवार को फ़ोन किया
+                  था। नया राउटर कल भेजा गया है और गुरुवार तक पहुँच जाएगा।
+              - id: account
+                kind: context
+                rank: 2
+                tokens: 15
+                text: >-
+                  Account history: the router was reported faulty on Saturday.
+              - id: extenders
+                kind: context
+                rank: 3
+                tokens: 126
+                text: >-
+                  Help centre article on Wi-Fi extenders, for customers who ask about
+                  coverage. An extender costs 5 pounds a month and pairs with the router at
+                  the press of a button. Place it halfway between the router and the room
+                  with the weak signal, away from microwaves and fish tanks. The light turns
+                  blue when the signal is strong and amber when the extender is too far
+                  away. Customers can have up to three extenders on one account. An extender
+                  can be returned within 30 days for a full refund of the first month.
+              - id: ticket
+                kind: ticket
+                tokens: 18
+                text: >-
+                  My router stopped working at the weekend. When will the new one get here?
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 5000 }
       assertions:
         - { type: no_exception }
+        - { type: valid_json_return, schema: { type: object, required: [label, reason] } }
+        - { type: returns_matches, value: '"label":\s*"fault"' }
+        - { type: returns_matches, value: 'should arrive by Thursday' }
   - step_id: s3
     spec:
       assertions:

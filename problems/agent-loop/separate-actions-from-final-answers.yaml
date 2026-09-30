@@ -94,10 +94,24 @@ steps:
     check_id: s4
 
 step_checks:
+  # No public reply carries both markers, so s1 carries its own case. The
+  # first reply books and answers at once, with the Action line first. Only a
+  # reply sent back with the line the contract names gets the honest answer.
   - step_id: s1
     spec:
+      kind: agent_run
+      input: { question: "Table for six at half past six on Saturday" }
+      llm_script:
+        - { match: { contains: "not a valid action" },
+            reply: "Final Answer: Nothing is booked yet. Tell me which Saturday and I will book table 6." }
+        - { match: "*",
+            reply: "Action: book(table=6, time=18:30)\nFinal Answer: Table 6 is booked for 6:30pm on Saturday." }
+      tools:
+        book: { returns: { status: 200, reference: "BK-6630" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 5000 }
       assertions:
         - { type: does_not_call_tool, name: book }
+        - { type: returns_matches, value: "(?i)nothing is booked yet" }
   - step_id: s2
     spec:
       assertions:

@@ -97,10 +97,35 @@ step_checks:
     spec:
       assertions:
         - { type: calls_tool, name: trace }
+  # No public run calls a tool outside allowed_tools, so s2 carries its own
+  # case. Allowed and unauthorised calls alternate, and both unauthorised
+  # tools have to be named.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "case-12" }
+      llm_script:
+        - { match: { contains: "Expected:" }, reply: "Judgement: pass" }
+        - { match: "*", reply: "Action: trace()" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            expected: "Your parcel arrives on Friday."
+            answer: "The parcel is due on Friday."
+            summary: "checked the order and replied"
+            allowed_tools: ["lookup", "send_reply"]
+            events:
+              - { type: "tool_call", tool: "lookup" }
+              - { type: "tool_call", tool: "issue_voucher" }
+              - { type: "tool_call", tool: "send_reply" }
+              - { type: "tool_call", tool: "close_ticket" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 5000 }
       assertions:
         - { type: no_exception }
+        - { type: returns_matches, value: '"behaviour":\s*"fail"' }
+        - { type: returns_matches, value: 'issue_voucher' }
+        - { type: returns_matches, value: 'close_ticket' }
   - step_id: s3
     spec:
       assertions:
