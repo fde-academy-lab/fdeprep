@@ -25,6 +25,7 @@ The specification lives in `docs/` and is authoritative. When this file and a sp
 | `docs/10-EVALUATION-PANEL.md` | Anything in `eval/`, and before changing how any answer is graded |
 | `docs/11-ANALYTICS-AND-REPORT-CARD.md` | Anything in `analytics/`, cohort views, the report card or an export |
 | `docs/12-PROGRESS-AND-READINESS.md` | Anything in `progress/`, the heatmap or the readiness signal |
+| `docs/project/` | The start of any piece of work, to find its story in `backlog.yaml`, and before opening a pull request, to close it |
 
 `docs/source-pack/` is an earlier build pack from a different model, kept for its
 interview bank, its topic catalogue and its worked exercises. Where it disagrees
@@ -73,6 +74,8 @@ In a cloud session, use the pre-installed PostgreSQL 16 for development and test
 | Only deterministic checks produce a terminal failure. Bands and prose never do. | A verdict nobody can reproduce is a verdict nobody can appeal. |
 | Complexity (C1 to C4) and difficulty (Easy to Extreme) are separate axes. Never map one onto the other. | Complexity decides which panelists can check an answer. Difficulty decides how much support the learner gets. |
 | The learner reads one consolidated voice. Panelist provenance is stored and shown only to faculty. | The learner should hear an interviewer. The appeal path needs to know which finding was deterministic. |
+| Every pull request adds or closes the story it delivers in `docs/project/backlog.yaml`, then runs `python -m tools.project_sync --render-docs`. | The delivery board and the pages management reads are generated from that file, so work left out of it is missing from the record. |
+| A README or any page a person reads follows `.claude/skills/documentation-standard/SKILL.md`, including its writing pass. | The README is the first thing a new learner, operator or manager opens, and the standard holds what it must show. |
 
 ---
 
