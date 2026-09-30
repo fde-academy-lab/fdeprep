@@ -34,12 +34,21 @@ beforeEach(async () => {
   await resetDatabase();
 });
 
+/**
+ * A whole-catalogue import takes time in proportion to the catalogue. At 92
+ * problems it ran in 2.5 seconds on a laptop and past vitest's 5-second
+ * default on the CI runner, and a timed-out import kept writing while the
+ * next test truncated the tables, which Postgres reported as a deadlock. The
+ * budget is for the catalogue's size; nothing here asserts on speed.
+ */
+const WHOLE_CATALOGUE = { timeout: 60_000 };
+
 async function count(table: string): Promise<number> {
   const { rows } = await db().query<{ n: string }>(`select count(*) as n from ${table}`);
   return Number(rows[0]!.n);
 }
 
-describe("importing everything", () => {
+describe("importing everything", WHOLE_CATALOGUE, () => {
   it("loads every catalogue problem and the twelve voice questions", async () => {
     const report = await importAllContent(quiet);
     const catalogue = (await publishableYamlFiles(PROBLEMS)).length;
@@ -162,7 +171,7 @@ exemplars:
   });
 });
 
-describe("which question a learner gets", () => {
+describe("which question a learner gets", WHOLE_CATALOGUE, () => {
   it("is nothing at all before the content has been imported", async () => {
     // A fresh checkout has an empty table, and the session page falls back to
     // the docs/07 fixture so the cockpit still renders while you work locally.
