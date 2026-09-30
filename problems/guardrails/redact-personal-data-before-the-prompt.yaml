@@ -308,6 +308,9 @@ coach:
     decision per field, and a card number never goes back whole.
 
 tests:
+  # The gateway refuses a prompt with raw details in it, so a leak showed here
+  # only as a missing draft. The prompt_lacks lines read the prompt and name
+  # the address or number that reached the model.
   - name: a_ticket_with_contact_details_gets_a_draft
     visibility: public
     spec:
@@ -328,6 +331,8 @@ tests:
       budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: calls_tool, name: read_ticket }
+        - { type: prompt_lacks, value: 'sam\.k@example\.com' }
+        - { type: prompt_lacks, value: '07700 ?900 ?456' }
         - { type: returns_matches, value: "(?i)line test tonight" }
 
   - name: an_account_reference_is_left_for_the_model
@@ -352,6 +357,9 @@ tests:
         - { type: returns_matches, value: "credited account BB-44718" }
         - { type: llm_calls_at_most, value: 2 }
 
+  # Both details sit in the body. prompt_lacks reads every prompt, so it also
+  # fails a second call that sends the finished draft, with the details back
+  # in it, to the model.
   - name: the_customer_gets_their_own_details_back
     visibility: hidden
     spec:
@@ -373,9 +381,13 @@ tests:
             metadata: { channel: "email" }
       budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
+        - { type: prompt_lacks, value: 'maya\.r@example\.com' }
+        - { type: prompt_lacks, value: '07700 ?900 ?123' }
         - { type: returns_matches, value: 'now maya\.r@example\.com' }
         - { type: returns_matches, value: "call you on 07700 900123" }
 
+  # The full card number must not reach the model in any call. Only the draft
+  # names the card, by its last four digits.
   - name: a_card_number_goes_back_as_its_last_four_digits
     visibility: hidden
     spec:
@@ -397,9 +409,12 @@ tests:
             metadata: { channel: "email" }
       budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
+        - { type: prompt_lacks, value: '4111[ -]?1111[ -]?1111[ -]?1111' }
         - { type: returns_matches, value: "(?i)double charge on card ending 1111" }
         - { type: returns_lacks, value: '(?:\d{4}[ -]){3}\d{4}' }
 
+  # Neither address may reach the model, including the old one's second copy
+  # in the metadata.
   - name: two_email_addresses_keep_two_placeholders
     visibility: hidden
     spec:
@@ -423,9 +438,12 @@ tests:
             metadata: { channel: "email", reply_to: "maya.old@example.com" }
       budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
+        - { type: prompt_lacks, value: 'maya\.old@example\.com|maya\.r@example\.com' }
         - { type: returns_matches, value: 'now maya\.r@example\.com' }
         - { type: returns_matches, value: 'stop writing to maya\.old@example\.com' }
 
+  # The number and the address sit in a call note two levels down in the
+  # metadata. Neither may reach the model.
   - name: a_phone_number_in_a_nested_call_log_is_redacted
     visibility: hidden
     spec:
@@ -450,6 +468,8 @@ tests:
                 - { at: "2026-09-12 10:41", note: "Callback requested on +44 7700 900987 by jo.b@example.com" }
       budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
+        - { type: prompt_lacks, value: 'jo\.b@example\.com' }
+        - { type: prompt_lacks, value: '\+44 ?7700 ?900 ?987' }
         - { type: returns_matches, value: 'call you on \+44 7700 900987' }
 
 reference_md: |
