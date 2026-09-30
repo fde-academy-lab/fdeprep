@@ -127,8 +127,9 @@ jobs:
       # fails here rather than in production.
       - run: npm test
         working-directory: infra
-      # Synth proves the stack renders. Nothing here deploys; a human runs
-      # `cdk deploy`, which is why deploy.yml only moves image tags.
+      # Synth proves the stack renders. Nothing here deploys: a human runs
+      # `cdk deploy`, which builds both images and points the functions at
+      # them. Synth stages each image's build context without building it.
       #
       # Twice: the voice socket is optional, so the stack has to render both
       # with it and without it. The ARN is a placeholder that is never read,
