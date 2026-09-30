@@ -124,10 +124,35 @@ step_checks:
       assertions:
         - { type: no_exception }
         - { type: returns_matches, value: '"tables":\s*\["order_lines"' }
+  # No public reply names a table describe() does not list, so s3 runs a case
+  # of its own. Its schema is its own, and the model names customers, which
+  # this schema has never had, between two tables it does list. Nothing in
+  # the reply is deprecated or named twice, so s3 reads the existence check
+  # alone, in any order.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "How many loyalty card holders visited each garden centre in October?" }
+      llm_script:
+        - { match: "*", reply: '{"tables": ["loyalty_visits", "customers", "stores"]}' }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: loyalty_visits, deprecated: false, columns: [card_id, store_id, visited_on, spend_gbp],
+                  description: "One row per loyalty card scanned at a till, with the store and the day." }
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 5000 }
       assertions:
-        - { type: returns_matches, value: '"tables":\s*\["' }
+        - { type: valid_json_return,
+            schema: { type: object, required: [tables],
+                      properties: { tables: { type: array, maxItems: 2,
+                                              allOf: [ { contains: { const: loyalty_visits } },
+                                                       { contains: { const: stores } } ] } } } }
   # No public reply names a deprecated table or a name twice, so s4 runs a case
   # of its own. Its schema is its own too, and the table it deprecates is not
   # the archive, so only code that reads the deprecated field drops it.
@@ -257,6 +282,11 @@ coach:
       say: >-
         That model replied with a sentence naming a table. The contract asks
         for a JSON object, and anything else picks nothing.
+    - id: hidden-order
+      when: { test_failed: each_table_is_kept_once_in_the_order_the_model_gave }
+      say: >-
+        The model named products twice in that run, and named it first. Keep
+        each name once, in the order the model gave them.
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -412,6 +442,32 @@ tests:
         - { type: valid_json_return,
             schema: { type: object, required: [tables],
                       properties: { tables: { type: array, maxItems: 0 } } } }
+
+  - name: each_table_is_kept_once_in_the_order_the_model_gave
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which product categories sold best at each garden centre over the spring bank holiday?" }
+      llm_script:
+        - { match: "*", reply: '{"tables": ["products", "stores", "order_lines", "products"]}' }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [tables],
+                      properties: { tables: { const: [products, stores, order_lines] } } } }
 
 reference_md: |
   The schema tool is the only party in this exchange that knows which tables

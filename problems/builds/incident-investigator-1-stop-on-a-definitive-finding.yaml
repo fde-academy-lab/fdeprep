@@ -46,9 +46,9 @@ contract_md: |
       {"status": 200, "verdict": "definitive" | "lead" | "clear",
        "finding": "<one line>", "next": [{"check": "<tool>", "args": {...}}]}
 
-  A result's `next` checks depend on it. Run them straight after it, before
-  the rest of the runbook, as `tools[check](**args)`. A next check can have
-  next checks of its own.
+  A result's `next` checks depend on it. Run them straight after it, in the
+  order `next` lists them and before the rest of the runbook, as
+  `tools[check](**args)`. A next check can have next checks of its own.
 
   Stop at the first definitive verdict. No check runs after it.
 
@@ -154,12 +154,26 @@ step_checks:
         - { type: calls_tool, name: config }
         - { type: calls_tool, name: flags }
         - { type: does_not_call_tool, name: logs }
-  # Reads the_last_check_in_the_runbook_finds_the_cause: only the model's reply
-  # says to raise the pool limit.
+  # The public case s5 used to read keys its reply on the last line alone, so
+  # a finding built from that line passed. s5 runs a case of its own. Nothing
+  # in it is definitive and nothing has next checks, so all three checks run
+  # whatever the loop does, and the model writes the finding only when the
+  # prompt carries all three lines.
   - step_id: s5
     spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8163", "service": "loyalty-api"}' }
+      llm_script:
+        - { match: { all: [ { contains: "deploy d-4630" }, { contains: "offers cache" }, { contains: "CPU at 25 percent" } ] },
+            reply: "No definitive cause yet. The offers cache began timing out two minutes after deploy d-4630, so check that deploy first." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        deploys: { returns: { status: 200, verdict: lead, finding: "loyalty-api deploy d-4630 at 06:40, twenty minutes before the alert", next: [] } }
+        logs: { returns: { status: 200, verdict: lead, finding: "points lookups timing out on the offers cache since 06:42", next: [] } }
+        metrics: { returns: { status: 200, verdict: clear, finding: "loyalty-api CPU at 25 percent and memory steady", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 5000 }
       assertions:
-        - { type: returns_matches, value: '(?i)raise the pool limit' }
+        - { type: returns_matches, value: '(?i)check that deploy first' }
         - { type: llm_calls_at_most, value: 1 }
 
 hints:
@@ -256,6 +270,12 @@ coach:
       say: >-
         The deploy lead came back clear when it was followed up. The runbook
         still had checks to run, and one of them finds the cause.
+    - id: follow-ups-reversed
+      when: { test_failed: follow_ups_run_in_the_order_they_are_listed }
+      say: >-
+        That deploy lead listed two follow-ups, and the first one it listed
+        finds the cause. In what order do your next checks reach the front of
+        the queue?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -365,6 +385,35 @@ tests:
         - { type: calls_tool, name: diff }
         - { type: does_not_call_tool, name: metrics }
         - { type: returns_matches, value: '(?i)certificate' }
+
+  - name: follow_ups_run_in_the_order_they_are_listed
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8125", "service": "substitutions-api"}' }
+      llm_script:
+        - { match: { contains: "traffic doubled" },
+            reply: "Shoppers retrying failed swaps doubled the load on substitutions-api. Add capacity." }
+        - { match: { contains: "retired stock endpoint" },
+            reply: "Deploy d-4505 pointed substitutions-api at a retired stock endpoint that answers every request with a 404. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        deploys:
+          returns:
+            status: 200
+            verdict: lead
+            finding: "substitutions-api deploy d-4505 at 05:50, eight minutes before the alert"
+            next: [{ check: diff, args: { deploy: "d-4505" } }, { check: traffic, args: { deploy: "d-4505" } }]
+        diff: { returns: { status: 200, verdict: definitive, finding: "d-4505 pointed substitutions-api at the retired stock endpoint, which answers every request with a 404", next: [] } }
+        traffic: { returns: { status: 200, verdict: lead, finding: "substitutions-api traffic doubled since 05:50 as shoppers retried failed swaps", next: [] } }
+        logs: { returns: { status: 200, verdict: lead, finding: "a 404 from the stock service in every failed swap", next: [] } }
+        metrics: { returns: { status: 200, verdict: lead, finding: "substitutions-api CPU at 88 percent since 05:52", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: diff }
+        - { type: does_not_call_tool, name: traffic }
+        - { type: does_not_call_tool, name: logs }
+        - { type: returns_matches, value: '(?i)retired stock endpoint' }
 
 reference_md: |
   The investigation had its answer on the second check and paid for two more.

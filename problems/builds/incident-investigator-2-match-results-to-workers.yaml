@@ -140,8 +140,10 @@ step_checks:
       assertions:
         - { type: calls_tool, name: dispatch }
   # The public results arrive in dispatch order, so s2 carries its own case:
-  # finishing order, and a result from another investigation after this
-  # run's own result for the same check and service.
+  # finishing order, and two results from other investigations for the same
+  # check and service as one of this run's jobs, one ahead of this run's own
+  # result and one after it. Keying on the check and the service picks up one
+  # of them whichever result wins.
   - step_id: s2
     spec:
       kind: agent_run
@@ -160,6 +162,7 @@ step_checks:
           returns:
             status: 200
             results:
+              - { job: "INC-8158/metrics/slots-api", verdict: clear, finding: "slots database disk at 52 percent and steady", next: [] }
               - { job: "INC-8161/metrics/slots-api", verdict: definitive, finding: "the slots database disk has been full since 03:10", next: [] }
               - { job: "INC-8161/deploys/orders-api", verdict: clear, finding: "orders-api last deployed on Monday", next: [] }
               - { job: "INC-8161/logs/slots-api", verdict: lead, finding: "slot bookings failing with a no-space error", next: [] }
@@ -290,6 +293,12 @@ coach:
       say: >-
         One result in that queue came from last night's investigation of the
         same check on the same service. What in its id says it is not yours?
+    - id: foreign-result-first
+      when: { test_failed: another_investigations_result_that_arrives_first_is_not_used }
+      say: >-
+        The first result in that queue came from an earlier investigation of
+        the same check on the same service, ahead of this run's own. Which
+        part of the job id tells the two apart?
     - id: silent-worker
       when: { test_failed: a_worker_that_never_reports_is_named_in_the_finding }
       say: >-
@@ -428,6 +437,35 @@ tests:
       budget: { max_llm_calls: 2, max_tool_calls: 10, wall_ms: 10000 }
       assertions:
         - { type: returns_matches, value: '(?i)memory limit' }
+        - { type: no_exception }
+
+  - name: another_investigations_result_that_arrives_first_is_not_used
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8136", "services": ["checkout-api", "payments-api"]}' }
+      llm_script:
+        - { match: { contains: "card processor certificate" },
+            reply: "Deploy d-5490 shipped an expired card processor certificate to payments-api. Roll it back." }
+        - { match: { contains: "fraud check service" },
+            reply: "The fraud check service has rejected every payment since 04:12, and checkout is waiting on payments-api. Ask the fraud team to stop the rejections." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8128/deploys/payments-api", verdict: definitive, finding: "deploy d-5490 shipped an expired card processor certificate", next: [] }
+              - { job: "INC-8136/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - { job: "INC-8136/logs/checkout-api", verdict: lead, finding: "checkout requests waiting on payments-api since 04:12", next: [] }
+              - { job: "INC-8136/deploys/payments-api", verdict: clear, finding: "no deploys to payments-api in the last two hours", next: [] }
+              - { job: "INC-8136/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+              - { job: "INC-8136/logs/payments-api", verdict: definitive, finding: "the fraud check service has rejected every payment since 04:12", next: [] }
+              - { job: "INC-8136/metrics/payments-api", verdict: lead, finding: "payments-api error rate at 100 percent", next: [] }
+      budget: { max_llm_calls: 2, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '(?i)stop the rejections' }
         - { type: no_exception }
 
   - name: a_worker_that_never_reports_is_named_in_the_finding

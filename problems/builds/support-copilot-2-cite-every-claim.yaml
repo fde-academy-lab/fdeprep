@@ -190,10 +190,32 @@ step_checks:
     spec:
       assertions:
         - { type: returns_matches, value: '"answer":\s*"' }
+  # Every public draft cites a shown chunk in every sentence, so code that
+  # sends every draft passed s4 when it read them. s4 runs a case of its own:
+  # a draft whose middle sentence cites nothing. The stub never searches, so
+  # it fails here too.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "The courier left my box on the step in the rain and the cardboard fell apart. What happens now? Order MK-21306." }
+      llm_script:
+        - { match: { contains: "damaged in transit" },
+            reply: "A box damaged in transit is replaced free of charge [P-21]. The replacement will reach you tomorrow morning. Report the damage from the account page within 48 hours of delivery [P-24]." }
+        - { match: "*", reply: '{"intent": "delivery", "order_id": "MK-21306"}' }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: P-21, score: 0.83, text: "A box damaged in transit is replaced free of charge." }
+              - { id: P-24, score: 0.69, text: "Damage is reported from the account page within 48 hours of delivery." }
+      budget: { max_llm_calls: 3, max_tool_calls: 3, wall_ms: 5000 }
       assertions:
-        - { type: returns_matches, value: '"citations":\s*\["P-\d+"' }
+        - { type: calls_tool, name: search }
+        - { type: valid_json_return,
+            schema: { type: object, required: [intent, answer, citations],
+                      properties: { intent: { const: delivery }, answer: { type: "null" },
+                                    citations: { type: array, maxItems: 0 } } } }
 
 hints:
   - Two separate moments decide whether a draft is safe to send. One is what
@@ -301,6 +323,12 @@ coach:
       say: >-
         Nothing search returned in that run reached 0.6. How many model calls
         should a ticket with no evidence cost?
+    - id: hidden-near-miss
+      when: { test_failed: a_chunk_just_under_the_bar_is_not_shown }
+      say: >-
+        Search returned one chunk at exactly 0.6 in that run and one at 0.58.
+        The first is evidence and belongs in the prompt. The second stays out,
+        because the model uses whatever text is in front of it.
     - id: hidden-triage
       when: { test_failed: a_ticket_routed_to_triage_gets_no_draft }
       say: >-
@@ -441,6 +469,33 @@ tests:
                       properties: { intent: { const: delivery }, answer: { type: "null" } } } }
         - { type: calls_tool, name: search }
         - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_chunk_just_under_the_bar_is_not_shown
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Can I add a dessert to this week's box now that I have paid for it? Order MK-20864." }
+      llm_script:
+        - { match: { contains: "Gift boxes" },
+            reply: "You can add a dessert to this week's box until the Wednesday cut-off [P-11]. It comes at no extra charge [P-14]." }
+        - { match: { contains: "can be added to a box" },
+            reply: "You can add a dessert to this week's box until the Wednesday cut-off [P-11]." }
+        - { match: "*", reply: '{"intent": "plan", "order_id": "MK-20864"}' }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: P-11, score: 0.6, text: "Desserts and other extras can be added to a box until the Wednesday cut-off for that week." }
+              - { id: P-14, score: 0.58, text: "Gift boxes include a dessert at no extra charge." }
+      budget: { max_llm_calls: 3, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [intent, order_id, answer, citations],
+                      properties: { intent: { const: plan }, order_id: { const: MK-20864 },
+                                    answer: { type: string, pattern: '\[P-11\]' },
+                                    citations: { const: [P-11] } } } }
+        - { type: returns_lacks, value: 'no extra charge' }
 
   - name: a_ticket_routed_to_triage_gets_no_draft
     visibility: hidden

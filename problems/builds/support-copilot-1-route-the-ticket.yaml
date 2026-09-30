@@ -119,11 +119,10 @@ steps:
     check_id: s4
 
 # The stub routes every ticket to triage with no order number. That is also
-# the right route for an unreadable reply, a label no queue has and an order
-# number the ticket never mentions, so no case can tell those halves of the
-# steps from the stub. Each check reads the half a public case shows: the
-# reply read, the label kept, the order number kept, and the route built from
-# both.
+# the right route for an unreadable reply and a label no queue has, so no case
+# can tell those halves of s1, s2 and s4 from the stub, and their checks read
+# the half a public case shows: the reply read, the label kept, and the route
+# built from both.
 step_checks:
   - step_id: s1
     spec:
@@ -133,10 +132,22 @@ step_checks:
     spec:
       assertions:
         - { type: returns_matches, value: '"intent":\s*"(billing|delivery|plan|refund)"' }
+  # No public reply names an order number its ticket lacks, so code that
+  # passes the model's number through unchecked passed s3 when it read
+  # them. s3 runs a case of its own: the model's label is a queue, and its
+  # order number swaps two digits of the one the customer wrote. The route
+  # keeps the label and drops the number, and the stub's triage route fails.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Order MK-21148 came with the box for two. We pay for the family plan, so half of us had no dinner." }
+      llm_script:
+        - { match: "*", reply: '{"intent": "delivery", "order_id": "MK-21184"}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
       assertions:
-        - { type: returns_matches, value: '"order_id":\s*"MK-\d+"' }
+        - { type: valid_json_return,
+            schema: { type: object, required: [intent, order_id],
+                      properties: { intent: { const: delivery }, order_id: { type: "null" } } } }
   - step_id: s4
     spec:
       assertions:

@@ -143,11 +143,34 @@ step_checks:
                                     claimant: { type: string },
                                     incident_date: { type: string },
                                     amount_claimed: { type: string } } } }
-  # Reads a_field_the_letter_does_not_state_stays_empty.
+  # Every public reply holds only values its letter contains, so code with no
+  # letter check passed s3 when it read them. s3 runs a case of its own: the
+  # model fills amount_claimed with a figure this letter never gives. Every
+  # value it did read sits on one line in the letter's own case, so s3 reads
+  # the letter check and not the normalising in s4.
   - step_id: s3
     spec:
+      kind: agent_run
+      input:
+        question: |
+          18 February 2026
+
+          Dear claims team,
+
+          A slate came off our roof in the storm on 16 February 2026 and
+          cracked the conservatory glass below it. My policy number is
+          HX-562207. A glazier is coming to price the repair, and I will send
+          you his quote as soon as I have it.
+
+          Kind regards,
+          Daniel Osei
+      llm_script:
+        - { match: "*",
+            reply: '{"policy_number": "HX-562207", "claimant": "Daniel Osei", "incident_date": "16 February 2026", "amount_claimed": "£450.00"}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
       assertions:
-        - { type: returns_matches, value: '"policy_number":\s*"HX-301977"' }
+        - { type: returns_matches, value: '"policy_number":\s*"HX-562207"' }
+        - { type: returns_matches, value: '"claimant":\s*"Daniel Osei"' }
         - { type: returns_matches, value: '"amount_claimed":\s*null' }
   # The claimant signs in capitals and the date wraps across a line, so both
   # values reach the record only when the comparison normalises case and
