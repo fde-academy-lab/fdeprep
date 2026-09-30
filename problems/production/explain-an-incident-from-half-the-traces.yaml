@@ -334,7 +334,7 @@ coach:
   signals:
     - id: claims-a-cause
       when:
-        code_matches: '(?i)\broot cause (is|was)\b'
+        code_matches: '(?i)\broot cause (is|was)\b|\b(is|was) the root cause\b|\broot cause:\s|\b(was|were) caused by\b'
         code_lacks: '(?i)hypothes'
       say: >-
         You have named a root cause, and nothing in the telemetry observed it.
@@ -355,7 +355,7 @@ coach:
         What stops the next patient getting a confirmation for a booking that
         does not exist, before anyone knows why?
     - id: no-times
-      when: { code_lacks: '(?i)\bby \d{1,2}[:.]\d{2}\b|\bby \d{1,2} ?(am|pm)\b' }
+      when: { code_lacks: '(?i)\b(by|at|before) \d{1,2}[:.]\d{2}\b|\b(by|at|before) \d{1,2} ?(am|pm)\b|\bwithin (\d+|one|two|three|four|six|twelve) (hours?|minutes?|days?)\b|\bby (the )?end of (the )?day\b|\bby (tomorrow|noon|midday|monday|tuesday|wednesday|thursday|friday)\b' }
       say: >-
         Each check needs an owner and a time. When does the chief operating
         officer hear the next result?

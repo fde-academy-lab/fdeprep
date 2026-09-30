@@ -314,7 +314,7 @@ coach:
     brief names three, and there are usually more.
   signals:
     - id: hosted-model-kept
-      when: { code_lacks: '(?i)open[-\s]?weights?|self[-\s]?hosted|on\s+(your|their|the\s+client''s)\s+(own\s+)?(cluster|gpus?|hardware|servers?|nodes?)|run(s|ning)?\s+(it|the\s+model)\s+locally|local(ly)?\s+(model|inference|serv)|serve\s+(it|the\s+model|an?\s+[\w-]+\s+model)' }
+      when: { code_lacks: '(?i)open[-\s]?weights?|self[-\s]?hosted|on\s+(your|their|the\s+client''s)\s+(own\s+)?(cluster|gpus?|hardware|servers?|nodes?)|run(s|ning)?\s+(it|the\s+model)\s+locally|local(ly)?\s+(model|inference|serv)|serve\s+(it|the\s+model|an?\s+[\w-]+\s+model)|on[-\s]?prem|inside\s+(the|their|the\s+client''s)\s+network|replac\w*\s+the\s+hosted\s+model' }
       say: >-
         Your plan still depends on a hosted model. What runs the model inside
         a network that cannot reach one?

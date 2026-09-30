@@ -301,7 +301,7 @@ coach:
     - id: wrong-mechanism
       when:
         code_matches: '(?i)overfit'
-        code_lacks: '(?i)prompt examples?|worked examples?|examples in the prompt|same tickets?'
+        code_lacks: '(?i)prompt examples?|prompt''s examples|worked examples?|examples? (in|from) the prompt|same tickets?|nothing (was )?trained|(no|not|never) (been )?trained|no training'
       say: >-
         Nobody trained this model. The prompt carries 24 examples and the eval
         asks about the same tickets. What is the 94 percent measuring?
@@ -311,7 +311,7 @@ coach:
         Who is allowed to read the holdout? It stops being one the first time
         someone tuning the prompt looks at it.
     - id: no-boundary-check
-      when: { code_lacks: '(?i)near[- ]?(identical|duplicate|cop)|duplicat|overlap|shares? (a )?(source|template)|match(es)? (on|against)|compares? each' }
+      when: { code_lacks: '(?i)near[- ]?(identical|duplicate|cop)|duplicat|overlap|shares? (a )?(source|template)|match(es)? (on|against)|compares? each|\btwins?\b|word for word|before (every|each) release' }
       say: >-
         How would you know, before a release, that no holdout case has a twin
         among the prompt examples? An instruction to be careful fails silently.

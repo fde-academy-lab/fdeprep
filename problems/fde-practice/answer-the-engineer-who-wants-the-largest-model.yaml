@@ -272,7 +272,7 @@ coach:
     - id: one-model
       when:
         code_matches: '(?i)(large|largest|biggest|bigger)\s+model\s+(for|on|across)\s+(every|all|each)|every\s+step|all\s+(three\s+)?steps'
-        code_lacks: '(?i)(small|smaller)\s+model[^.]{0,80}(classif|extract)|(classif|extract)[^.]{0,80}(small|smaller)\s+model'
+        code_lacks: '(?i)(small|smaller|cheaper|lighter|mid-?sized?)\s+model[^.]{0,80}(classif|extract)|(classif|extract)[^.]{0,80}(small|smaller|cheaper|lighter|mid-?sized?)\s+model|model[^.]{0,20}chosen\s+per\s+step|per-step\s+model'
       say: >-
         Your record puts one model on every step. The eval scored each step
         separately. What does each row say on its own?
