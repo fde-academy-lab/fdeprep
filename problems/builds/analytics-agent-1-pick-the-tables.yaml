@@ -1,0 +1,507 @@
+slug: analytics-agent-1-pick-the-tables
+title: Pick only the tables the schema says exist and still use
+artefact_type: code
+difficulty: easy
+complexity: C2
+track: builds
+est_minutes: 20
+competencies:
+  - { slug: context-assembly, weight: 1.0 }
+  - { slug: tool-schema-design, weight: 0.5 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+build: { id: analytics-agent, title: Ship a read-only analytics agent, stage: 1, of: 4 }
+
+brief_md: |
+  Stage 1 of 4. You are building a read-only analytics agent for a chain of
+  38 garden centres. Managers ask questions in plain English and the agent
+  answers from the sales database through a query tool. It starts by picking
+  the tables a question needs, and every later stage writes and runs queries
+  against that pick.
+
+  The schema tool describes four tables. One of them, `sales_2023_archive`, is
+  a copy frozen before the till migration in March 2024, and the schema marks
+  it deprecated. For three weeks the agent answered best-seller questions from
+  it anyway, because its name matched the questions better than `order_lines`
+  did. The same month it picked `regions`, a table this database has never
+  had.
+
+  The model's pick is a guess about a schema it has only read about. The
+  schema tool is the authority on what exists and what is current.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the manager's question. `tools["describe"]()` returns the
+  schema:
+
+      {"status": 200, "tables": [{"name": "order_lines", "description": "...",
+                                  "columns": ["line_id", "store_id", ...],
+                                  "deprecated": false}, ...]}
+
+  `llm(prompt)` returns the model's pick, which should be one JSON object such
+  as `{"tables": ["order_lines", "stores"]}`. It may name a table the schema
+  does not list, name a table the schema marks deprecated, or reply with a
+  sentence.
+
+  Return `json.dumps({"tables": [...]})` holding the model's names that the
+  schema lists and does not mark deprecated, each once, in the order the
+  model gave them. A reply that is not a JSON object with a `tables` list
+  picks nothing, which is `{"tables": []}`.
+
+  Budget: at most 2 model calls. Picking needs one. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  PICK_PROMPT = (
+      "You help a garden-centre chain's managers query their sales database.\n"
+      'Reply with one JSON object and nothing else: {"tables": ["<name>", ...]}\n'
+      "List only the tables the question needs. The schema is below.\n"
+  )
+
+
+  def read_schema(tools: dict) -> dict:
+      """Map each table name describe() lists to its entry."""
+      # TODO 1: call the describe tool and map each table's name to its entry.
+      #         An answer without a list of tables gives an empty map.
+      return {}
+
+
+  def schema_text(schema: dict) -> str:
+      return "\n".join(
+          f"{name}: {table.get('description', '')} Columns: {', '.join(table.get('columns') or [])}."
+          for name, table in schema.items()
+      )
+
+
+  def pick_tables(question: str, schema: dict, llm) -> list:
+      reply = llm(
+          f"{PICK_PROMPT}<schema>\n{schema_text(schema)}\n</schema>\n"
+          f"<question>\n{question}\n</question>"
+      )
+      # TODO 2: read the reply as JSON and take its tables list. A reply you
+      #         cannot read picks nothing.
+      # TODO 3: keep a name only when the schema lists it.
+      # TODO 4: drop a table the schema marks deprecated, and keep each name
+      #         once, in the order the model gave them.
+      return []
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      schema = read_schema(tools)
+      return json.dumps({"tables": pick_tables(question, schema, llm)})
+
+steps:
+  - id: s1
+    text: Read the schema from the describe tool into a map by table name.
+    check_id: s1
+  - id: s2
+    text: Read the model's reply as JSON, and pick nothing when you cannot.
+    check_id: s2
+  - id: s3
+    text: Keep a table only when the schema lists it.
+    check_id: s3
+  - id: s4
+    text: Drop deprecated tables and keep each name once.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: describe }
+  # Reads either public case. The stub picks nothing whatever the model says,
+  # so the model's first name reaches the answer only once the reply is read.
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"tables":\s*\["order_lines"' }
+  # No public reply names a table describe() does not list, so s3 runs a case
+  # of its own. Its schema is its own, and the model names customers, which
+  # this schema has never had, between two tables it does list. Nothing in
+  # the reply is deprecated or named twice, so s3 reads the existence check
+  # alone, in any order.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "How many loyalty card holders visited each garden centre in October?" }
+      llm_script:
+        - { match: "*", reply: '{"tables": ["loyalty_visits", "customers", "stores"]}' }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: loyalty_visits, deprecated: false, columns: [card_id, store_id, visited_on, spend_gbp],
+                  description: "One row per loyalty card scanned at a till, with the store and the day." }
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 5000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [tables],
+                      properties: { tables: { type: array, maxItems: 2,
+                                              allOf: [ { contains: { const: loyalty_visits } },
+                                                       { contains: { const: stores } } ] } } } }
+  # No public reply names a deprecated table or a name twice, so s4 runs a case
+  # of its own. Its schema is its own too, and the table it deprecates is not
+  # the archive, so only code that reads the deprecated field drops it.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "Which garden centres are running low on compost this week?" }
+      llm_script:
+        - { match: "*", reply: '{"tables": ["stock_counts_legacy", "stores", "stock_counts", "stores"]}' }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: stock_counts, deprecated: false, columns: [store_id, product_id, counted_on, units_on_hand],
+                  description: "Units on hand for each product at each store, counted at closing time every night." }
+              - { name: stock_counts_legacy, deprecated: true, columns: [store_code, sku, count_date, units],
+                  description: "Nightly counts from the stock system retired in January 2025. It has not been updated since." }
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [tables],
+                      properties: { tables: { const: [stores, stock_counts] } } } }
+
+hints:
+  - The schema tool's answer holds everything this stage needs. Look at what
+    each table entry carries besides its name.
+  - A name the model gives is only useful when describe() lists it. Look each
+    one up instead of trusting the spelling.
+  - A table can exist and still be wrong to use. The schema says which tables
+    are retired, and a retired table is dropped just like a missing one.
+  - Keep the names that pass both checks, each once, in the order the model
+    gave them. When the reply cannot be read as JSON, the pick is an empty
+    list.
+
+scenario:
+  who: The data team at a garden-centre chain
+  situation: >-
+    Managers ask an analytics agent about sales in plain English. For three
+    weeks it answered best-seller questions from sales_2023_archive, a copy
+    frozen before the March 2024 till migration, because its name matched the
+    questions better than order_lines did.
+  stakes: >-
+    Two store managers restocked from best-seller lists more than two years
+    old. Nothing errored, because the archive still exists and still answers
+    queries.
+  metrics:
+    - { label: Weeks on the archive, value: "3" }
+    - { label: Tables described, value: "4" }
+    - { label: Marked deprecated, value: "1" }
+
+diagram:
+  title: Where the archive table gets picked
+  caption: >-
+    The schema tool knows which tables exist and which are retired. The pick
+    check puts that knowledge between the model's guess and every query after
+    it.
+  direction: lr
+  nodes:
+    - { id: manager, label: Store manager, sub: asks in plain English, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: picks tables by name, kind: model, tone: teal, at: [1, 0] }
+    - { id: agent, label: Analytics agent, sub: asks the model to pick, kind: agent, tone: purple, at: [1, 1] }
+    - { id: schema, label: describe(), sub: "tables, columns, deprecated", kind: store, tone: blue, at: [1, 2] }
+    - { id: check, label: Pick check, sub: listed and still current, kind: guard, tone: green, at: [2, 1] }
+    - { id: tables, label: Picked tables, sub: what later stages may read, kind: output, tone: blue, at: [3, 1] }
+    - { id: archive, label: sales_2023_archive, sub: frozen since March 2024, kind: store, tone: pink, at: [2, 2] }
+  edges:
+    - { from: manager, to: agent, label: question, step: 1 }
+    - { from: agent, to: schema, label: describe, step: 2 }
+    - { from: agent, to: model, label: question and schema, step: 3 }
+    - { from: model, to: agent, label: archive and stores, step: 4 }
+    - { from: agent, to: check, label: picked names, step: 5 }
+    - { from: check, to: tables, label: listed and current, tone: success }
+    - { from: agent, to: archive, label: trusted pick, tone: danger }
+
+approach:
+  goal: Keep only the tables the schema vouches for
+  branches:
+    - label: Ask the authority
+      leaves: [describe() lists what exists, each entry says whether it is retired]
+    - label: Check every name
+      detail: >-
+        The model spells table names from what it has read, and what it has
+        read includes tables that are gone.
+      leaves: [listed by describe(), not marked deprecated]
+    - label: Keep the pick clean
+      leaves: [each name once, in the model's order]
+    - label: Fail towards nothing
+      leaves: [an unreadable reply picks no tables, no pick beats a wrong pick]
+
+coach:
+  opening: >-
+    The schema tool already knows which tables exist and which are retired.
+    Before you write anything, find the place where the model's pick meets
+    that knowledge.
+  signals:
+    - id: pick-not-checked
+      when: { code_lacks: '(?i)\bnot\s+in\s+\w+|\bin\s+\w*(schema|described|known|catalog|tables|entries|by_name|lookup|index)\w*\b(?!\s*\.\s*(items|keys|values)\b)|\w*(schema|described|known|catalog|tables|entries|by_name|lookup|index)\w*\s*(\.get\(|\[)\s*(?!["''])\w' }
+      say: >-
+        The model's table names go straight into the result. What happens to
+        the query later when the model names regions, a table this database
+        has never had?
+    - id: deprecated-ignored
+      when: { code_lacks: '["'']deprecated["'']' }
+      say: >-
+        Nothing reads the deprecated field. The archive exists and answers
+        queries, and that field is the only thing that says it is wrong.
+    - id: json-without-a-net
+      when: { code_matches: 'json\.loads\(', code_lacks: '\bexcept\b' }
+      say: >-
+        json.loads raises when the model answers in a sentence. What should a
+        pick you cannot read contain?
+    - id: hidden-unknown-table
+      when: { test_failed: a_table_the_schema_does_not_describe_is_dropped }
+      say: >-
+        The model named a table in that run that describe() never listed. Look
+        each name up before you keep it.
+    - id: hidden-archive
+      when: { test_failed: the_deprecated_archive_is_never_picked }
+      say: >-
+        The model picked the archive alongside the right tables. It exists, so
+        a check for existence passes it. What else does its schema entry say?
+    - id: hidden-not-json
+      when: { test_failed: a_reply_that_is_not_json_picks_nothing }
+      say: >-
+        That model replied with a sentence naming a table. The contract asks
+        for a JSON object, and anything else picks nothing.
+    - id: hidden-order
+      when: { test_failed: each_table_is_kept_once_in_the_order_the_model_gave }
+      say: >-
+        The model named products twice in that run, and named it first. Keep
+        each name once, in the order the model gave them.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with read_schema. Call describe, look at one table's entry, and
+        notice every field it carries before you write the checks.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three failed runs in. The hints separate the two checks, existence and
+        deprecation, which the hidden cases test one at a time.
+  wrap_up: >-
+    A model's choice of tables is a guess about a schema it has only read
+    about. Check it against the schema tool, and treat retired as seriously as
+    missing.
+
+tests:
+  - name: revenue_by_region_reads_order_lines_and_stores
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What was revenue by region from April to June?" }
+      llm_script:
+        - { match: "*", reply: '{"tables": ["order_lines", "stores"]}' }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: describe }
+        - { type: valid_json_return,
+            schema: { type: object, required: [tables],
+                      properties: { tables: { type: array, maxItems: 2,
+                                              allOf: [ { contains: { const: order_lines } },
+                                                       { contains: { const: stores } } ] } } } }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_category_question_reads_order_lines_and_products
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Which product category sold the most units in September?" }
+      llm_script:
+        - { match: "*", reply: '{"tables": ["order_lines", "products"]}' }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [tables],
+                      properties: { tables: { type: array, maxItems: 2,
+                                              allOf: [ { contains: { const: order_lines } },
+                                                       { contains: { const: products } } ] } } } }
+        - { type: no_exception }
+
+  - name: a_table_the_schema_does_not_describe_is_dropped
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How many garden centres report into each region?" }
+      llm_script:
+        - { match: "*", reply: '{"tables": ["stores", "regions"]}' }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [tables],
+                      properties: { tables: { type: array, maxItems: 1, contains: { const: stores } } } } }
+
+  - name: the_deprecated_archive_is_never_picked
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How did North region revenue from April to June compare with the same months in 2024?" }
+      llm_script:
+        - { match: "*", reply: '{"tables": ["order_lines", "sales_2023_archive", "stores"]}' }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [tables],
+                      properties: { tables: { type: array, maxItems: 2,
+                                              allOf: [ { contains: { const: order_lines } },
+                                                       { contains: { const: stores } } ] } } } }
+
+  - name: a_reply_that_is_not_json_picks_nothing
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which garden centres opened in the last two years?" }
+      llm_script:
+        - { match: "*", reply: "You will want the stores table for this one." }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: valid_json_return,
+            schema: { type: object, required: [tables],
+                      properties: { tables: { type: array, maxItems: 0 } } } }
+
+  - name: each_table_is_kept_once_in_the_order_the_model_gave
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which product categories sold best at each garden centre over the spring bank holiday?" }
+      llm_script:
+        - { match: "*", reply: '{"tables": ["products", "stores", "order_lines", "products"]}' }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+      budget: { max_llm_calls: 2, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [tables],
+                      properties: { tables: { const: [products, stores, order_lines] } } } }
+
+reference_md: |
+  The schema tool is the only party in this exchange that knows which tables
+  exist and which are current, and the fix is to let it decide.
+
+  Existence is the obvious check and it catches `regions`. The model has read
+  enough schemas to expect that an analytics database has a regions table,
+  and it has no way of knowing that this one does not. Looking every name up
+  in what describe() returned costs nothing, and it turns a query that would
+  have failed at run time, in front of a manager, into a pick that leaves the
+  name out.
+
+  Deprecation is the check that matters, because the archive passes the
+  existence check. It exists, it answers queries, and its name contains the
+  word the manager used. Everything about it looks right to a model reading
+  names, and the one fact that makes it wrong is a field in its schema entry.
+  An agent that reads the name and ignores the field reproduces the incident
+  exactly.
+
+  The fallbacks all point the same way. A reply that is not JSON picks
+  nothing, and so does a pick in which every name fails. Stage 2 will refuse
+  to query no tables, and a manager told that the agent could not tell which
+  tables answer the question can rephrase it. A manager handed a confident
+  answer from the archive has no reason to.
+
+  Stage 2 uses this pick as its allowlist. A table dropped here is a table no
+  query in the rest of the build is allowed to read.
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Why should tool arguments be validated after a model chooses the tool?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I013.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat. Topic from the problem
+    catalogue, docs/source-pack/05-problem-catalog.csv A025.

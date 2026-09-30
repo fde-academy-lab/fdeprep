@@ -27,6 +27,13 @@ contract_md: |
 
   Budget: at most 6 model calls. Allowed imports: json, re.
 
+# Extreme carries hints since the 29 September 2026 amendment to docs/00
+# section 3.2, gated behind two failed runs and an approach note. The ladder
+# tests exercise that gate through this fixture.
+hints:
+  - Fixture hint one.
+  - Fixture hint two.
+  - Fixture hint three.
 stub_code: |
   def run_agent(question: str, llm, tools: dict) -> str:
       scratchpad = f"Question: {question}\n"

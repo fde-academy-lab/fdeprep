@@ -63,10 +63,12 @@ const TRADE_MARKERS = [
 /**
  * Over this share of the answer's vocabulary coming from the brief is a restatement.
  *
- * Measured across all 25 problems and 12 voice questions on 21 September 2026:
- * the highest overlap any authored reference reaches is 0.44, and an *unedited*
- * original prompt, which is the case this rule exists to catch, reaches 0.45.
- * 0.60 sits clear of both.
+ * Measured across 25 problems on 21 September 2026, and again across 92
+ * problems and 12 voice questions on 30 September 2026: the highest overlap any
+ * authored text other than a weak exemplar reaches is 0.44, and an *unedited*
+ * original prompt reaches 0.45. 0.60 sits clear of both. The two are too close
+ * for this rule to catch an unedited prompt, and the static gate catches every
+ * one in the catalogue, so this rule is for the answer that pastes the brief back.
  */
 const RESTATEMENT = 0.6;
 

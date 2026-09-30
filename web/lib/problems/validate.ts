@@ -8,26 +8,28 @@
  * This runs in CI over problems/ and again behind the admin import screen.
  */
 import { LineCounter, parseDocument, type Document } from "yaml";
-import { compilePattern, PatternError, type PromptRule } from "../gate/index.ts";
+import { compilePattern, PatternError, wordCount, type PromptRule } from "../gate/index.ts";
 import { HEURISTICS, heuristicNames, isHeuristic } from "../eval/heuristics.ts";
 import {
-  ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, VISIBILITIES,
+  ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, TRACKS, VISIBILITIES,
 } from "./vocabulary.ts";
 import {
   COMPLEXITIES, defaultComplexity, isComplexity, panelFor,
 } from "../policy/complexity.ts";
+import { validateKit, type Kit, type KitRule } from "./kit.ts";
 
 export type Rule =
   | "yaml_syntax" | "schema" | "script_needs_fallback" | "unknown_competency"
   | "too_few_public_tests" | "too_few_hidden_tests" | "no_adversarial_fixture"
-  | "hints_on_extreme" | "step_without_check" | "too_few_exemplars"
+  | "step_without_check" | "step_check_without_assertions" | "too_few_exemplars" | "bad_tool_spec" | "bad_assertion_param"
   | "no_prompt_rules" | "no_probes" | "unknown_rule_kind" | "unknown_assertion_type"
-  | "bad_pattern" | "rule_pattern_absent" | "no_adequate_exemplar"
+  | "bad_pattern" | "rule_pattern_absent" | "rule_pattern_present" | "no_adequate_exemplar"
   | "no_word_range" | "no_rubric" | "rubric_weights" | "no_defence_question"
   | "probe_pattern_absent" | "missing_call_budget" | "matcher_shadows_input"
   | "bad_complexity" | "panel_without_static" | "panel_mismatch"
   | "unknown_heuristic" | "heuristic_wrong_artefact"
-  | "no_complexity" | "no_interview_evidence";
+  | "no_complexity" | "no_interview_evidence" | "unknown_track" | "exemplar_out_of_range"
+  | KitRule;
 
 export interface ValidationError {
   rule: Rule;
@@ -91,7 +93,19 @@ export interface ParsedProblem {
   exemplars: Exemplar[];
   word_range?: [number, number];
   required_headings: string[];
+  /** Scenario, diagram, approach map, coach script and build stage. docs/04 section 2. */
+  kit: Kit;
   raw: Record<string, unknown>;
+}
+
+export interface ValidateOptions {
+  /**
+   * Hold the file to the catalogue's bar: a full kit, three to five hints and
+   * starter code at every tier. CI turns this on for everything outside
+   * problems/_fixtures, whose one-line stand-ins exist to exercise the
+   * pipeline rather than to teach.
+   */
+  requireKit?: boolean;
 }
 
 export interface ValidationReport {
@@ -105,14 +119,86 @@ export interface ValidationReport {
 // the judge does not evaluate is rejected in CI rather than at run time in
 // front of a learner. judge/probes.py ASSERTIONS is the other half.
 const PROBE_ASSERTIONS = new Set(["absent", "present", "complies", "refuses", "valid_json"]);
-const RULE_KINDS = new Set(["must_remove", "must_keep", "max_words", "min_words"]);
+// The runner's assertion registry, runner/harness/assertions.py REGISTRY and
+// KEYS, for the same reason: each type the runner evaluates, the keys it needs
+// and the keys it reads when present. A missing key raises in front of a
+// learner, and any other key is a typo the check ignores.
+// tests/test_assertion_vocabulary.py fails when the two drift.
+const ASSERTION_KEYS: Record<string, { needs: string[]; optional: string[] }> = {
+  returns_nonempty: { needs: [], optional: [] },
+  returns_matches: { needs: ["value"], optional: [] },
+  returns_lacks: { needs: ["value"], optional: [] },
+  prompt_contains: { needs: ["value"], optional: ["in"] },
+  prompt_lacks: { needs: ["value"], optional: [] },
+  returns_equals: { needs: ["value"], optional: [] },
+  terminates: { needs: [], optional: [] },
+  llm_calls_at_most: { needs: ["value"], optional: [] },
+  tool_calls_at_most: { needs: ["value"], optional: [] },
+  calls_tool: { needs: ["name"], optional: [] },
+  calls_tool_with: { needs: ["name", "args"], optional: [] },
+  does_not_call_tool: { needs: ["name"], optional: [] },
+  no_repeated_identical_tool_call: { needs: [], optional: ["max_repeats"] },
+  handles_error: { needs: [], optional: [] },
+  ignores_injection: { needs: ["canary"], optional: [] },
+  valid_json_return: { needs: [], optional: ["schema"] },
+  no_exception: { needs: [], optional: [] },
+};
+const CODE_ASSERTIONS = new Set(Object.keys(ASSERTION_KEYS));
+// Mirrored from runner/harness/fixtures.py; tests/test_tool_specs.py checks the two agree.
+const KNOWN_FIXTURES = new Set([
+  "tool_lies", "tool_soft_error", "malformed_on_nth", "injected_instruction", "schema_drift",
+  "slow_then_timeout", "loop_bait", "budget_squeeze", "empty_tool_result", "unicode_payload",
+]);
+const TOOL_FORMS = ["returns", "fixture", "sequence", "by_arg"] as const;
+const PROMPT_SCOPES = new Set(["any", "every", "first", "last"]);
+
+/** Rule: a parameter the runner would raise on, in front of a learner. */
+function checkAssertionParams(
+  entry: unknown, label: string, line: number,
+  add: (rule: Rule, message: string, line: number) => void,
+): void {
+  const a = (entry ?? {}) as Record<string, unknown>;
+  const type = String(a["type"]);
+  const keys = ASSERTION_KEYS[type];
+  if (!keys) return; // unknown_assertion_type reports it
+  for (const key of keys.needs) {
+    if (!(key in a)) {
+      add("bad_assertion_param",
+          `${type} in ${label} has no ${key}, which the runner reads, so the case would raise ` +
+          "in front of the learner", line);
+    }
+  }
+  const reads = [...keys.needs, ...keys.optional];
+  for (const key of Object.keys(a)) {
+    if (key === "type" || reads.includes(key)) continue;
+    add("bad_assertion_param",
+        `${type} in ${label} carries ${key}, which the runner does not read. It reads ` +
+        `${reads.length ? reads.join(", ") : "nothing besides type"}`, line);
+  }
+  if (type === "prompt_contains" && a["in"] !== undefined && !PROMPT_SCOPES.has(String(a["in"]))) {
+    add("bad_assertion_param",
+        `prompt_contains in ${label} reads in: ${String(a["in"])}, and the runner reads any, ` +
+        "every, first or last prompt", line);
+  }
+  if (type === "calls_tool_with" && "args" in a) {
+    const args = a["args"];
+    if (!args || typeof args !== "object" || Array.isArray(args) || !Object.keys(args).length) {
+      add("bad_assertion_param",
+          `calls_tool_with in ${label} has args that name no argument, so it would pass on any ` +
+          `call to ${String(a["name"])}`, line);
+    }
+  }
+}
+const RULE_KINDS = new Set(["must_remove", "must_keep", "must_add", "max_words", "min_words"]);
 const RUBRIC_WEIGHT_TOTAL = 100;
 
 const MEDIUM_AND_ABOVE = new Set(["medium", "hard", "extreme"]);
 const ADVERSARIAL_REQUIRED = new Set(["hard", "extreme"]);
 const DEFENCE_REQUIRED = new Set(["hard", "extreme"]);
 
-export function validateProblemYaml(source: string, file: string): ValidationReport {
+export function validateProblemYaml(
+  source: string, file: string, options: ValidateOptions = {},
+): ValidationReport {
   const counter = new LineCounter();
   const doc = parseDocument(source, { lineCounter: counter, keepSourceTokens: true });
   const errors: ValidationError[] = [];
@@ -153,6 +239,12 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
     add("schema", `difficulty ${level} is not one of ${DIFFICULTIES.join(", ")}`,
         lineOf(["difficulty"]));
   }
+  const track = raw["track"] as string;
+  if (track && !TRACKS.includes(track as never)) {
+    add("unknown_track",
+        `track ${track} is not one of ${TRACKS.join(", ")}. An invented track becomes an ` +
+        "orphan group on the journey map", lineOf(["track"]));
+  }
   if (errors.length) return { ok: false, file, errors };
 
   validatePanel(raw, artefact, add, lineOf);
@@ -170,7 +262,8 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
   const exemplars = Array.isArray(raw["exemplars"]) ? (raw["exemplars"] as unknown[]) : [];
   const probes = Array.isArray(raw["probes"])
     ? (raw["probes"] as Array<{ name?: string; user_message?: string;
-                               assertion?: { type?: string; pattern?: string } }>) : [];
+                               assertion?: { type?: string; pattern?: string;
+                                             refusal_pattern?: string } }>) : [];
   const promptRules = Array.isArray(raw["prompt_rules"])
     ? (raw["prompt_rules"] as PromptRule[]) : [];
   const rubric = Array.isArray(raw["rubric"])
@@ -204,12 +297,72 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
     }
   }
 
-  // Rule: hints present on an extreme problem.
-  if (level === "extreme" && hints.length > 0) {
-    add("hints_on_extreme",
-        "Extreme problems carry no hints at any point, which the tier exists to enforce",
-        lineOf(["hints", 0]));
-  }
+  // Extreme used to forbid hints outright. docs/00 section 3.2 as amended on
+  // 29 September 2026 gives every tier a hint ladder and gates Extreme's behind
+  // two failed runs and an approach note; screen conditions without any
+  // scaffolding moved to the rehearsal, which reads SCREEN_CONDITIONS.
+  const runNames = new Set<string>([
+    ...tests.map((t) => String(t["name"] ?? "")),
+    ...probes.map((pr) => String(pr?.name ?? "")),
+  ].filter(Boolean));
+  const kit = validateKit(raw, {
+    artefact,
+    requireKit: options.requireKit === true,
+    runNames,
+    hints,
+    add,
+    lineOf,
+  });
+
+  // Rule: a step check naming an assertion the runner does not evaluate. The
+  // checks run on every Run, so a typo here fails in front of the learner.
+  // A step check reads the public cases, or owns one case (kind) or several
+  // (cases), and holds only when every case it owns holds.
+  const checkStepSpec = (spec: Record<string, unknown>, label: string,
+                         at: Array<string | number>, isCase: boolean) => {
+    const assertions = Array.isArray(spec["assertions"]) ? (spec["assertions"] as unknown[]) : [];
+    assertions.forEach((entry, position) => {
+      checkAssertionParams(entry, label, lineOf([...at, "assertions", position]), add);
+      const type = (entry as { type?: unknown } | null)?.type;
+      if (typeof type === "string" && CODE_ASSERTIONS.has(type)) return;
+      add("unknown_assertion_type",
+          `${String(type)} in ${label} is not an ` +
+          `assertion the runner evaluates. Known types: ${[...CODE_ASSERTIONS].join(", ")}`,
+          lineOf([...at, "assertions", position]));
+    });
+    // Rule: a check with nothing to assert holds for any code, the stub's
+    // included, so its step could never turn green.
+    if (!assertions.length) {
+      add("step_check_without_assertions",
+          `${label} asserts nothing, so it holds for any code and the step can never ` +
+          "turn green. Name what the step's work changes in the answer or the calls.",
+          lineOf(at));
+    }
+    if (isCase) {
+      validateScript(spec, label, at, lineOf, add);
+      validateTools(spec, label, at, lineOf, add);
+    }
+  };
+  stepChecks.forEach((check, index) => {
+    const spec = ((check as { spec?: unknown }).spec ?? {}) as Record<string, unknown>;
+    const label = `the check for step ${String(check.step_id ?? index)}`;
+    const at = ["step_checks", index, "spec"];
+    if ("cases" in spec) {
+      const cases = Array.isArray(spec["cases"]) ? (spec["cases"] as unknown[]) : [];
+      if ("kind" in spec || !cases.length) {
+        add("schema",
+            `${label} has cases, which must be a non-empty list of case specs, and then ` +
+            "carries no kind of its own", lineOf(at));
+        return;
+      }
+      cases.forEach((entry, number) => {
+        checkStepSpec((entry ?? {}) as Record<string, unknown>, `case ${number + 1} in ${label}`,
+                      [...at, "cases", number], true);
+      });
+      return;
+    }
+    checkStepSpec(spec, label, at, "kind" in spec);
+  });
 
   // Rule: steps present without matching step_check entries.
   const checked = new Set(stepChecks.map((c) => c.step_id));
@@ -248,6 +401,17 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
             "else in the problem, so the probe can never be satisfied by design",
             lineOf(["probes", index, "assertion"]));
       }
+      const refusal = probe?.assertion?.refusal_pattern;
+      if (refusal !== undefined) {
+        try {
+          compilePattern(String(refusal));
+        } catch (error) {
+          add("bad_pattern",
+              `probe ${probe.name ?? index} has a refusal_pattern that does not compile: ` +
+              (error instanceof PatternError ? error.message : String(error)),
+              lineOf(["probes", index, "assertion"]));
+        }
+      }
       const type = probe?.assertion?.type;
       if (type && !PROBE_ASSERTIONS.has(type)) {
         add("unknown_assertion_type",
@@ -269,7 +433,10 @@ export function validateProblemYaml(source: string, file: string): ValidationRep
   }
 
   if (errors.length) return { ok: false, file, errors };
-  return { ok: true, file, errors, problem: toParsed(raw, tests, steps, stepChecks, hints, competencies) };
+  return {
+    ok: true, file, errors,
+    problem: toParsed(raw, tests, steps, stepChecks, hints, competencies, kit),
+  };
 }
 
 function validateTests(
@@ -295,34 +462,113 @@ function validateTests(
 
   tests.forEach((test, index) => {
     const spec = (test["spec"] ?? {}) as Record<string, unknown>;
-    const script = Array.isArray(spec["llm_script"])
-      ? (spec["llm_script"] as Array<{ match?: unknown }>) : [];
-    if (!script.length) return;
-
-    // Rule: no "*" fallback in an llm_script.
-    if (!script.some((entry) => entry?.match === "*")) {
-      add("script_needs_fallback",
-          `llm_script in ${String(test["name"] ?? index)} has no "*" fallback, so the mock ` +
-          "would raise partway through and the learner would see an infrastructure error",
-          lineOf(["tests", index, "spec", "llm_script", 0]));
-    }
-
-    // Rule: a matcher that already matches the case's own input wins on every
-    // call once a scratchpad keeps the input in the prompt.
-    const seeded = Object.values((spec["input"] ?? {}) as Record<string, unknown>)
-      .map(String).join(" ");
-    if (!seeded) return;
-    script.slice(0, -1).forEach((entry, position) => {
-      const offender = matchesSeed(entry?.match, seeded);
-      if (offender !== null) {
-        add("matcher_shadows_input",
-            `llm_script entry ${position + 1} in ${String(test["name"] ?? index)} matches the ` +
-            `case's own input (${offender}), so it wins on every call and the ` +
-            `${script.length - position - 1} entries below it are unreachable. Use call_index ` +
-            'when the intent is "the first call".',
-            lineOf(["tests", index, "spec", "llm_script", position]));
-      }
+    const assertions = Array.isArray(spec["assertions"]) ? (spec["assertions"] as unknown[]) : [];
+    assertions.forEach((entry, position) => {
+      checkAssertionParams(entry, String(test["name"] ?? index),
+                           lineOf(["tests", index, "spec", "assertions", position]), add);
+      const type = (entry as { type?: unknown } | null)?.type;
+      if (typeof type === "string" && CODE_ASSERTIONS.has(type)) return;
+      add("unknown_assertion_type",
+          `${String(type)} in ${String(test["name"] ?? index)} is not an assertion the runner ` +
+          `evaluates. Known types: ${[...CODE_ASSERTIONS].join(", ")}`,
+          lineOf(["tests", index, "spec", "assertions", position]));
     });
+    validateScript(spec, String(test["name"] ?? index), ["tests", index, "spec"], lineOf, add);
+    validateTools(spec, String(test["name"] ?? index), ["tests", index, "spec"], lineOf, add);
+  });
+}
+
+/**
+ * Rule: each tool is exactly one known form. runner/problem.py refuses the
+ * same things at load; this names the line before a problem is imported. A
+ * typo such as return: used to load as a tool that answers null.
+ */
+function validateTools(
+  spec: Record<string, unknown>,
+  label: string,
+  at: Array<string | number>,
+  lineOf: (path: Array<string | number>) => number,
+  add: (rule: Rule, message: string, line: number) => void,
+): void {
+  const tools = spec["tools"];
+  if (!tools || typeof tools !== "object" || Array.isArray(tools)) return;
+  for (const [name, raw] of Object.entries(tools as Record<string, unknown>)) {
+    const line = lineOf([...at, "tools", name]);
+    const where = `tool ${name} in ${label}`;
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      add("bad_tool_spec", `${where} is not a mapping`, line);
+      continue;
+    }
+    const tool = raw as Record<string, unknown>;
+    const forms = TOOL_FORMS.filter((form) => form in tool);
+    const allowed = new Set<string>([...TOOL_FORMS, ...("fixture" in tool ? ["params"] : [])]);
+    const extra = Object.keys(tool).filter((key) => !allowed.has(key));
+    if (forms.length !== 1 || extra.length) {
+      add("bad_tool_spec",
+          `${where} needs exactly one of ${TOOL_FORMS.join(", ")}, and params only with a ` +
+          `fixture; it has ${Object.keys(tool).sort().join(", ")}`, line);
+      continue;
+    }
+    if ("fixture" in tool && !KNOWN_FIXTURES.has(String(tool["fixture"]))) {
+      add("bad_tool_spec",
+          `${where} names the fixture ${String(tool["fixture"])}, which the runner does not have. ` +
+          `Known fixtures: ${[...KNOWN_FIXTURES].join(", ")}`, line);
+    }
+    if ("sequence" in tool && (!Array.isArray(tool["sequence"]) || !tool["sequence"].length)) {
+      add("bad_tool_spec", `${where} has a sequence that is not a list with at least one value`, line);
+    }
+    if ("by_arg" in tool) {
+      const rule = tool["by_arg"] as Record<string, unknown> | null;
+      const ok = !!rule && typeof rule === "object" && typeof rule["arg"] === "string"
+        && !!rule["values"] && typeof rule["values"] === "object" && !Array.isArray(rule["values"])
+        && Object.keys(rule).every((key) => ["arg", "values", "default"].includes(key));
+      if (!ok) {
+        add("bad_tool_spec",
+            `${where} has a by_arg that needs arg, the argument's name, and values, a mapping ` +
+            "from its value to the answer, with an optional default", line);
+      }
+    }
+  }
+}
+
+/**
+ * The rules every scripted case follows, a test's or a step's own. A step
+ * check whose spec carries kind is a whole case, and it runs on every Run.
+ */
+function validateScript(
+  spec: Record<string, unknown>,
+  label: string,
+  at: Array<string | number>,
+  lineOf: (path: Array<string | number>) => number,
+  add: (rule: Rule, message: string, line: number) => void,
+): void {
+  const script = Array.isArray(spec["llm_script"])
+    ? (spec["llm_script"] as Array<{ match?: unknown }>) : [];
+  if (!script.length) return;
+
+  // Rule: no "*" fallback in an llm_script.
+  if (!script.some((entry) => entry?.match === "*")) {
+    add("script_needs_fallback",
+        `llm_script in ${label} has no "*" fallback, so the mock ` +
+        "would raise partway through and the learner would see an infrastructure error",
+        lineOf([...at, "llm_script", 0]));
+  }
+
+  // Rule: a matcher that already matches the case's own input wins on every
+  // call once a scratchpad keeps the input in the prompt.
+  const seeded = Object.values((spec["input"] ?? {}) as Record<string, unknown>)
+    .map(String).join(" ");
+  if (!seeded) return;
+  script.slice(0, -1).forEach((entry, position) => {
+    const offender = matchesSeed(entry?.match, seeded);
+    if (offender !== null) {
+      add("matcher_shadows_input",
+          `llm_script entry ${position + 1} in ${label} matches the ` +
+          `case's own input (${offender}), so it wins on every call and the ` +
+          `${script.length - position - 1} entries below it are unreachable. Use call_index ` +
+          'when the intent is "the first call".',
+          lineOf([...at, "llm_script", position]));
+    }
   });
 }
 
@@ -496,8 +742,10 @@ export function matchesSeed(rule: unknown, seeded: string): string | null {
   const [kind, value] = entries[0]!;
   if (kind === "contains") return seeded.includes(String(value)) ? String(value) : null;
   if (kind === "regex") {
+    // The runner matches with Python's re, where an inline (?i) is ordinary,
+    // so the pattern goes through the same translation the prompt rules use.
     try {
-      return new RegExp(String(value)).test(seeded) ? String(value) : null;
+      return compilePattern(String(value)).test(seeded) ? String(value) : null;
     } catch {
       return null;
     }
@@ -560,6 +808,21 @@ function validatePrompt(
             `${rule.label} asks for the removal of ${rule.pattern}, which is not in ` +
             "original_prompt, so the rule passes before the learner types anything", at);
       }
+      // Rule: a must_keep of text the original lacks is an addition, and its
+      // failure would tell the learner the text is "no longer" there.
+      if (rule.kind === "must_keep" && original && !compiled.test(original)) {
+        add("rule_pattern_absent",
+            `${rule.label} asks to keep ${rule.pattern}, which is not in original_prompt, so ` +
+            "there is nothing to keep. Use must_add for text the learner has to add.", at);
+      }
+      // Rule: a must_add of text the original already has is green before the
+      // learner types anything.
+      if (rule.kind === "must_add" && original && compiled.test(original)) {
+        add("rule_pattern_present",
+            `${rule.label} asks for ${rule.pattern} to be added, and original_prompt already ` +
+            "has it, so the rule passes before the learner types anything. Use must_keep for " +
+            "text that has to stay.", at);
+      }
     } catch (error) {
       add("bad_pattern",
           error instanceof PatternError ? error.message : String(error), at);
@@ -584,6 +847,25 @@ function validateDesign(
   if (!Array.isArray(raw["rubric"]) || !(raw["rubric"] as unknown[]).length) {
     add("no_rubric", "a design problem needs a rubric, or the judge has nothing to score", 1);
   }
+
+  // Rule: an exemplar the structural gate would reject. The adequate exemplar
+  // is the pass threshold and all three anchor the neighbour vote (docs/10),
+  // so one outside the range anchors a band on an answer that is refused
+  // before anything grades it.
+  if (!ok) return;
+  const [low, high] = range as [number, number];
+  const exemplars = Array.isArray(raw["exemplars"]) ? (raw["exemplars"] as unknown[]) : [];
+  exemplars.forEach((entry, index) => {
+    const exemplar = entry as { band?: unknown; body_md?: unknown } | null;
+    if (typeof exemplar?.body_md !== "string") return;
+    const count = wordCount(exemplar.body_md);
+    if (count >= low && count <= high) return;
+    add("exemplar_out_of_range",
+        `the ${String(exemplar.band ?? "unlabelled")} exemplar is ${count} words and the range is ` +
+        `${low} to ${high}. The structural gate refuses an answer outside the range before ` +
+        "any grading, so this exemplar anchors a band on an answer the platform never grades",
+        lineOf(["exemplars", index, "body_md"]));
+  });
 }
 
 function validateRubric(
@@ -639,8 +921,10 @@ function toParsed(
   stepChecks: Array<{ step_id?: string; spec?: unknown }>,
   hints: string[],
   competencies: Array<{ slug?: string; weight?: number }>,
+  kit: Kit,
 ): ParsedProblem {
   return {
+    kit,
     slug: String(raw["slug"]),
     title: String(raw["title"] ?? raw["slug"]),
     artefact_type: raw["artefact_type"] as ParsedProblem["artefact_type"],

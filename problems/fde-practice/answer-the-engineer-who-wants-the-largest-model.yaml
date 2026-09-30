@@ -1,0 +1,357 @@
+slug: answer-the-engineer-who-wants-the-largest-model
+title: Answer the engineer who wants the largest model on every step
+artefact_type: design
+difficulty: medium
+track: fde-practice
+est_minutes: 30
+competencies:
+  - { slug: client-communication, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+
+brief_md: |
+  You are four weeks into building a customs paperwork pipeline for a freight
+  forwarder. Every shipment arrives as a pack of documents. The pipeline
+  classifies each document, extracts the fields customs needs, and when
+  something does not match, drafts an exception note for the customs broker.
+
+  Their lead engineer wants the largest model on every step. In the design
+  review they said: "One model is simpler to run, and the biggest one is the
+  safest. I don't want to be working out which model did what at two in the
+  morning."
+
+  Last week you ran both models over 600 real packs, 150 of which had a
+  mismatch and needed an exception note:
+
+  | Step | Small model | Large model |
+  |---|---|---|
+  | Classify documents | 99.0% of packs all correct | 99.2% |
+  | Extract fields | 96.5% of packs with every field exact | 96.8% |
+  | Draft exception notes | 61% of notes usable unedited | 84% |
+
+  At this month's volume, the large model on every step costs about £21,000 a
+  month. The small model on the first two steps with the large model on
+  exception notes costs about £3,200. The client's quota for the large model
+  is 400 requests a minute, and at month end the pipeline would need about 700
+  if every step used it. Nobody owns that quota: the platform team says model
+  limits belong to the application team, and the application team is the
+  lead engineer and one other person.
+
+contract_md: |
+  Write the decision record you would send the lead engineer before
+  Thursday's review. They are sharp, they will check every number, and they
+  have already said what they want.
+
+  Between 250 and 450 words. There is no template and no required structure.
+
+  The numbers in the brief are all you need. Say what you recommend for each
+  step, what the client gives up with your recommendation, and who runs what
+  once it is live.
+
+word_range: [250, 450]
+required_headings: []
+
+rubric:
+  - label: Decides per step, from the evidence
+    weight: 30
+    descriptor_md: |
+      Strong answers put the small model on classification and extraction and
+      the large model on exception notes, and say why. A gap of 0.2 or 0.3
+      points over 600 packs is one or two packs, which is not a measured
+      difference; 61 against 84 percent on exception notes is a gap brokers
+      feel on the first day. An answer that puts one model on every step,
+      whichever model it picks, has not read its own eval.
+  - label: Says plainly what the client gives up
+    weight: 20
+    descriptor_md: |
+      If the extraction gap is real, it is about three more packs in a
+      thousand with a field to fix. Strong answers state that cost in the client's
+      terms, say what already catches it, and say how it will be measured
+      properly. An answer that presents the recommendation as free will be
+      taken apart in the review.
+  - label: Names who operates each choice
+    weight: 20
+    descriptor_md: |
+      The preferred option needs about 700 requests a minute at month end
+      against a quota of 400 that nobody owns, which is why it fails
+      operationally before it fails on cost. Strong answers name an owner for
+      the model configuration, the spend and the quota, and notice that the
+      recommendation keeps month-end use of the large model well inside the
+      quota.
+  - label: Takes the engineer's concern seriously
+    weight: 15
+    descriptor_md: |
+      One model is simpler, and two models are two things to watch. Strong
+      answers meet that with mechanism: the model chosen per step in
+      configuration, the step and model id logged on every call, one eval
+      suite over both, and a single switch to send everything to the large
+      model. Answers that wave the concern away lose the room.
+  - label: Reads as a decision record
+    weight: 15
+    descriptor_md: |
+      Decision, evidence, the rejected option, consequences and owners, short
+      enough to read before the review and specific enough to overturn if the
+      numbers turn out wrong.
+
+exemplars:
+  - band: strong
+    score: 91
+    body_md: |
+      Decision: choose the model per step
+
+      Recommendation: the small model classifies documents and extracts
+      fields, and the large model drafts exception notes. The model for each
+      step is one line of configuration, so reversing this takes one deploy.
+
+      Evidence. On last week's 600 packs the large model was
+      0.2 points better than the small one at classification and 0.3 points
+      better at extraction. Over 600 packs that is one or two packs, which is
+      not a difference we have measured. On the 150 exception notes it was 84
+      percent usable unedited against 61, a gap brokers will feel on the first
+      day.
+
+      What you give up. If the extraction gap is real, it is about three more
+      packs in every thousand with a field to fix. The rule check in step three
+      already stops a field that disagrees with the invoice, and I will
+      measure the gap on 3,000 packs before go-live. If it holds for one
+      document type, that type moves to the large model and nothing else does.
+
+      Why not the large model everywhere. It costs about £21,000 a month
+      against £3,200, and at month end it needs around 700 requests a minute
+      against a quota of 400. Nobody owns that quota today: the platform team
+      has said model limits are yours, and with two people on the application
+      team, the first sign of a throttle would be a broker whose exception
+      notes stopped arriving. With the large model on exception notes alone,
+      month end stays well inside the quota.
+
+      On debugging at two in the morning: every call logs the step, the model
+      id and the prompt version, so which model did what is one filter away.
+      Both models go through the same client and the same eval suite, and one
+      flag sends every step to the large model if we ever need to rule the
+      small one out.
+
+      Owners. Your team owns the step-to-model configuration and reruns the
+      600-pack eval whenever either model version changes. I will set a spend
+      alarm at £4,000 a month that goes to you. If month-end volume grows, I
+      will draft the quota request to the platform team with the numbers
+      attached.
+
+      What I need from you on Thursday is agreement to run the 3,000-pack
+      measurement before go-live.
+  - band: adequate
+    score: 63
+    body_md: |
+      I recommend using the small model for classification and extraction, and
+      the large model only for the exception notes.
+
+      The main reason is cost. Running the large model on every step would
+      cost about £21,000 a month, compared with about £3,200 for the split
+      approach. That is a saving of nearly £18,000 a month, which is hard to
+      justify giving away when the accuracy results for classification and
+      extraction are almost identical between the two models.
+
+      The exception notes are different. The large model produced usable notes
+      84 percent of the time against 61 percent for the small model, so it is
+      worth paying for there. Brokers read these notes directly, and a bad one
+      creates extra work for them and slows the shipment down.
+
+      I understand the concern about running two models, but in practice this
+      is a small amount of extra configuration. Most modern frameworks make it
+      straightforward to route different steps to different models, and we can
+      document which model each step uses so it is clear to anyone debugging.
+
+      There is also a capacity point. The large model has a quota of 400
+      requests a minute, and at month end the all-large option would need
+      around 700, so we would have to request an increase before going live.
+      With the split, the large model only sees the packs that need an
+      exception note, so month end is much less of a concern.
+
+      Next steps: I will update the configuration and rerun the evaluation on
+      the split setup before go-live, and share the results with you at
+      Thursday's review so we can confirm the approach together.
+  - band: weak
+    score: 30
+    body_md: |
+      I agree with the lead engineer that the large model is the right choice
+      for this pipeline, and that the design should stay as simple as we can
+      make it.
+
+      Looking at the evaluation, the large model scored higher on all three
+      steps: 99.2 percent on classification, 96.8 percent on extraction and 84
+      percent on exception notes. With customs documents, accuracy has to come
+      first, because a mistake can hold a shipment at the border and damage
+      the client's relationship with their own customers.
+
+      Using one model for everything also keeps the architecture simple. There
+      is only one integration to maintain, one set of prompts to tune and one
+      model to monitor, and the team will not have to work out which model
+      produced which output when something goes wrong in the night.
+
+      The cost is higher at around £21,000 a month, but this is small compared
+      with the cost of a delayed shipment or a fine from customs, and the
+      client has told us that getting customs right matters more to them than
+      the model bill. As volumes grow we can look at optimising costs later,
+      for example by caching repeated documents or batching requests.
+
+      On capacity, we should ask for the quota on the large model to be raised
+      before month end, since the pipeline will need around 700 requests a
+      minute at peak.
+
+      I would recommend we go ahead with the large model on every step, and
+      revisit the setup after three months in production once we have real
+      usage data to look at together.
+
+hints:
+  - Read the table one row at a time. How many packs out of 600 is a
+    difference of 0.3 points?
+  - The lead engineer asked for simplicity. A record that ignores that worry
+    loses the review, whatever the numbers say.
+  - Work out month end under each option. Requests a minute against the
+    quota, and who finds out when it throttles.
+  - Say what the client loses with your recommendation, in their terms, and
+    how you would find out whether the loss is real.
+  - "Decision, evidence, the option you rejected, the consequences and the
+    owners: that order reads well to an engineer."
+
+scenario:
+  who: The lead engineer at a freight forwarder, in a design review
+  situation: >-
+    They want the largest model on every step of the customs paperwork
+    pipeline, because one model is simpler to run and the biggest must be the
+    safest.
+  stakes: >-
+    Every step on the large model costs about £21,000 a month against £3,200,
+    and needs 700 requests a minute at month end against a quota of 400 that
+    nobody owns.
+  metrics:
+    - { label: Large model everywhere, value: "£21,000 a month" }
+    - { label: Model per step, value: "£3,200 a month" }
+    - { label: Large model quota, value: 400 a minute }
+
+diagram:
+  title: Three steps, and the same eval says something different on each
+  caption: >-
+    On two steps the models are one or two packs apart in 600. On the third
+    the gap is 23 points. The quota decides what month end looks like.
+  direction: lr
+  nodes:
+    - { id: pack, label: Document pack, sub: one per shipment, kind: doc, tone: blue, at: [0, 1] }
+    - { id: classify, label: Classify, sub: 99.0 against 99.2 percent, kind: service, tone: neutral, at: [1, 0] }
+    - { id: extract, label: Extract fields, sub: 96.5 against 96.8 percent, kind: service, tone: neutral, at: [2, 0] }
+    - { id: exception, label: Exception note, sub: 61 against 84 percent usable, kind: service, tone: orange, at: [3, 0] }
+    - { id: small, label: Small model, sub: one or two packs behind, kind: model, tone: teal, at: [1, 2] }
+    - { id: large, label: Large model, sub: quota of 400 a minute, kind: model, tone: purple, at: [3, 2] }
+    - { id: monthend, label: Month end, sub: 700 a minute if every step, kind: output, tone: pink, at: [4, 2] }
+  edges:
+    - { from: pack, to: classify, step: 1 }
+    - { from: classify, to: extract, step: 2 }
+    - { from: extract, to: exception, label: only on a mismatch, step: 3 }
+    - { from: classify, to: small, label: gap within noise, tone: success }
+    - { from: extract, to: small, label: gap within noise, tone: success }
+    - { from: exception, to: large, label: 23 points better, tone: success }
+    - { from: large, to: monthend, label: every step on large, tone: danger }
+
+approach:
+  goal: A decision the lead engineer can accept, argue with, or overturn on evidence
+  branches:
+    - label: Read the eval step by step
+      leaves: ["how big is each gap?", "how many packs out of 600 is it?"]
+    - label: Price both options
+      detail: Monthly spend, and what month end does to each option.
+      leaves: [the monthly bill, requests a minute against the quota]
+    - label: Answer the engineer's worry
+      leaves: ["what makes two models debuggable?", "how would you fall back?"]
+    - label: Say who runs it
+      leaves: [configuration and evals, spend and quota]
+
+coach:
+  opening: >-
+    Before you write, put a number next to each row of the table: how many
+    packs out of 600 is that gap?
+  signals:
+    - id: one-model
+      when:
+        code_matches: '(?i)(large|largest|biggest|bigger)\s+model\s+(for|on|across)\s+(every|all|each)|every\s+step|all\s+(three\s+)?steps'
+        code_lacks: '(?i)(small|smaller|cheaper|lighter|mid-?sized?)\s+model[^.]{0,80}(classif|extract)|(classif|extract)[^.]{0,80}(small|smaller|cheaper|lighter|mid-?sized?)\s+model|model[^.]{0,20}chosen\s+per\s+step|per-step\s+model'
+      say: >-
+        Your record puts one model on every step. The eval scored each step
+        separately. What does each row say on its own?
+    - id: nothing-given-up
+      when: { code_lacks: '(?i)give\s+up|gives\s+up|\blose\b|\bloses\b|losing|downside|the\s+price\s+of|trade-?off|what\s+(you|the\s+client)\s+(lose|give)' }
+      say: >-
+        Your record says what the client gains. The lead engineer will ask what
+        they lose. What is it, in their terms?
+    - id: no-owner
+      when: { code_lacks: '(?i)\bowns?\b|\bowners?\b|\bownership\b|responsib|accountable|on\s+call' }
+      say: >-
+        Nobody in your record owns the configuration, the spend or the quota.
+        Who finds out first when month end throttles?
+    - id: quota-ignored
+      when: { code_lacks: '(?i)quota|requests\s+a\s+minute|rate\s+limit|throttl' }
+      say: >-
+        The brief gives a quota and a month-end figure. What happens at month
+        end under each option?
+    - id: worry-ignored
+      when: { code_lacks: '(?i)\blogs?\b|\blogged\b|\blogging\b|debug|\btrac(e|es|ed|ing)\b|two\s+in\s+the\s+morning|which\s+model\s+(did|produced|made)|fall\s*back' }
+      say: >-
+        The lead engineer's worry was working out which model did what. Where
+        does your record answer it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one line per step: which model, and the evidence for it.
+        Then the option you are rejecting, and why.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three tries without a pass. Open the hints; the third one is about what
+        month end looks like under each option.
+  wrap_up: >-
+    Model choice is a per-step decision with an owner. Read the eval row by
+    row, say what the client gives up, and answer the engineer's real worry
+    with mechanism rather than reassurance.
+
+reference_md: |
+  The lead engineer's position is reasonable, which is what makes this worth
+  practising. One model is simpler. Two models are two things to watch. An
+  answer that treats the request as naive loses the review before it gets to
+  the numbers.
+
+  The eval settles most of it once each row is read on its own. A 0.2 point
+  gap over 600 packs is one pack, and 0.3 points is two. Nobody can call that
+  a measured difference, and paying about £17,800 a month in exchange for it
+  is paying for a feeling. The exception notes are the opposite case: 84
+  against 61 percent of 150 notes is about 35 more notes a broker can send
+  as written, a difference they will notice every day, and
+  that step is also the one that runs least often, because only mismatched
+  packs reach it. The expensive model belongs where the gap is large and the
+  volume is small, which is rarely where an engineer's instinct puts it.
+
+  The owner is the part most answers miss, and it is the trap in this brief. Every step on the large model needs about 700 requests a minute at
+  month end against a quota of 400, and nobody owns that quota. A preferred
+  option with no operator fails on the busiest day of the month, and the
+  first person to notice is a broker whose exception notes stopped arriving.
+  The recommendation keeps month-end use of the large model well inside the
+  quota, which removes most of the problem rather than assigning it.
+
+  Saying what the client gives up is what makes the record credible. About
+  three packs in a thousand with a field to fix, if the extraction gap is
+  real, caught by the rule check, measured on a bigger sample before go-live,
+  and reversible per document type. An engineer who can see the cost of your recommendation is
+  much more willing to accept it than one who is told there is none.
+
+  The worry about debugging is answered with mechanism: the model chosen per
+  step in configuration, the step and model id on every log line, one eval
+  suite, and one switch back to the large model everywhere.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A client engineer wants the largest model on every step because it is simplest and safest. How do you explain the trade-off you recommend, and what do they lose with it?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I034,
+    whose follow-up asks what the client loses with the recommendation. That bank
+    labels every entry "Original interview-style practice; actual employer frequency
+    unverified", and this inherits the caveat.

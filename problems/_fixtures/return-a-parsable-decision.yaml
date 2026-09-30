@@ -25,7 +25,7 @@ original_prompt: |
 prompt_rules:
   - { kind: must_remove, label: "the instruction to answer in prose", pattern: "(?i)short paragraph" }
   - { kind: must_remove, label: "the invitation to add caveats", pattern: "(?i)add caveats" }
-  - { kind: must_keep,   label: "the escalation judgement", pattern: "(?i)escalat" }
+  - { kind: must_add,    label: "the escalation judgement, said out loud", pattern: "(?i)escalat" }
   - { kind: max_words,   label: "under 250 words", numeric_value: 250 }
 
 probes:

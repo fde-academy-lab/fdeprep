@@ -1,0 +1,520 @@
+slug: redact-personal-data-before-the-prompt
+title: Take personal data out before the prompt and put it back in the reply
+artefact_type: code
+difficulty: medium
+track: guardrails
+est_minutes: 25
+competencies:
+  - { slug: context-assembly, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A home broadband provider's support agent drafts replies to tickets. An
+  audit of the model provider's retained logs found 1,900 of its prompts
+  carrying customers' email addresses and phone numbers, and 212 carrying full
+  card numbers that customers had typed into billing tickets.
+
+  The security team put a gateway in front of the model that refuses any
+  prompt holding one of those, and since Monday it has refused a third of the
+  drafts. The first fix scrubbed the drafts on their way to the customer, so
+  customers now get replies that say [redacted] where their own email address
+  should be, and the prompts still carry everything.
+
+  Take the personal data out before the prompt is built, keep a record of what
+  you took, and put it back into the draft by the data protection team's
+  rules.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the support team's instruction, such as "Draft a reply to
+  this ticket."
+
+  `tools["read_ticket"]()` returns the ticket:
+
+      {"status": 200, "id": "T-2291", "body": "...", "metadata": {...}}
+
+  The metadata can nest dicts and lists, and any string anywhere in the ticket
+  can hold personal data.
+
+  Send the whole ticket to the model as JSON, in one prompt. Every prompt
+  passes through the gateway: if it carries a raw email address, phone number
+  or card number, `llm` returns `Blocked: personal data in prompt` instead of a
+  reply.
+
+  The data protection team's field rules:
+
+  | Kind | In the prompt | In the draft you return |
+  |---|---|---|
+  | Email address | `[EMAIL_1]`, `[EMAIL_2]`, ... | the original address |
+  | Phone number | `[PHONE_1]`, `[PHONE_2]`, ... | the original number |
+  | Card number | `[CARD_1]`, `[CARD_2]`, ... | `card ending <its last four digits>` |
+
+  Number each kind from 1, in the order its values first appear in the ticket,
+  body before metadata. A value that appears twice keeps one placeholder. The
+  stub holds the pattern for each kind.
+
+  The model replies `Final Answer: <draft>`, writing a placeholder wherever it
+  means one of the customer's details. Return the draft with every placeholder
+  put back by the rules above.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  # The data protection team's patterns. Cards go first, so no other pattern
+  # gets a chance to bite into a card number.
+  PATTERNS = (
+      ("CARD", re.compile(r"\b(?:\d{4}[ -]){3}\d{4}\b")),
+      ("EMAIL", re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")),
+      ("PHONE", re.compile(r"(?:\+44\s?7\d{3}|\b07\d{3})\s?\d{3}\s?\d{3}\b")),
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      ticket = tools["read_ticket"]()
+      placeholders = {}  # "[EMAIL_1]" -> the value it stands for
+
+      # TODO 1: swap every email, phone number and card number in every string
+      #         of the ticket, at any depth, for its numbered placeholder, and
+      #         record each placeholder in placeholders
+      redacted = ticket
+
+      reply = llm(f"{question}\n\nTicket:\n{json.dumps(redacted)}\n")
+      draft = reply.split("Final Answer:", 1)[-1].strip()
+
+      # TODO 2: put each placeholder in the draft back by the field rules
+      # TODO 3: return the finished draft
+      return "The draft is not ready yet."
+
+steps:
+  - id: s1
+    text: Swap every email, phone number and card number in every string of the ticket for its placeholder.
+    check_id: s1
+  - id: s2
+    text: Record each placeholder and the value it replaced, one placeholder per distinct value.
+    check_id: s2
+  - id: s3
+    text: Put every placeholder in the draft back by the field rules, so a card goes back as its last four digits.
+    check_id: s3
+  - id: s4
+    text: Return the finished draft.
+    check_id: s4
+
+step_checks:
+  # The stub returns a fixed sentence until step 4 returns the draft, so s1
+  # shows only after that. It reads a_ticket_with_contact_details_gets_a_draft,
+  # whose draft comes back only when no raw email or phone reached the prompt.
+  # That ticket's details are all in its metadata, so code that sends only the
+  # body got the draft too without swapping anything. The placeholders have to
+  # be in the prompt, which they are only when the whole ticket went, swapped.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: prompt_contains, value: '\[EMAIL_1\]' }
+        - { type: prompt_contains, value: '\[PHONE_1\]' }
+        - { type: returns_matches, value: '(?i)line test tonight' }
+  # Neither public ticket repeats a value or holds two of one kind, so this
+  # check runs its own ticket: two phone numbers, one of them written three
+  # times. The model uses both placeholders only when each number reached it
+  # as one placeholder. The draft may still hold them, because putting them
+  # back is step 3, and where it does not, each has to be the number it
+  # replaced.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Draft a reply to this ticket." }
+      llm_script:
+        - { match: { regex: '07700 ?900 ?318|07700 ?900 ?542' },
+            reply: "Blocked: personal data in prompt" }
+        - { match: { contains: "[PHONE_3]" },
+            reply: "Final Answer: You gave us several numbers. Which one should the engineer use?" }
+        - { match: { all: [ { contains: "[PHONE_1]" }, { contains: "[PHONE_2]" } ] },
+            reply: "Final Answer: We will call and text you on [PHONE_2] from now on, and [PHONE_1] is off your account." }
+        - { match: "*",
+            reply: "Final Answer: Which number should we use from now on?" }
+      tools:
+        read_ticket:
+          returns:
+            status: 200
+            id: "T-2306"
+            body: "Please stop calling my old mobile, 07700 900318. Use 07700 900542 from now on, and text 07700 900542 when the engineer is on the way."
+            metadata: { channel: "chat", callback: "07700 900542" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: 'text you on (?:07700 900542|\[PHONE_2\]) from now on' }
+        - { type: returns_matches, value: '(?:07700 900318|\[PHONE_1\]) is off your account' }
+  # The stub already sends the ticket as JSON in one prompt, so this step
+  # names the work after the model call. Neither public draft carries a
+  # placeholder, so this check runs its own ticket with a card number and an
+  # email address in it.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Draft a reply to this ticket." }
+      llm_script:
+        - { match: { regex: '5500[ -]?0000[ -]?0000[ -]?0004|lena\.v@example\.com' },
+            reply: "Blocked: personal data in prompt" }
+        - { match: { all: [ { contains: "[CARD_1]" }, { contains: "[EMAIL_1]" } ] },
+            reply: "Final Answer: From this month your bill will be taken from [CARD_1], and the confirmation will go to [EMAIL_1] today." }
+        - { match: "*",
+            reply: "Final Answer: Which card should we take your bill from, and where should the confirmation go?" }
+      tools:
+        read_ticket:
+          returns:
+            status: 200
+            id: "T-2307"
+            body: "Please take my bill from my new card 5500 0000 0000 0004 from this month, and send the confirmation to lena.v@example.com."
+            metadata: { channel: "email" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: 'taken from card ending 0004' }
+        - { type: returns_matches, value: 'confirmation will go to lena\.v@example\.com' }
+        - { type: returns_lacks, value: '(?:\d{4}[ -]){3}\d{4}' }
+  # Reads an_account_reference_is_left_for_the_model.
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: returns_matches, value: 'credited account BB-44718' }
+
+hints:
+  - Look at where the first fix did its scrubbing, and at what the gateway
+    reads. They sit at opposite ends of the model call.
+  - Redaction you mean to undo needs a record of what it took. A placeholder
+    is only useful if you still know what it stood for when the draft comes
+    back.
+  - Swap each value for its numbered placeholder before the prompt exists,
+    keep a dict from placeholder to value, and use that dict on the draft
+    afterwards.
+  - The metadata can hold lists of dicts of strings. A redaction that only
+    looks at the body, or only at the top level of the metadata, sends the
+    rest through untouched.
+  - A card number never goes back in full, even to the customer who typed it.
+    The field rules say what goes back instead.
+
+scenario:
+  who: The support desk at a home broadband provider
+  situation: >-
+    An audit found 1,900 of the agent's prompts in the model provider's logs
+    carrying customers' contact details, and 212 carrying full card numbers. A
+    gateway now refuses any prompt that holds one.
+  stakes: >-
+    A third of drafts have been refused since Monday, and the first fix
+    scrubbed customers' own details out of their replies while the prompts kept
+    everything.
+  metrics:
+    - { label: Prompts with contacts, value: "1,900" }
+    - { label: With full card numbers, value: "212" }
+    - { label: Drafts refused, value: 1 in 3 }
+
+diagram:
+  title: Where personal data has to leave and where it comes back
+  caption: >-
+    Redact before the gateway and keep the map on your side of it. Scrubbing
+    the draft after the call protects nobody and removes what the customer
+    needs.
+  direction: lr
+  nodes:
+    - { id: ticket, label: read_ticket, sub: body and nested metadata, kind: store, tone: orange, at: [0, 1] }
+    - { id: redact, label: Redact, sub: placeholders before the prompt, kind: guard, tone: green, at: [1, 1] }
+    - { id: map, label: Placeholder map, sub: never leaves your process, kind: store, tone: neutral, at: [1, 2] }
+    - { id: gateway, label: Gateway, sub: refuses raw personal data, kind: guard, tone: blue, at: [2, 1] }
+    - { id: model, label: Model, sub: drafts with placeholders, kind: model, tone: teal, at: [3, 1] }
+    - { id: restore, label: Restore, sub: by the field rules, kind: agent, tone: purple, at: [4, 1] }
+    - { id: draft, label: Draft, sub: "own details back, card as last four", kind: output, tone: green, at: [5, 0] }
+    - { id: scrubbed, label: Scrubbed draft, sub: "[redacted] where the email was", kind: output, tone: pink, at: [5, 2] }
+  edges:
+    - { from: ticket, to: redact, label: raw ticket, step: 1 }
+    - { from: redact, to: gateway, label: placeholders only, step: 2, tone: success }
+    - { from: gateway, to: model, label: forwarded, step: 3 }
+    - { from: model, to: restore, label: "[EMAIL_1] in the draft", step: 4 }
+    - { from: restore, to: draft, label: details put back, step: 5, tone: success }
+    - { from: redact, to: map, label: placeholder to value }
+    - { from: map, to: restore, label: looked up }
+    - { from: ticket, to: gateway, label: "raw prompt, refused", tone: danger }
+    - { from: model, to: scrubbed, label: scrubbed after the call, tone: danger }
+
+approach:
+  goal: Keep personal data out of every prompt and in every reply that needs it
+  branches:
+    - label: Where the data can be
+      leaves: [the body, "nested metadata, lists included", a call log quoted in a note]
+    - label: Before the call
+      leaves: [each value becomes a numbered placeholder, the same value keeps its placeholder]
+    - label: Keep the way back
+      detail: The map from placeholder to value is the only copy, and it never leaves your process.
+      leaves: [one dict, filled while you redact]
+    - label: After the call
+      leaves: [emails and phone numbers go back as they were, a card goes back as its last four digits]
+
+coach:
+  opening: >-
+    Find the line where the prompt is built. Every piece of personal data has
+    to be gone from the ticket before that line runs.
+  signals:
+    - id: fixed-marker
+      when: { code_matches: '(?i)\[redacted\]|\*\*\*\*' }
+      say: >-
+        Your code swaps personal data for a fixed marker. Once it is gone, what
+        puts the customer's own email address back into the draft?
+    - id: body-only
+      when:
+        code_matches: '\[\s*["'']body["'']\s*\]'
+        code_lacks: 'isinstance|json\.dumps\(\s*ticket'
+      say: >-
+        Your code works on the body alone. The metadata carries a reply-to
+        address and call notes, and the gateway reads the whole prompt.
+    - id: no-card-rule
+      when: { code_lacks: 'ending' }
+      say: >-
+        Nothing in your code writes "card ending". Which rule decides what a
+        card placeholder turns back into?
+    - id: own-details
+      when: { test_failed: the_customer_gets_their_own_details_back }
+      say: >-
+        That customer asked to change their email address and wanted a call.
+        Check that the prompt reached the model at all, then check what your
+        draft says where their details should be.
+    - id: card-in-full
+      when: { test_failed: a_card_number_goes_back_as_its_last_four_digits }
+      say: >-
+        That ticket held a card number. What did your draft say where the model
+        wrote the card's placeholder?
+    - id: two-emails
+      when: { test_failed: two_email_addresses_keep_two_placeholders }
+      say: >-
+        That customer moved from one email address to another. Does each
+        address get its own placeholder, and does each come back as itself?
+    - id: nested-log
+      when: { test_failed: a_phone_number_in_a_nested_call_log_is_redacted }
+      say: >-
+        The phone number in that ticket sat inside a list of call notes in the
+        metadata. How deep does your redaction reach?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 on the body alone: swap one email address for
+        [EMAIL_1] and record it. Widening that to the whole ticket comes next.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hints go in order, starting with where
+        the first fix did its scrubbing.
+  wrap_up: >-
+    Redact where the data leaves your control, which is before the prompt, and
+    keep the only map on your side. What goes back into a reply is a policy
+    decision per field, and a card number never goes back whole.
+
+tests:
+  # The gateway refuses a prompt with raw details in it, so a leak showed here
+  # only as a missing draft. The prompt_lacks lines read the prompt and name
+  # the address or number that reached the model.
+  - name: a_ticket_with_contact_details_gets_a_draft
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Draft a reply to this ticket." }
+      llm_script:
+        - { match: { regex: 'sam\.k@example\.com|07700 ?900 ?456' },
+            reply: "Blocked: personal data in prompt" }
+        - { match: "*",
+            reply: "Final Answer: Sorry about the evening dropouts. An engineer will run a line test tonight and message you with the result." }
+      tools:
+        read_ticket:
+          returns:
+            status: 200
+            id: "T-2290"
+            body: "My broadband drops out every evening around eight. Can someone look at it?"
+            metadata: { channel: "email", reply_to: "sam.k@example.com", callback: "07700 900456" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: read_ticket }
+        - { type: prompt_lacks, value: 'sam\.k@example\.com' }
+        - { type: prompt_lacks, value: '07700 ?900 ?456' }
+        - { type: returns_matches, value: "(?i)line test tonight" }
+
+  - name: an_account_reference_is_left_for_the_model
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Draft a reply to this ticket." }
+      llm_script:
+        - { match: { contains: "BB-44718" },
+            reply: "Final Answer: I have credited account BB-44718 for the router you sent back in August." }
+        - { match: "*",
+            reply: "Final Answer: Which account is this about?" }
+      tools:
+        read_ticket:
+          returns:
+            status: 200
+            id: "T-2291"
+            body: "Account BB-44718 was charged for a router we sent back in August."
+            metadata: { channel: "chat" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "credited account BB-44718" }
+        - { type: llm_calls_at_most, value: 2 }
+
+  # Both details sit in the body. prompt_lacks reads every prompt, so it also
+  # fails a second call that sends the finished draft, with the details back
+  # in it, to the model.
+  - name: the_customer_gets_their_own_details_back
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Draft a reply to this ticket." }
+      llm_script:
+        - { match: { regex: 'maya\.r@example\.com|07700 ?900 ?123' },
+            reply: "Blocked: personal data in prompt" }
+        - { match: { all: [ { contains: "[EMAIL_1]" }, { contains: "[PHONE_1]" } ] },
+            reply: "Final Answer: Done. Your contact email is now [EMAIL_1], and we will call you on [PHONE_1] tomorrow morning about the new contract." }
+        - { match: "*",
+            reply: "Final Answer: Done. We have updated your details." }
+      tools:
+        read_ticket:
+          returns:
+            status: 200
+            id: "T-2292"
+            body: "Please change my contact email to maya.r@example.com and call me on 07700 900123 about the new contract."
+            metadata: { channel: "email" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_lacks, value: 'maya\.r@example\.com' }
+        - { type: prompt_lacks, value: '07700 ?900 ?123' }
+        - { type: returns_matches, value: 'now maya\.r@example\.com' }
+        - { type: returns_matches, value: "call you on 07700 900123" }
+
+  # The full card number must not reach the model in any call. Only the draft
+  # names the card, by its last four digits.
+  - name: a_card_number_goes_back_as_its_last_four_digits
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Draft a reply to this ticket." }
+      llm_script:
+        - { match: { regex: '4111[ -]?1111[ -]?1111[ -]?1111' },
+            reply: "Blocked: personal data in prompt" }
+        - { match: { contains: "[CARD_1]" },
+            reply: "Final Answer: Sorry about the double charge on [CARD_1] for September. The second payment will be refunded within five working days." }
+        - { match: "*",
+            reply: "Final Answer: Sorry about the double charge. Which card was it?" }
+      tools:
+        read_ticket:
+          returns:
+            status: 200
+            id: "T-2293"
+            body: "You charged my card 4111 1111 1111 1111 twice for September."
+            metadata: { channel: "email" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_lacks, value: '4111[ -]?1111[ -]?1111[ -]?1111' }
+        - { type: returns_matches, value: "(?i)double charge on card ending 1111" }
+        - { type: returns_lacks, value: '(?:\d{4}[ -]){3}\d{4}' }
+
+  # Neither address may reach the model, including the old one's second copy
+  # in the metadata.
+  - name: two_email_addresses_keep_two_placeholders
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Draft a reply to this ticket." }
+      llm_script:
+        - { match: { regex: 'maya\.old@example\.com|maya\.r@example\.com' },
+            reply: "Blocked: personal data in prompt" }
+        - { match: { contains: "[EMAIL_3]" },
+            reply: "Final Answer: Which of your three email addresses should we use from now on?" }
+        - { match: { all: [ { contains: "[EMAIL_1]" }, { contains: "[EMAIL_2]" } ] },
+            reply: "Final Answer: Your contact email is now [EMAIL_2]. We will stop writing to [EMAIL_1] today." }
+        - { match: "*",
+            reply: "Final Answer: Which email address should we use from now on?" }
+      tools:
+        read_ticket:
+          returns:
+            status: 200
+            id: "T-2294"
+            body: "Please move my account from maya.old@example.com to maya.r@example.com. The old one closes on Friday."
+            metadata: { channel: "email", reply_to: "maya.old@example.com" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_lacks, value: 'maya\.old@example\.com|maya\.r@example\.com' }
+        - { type: returns_matches, value: 'now maya\.r@example\.com' }
+        - { type: returns_matches, value: 'stop writing to maya\.old@example\.com' }
+
+  # The number and the address sit in a call note two levels down in the
+  # metadata. Neither may reach the model.
+  - name: a_phone_number_in_a_nested_call_log_is_redacted
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Draft a reply to this ticket." }
+      llm_script:
+        - { match: { regex: '\+44 ?7700 ?900 ?987|jo\.b@example\.com' },
+            reply: "Blocked: personal data in prompt" }
+        - { match: { contains: "[PHONE_1]" },
+            reply: "Final Answer: Sorry nobody rang you back. We will call you on [PHONE_1] before noon tomorrow." }
+        - { match: "*",
+            reply: "Final Answer: Sorry nobody rang you back. Which number should we call?" }
+      tools:
+        read_ticket:
+          returns:
+            status: 200
+            id: "T-2295"
+            body: "I asked for a callback last week and nobody rang."
+            metadata:
+              channel: "phone"
+              history:
+                - { at: "2026-09-12 10:41", note: "Callback requested on +44 7700 900987 by jo.b@example.com" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_lacks, value: 'jo\.b@example\.com' }
+        - { type: prompt_lacks, value: '\+44 ?7700 ?900 ?987' }
+        - { type: returns_matches, value: 'call you on \+44 7700 900987' }
+
+reference_md: |
+  The gateway reads the prompt, and the first fix scrubbed the draft. Those
+  are opposite ends of the model call, and personal data only leaves through
+  one of them. Scrubbing after the call protected nobody, and it removed the
+  one thing the customer needed to see: their own details, confirmed back.
+
+  Redaction you mean to undo is two things, a substitution and a record. The
+  map from placeholder to value is the only state in this problem, and where
+  it lives is the whole design. It stays in this process. It never goes into
+  the prompt, the draft or a log line, because a map that travels with the
+  data is the data.
+
+  Number by distinct value, not by occurrence and not by kind. A customer
+  moving from one address to another has two addresses in one ticket, and a
+  scheme that calls both [EMAIL] hands the model a sentence it cannot answer
+  and hands you a draft you cannot restore.
+
+  Redact the whole ticket at every depth. Metadata nests lists of dicts, and a
+  call log quoted in a note is as personal as the body. Walking the structure
+  reaches it, and so does redacting the serialised JSON; a loop over the
+  top-level strings does not, and the gateway finds the difference for you.
+
+  The field rules are policy, and they are asymmetric on purpose. An email
+  address goes back to the person it belongs to. A card number goes back as
+  its last four digits even to the customer who typed it, because drafts get
+  logged, forwarded and quoted, and a full card number in a support thread is
+  the next audit's first finding.
+
+  Say out loud what this does not do. Patterns catch the formats somebody
+  wrote down, and a card number typed with full stops between the groups gets
+  past all three. The gateway is the backstop for exactly that, which is why
+  a refusal from it has to reach a person rather than disappear.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your agent's prompts go to a third-party model provider. How do you keep customers' personal data out of them and still send each customer a reply with their own details in it?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

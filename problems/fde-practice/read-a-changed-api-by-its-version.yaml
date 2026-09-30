@@ -1,0 +1,369 @@
+slug: read-a-changed-api-by-its-version
+title: Stop a renamed field telling customers they owe nothing
+artefact_type: code
+difficulty: medium
+track: fde-practice
+est_minutes: 30
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: context-assembly, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  Your client, a regional water utility, runs a billing assistant you built.
+  When a customer asks what they owe, the integration reads their bill from
+  the utility's billing API, puts the amount in the prompt, and the model
+  answers.
+
+  The billing team shipped version 2 of the API at two in the morning. It
+  renamed `amount` to `amount_due`. The integration read `amount`, found
+  nothing and fell back to zero, and the model did what a model does with a
+  number in its prompt: it believed it. By the time anyone noticed, 212
+  customers had been told they owed nothing this month.
+
+  The billing team's changelog arrived at nine. Version 3 rolls out account by
+  account from Monday, keeps the name `amount_due`, and sends it in pence.
+  Make the integration read all three versions correctly, and hand a bill it
+  cannot read to a person instead of guessing.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the customer's message. It names their account as `ACC-`
+  followed by digits.
+
+  `tools["billing"](account=...)` returns the account's bill. Every response
+  carries `api_version`, which decides where the amount is and what unit it
+  is in:
+
+  | `api_version` | Amount field | Unit |
+  |---|---|---|
+  | `"1"` | `amount` | pounds, as a decimal |
+  | `"2"` | `amount_due` | pounds, as a decimal |
+  | `"3"` | `amount_due` | pence, as an integer |
+
+  Every version also carries `due`, a date written `YYYY-MM-DD`.
+
+  When you can read the amount, put it in the prompt in pounds with two
+  decimals and a pound sign, like `£42.00`, with the due date and the
+  customer's message. Call `llm(prompt)` once and return its reply unchanged.
+
+  When you cannot, because the version is not in the table or the amount is
+  missing or null, do not call the model. Return one sentence that begins
+  `Handoff:` and names the API version and the field you could not read. The
+  assistant passes anything beginning `Handoff:` to a person.
+
+  Budget: at most 2 model calls, and a bill you could not read spends none.
+  Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      account = re.search(r"ACC-\d+", question).group(0)
+      bill = tools["billing"](account=account)
+
+      # TODO 1: read the version field first, because it decides which field
+      #         holds the amount and what unit that field is in
+      amount = bill.get("amount") or 0
+
+      # TODO 2: turn what you read into pounds for that version
+      # TODO 3: when the version is not in the contract's table, or the
+      #         amount is missing or null, return a Handoff sentence naming
+      #         the version and the field, without calling the model
+
+      prompt = (
+          f"Customer message: {question}\n"
+          f"Amount due: £{amount:.2f}\n"
+          f"Due date: {bill.get('due')}\n"
+          "Answer the customer in one sentence, using only the figures above."
+      )
+      return llm(prompt)
+
+steps:
+  - id: s1
+    text: Read the version first, and let it choose the field that holds the amount.
+    check_id: s1
+  - id: s2
+    text: Convert the amount to pounds for that version before it reaches the prompt.
+    check_id: s2
+  - id: s3
+    text: Hand off a bill with an unknown version or a missing amount, without a model call.
+    check_id: s3
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_matches, value: '£118\.50' }
+  # Both public bills already hold pounds, so the stub writes £42.00 without
+  # converting anything. This check runs its own version 3 bill, whose
+  # amount_due is in pence, and the model says £64.75 only when that is what
+  # reached the prompt.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "What do I need to pay this month? My account is ACC-8830." }
+      llm_script:
+        - { match: { contains: "£64.75" }, reply: "You owe £64.75, due on 9 June." }
+        - { match: { regex: "£6,?475\\.00" }, reply: "You owe £6,475.00, due on 9 June." }
+        - { match: "*", reply: "Your balance is £0.00, so there is nothing to pay this month." }
+      tools:
+        billing:
+          returns: { status: 200, api_version: "3", account: "ACC-8830", amount_due: 6475, due: "2026-06-09" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '£64\.75' }
+  # Both public bills can be read, so this check runs its own: a version 1
+  # bill with no amount field, sent while a final meter reading is pending.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "I moved out last week. What is my final bill? My account is ACC-9147." }
+      llm_script:
+        - { match: "*", reply: "Your balance is £0.00, so there is nothing to pay this month." }
+      tools:
+        billing:
+          returns: { status: 200, api_version: "1", account: "ACC-9147", meter_reading: pending, due: "2026-06-30" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '^\s*Handoff:' }
+        - { type: llm_calls_at_most, value: 0 }
+
+hints:
+  - Two of the three versions put the amount under the same name. Something
+    else in every bill tells them apart.
+  - The fallback to zero is where a missing amount becomes a confident answer.
+    The model cannot tell a zero you read from a zero you made up.
+  - Keep one table from version to the field name and the number of its units
+    in a pound, and treat any version that is not in the table as unreadable.
+  - Check the value you found before you use it. A missing amount and a null
+    amount both end in a Handoff sentence, with no model call.
+  - Convert to pounds once, straight after reading, so the prompt line never
+    needs to know which version the bill came from.
+
+scenario:
+  who: The customer operations team at a regional water utility
+  situation: >-
+    The billing API's version 2 renamed amount to amount_due at two in the
+    morning. The integration read the old name, fell back to zero, and the
+    assistant repeated the zero to every customer who asked.
+  stakes: >-
+    212 customers were told they owed nothing. Version 3 arrives on Monday,
+    sending the same field in pence.
+  metrics:
+    - { label: Customers told £0.00, value: "212" }
+    - { label: Hours before anyone noticed, value: "7" }
+    - { label: API versions in flight, value: "3" }
+
+diagram:
+  title: Where a renamed field turns into £0.00
+  caption: >-
+    The integration read the old name, found nothing and wrote zero into the
+    prompt. The model took the zero as a fact. The version says what to read.
+  direction: lr
+  nodes:
+    - { id: billing, label: Billing API, sub: "versions 1, 2 and 3 all live", kind: service, tone: blue, at: [0, 1] }
+    - { id: integration, label: Integration, sub: reads the bill into the prompt, kind: agent, tone: purple, at: [1, 1] }
+    - { id: version, label: api_version, sub: says where and in what unit, kind: guard, tone: green, at: [2, 0] }
+    - { id: handoff, label: Handoff, sub: a person reads the bill, kind: output, tone: neutral, at: [3, 0] }
+    - { id: prompt, label: Prompt, sub: "Amount due: £0.00", kind: doc, tone: orange, at: [2, 2] }
+    - { id: model, label: Model, sub: believes the prompt, kind: model, tone: teal, at: [3, 2] }
+    - { id: customer, label: Customer, sub: told they owe nothing, kind: actor, tone: pink, at: [4, 2] }
+  edges:
+    - { from: billing, to: integration, label: amount_due arrives, step: 1 }
+    - { from: integration, to: prompt, label: "amount missing, so zero", tone: danger, step: 2 }
+    - { from: prompt, to: model, label: a number it trusts, step: 3 }
+    - { from: model, to: customer, label: nothing to pay, tone: danger, step: 4 }
+    - { from: integration, to: version, label: read it first, tone: success }
+    - { from: version, to: handoff, label: a version it cannot read, tone: success }
+
+approach:
+  goal: Read every version the billing API sends, and hand off what you cannot read
+  branches:
+    - label: Read the version before the value
+      leaves: [it says which field holds the amount, and which unit the amount is in]
+    - label: Missing is never zero
+      detail: A default of zero turns an unreadable bill into a confident answer.
+      leaves: [null and absent are both unreadable, the model believes whatever the prompt says]
+    - label: Hand off by name
+      leaves: [name the version and the field, no model call for a bill you could not read]
+    - label: Convert once, at the edge
+      leaves: ["pounds in the prompt, whatever the API sent", one table of versions in one place]
+
+coach:
+  opening: >-
+    Before you change a line, write down what tells version 2 and version 3
+    apart. It is not the name of the field.
+  signals:
+    - id: version-ignored
+      when: { code_lacks: 'api_version' }
+      say: >-
+        Nothing reads api_version yet. A field name says where a number is.
+        Which part of the bill says what unit the number is in?
+    - id: defaults-to-zero
+      when: { code_matches: '\bor\s+0(\.0+)?\b|\.get\([^)]*,\s*0(\.0+)?\s*\)' }
+      say: >-
+        A missing amount becomes zero on this line, and the model will tell the
+        customer they owe nothing. What should happen to a bill you cannot
+        read?
+    - id: hidden-unit-change
+      when: { test_failed: a_unit_change_under_the_same_name }
+      say: >-
+        That bill came from version 3. Compare the number in your prompt with
+        what the changelog says version 3 sends.
+    - id: hidden-unknown-version
+      when: { test_failed: an_unknown_version_is_handed_off_by_name }
+      say: >-
+        That bill came from a version the contract's table does not list. Did
+        your code notice, and did the model get asked anyway?
+    - id: hidden-null-amount
+      when: { test_failed: a_null_amount_is_not_read_as_zero }
+      say: >-
+        That bill had the right field with null in it. Follow the null from
+        the line that reads it to the prompt.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start by printing the bill in the second public test next to the first.
+        Then write the table from the contract as a dict.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. Open the hints; the first one points at the
+        field every bill carries and your code does not read.
+  wrap_up: >-
+    A schema change that fails loudly costs an hour. One that fails quietly
+    costs whatever the model says next. Read the version before the value, and
+    make an unreadable field stop the answer rather than default it.
+
+tests:
+  - name: a_version_1_bill_is_answered_in_pounds
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "How much do I owe this month? Account ACC-5520." }
+      llm_script:
+        - { match: { contains: "£42.00" }, reply: "You owe £42.00, due on 14 April." }
+        - { match: "*", reply: "Your balance is £0.00, so there is nothing to pay this month." }
+      tools:
+        billing:
+          returns: { status: 200, api_version: "1", account: "ACC-5520", amount: 42.0, due: "2026-04-14" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '£42\.00' }
+        - { type: calls_tool, name: billing }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: the_renamed_field_is_read_under_its_new_name
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What is my bill? Account ACC-5731." }
+      llm_script:
+        - { match: { contains: "£118.50" }, reply: "You owe £118.50, due on 2 May." }
+        - { match: "*", reply: "Your balance is £0.00, so there is nothing to pay this month." }
+      tools:
+        billing:
+          returns: { status: 200, api_version: "2", account: "ACC-5731", amount_due: 118.5, due: "2026-05-02" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '£118\.50' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_unit_change_under_the_same_name
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Can you tell me what I need to pay? Account ACC-6102." }
+      llm_script:
+        - { match: { contains: "£42.00" }, reply: "You owe £42.00, due on 14 April." }
+        - { match: { regex: "£4,?200\\.00" }, reply: "You owe £4,200.00, due on 14 April." }
+        - { match: "*", reply: "Your balance is £0.00, so there is nothing to pay this month." }
+      tools:
+        billing:
+          returns: { status: 200, api_version: "3", account: "ACC-6102", amount_due: 4200, due: "2026-04-14" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '£42\.00' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: an_unknown_version_is_handed_off_by_name
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How much is this month's bill? Account ACC-6614." }
+      llm_script:
+        - { match: "*", reply: "Your balance is £0.00, so there is nothing to pay this month." }
+      tools:
+        billing:
+          returns: { status: 200, api_version: "4", account: "ACC-6614", balance: { pence: 7350, currency: GBP }, due: "2026-05-02" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '^\s*Handoff:' }
+        - { type: returns_matches, value: '(?i)version\D{0,3}4\b|\bv4\b' }
+        - { type: returns_matches, value: '(?i)amount' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: a_null_amount_is_not_read_as_zero
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Do I owe anything? Account ACC-7702." }
+      llm_script:
+        - { match: "*", reply: "Your balance is £0.00, so there is nothing to pay this month." }
+      tools:
+        billing:
+          returns: { status: 200, api_version: "2", account: "ACC-7702", amount_due: null, dispute: open, due: "2026-04-20" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '^\s*Handoff:' }
+        - { type: returns_matches, value: 'amount_due' }
+        - { type: returns_matches, value: '(?i)version\D{0,3}2\b|\bv2\b' }
+        - { type: llm_calls_at_most, value: 0 }
+
+reference_md: |
+  The incident was a rename, and the fix most people write is a rename fix:
+  read `amount`, and if it is not there read `amount_due`. That handles
+  version 2 and walks straight into version 3, which kept the name and
+  changed the unit. A parser that decides by which field is present can
+  never see that change, because nothing it looks at changed.
+
+  The version is the only field in the bill that says what the other fields
+  mean. Read it first and let it choose both the field and the unit, and keep
+  that knowledge in one table. Version 4 is then one new row, and a version
+  nobody has written a row for is a lookup that misses, which is exactly the
+  moment the integration should stop.
+
+  The fallback to zero is the part worth taking to every integration you
+  build. It looks defensive, because the code no longer crashes. What it
+  actually does is turn "I could not read this" into "this is zero", and then
+  hand the zero to the one component guaranteed to believe it. The model
+  cannot tell a number that was read from a number that was invented, so it
+  said what the prompt said, fluently, 212 times. A crash would have paged
+  someone at two in the morning. The default paged nobody.
+
+  The Handoff sentence is for the person who takes over, so it names the
+  version and the field rather than saying something went wrong. The same
+  sentence is the start of the conversation to have with the billing team:
+  version the contract in the response, announce changes before they ship,
+  and give integrations a window in which both versions are served.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    The customer's API changed under your integration overnight. How do you version the contract so the next change fails loudly, including a field that switches from pounds to pence without being renamed?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I006,
+    whose follow-up is the unit change kept under the old name. That bank labels every
+    entry "Original interview-style practice; actual employer frequency unverified",
+    and this inherits the caveat.

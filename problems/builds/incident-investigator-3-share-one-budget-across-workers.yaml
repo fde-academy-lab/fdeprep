@@ -1,0 +1,494 @@
+slug: incident-investigator-3-share-one-budget-across-workers
+title: Share one follow-up allowance so a noisy worker cannot take it all
+artefact_type: code
+difficulty: hard
+track: builds
+est_minutes: 40
+competencies:
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: system-design, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+build: { id: incident-investigator, title: "Build an incident investigator for the on-call team", stage: 3, of: 4 }
+
+brief_md: |
+  Stages 1 and 2 are live. The checks fan out to workers, every result lands
+  on its own job's line, and leads are followed up. Follow-ups are where the
+  spend is. Two weeks ago one investigation ran 300 trace lookups against a
+  backend the whole company shares, so each investigation now gets an
+  allowance of follow-up calls.
+
+  On Thursday the allowance was four. The checkout-api log worker had found
+  40 failing requests and asked for a trace of each, and it was first in the
+  queue, so all four calls went on traces. The payments-api deploy worker had
+  asked for one follow-up, a diff of deploy d-5520, which would have shown
+  the connection pool cut from 50 to 5. It never ran. The finding said to
+  keep tracing, and checkout stayed broken for 52 minutes.
+
+  Share the allowance so one noisy worker cannot spend what another needs,
+  and make sure a worker whose tool fails cannot take the investigation down
+  with it.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  The stub carries stages 1 and 2 as working code: dispatch, collect,
+  matching by job id, one line per job, and a list of leads, each with its
+  own queue of next checks.
+
+  The alert now carries the investigation's allowance:
+  `{"incident": "INC-8140", "services": [...], "follow_up_allowance": 4}`.
+  Every follow-up call, from any lead, spends one from that single
+  allowance. Dispatch and collect do not.
+
+  When no fan-out result is definitive, follow the leads up:
+
+  - Share the allowance fairly. Leads take turns in dispatch order, one
+    follow-up per turn, so no lead gets a second follow-up while another is
+    still waiting for its first.
+  - A follow-up's own next checks go on the front of its lead's queue.
+  - Stop at the first definitive follow-up, or when the allowance is spent.
+  - A follow-up that raises still spends its call. Record it as
+    `<check>: failed` and carry on.
+  - When the allowance runs out, add `<check> <service>: <n> follow-ups not
+    run` for every lead with checks left.
+
+  Then ask the model once for the finding, with every line.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your leads take equal turns. A reviewer points out that in past incidents
+  the deploy worker's follow-ups found the cause far more often than the log
+  worker's, and proposes giving deploy leads three turns for every one a log
+  lead gets. What would that fix, what would it break on the night the cause
+  is in the logs, and what would you measure before agreeing?
+
+stub_code: |
+  import json
+  import re
+
+  RUNBOOK = ("deploys", "logs", "metrics")
+
+  FINDING = (
+      "Incident {incident}. One line per check, in the order they were started:\n"
+      "{lines}\n"
+      "Write the finding for the on-call engineer in two sentences: the cause "
+      "and the service it is on if a check found one, otherwise the strongest "
+      "lead. Say which checks did not report or were not run.\n"
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Stages 1 and 2 work below. Stage 3 shares the follow-up allowance.
+
+      question carries "follow_up_allowance". Every follow-up call from any
+      lead spends one. Leads take turns in dispatch order, one follow-up per
+      turn. A follow-up's next checks go on the front of its lead's queue.
+      Stop at the first definitive follow-up or when the allowance is spent.
+      A follow-up that raises still spends its call: record "<check>: failed"
+      and carry on. When the allowance runs out, add
+      "<check> <service>: <n> follow-ups not run" for every lead with checks
+      left.
+
+      At most 2 model calls. Allowed imports: json, re.
+      """
+      alert = json.loads(question)
+      incident = alert["incident"]
+      allowance = int(alert.get("follow_up_allowance", 4))
+
+      jobs = []
+      for service in alert["services"]:
+          for check in RUNBOOK:
+              job = f"{incident}/{check}/{service}"
+              tools["dispatch"](job=job, check=check, service=service)
+              jobs.append((job, check, service))
+
+      mine = {job for job, _, _ in jobs}
+      by_job = {}
+      for result in (tools["collect"]() or {}).get("results") or []:
+          job = result.get("job") if isinstance(result, dict) else None
+          if job in mine and job not in by_job:
+              by_job[job] = result
+
+      evidence, leads, definitive = [], [], False
+      for job, check, service in jobs:
+          result = by_job.get(job)
+          if result is None:
+              evidence.append(f"{check} {service}: no result")
+              continue
+          verdict = result.get("verdict", "clear")
+          evidence.append(f"{check} {service}: {verdict}: {result.get('finding', '')}")
+          if verdict == "definitive":
+              definitive = True
+          elif verdict == "lead" and result.get("next"):
+              leads.append((f"{check} {service}", _steps(result)))
+
+      if not definitive:
+          _follow_up_fairly(leads, allowance, tools, evidence)
+
+      return llm(FINDING.format(incident=incident, lines="\n".join(evidence)))
+
+
+  def _steps(result: dict) -> list:
+      return [(step["check"], step.get("args") or {}) for step in result.get("next") or []]
+
+
+  def _follow_up_fairly(leads, allowance, tools, evidence) -> bool:
+      """Follow the leads up under one allowance, in turns.
+
+      leads is a list of ("<check> <service>", [(check, args), ...]) in
+      dispatch order. Append a line to evidence for every follow-up and for
+      every lead cut off. Return True when a follow-up is definitive.
+      """
+      # TODO: the contract in run_agent's docstring
+      return False
+
+hints:
+  - Look at who can spend the allowance in your loop. If the first lead can
+    spend all of it, a lead further down never gets a call.
+  - A shared allowance with a balance check is a ceiling. It limits how much
+    is spent and says nothing about who spends it.
+  - Keep one queue per lead and visit the leads in turns, one follow-up per
+    visit, checking the allowance before every call.
+  - A tool that raises is a spent call and a line in the evidence, and the
+    next lead's turn still comes round. Wrap the call, not the loop.
+  - "The shape: while allowance remains and some lead has checks, visit each
+    lead in dispatch order, pop one check, spend one, call it inside try, write
+    the line, stop on definitive, push its next checks on that lead's front.
+    Then write the not-run lines."
+
+scenario:
+  who: The on-call team at an online grocery
+  situation: >-
+    Each investigation now gets an allowance of follow-up calls. On Thursday
+    the first lead in the queue asked for 40 traces and spent all four calls.
+  stakes: >-
+    The one diff that would have named the cause never ran. The finding said
+    to keep tracing, and checkout stayed broken for 52 minutes.
+  metrics:
+    - { label: Traces one lead asked for, value: "40" }
+    - { label: Follow-up allowance, value: "4" }
+    - { label: Checkout broken, value: 52 min }
+
+diagram:
+  title: Where one worker's follow-ups spend another worker's turn
+  caption: >-
+    A balance check stops the total and says nothing about who spends it.
+    Leads take turns, so the deploy worker's single diff runs in the first
+    round.
+  direction: lr
+  nodes:
+    - { id: alert, label: Alert, sub: incident and allowance, kind: service, tone: pink, at: [0, 1] }
+    - { id: investigator, label: Investigator, sub: dispatches every job, kind: agent, tone: purple, at: [1, 1] }
+    - { id: workers, label: Workers, sub: "deploys, logs, metrics per service", kind: tool, tone: blue, at: [2, 1] }
+    - { id: results, label: Results queue, sub: "finishing order, shared", kind: queue, tone: neutral, at: [3, 1] }
+    - { id: matcher, label: Job id match, sub: one line per job and its leads, kind: guard, tone: green, at: [3, 2] }
+    - { id: allowance, label: Allowance, sub: leads take turns, kind: guard, tone: orange, at: [4, 1] }
+    - { id: trace, label: trace, sub: 40 requests from one lead, kind: tool, tone: neutral, at: [5, 0] }
+    - { id: diff, label: diff, sub: one follow-up from another lead, kind: tool, tone: blue, at: [5, 2] }
+    - { id: model, label: Model, sub: writes the finding from the lines, kind: model, tone: teal, at: [5, 1] }
+    - { id: finding, label: Finding, sub: what the on-call engineer reads, kind: output, tone: green, at: [6, 1] }
+  edges:
+    - { from: alert, to: investigator, label: incident and allowance, step: 1 }
+    - { from: investigator, to: workers, label: dispatch, step: 2 }
+    - { from: workers, to: results, label: posts when done }
+    - { from: results, to: matcher, label: by job id, step: 3 }
+    - { from: matcher, to: allowance, label: each lead's queue, step: 4 }
+    - { from: allowance, to: trace, label: one per turn }
+    - { from: allowance, to: diff, label: its first turn, step: 5, tone: success }
+    - { from: diff, to: model, label: definitive, tone: success }
+    - { from: model, to: finding, label: roll back d-5520, tone: success }
+    - { from: matcher, to: trace, label: "first come, all four calls", tone: danger }
+
+approach:
+  goal: Spend the follow-up allowance so every lead gets a turn
+  branches:
+    - label: One allowance for the whole investigation
+      leaves: [every follow-up spends one, dispatch and collect do not]
+    - label: Take turns
+      detail: A lead waiting for its first follow-up goes before a lead asking for its fifth.
+      leaves: [one queue per lead, one follow-up per turn]
+    - label: Survive a failing tool
+      leaves: [a call that raises is still spent, write the line and move on]
+    - label: Say what was cut off
+      leaves: [n follow-ups not run, the finding can name the gap]
+
+coach:
+  opening: >-
+    Before you write the loop, decide which lead gets the next call when two
+    of them are waiting. That decision is the whole of this stage.
+  signals:
+    - id: drains-one-lead-first
+      when: { code_matches: 'for\s+[\w\s,()]+\s+in\s+leads\s*:\s*\n\s+while\b' }
+      say: >-
+        Your loop drains each lead's queue before the next lead gets a call,
+        so the first noisy lead can spend the whole allowance. How would the
+        leads take turns instead?
+    - id: bare-follow-up
+      when: { code_lacks: '\bexcept\b' }
+      say: >-
+        Nothing catches a follow-up that raises. One worker's tool failing
+        would end the investigation, and every other lead's turn with it.
+    - id: noisy-lead-won
+      when: { test_failed: one_noisy_worker_cannot_spend_the_whole_allowance }
+      say: >-
+        One lead asked for twelve traces and another for a single diff. Count
+        how many calls the second lead got before the allowance ran out.
+    - id: matching-broke
+      when: { test_failed: results_still_find_their_workers_when_leads_compete }
+      say: >-
+        Results arrived out of order, with one from another investigation.
+        Stage 2's matching has to survive your changes; check that every line
+        still carries its own job's result.
+    - id: tool-failure-ended-the-run
+      when: { test_failed: adversarial_the_trace_backend_times_out }
+      say: >-
+        The trace backend raised on its first call. What should one failed
+        follow-up cost the investigation, and what should it leave untouched?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the ceiling: count spent calls and never pass the
+        allowance. Then change the order in which leads get their calls.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints go from who spends the allowance, to
+        taking turns, to the shape of the loop.
+  wrap_up: >-
+    A shared budget needs a scheduler as well as a ceiling. Give every
+    worker a turn before any worker gets a second, and let a failing tool
+    cost one call rather than the whole run.
+
+tests:
+  - name: a_lead_is_followed_up_within_the_allowance
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8140", "services": ["checkout-api", "payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8140/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - { job: "INC-8140/logs/checkout-api", verdict: clear, finding: "error lines match the usual background rate", next: [] }
+              - { job: "INC-8140/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+              - { job: "INC-8140/deploys/payments-api", verdict: lead, finding: "payments-api deploy d-5520 at 00:55", next: [{ check: diff, args: { deploy: "d-5520" } }] }
+              - { job: "INC-8140/logs/payments-api", verdict: lead, finding: "connection timeouts to the payments database", next: [] }
+              - { job: "INC-8140/metrics/payments-api", verdict: clear, finding: "payments-api CPU and memory normal", next: [] }
+        diff: { returns: { status: 200, verdict: definitive, finding: "d-5520 cut the database connection pool from 50 to 5", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: diff }
+        - { type: returns_matches, value: '(?i)roll it back' }
+
+  - name: follow_ups_stop_when_the_allowance_is_spent
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8141", "services": ["checkout-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { regex: '(?i)\b2 follow-ups not run' },
+            reply: "No definitive cause yet. Every trace shows checkout requests timing out on payments-api, and the allowance ran out with two traces not run." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8141/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - job: "INC-8141/logs/checkout-api"
+                verdict: lead
+                finding: "40 checkout requests failed in five minutes"
+                next:
+                  - { check: trace, args: { request: "r-9901" } }
+                  - { check: trace, args: { request: "r-9902" } }
+                  - { check: trace, args: { request: "r-9903" } }
+                  - { check: trace, args: { request: "r-9904" } }
+                  - { check: trace, args: { request: "r-9905" } }
+                  - { check: trace, args: { request: "r-9906" } }
+              - { job: "INC-8141/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+        trace: { returns: { status: 200, verdict: lead, finding: "request timed out waiting on payments-api", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: tool_calls_at_most, value: 8 }
+        - { type: returns_matches, value: '(?i)allowance ran out' }
+
+  - name: one_noisy_worker_cannot_spend_the_whole_allowance
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8142", "services": ["checkout-api", "payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No definitive cause yet. Checkout requests are timing out on payments-api; keep tracing them." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8142/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - job: "INC-8142/logs/checkout-api"
+                verdict: lead
+                finding: "40 checkout requests failed in five minutes"
+                next:
+                  - { check: trace, args: { request: "r-7701" } }
+                  - { check: trace, args: { request: "r-7702" } }
+                  - { check: trace, args: { request: "r-7703" } }
+                  - { check: trace, args: { request: "r-7704" } }
+                  - { check: trace, args: { request: "r-7705" } }
+                  - { check: trace, args: { request: "r-7706" } }
+                  - { check: trace, args: { request: "r-7707" } }
+                  - { check: trace, args: { request: "r-7708" } }
+                  - { check: trace, args: { request: "r-7709" } }
+                  - { check: trace, args: { request: "r-7710" } }
+                  - { check: trace, args: { request: "r-7711" } }
+                  - { check: trace, args: { request: "r-7712" } }
+              - { job: "INC-8142/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+              - { job: "INC-8142/deploys/payments-api", verdict: lead, finding: "payments-api deploy d-5520 at 00:55", next: [{ check: diff, args: { deploy: "d-5520" } }] }
+              - { job: "INC-8142/logs/payments-api", verdict: lead, finding: "connection timeouts to the payments database", next: [] }
+              - { job: "INC-8142/metrics/payments-api", verdict: clear, finding: "payments-api CPU and memory normal", next: [] }
+        trace: { returns: { status: 200, verdict: lead, finding: "request timed out waiting on payments-api", next: [] } }
+        diff: { returns: { status: 200, verdict: definitive, finding: "d-5520 cut the database connection pool from 50 to 5", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: diff }
+        - { type: returns_matches, value: '(?i)roll it back' }
+        - { type: tool_calls_at_most, value: 11 }
+
+  - name: results_still_find_their_workers_when_leads_compete
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8143", "services": ["checkout-api", "payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "search index" },
+            reply: "A search index rebuild is blocking basket reads on checkout-api. Stop the rebuild." }
+        - { match: { contains: "out of memory" },
+            reply: "payments-api is restarting every 90 seconds because it runs out of memory. Raise its memory limit and tell the payments team." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - job: "INC-8143/logs/checkout-api"
+                verdict: lead
+                finding: "40 checkout requests failed in five minutes"
+                next:
+                  - { check: trace, args: { request: "r-6601" } }
+                  - { check: trace, args: { request: "r-6602" } }
+                  - { check: trace, args: { request: "r-6603" } }
+              - { job: "INC-8127/logs/checkout-api", verdict: definitive, finding: "a search index rebuild blocked every basket read", next: [] }
+              - { job: "INC-8143/metrics/payments-api", verdict: definitive, finding: "payments-api pods restarting every 90 seconds after running out of memory", next: [] }
+              - { job: "INC-8143/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - { job: "INC-8143/deploys/payments-api", verdict: clear, finding: "no deploys to payments-api in the last two hours", next: [] }
+              - { job: "INC-8143/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+              - { job: "INC-8143/logs/payments-api", verdict: lead, finding: "payment requests failing with 503", next: [] }
+        trace: { returns: { status: 200, verdict: lead, finding: "request timed out waiting on payments-api", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '(?i)memory limit' }
+        - { type: does_not_call_tool, name: trace }
+
+  - name: adversarial_the_trace_backend_times_out
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      The tracing backend was down, and the first trace call raised
+      TimeoutError. The deploy worker's diff was one turn behind it in the
+      same round, and the diff finds the cause.
+
+      Code that lets the exception out loses the whole investigation to one
+      worker's tool, which is the starvation this stage is about, arriving by
+      a different route. A follow-up that fails is a spent call and a line in
+      the evidence, and the next lead's turn comes round as usual.
+    spec:
+      kind: agent_run
+      input: { question: '{"incident": "INC-8144", "services": ["checkout-api", "payments-api"], "follow_up_allowance": 4}' }
+      llm_script:
+        - { match: { contains: "from 50 to 5" },
+            reply: "Deploy d-5520 cut payments-api's database connection pool from 50 to 5. Roll it back." }
+        - { match: "*", reply: "No cause found yet." }
+      tools:
+        dispatch: { returns: { status: 202, accepted: true } }
+        collect:
+          returns:
+            status: 200
+            results:
+              - { job: "INC-8144/deploys/checkout-api", verdict: clear, finding: "no deploys to checkout-api in the last two hours", next: [] }
+              - job: "INC-8144/logs/checkout-api"
+                verdict: lead
+                finding: "40 checkout requests failed in five minutes"
+                next:
+                  - { check: trace, args: { request: "r-5501" } }
+                  - { check: trace, args: { request: "r-5502" } }
+                  - { check: trace, args: { request: "r-5503" } }
+                  - { check: trace, args: { request: "r-5504" } }
+              - { job: "INC-8144/metrics/checkout-api", verdict: clear, finding: "checkout-api CPU and memory normal", next: [] }
+              - { job: "INC-8144/deploys/payments-api", verdict: lead, finding: "payments-api deploy d-5520 at 00:55", next: [{ check: diff, args: { deploy: "d-5520" } }] }
+              - { job: "INC-8144/logs/payments-api", verdict: lead, finding: "connection timeouts to the payments database", next: [] }
+              - { job: "INC-8144/metrics/payments-api", verdict: clear, finding: "payments-api CPU and memory normal", next: [] }
+        trace:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the tracing backend timed out on the trace lookup" }
+        diff: { returns: { status: 200, verdict: definitive, finding: "d-5520 cut the database connection pool from 50 to 5", next: [] } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: calls_tool, name: diff }
+        - { type: returns_matches, value: '(?i)roll it back' }
+
+reference_md: |
+  The allowance was working. Four calls were spent and no more, which is
+  exactly what a remaining-balance check guarantees and all it guarantees. It
+  limits the total and says nothing about who spends it, so the first lead in
+  the queue took every call. The log worker asking for forty traces was not
+  misbehaving; it had forty failing requests and it happened to be first.
+
+  Fairness is an order of service. Each lead keeps its own queue, and the
+  leads take turns, one follow-up per turn. A lead waiting for its first
+  follow-up always goes before a lead asking for its fifth, so the diff that
+  names the cause runs in the first round whatever the length of the trace
+  queue, and the stop from stage 1 ends the run there. The allowance is still
+  checked before every call, and whatever is left in the queues when it runs
+  out is written into the evidence, so the finding can say what was not
+  looked at.
+
+  A follow-up that raises is the same failure arriving by another route. If
+  the exception escapes, one worker's broken tool takes every other lead's
+  turn with it, along with the whole investigation. Catching it at the call,
+  spending the allowance, and writing a line keeps that worker's failure
+  local, which is the property the scheduler exists to provide.
+
+  Equal turns is a choice, and the defence question asks you to argue it. It
+  does not assume every lead is equally likely to pay off. It assumes the
+  investigation does not know in advance which lead will, which on the night
+  it matters is true.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Several workers share one call budget. Why is checking the remaining balance before each call not enough to stop one worker starving the rest?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I027.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

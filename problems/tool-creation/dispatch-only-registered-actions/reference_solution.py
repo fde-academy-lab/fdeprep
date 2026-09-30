@@ -7,12 +7,17 @@ naming the refused tool rather than an exception.
 Naming it is the part that matters. A refusal the model cannot read leaves the
 next prompt identical to the last one, so the model asks for the same missing
 tool again until the budget is gone.
+
+The loop stops at the four model calls the budget allows. A model that never
+stops asking for a tool the agent lacks still leaves the user with an answer,
+rather than with the budget's exception.
 """
 
 import json
 import re
 
 _ACTION = re.compile(r"Action:\s*(\w+)\((.*?)\)\s*$", re.MULTILINE)
+MAX_MODEL_CALLS = 4  # the contract's budget
 
 
 def _arguments(raw: str) -> dict:
@@ -27,7 +32,7 @@ def _arguments(raw: str) -> dict:
 def run_agent(question: str, llm, tools: dict) -> str:
     scratchpad = f"Question: {question}\n"
 
-    for _ in range(8):
+    for _ in range(MAX_MODEL_CALLS):
         output = llm(scratchpad)
 
         if "Final Answer:" in output:

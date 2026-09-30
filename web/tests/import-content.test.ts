@@ -17,8 +17,12 @@ import { closeDb, db } from "../lib/db/pool.ts";
 import { importVoiceQuestion, VoiceImportRejected } from "../lib/voice/import.ts";
 import { publishedQuestionId, publishedQuestions } from "../lib/voice/question.ts";
 import { fixtureQuestionId } from "../lib/voice/fixture.ts";
+import path from "node:path";
 import { importAllContent } from "../scripts/import-content.ts";
+import { publishableYamlFiles } from "../lib/problems/source.ts";
 import { resetDatabase } from "./helpers.ts";
+
+const PROBLEMS = path.join(import.meta.dirname, "..", "..", "problems");
 
 const quiet = () => {};
 
@@ -30,18 +34,29 @@ beforeEach(async () => {
   await resetDatabase();
 });
 
+/**
+ * A whole-catalogue import takes time in proportion to the catalogue. At 92
+ * problems it ran in 2.5 seconds on a laptop and past vitest's 5-second
+ * default on the CI runner, and a timed-out import kept writing while the
+ * next test truncated the tables, which Postgres reported as a deadlock. The
+ * budget is for the catalogue's size; nothing here asserts on speed.
+ */
+const WHOLE_CATALOGUE = { timeout: 60_000 };
+
 async function count(table: string): Promise<number> {
   const { rows } = await db().query<{ n: string }>(`select count(*) as n from ${table}`);
   return Number(rows[0]!.n);
 }
 
-describe("importing everything", () => {
-  it("loads the twenty-five problems and the twelve voice questions", async () => {
+describe("importing everything", WHOLE_CATALOGUE, () => {
+  it("loads every catalogue problem and the twelve voice questions", async () => {
     const report = await importAllContent(quiet);
+    const catalogue = (await publishableYamlFiles(PROBLEMS)).length;
 
-    expect(report.problems).toBe(25);
+    expect(catalogue).toBeGreaterThanOrEqual(25);
+    expect(report.problems).toBe(catalogue);
     expect(report.voiceQuestions).toBe(12);
-    expect(await count("problem")).toBe(25);
+    expect(await count("problem")).toBe(catalogue);
     expect(await count("voice_question")).toBe(12);
   });
 
@@ -59,7 +74,7 @@ describe("importing everything", () => {
     const second = await importAllContent(quiet);
 
     expect(second.voiceQuestions).toBe(12);
-    expect(await count("problem")).toBe(25);
+    expect(await count("problem")).toBe((await publishableYamlFiles(PROBLEMS)).length);
     expect(await count("voice_question")).toBe(12);
   });
 });
@@ -156,7 +171,7 @@ exemplars:
   });
 });
 
-describe("which question a learner gets", () => {
+describe("which question a learner gets", WHOLE_CATALOGUE, () => {
   it("is nothing at all before the content has been imported", async () => {
     // A fresh checkout has an empty table, and the session page falls back to
     // the docs/07 fixture so the cockpit still renders while you work locally.

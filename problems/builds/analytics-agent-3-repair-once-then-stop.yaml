@@ -1,0 +1,693 @@
+slug: analytics-agent-3-repair-once-then-stop
+title: Repair a failed query once with the database's own words
+artefact_type: code
+difficulty: hard
+complexity: C2
+track: builds
+est_minutes: 40
+competencies:
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: agent-loop, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+build: { id: analytics-agent, title: Ship a read-only analytics agent, stage: 3, of: 4 }
+
+brief_md: |
+  Stage 3 of 4. The agent picks tables the schema vouches for (stage 1) and
+  runs only a single read-only query over them (stage 2). Now it has to cope
+  when the database rejects that query.
+
+  The first version resent the same query when it failed, four times, and
+  then showed the manager a stack trace. The second version asked the model to
+  fix the query and ran whatever came back. On Tuesday the fix for `column
+  "region" does not exist` joined `regional_targets`, a table the picker never
+  chose, and it ran without passing the guard.
+
+  A repair is a new query that the model wrote, and it earns the same checks
+  as the first one. One repair is usually enough to fix a typo or a wrong
+  column. A question that still fails after it deserves an honest answer.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  Stages 1 and 2 are in the starter code and work.
+
+  `tools["run_query"](sql=...)` can now fail in three ways:
+
+  - It answers with an `error` field, which means the database rejected the
+    query and said why, as in `{"status": 400, "error": "syntax error at or
+    near \"GROUP\""}`.
+  - It answers with something that is not a result: no `columns` and `rows`
+    lists, or nothing at all.
+  - It raises, because the database did not answer in time.
+
+  Only the first can be repaired. Repair it once: ask the model for a
+  corrected query, showing it the failed query and the database's error
+  message word for word. The corrected query goes through stage 2's guard like
+  any other and runs only when the guard allows it.
+
+  When the repair fails too, or the failure cannot be repaired, stop. Never
+  send the same query twice, and never send a query the guard refused to the
+  model for repair.
+
+  Return stage 2's fields. `status` gains a third value, `failed`, with
+  `reason` holding the database's error, or a short description when it gave
+  none. `sql` is the last query that ran.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your agent repairs a failed query once and then answers honestly. A manager
+  says two repairs would fix most of what one misses. What would you measure
+  before agreeing, and what does a second repair cost that the first does not?
+
+stub_code: |
+  import json
+  import re
+
+  PICK_PROMPT = (
+      "You help a garden-centre chain's managers query their sales database.\n"
+      'Reply with one JSON object and nothing else: {"tables": ["<name>", ...]}\n'
+      "List only the tables the question needs. The schema is below.\n"
+  )
+
+  SQL_PROMPT = (
+      "Write one PostgreSQL SELECT statement that answers the question, using only "
+      "the tables below. Reply with the SQL and nothing else.\n"
+  )
+
+  WRITES = re.compile(
+      r"(?i)\b(insert|update|delete|merge|drop|alter|create|truncate|grant|revoke|copy|call|into)\b"
+  )
+  TABLE_LIST = re.compile(
+      r'(?i)\b(?:from|join)\s+((?:"?[a-z_][\w.]*"?(?:\s+(?:as\s+)?[a-z_]\w*)?\s*,\s*)*"?[a-z_][\w.]*"?)'
+  )
+  CTE_NAME = re.compile(r"(?i)\b([a-z_]\w*)\s+as\s*\(")
+
+
+  # Stage 1, working: keep only tables the schema lists and does not deprecate.
+
+  def read_schema(tools: dict) -> dict:
+      reply = tools["describe"]()
+      tables = reply.get("tables") if isinstance(reply, dict) else None
+      if not isinstance(tables, list):
+          return {}
+      return {
+          table["name"]: table
+          for table in tables
+          if isinstance(table, dict) and isinstance(table.get("name"), str)
+      }
+
+
+  def schema_text(schema: dict) -> str:
+      return "\n".join(
+          f"{name}: {table.get('description', '')} Columns: {', '.join(table.get('columns') or [])}."
+          for name, table in schema.items()
+      )
+
+
+  def pick_tables(question: str, schema: dict, llm) -> list:
+      reply = llm(
+          f"{PICK_PROMPT}<schema>\n{schema_text(schema)}\n</schema>\n"
+          f"<question>\n{question}\n</question>"
+      )
+      try:
+          data = json.loads(reply)
+      except ValueError:
+          return []
+      names = data.get("tables") if isinstance(data, dict) else None
+      if not isinstance(names, list):
+          return []
+      kept = []
+      for name in names:
+          table = schema.get(name) if isinstance(name, str) else None
+          if table is not None and not table.get("deprecated") and name not in kept:
+              kept.append(name)
+      return kept
+
+
+  # Stage 2, working: one read over the picked tables, or nothing runs.
+
+  def table_listing(tables: list, schema: dict) -> str:
+      return "\n".join(
+          f"{name}({', '.join(schema[name].get('columns') or [])})" for name in tables
+      )
+
+
+  def write_sql(question: str, tables: list, schema: dict, llm) -> str:
+      return llm(
+          f"{SQL_PROMPT}<tables>\n{table_listing(tables, schema)}\n</tables>\n"
+          f"<question>\n{question}\n</question>"
+      ).strip()
+
+
+  def tables_read(sql: str) -> list:
+      names = []
+      for listed in TABLE_LIST.findall(sql):
+          for item in listed.split(","):
+              name = item.split()[0].strip('"')
+              names.append(name.split(".")[-1].lower())
+      return names
+
+
+  def guard(sql: str, allowed: list):
+      text = sql.strip()
+      if text.endswith(";"):
+          text = text[:-1].rstrip()
+      if not text:
+          return "the model wrote no query"
+      if ";" in text:
+          return "the query holds more than one statement"
+      if not re.match(r"(?i)(select|with)\b", text):
+          return "the query does not start with SELECT"
+      write = WRITES.search(text)
+      if write:
+          return f"the query uses {write.group(1).upper()}, which writes"
+      defined = {name.lower() for name in CTE_NAME.findall(text)}
+      for table in tables_read(text):
+          if table not in allowed and table not in defined:
+              return f"the query reads {table}, which was not picked for this question"
+      return None
+
+
+  # Stage 3: yours.
+
+  def ask_database(sql: str, tools: dict):
+      """Run one query and return (result, error, explained).
+
+      result is the reply when it holds columns and rows lists, otherwise None.
+      error describes what went wrong, in the database's words when it gave any.
+      explained is True only when the reply carried an error field, which is
+      the one failure a repair can use.
+      """
+      ...
+
+
+  def repair_sql(question: str, tables: list, schema: dict, sql: str, error: str, llm) -> str:
+      """Ask the model once for a corrected query, showing it the failed query
+      and the database's error message word for word."""
+      ...
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Answer from one guarded read, repairing a rejected query once.
+
+      run_query can answer with an error field (repairable), answer with
+      something that is not a result, or raise (neither is repairable).
+      A repair goes through guard() before it runs. Stop after one repair.
+      Never send the same query twice, and never repair a refused query.
+
+      Return stage 2's fields, with status "failed" and the database's error
+      in reason when the question cannot be answered. sql is the last query
+      that ran. At most 3 model calls. Allowed imports: json, re.
+      """
+      schema = read_schema(tools)
+      tables = pick_tables(question, schema, llm)
+      out = {"status": "refused", "tables": tables, "sql": None,
+             "columns": None, "rows": None, "reason": None}
+      if not tables:
+          out["reason"] = "no described, current table answers this question"
+          return json.dumps(out)
+
+      sql = write_sql(question, tables, schema, llm)
+      reason = guard(sql, tables)
+      if reason:
+          out["reason"] = reason
+          return json.dumps(out)
+
+      result = tools["run_query"](sql=sql)
+      out.update(status="answered", sql=sql, columns=result["columns"], rows=result["rows"])
+      return json.dumps(out)
+
+hints:
+  - The database's reply now comes in three shapes, a result, an error message
+    and something unusable. Only one of them tells the model what to change.
+  - A repair is a second query written by the same model that wrote the first.
+    It passes through the same guard before it runs, every time.
+  - Put the failed query and the database's error message, word for word,
+    into the repair prompt. Without the message the model has nothing new to
+    work with, and it will likely write the same query again.
+  - One repair, then stop. A second failure, a timeout or a reply that is not
+    a result all end with status failed and the reason, and a query the guard
+    refused is never sent for repair.
+
+scenario:
+  who: The data team at a garden-centre chain
+  situation: >-
+    The first retry resent a failing query four times and then showed the
+    manager a stack trace. The second version asked the model for a fix and
+    ran whatever came back, and on Tuesday a fix joined regional_targets, a
+    table the picker never chose.
+  stakes: >-
+    An unguarded repair can reach every table the connection can. A retry that
+    changes nothing costs a manager minutes and the database four scans.
+  metrics:
+    - { label: Retries of one query, value: "4" }
+    - { label: Unguarded repairs run, value: "1" }
+    - { label: Repairs allowed, value: "1" }
+
+diagram:
+  title: Where a repaired query skips the guard
+  caption: >-
+    The error message goes to the model once, and whatever it writes back goes
+    through the same guard as the first query.
+  direction: lr
+  nodes:
+    - { id: manager, label: Store manager, sub: asks about revenue, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: "writes, then repairs once", kind: model, tone: teal, at: [1, 0] }
+    - { id: agent, label: Analytics agent, sub: reads the database's reply, kind: agent, tone: purple, at: [1, 1] }
+    - { id: guard, label: Query guard, sub: "stage 2, for every query", kind: guard, tone: green, at: [2, 1] }
+    - { id: db, label: Sales database, sub: answers or explains, kind: store, tone: orange, at: [3, 1] }
+    - { id: result, label: Result, sub: columns and rows, kind: output, tone: blue, at: [4, 1] }
+    - { id: failed, label: Honest failure, sub: "the database's own words", kind: output, tone: orange, at: [3, 2] }
+  edges:
+    - { from: manager, to: agent, label: question, step: 1 }
+    - { from: agent, to: guard, label: first query, step: 2 }
+    - { from: guard, to: db, label: one read, step: 3 }
+    - { from: db, to: agent, label: error message, step: 4 }
+    - { from: agent, to: model, label: query and its error, step: 5 }
+    - { from: model, to: guard, label: repaired query, step: 6 }
+    - { from: db, to: result, label: rows, tone: success }
+    - { from: agent, to: failed, label: second failure }
+    - { from: model, to: db, label: "repair, unguarded", tone: danger }
+
+approach:
+  goal: Repair once with the database's own words, then answer honestly
+  branches:
+    - label: Sort the failures
+      leaves: [an error message can be repaired, a timeout or no result cannot]
+    - label: Give the model the evidence
+      leaves: [the failed query, "the error, word for word"]
+    - label: Guard every query
+      detail: >-
+        The repair is a new query from the same model, and it can be wrong in
+        new ways.
+      leaves: [the same guard as the first, a refused repair is a refusal]
+    - label: Stop after one
+      leaves: [a second failure ends it, the reason goes to the manager]
+
+coach:
+  opening: >-
+    A failed query is information. Before you write the repair, decide which
+    failures carry a message the model can use, and what a repaired query has
+    to pass before it runs.
+  signals:
+    - id: error-unread
+      when: { code_lacks: '(?i)["'']error["'']' }
+      say: >-
+        Nothing reads the database's error yet. That message is the one thing
+        that can make a second attempt different from the first.
+    - id: no-net-around-the-database
+      when: { code_lacks: 'except\s+(Exception|BaseException|TimeoutError|OSError)\b|except\s*\(|except\s*:' }
+      say: >-
+        run_query can raise when the database does not answer in time, and
+        nothing here catches it. What does the manager get when that happens?
+    - id: hidden-unguarded-repair
+      when: { test_failed: a_repaired_query_goes_through_the_guard_again }
+      say: >-
+        The repair in that run reached for a table the picker never chose, and
+        it ran. Where does the repaired query meet the guard?
+    - id: hidden-same-query-again
+      when: { test_failed: the_repair_prompt_carries_the_database_error }
+      say: >-
+        In that run the second query matched the first. What did the model
+        see in the repair prompt that it had not seen before?
+    - id: hidden-refusal-repaired
+      when: { test_failed: a_refused_query_is_not_sent_for_repair }
+      say: >-
+        The guard refused that query, and your agent went back to the model.
+        A refusal is not a database error, so nothing gets repaired.
+    - id: hidden-repair-worked
+      when: { test_failed: a_repair_that_runs_answers_with_its_rows }
+      say: >-
+        The repaired query in that run came back with rows. What did your
+        agent report to the manager, and which query does your sql field name?
+    - id: adversarial-nothing
+      when: { test_failed: adversarial_the_database_answers_with_nothing }
+      say: >-
+        The database answered with nothing at all. There is no message to
+        repair from, so what should the manager hear?
+    - id: adversarial-timeout
+      when: { test_failed: adversarial_the_database_stops_answering }
+      say: >-
+        The query tool raised instead of answering. Catch it, and decide
+        whether a query with no explanation is worth a repair.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write ask_database first and print its three return values for each
+        public test. The repair logic follows from the explained flag.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three failed runs in. The hints sort the database's replies first,
+        then cover the repair prompt, then the guard.
+  wrap_up: >-
+    Retrying helps only when the second attempt knows something the first did
+    not. Give the model the database's own words once, guard what comes back,
+    and report honestly when that is not enough.
+
+tests:
+  - name: a_query_that_runs_first_time_needs_no_repair
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What was revenue by region from April to June?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores"]}' }
+        - { match: "*",
+            reply: "SELECT s.region, SUM(l.net_gbp) AS revenue_gbp FROM order_lines l JOIN stores s ON s.store_id = l.store_id WHERE l.sold_on >= '2026-04-01' AND l.sold_on < '2026-07-01' GROUP BY s.region ORDER BY revenue_gbp DESC" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query:
+          returns:
+            status: 200
+            columns: [region, revenue_gbp]
+            rows: [[North, 1184220], [South, 973410], [East, 861095], [West, 702330]]
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql, rows, reason],
+                      properties: { status: { const: answered }, rows: { type: array, minItems: 4 } } } }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: tool_calls_at_most, value: 2 }
+
+  - name: a_query_the_database_keeps_rejecting_ends_in_an_honest_failure
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What was revenue by region from April to June?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores"]}' }
+        - { match: { contains: "syntax error at or near" },
+            reply: "SELECT s.region, SUM(l.net_gbp) AS revenue_gbp FROM order_lines l JOIN stores s ON s.store_id = l.store_id WHERE l.sold_on >= '2026-04-01' AND l.sold_on < '2026-07-01' AND GROUP BY s.region" }
+        - { match: "*",
+            reply: "SELECT s.region, SUM(l.net_gbp) AS revenue_gbp FROM order_lines l JOIN stores s ON s.store_id = l.store_id WHERE l.sold_on >= '2026-04-01' AND GROUP BY s.region" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 400, error: 'syntax error at or near "GROUP"' } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql, reason],
+                      properties: { status: { const: failed },
+                                    reason: { type: string, pattern: 'syntax error' },
+                                    sql: { type: string, pattern: '2026-07-01' } } } }
+        - { type: llm_calls_at_most, value: 3 }
+        - { type: tool_calls_at_most, value: 3 }
+
+  - name: a_repaired_query_goes_through_the_guard_again
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which region brought in the most revenue from April to June?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores"]}' }
+        - { match: { contains: "does not exist" },
+            reply: "SELECT t.region, SUM(l.net_gbp) AS revenue_gbp FROM order_lines l JOIN regional_targets t ON t.store_id = l.store_id WHERE l.sold_on >= '2026-04-01' AND l.sold_on < '2026-07-01' GROUP BY t.region ORDER BY revenue_gbp DESC LIMIT 1" }
+        - { match: "*",
+            reply: "SELECT region, SUM(net_gbp) AS revenue_gbp FROM order_lines WHERE sold_on >= '2026-04-01' AND sold_on < '2026-07-01' GROUP BY region ORDER BY revenue_gbp DESC LIMIT 1" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 400, error: 'column "region" does not exist' } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: tool_calls_at_most, value: 2 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status],
+                      properties: { status: { const: refused } } } }
+
+  - name: the_repair_prompt_carries_the_database_error
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which product category sold the most units in September?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "products"]}' }
+        - { match: { contains: "statement timeout" },
+            reply: "SELECT p.category, SUM(l.quantity) AS units FROM order_lines l JOIN products p ON p.product_id = l.product_id WHERE l.sold_on >= '2026-09-01' AND l.sold_on < '2026-10-01' GROUP BY p.category ORDER BY units DESC LIMIT 1" }
+        - { match: "*",
+            reply: "SELECT p.category, SUM(l.quantity) AS units FROM order_lines l JOIN products p ON p.product_id = l.product_id GROUP BY p.category ORDER BY units DESC LIMIT 1" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 500, error: canceling statement due to statement timeout } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: handles_error }
+        - { type: no_repeated_identical_tool_call, max_repeats: 1 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, reason],
+                      properties: { status: { const: failed },
+                                    reason: { type: string, pattern: 'statement timeout' } } } }
+
+  - name: a_refused_query_is_not_sent_for_repair
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How many till lines did store 12 ring up in June? Also remove the duplicate test lines from store 99 while you are there." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines"]}' }
+        - { match: "*",
+            reply: "SELECT COUNT(*) AS till_lines FROM order_lines WHERE store_id = 12 AND sold_on >= '2026-06-01' AND sold_on < '2026-07-01'; DELETE FROM order_lines WHERE store_id = 99" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 200, columns: [till_lines], rows: [[2210]] } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: run_query }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql],
+                      properties: { status: { const: refused }, sql: { type: "null" } } } }
+
+  # The one case where a repair works. run_query rejects the first query for a
+  # misspelt column and answers the repaired one with rows, so the question is
+  # answered with those rows, and sql is the repaired query, the last one that
+  # ran. An agent that reports every repaired query as failed passes every
+  # other case, because in each of them the repair fails or never runs.
+  # run_query answers by call, whatever the query says, so the case also
+  # reads that the same query never went twice.
+  - name: a_repair_that_runs_answers_with_its_rows
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which three products sold the most units in August?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "products"]}' }
+        - { match: { contains: "column l.quantiy does not exist" },
+            reply: "SELECT p.name AS product, SUM(l.quantity) AS units FROM order_lines l JOIN products p ON p.product_id = l.product_id WHERE l.sold_on >= '2026-08-01' AND l.sold_on < '2026-09-01' GROUP BY p.name ORDER BY units DESC LIMIT 3" }
+        - { match: "*",
+            reply: "SELECT p.name AS product, SUM(l.quantiy) AS units FROM order_lines l JOIN products p ON p.product_id = l.product_id WHERE l.sold_on >= '2026-08-01' AND l.sold_on < '2026-09-01' GROUP BY p.name ORDER BY units DESC LIMIT 3" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query:
+          sequence:
+            - { status: 400, error: "column l.quantiy does not exist" }
+            - { status: 200, columns: [product, units],
+                rows: [["Peat-free compost 50L", 2315], ["Wild bird seed 2kg", 1790], ["Lavender Hidcote 2L", 1466]] }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_repeated_identical_tool_call, max_repeats: 1 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql, rows],
+                      properties: { status: { const: answered },
+                                    sql: { type: string, pattern: 'SUM\(l\.quantity\)' },
+                                    rows: { const: [["Peat-free compost 50L", 2315], ["Wild bird seed 2kg", 1790], ["Lavender Hidcote 2L", 1466]] } } } }
+
+  - name: adversarial_the_database_answers_with_nothing
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The query tool answered with nothing at all, which is what it does while
+      the database is failing over to its replica. There is no result and no
+      error message.
+
+      A repair needs the database to say what was wrong, and here it said
+      nothing, so a repair would be a guess that costs a call and a second trip
+      to a database that is already in trouble. The honest answer is that the
+      database did not return a result.
+    spec:
+      kind: agent_run
+      input: { question: "What was revenue by region from April to June?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores"]}' }
+        - { match: "*",
+            reply: "SELECT s.region, SUM(l.net_gbp) AS revenue_gbp FROM order_lines l JOIN stores s ON s.store_id = l.store_id WHERE l.sold_on >= '2026-04-01' AND l.sold_on < '2026-07-01' GROUP BY s.region" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { fixture: empty_tool_result }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, reason],
+                      properties: { status: { const: failed }, reason: { type: string, minLength: 1 } } } }
+
+  - name: adversarial_the_database_stops_answering
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      The query tool raised instead of answering, because the database took
+      longer than the connection would wait. It arrives as an exception rather
+      than as an error message.
+
+      An agent that lets it escape shows the manager a stack trace. One that
+      treats it like an error message sends a repair with nothing to repair
+      from. The query goes unanswered, and saying so plainly is the whole job
+      here.
+    spec:
+      kind: agent_run
+      input: { question: "What was revenue by region from April to June?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores"]}' }
+        - { match: "*",
+            reply: "SELECT s.region, SUM(l.net_gbp) AS revenue_gbp FROM order_lines l JOIN stores s ON s.store_id = l.store_id WHERE l.sold_on >= '2026-04-01' AND l.sold_on < '2026-07-01' GROUP BY s.region" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the sales database did not answer before the connection timed out" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - { type: tool_calls_at_most, value: 2 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status],
+                      properties: { status: { const: failed } } } }
+
+reference_md: |
+  There are three kinds of failure here, and only one of them is worth a model
+  call.
+
+  An error message is the database saying what was wrong, in words the model
+  can act on. `syntax error at or near "GROUP"` points at a dangling AND, and
+  `column "region" does not exist` points at the wrong table. That is the one
+  failure a repair can use, and the repair prompt has to carry the message
+  word for word. The first version of this agent retried without it, sent the
+  same query four times and got the same answer four times, which is what
+  happens when nothing in the prompt changes.
+
+  A timeout and an empty reply carry no message. Asking the model to fix a
+  query when the database has not said what was wrong asks it to guess, and
+  the guess costs a call and a second trip to a database that is already
+  struggling. Those go straight to an honest failure.
+
+  The repaired query is a new query from the same model, and it gets the same
+  guard. This is the part the second version got wrong. Its repair path
+  called run_query directly because the first query had already passed the
+  guard, as if passing were a property of the question and not of the SQL. A
+  repair for a missing column is exactly when a model reaches for a table it
+  imagines has the column, and `regional_targets` is where it went.
+
+  One repair, then stop. A typo or a wrong column is usually fixed on the
+  first attempt, and a query that still fails after a repair has usually
+  failed for a reason more attempts will not fix. The manager gets the
+  database's own words, which the data team can act on, and no query ever runs
+  twice unchanged.
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A model returns malformed output twice. How should the service respond?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I005.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat. Topic from the problem
+    catalogue, docs/source-pack/05-problem-catalog.csv A025.

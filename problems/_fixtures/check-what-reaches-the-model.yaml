@@ -1,0 +1,114 @@
+# Fixture for the assertion types added on 29 and 30 September 2026:
+# returns_lacks, calls_tool_with, prompt_contains and prompt_lacks. CLAUDE.md
+# asks for a fixture with every new assertion type, so an author has a spec
+# known to work. tests/test_assertion_fixture.py runs each case through the
+# sandbox against a solution that passes and one that fails each assertion.
+slug: check-what-reaches-the-model
+title: Check what reaches the model
+artefact_type: code
+difficulty: easy
+track: guardrails
+est_minutes: 10
+call_budget: 2
+time_limit_s: 5
+allowed_imports: [json, re]
+competencies:
+  - { slug: prompt-hardening, weight: 1.0 }
+
+brief_md: |
+  A fixture problem used to exercise the assertions on what reaches the model
+  and on a tool's arguments. It asks for an agent that looks an account up by
+  its id, keeps the customer's email address out of the prompt and the answer,
+  and answers from the lookup.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` names one account id, such as A-17. Call `lookup(account=<id>)`,
+  which returns `{"status": ..., "email": ...}`. Then call `llm` once, with a
+  prompt that holds the status and not the email address, and return its reply
+  without the email address. Budget: at most 2 model calls. Allowed imports:
+  json, re.
+
+stub_code: |
+  def run_agent(question: str, llm, tools: dict) -> str:
+      # TODO: look the account up, and keep the email address out of the prompt
+      return llm(question)
+
+hints:
+  - The account id is the only part of the question the lookup needs.
+  - Build the prompt from the fields you mean to send, not from the whole record.
+
+tests:
+  - name: public_one
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Where is the order on account A-17?" }
+      llm_script:
+        - { match: { contains: "sam@example.com" }, reply: "I have written to sam@example.com: the order has shipped." }
+        - { match: "*", reply: "The order has shipped." }
+      tools:
+        lookup:
+          by_arg:
+            arg: account
+            values: { A-17: { status: shipped, email: sam@example.com } }
+            default: { status: unknown, email: null }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: calls_tool_with, name: lookup, args: { account: A-17 } }
+        - { type: prompt_contains, value: "shipped", in: every }
+        - { type: prompt_lacks, value: 'sam@example\.com' }
+        - { type: returns_lacks, value: 'sam@example\.com' }
+  - name: public_two
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Has the parcel on account A-52 left the depot?" }
+      llm_script:
+        - { match: { contains: "jo@example.com" }, reply: "I have written to jo@example.com: the parcel is at the depot." }
+        - { match: "*", reply: "The parcel is still at the depot." }
+      tools:
+        lookup:
+          by_arg:
+            arg: account
+            values: { A-52: { status: at_depot, email: jo@example.com } }
+            default: { status: unknown, email: null }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: calls_tool_with, name: lookup, args: { account: A-52 } }
+        - { type: prompt_contains, value: "at_depot", in: every }
+        - { type: prompt_lacks, value: 'jo@example\.com' }
+        - { type: returns_lacks, value: 'jo@example\.com' }
+  - name: hidden_one
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Account A-90 says delivered, but nothing came." }
+      llm_script:
+        - { match: { contains: "kim@example.com" }, reply: "I have written to kim@example.com: the order was delivered." }
+        - { match: "*", reply: "The order shows as delivered." }
+      tools:
+        lookup:
+          by_arg:
+            arg: account
+            values: { A-90: { status: delivered, email: kim@example.com } }
+            default: { status: unknown, email: null }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: calls_tool_with, name: lookup, args: { account: A-90 } }
+        - { type: prompt_contains, value: "delivered", in: every }
+        - { type: prompt_lacks, value: 'kim@example\.com' }
+        - { type: returns_lacks, value: 'kim@example\.com' }
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A fixture, not a question anybody is asked.
+  source: |
+    Fixture scaffolding. Carries the fields so the validator
+    exercises them, and claims nothing.

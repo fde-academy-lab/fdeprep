@@ -1,0 +1,445 @@
+slug: reconcile-customer-facts-by-trust-and-recency
+title: Keep a verified fact when a newer claim disagrees
+artefact_type: code
+difficulty: medium
+track: memory
+est_minutes: 30
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+  - { slug: context-assembly, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A home insurer's claims assistant remembers facts about each customer: their
+  address, their phone number and the account a settlement is paid into. Every
+  fact arrives as a record with a source. Some were verified on a call-back,
+  some were typed in by a support agent, and some were taken from what the
+  customer wrote in chat.
+
+  Last week a chat message said the settlement should go to a new account,
+  ending 9902. The memory kept the newest record for each field, so the chat
+  record replaced the account verified on a call-back in March. The insurer
+  paid 3,200 pounds into an account the customer had never held. The verified
+  record was still in the store, one record older.
+
+  Write the reconciliation that decides which record speaks for each field,
+  and that keeps a newer claim in view without letting it overwrite a
+  verified fact.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `tools["facts"]()` returns every record the memory holds for this customer:
+
+      {"status": 200, "records": [
+          {"field": "payout_account", "value": "ending 4471",
+           "source": "verified", "at": "2026-03-02"}, ...]}
+
+  `source` is one of these, most trusted first:
+
+  | Rank | Source | Meaning |
+  |---|---|---|
+  | 1 | `verified` | confirmed with the customer on a call-back |
+  | 2 | `agent` | typed in by a support agent |
+  | 3 | `chat` | taken from something the customer wrote in chat |
+
+  `at` is an ISO date, so two of them compare as strings.
+
+  For each field, the fact is the value from the most trusted source that has
+  one, and the most recent of that source's records when it has several.
+
+  A record that lost to a more trusted source, is newer than the fact, and
+  says something different from it is held back as unconfirmed. Two values
+  are the same when they match after trimming spaces and ignoring case. Every
+  other record that lost is dropped.
+
+  Build the prompt as
+
+      Customer facts:
+      <field>: <value>                one line per field
+      unconfirmed <field>: <value>    one line per held-back record
+      Question: <question>
+
+  then call `llm(prompt)` once and return its reply, stripped.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  TRUST = {"verified": 1, "agent": 2, "chat": 3}   # 1 is the most trusted
+
+
+  def same_value(a, b) -> bool:
+      return str(a).strip().lower() == str(b).strip().lower()
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      records = (tools["facts"]() or {}).get("records") or []
+
+      facts = {}   # field -> the record that speaks for it
+      held = []    # records shown as unconfirmed
+
+      for record in records:
+          # TODO 1: decide whether record beats the one in facts for its field:
+          #         a more trusted source wins, and between two records from the
+          #         same source the more recent one wins
+          pass
+
+      # TODO 2: hold back every record that lost to a more trusted source, is
+      #         newer than the fact that beat it, and says something different
+
+      lines = ["Customer facts:"]
+      lines += [f"{field}: {record['value']}" for field, record in facts.items()]
+      lines += [f"unconfirmed {record['field']}: {record['value']}" for record in held]
+      lines.append(f"Question: {question}")
+      return llm("\n".join(lines)).strip()
+
+steps:
+  - id: s1
+    text: Decide, record by record, which one speaks for each field, comparing trust first and the date second.
+    check_id: s1
+  - id: s2
+    text: Hold back a newer record from a weaker source that disagrees with the fact, and show it as unconfirmed.
+    check_id: s2
+
+step_checks:
+  # Reads the_newer_record_wins_between_two_agent_notes.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_matches, value: 'Call 07700 900456' }
+  # s2 carries its own case, because no public record loses to a more trusted
+  # source while being newer and different, so nothing is ever held back.
+  # Here the chat email is newer than the verified one and differs, so it is
+  # held back. The agent's email is older than the fact, so it is dropped, and
+  # holding it back too gets the first reply.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Which email address should the claim documents go to?" }
+      llm_script:
+        - { match: { contains: "\nunconfirmed email: j.barker@example.org" },
+            reply: "Confirm every email address on file with the customer before sending anything." }
+        - { match: { contains: "\nunconfirmed email: jo.barker.home@example.net" },
+            reply: "Send them to jo.barker@example.com, and confirm jo.barker.home@example.net with the customer before using it." }
+        - { match: { contains: "\nemail: jo.barker.home@example.net" },
+            reply: "Send them to jo.barker.home@example.net." }
+        - { match: "*", reply: "Send them to jo.barker@example.com." }
+      tools:
+        facts:
+          returns:
+            status: 200
+            records:
+              - { field: email, value: "jo.barker@example.com", source: verified, at: "2026-04-14" }
+              - { field: email, value: "jo.barker.home@example.net", source: chat, at: "2026-09-02" }
+              - { field: email, value: "j.barker@example.org", source: agent, at: "2026-01-20" }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '(?i)confirm jo\.barker\.home@example\.net with the customer' }
+
+hints:
+  - Look at what each record says about where it came from, before you look at
+    when it arrived.
+  - Last write wins treats a chat message and a call-back as the same kind of
+    evidence, so the settlement follows whoever wrote last.
+  - Compare two records on trust first, and use the date only when the trust is
+    equal.
+  - A newer record that lost only on trust may still be true. Show it as
+    unconfirmed unless it says the same thing as the fact.
+  - The same thing means the same after trimming spaces and ignoring case. A
+    customer who types their address in lower case has not moved.
+
+scenario:
+  who: The claims team at a home insurer, and the assistant that pays settlements
+  situation: >-
+    A chat message last week named a new bank account for a settlement. The
+    assistant's memory kept the newest record for each field, so the chat
+    account replaced one verified on a call-back in March.
+  stakes: >-
+    The insurer paid 3,200 pounds into an account the customer had never held.
+    The verified record was still in the store, one record older.
+  metrics:
+    - { label: Settlement paid, value: "£3,200" }
+    - { label: Account verified in, value: March }
+    - { label: Overwritten by, value: one chat message }
+
+diagram:
+  title: Where a chat message outranked a call-back
+  caption: >-
+    Newest-wins reads the date and never the source. The verified account lost
+    to a chat message because it was six months older.
+  direction: lr
+  nodes:
+    - { id: callback, label: Call-back check, sub: "account ending 4471, March", kind: guard, tone: green, at: [0, 0] }
+    - { id: chat, label: Chat message, sub: "account ending 9902, last week", kind: actor, tone: orange, at: [0, 2] }
+    - { id: memory, label: Memory store, sub: every record with its source, kind: store, tone: blue, at: [1, 1] }
+    - { id: reconcile, label: Reconcile, sub: "which record speaks for a field?", kind: decision, tone: purple, at: [2, 1] }
+    - { id: assistant, label: Claims assistant, sub: pays from the facts it is given, kind: model, tone: teal, at: [3, 1] }
+    - { id: paid, label: Settlement paid, sub: "£3,200 to the wrong account", kind: output, tone: pink, at: [4, 1] }
+    - { id: unconfirmed, label: Unconfirmed, sub: a person checks it before use, kind: doc, tone: green, at: [3, 2] }
+  edges:
+    - { from: callback, to: memory, label: verified record, step: 1 }
+    - { from: chat, to: memory, label: chat record, step: 2 }
+    - { from: memory, to: reconcile, label: both records, step: 3 }
+    - { from: reconcile, to: assistant, label: "newest wins: ending 9902", tone: danger }
+    - { from: assistant, to: paid, label: pays the chat account, tone: danger }
+    - { from: reconcile, to: unconfirmed, label: "newer, weaker, different", tone: success }
+
+approach:
+  goal: Decide each fact by how it was checked, then by when
+  branches:
+    - label: Rank the sources
+      leaves: [a call-back beats a typed note, a typed note beats a chat message]
+    - label: Use the date inside a rank
+      leaves: [the newest record from the best source]
+    - label: Keep the newer claim in view
+      detail: A customer who writes a new account number may have one, or may be someone else.
+      leaves: [show it as unconfirmed, a person confirms it before use]
+    - label: Know when two records agree
+      leaves: [the same value in a different case is agreement]
+
+coach:
+  opening: >-
+    Before you write the comparison, decide which matters more for a payout
+    account: who said it, or when.
+  signals:
+    - id: ignores-source
+      when: { code_lacks: '["'']source["'']' }
+      say: >-
+        Nothing in your code reads where a record came from. To this code a
+        call-back and a chat message are both just the newest value.
+    - id: drops-the-loser
+      when: { code_lacks: 'unconfirmed' }
+      say: >-
+        A newer claim that lost on trust may still be true, because customers
+        do change accounts. Where does it show up in the prompt?
+    - id: raw-compare
+      when:
+        code_matches: '\[\s*["'']value["'']\s*\]\s*[!=]=|get\(\s*["'']value["'']\s*\)\s*[!=]=|[!=]=\s*\w+(?:\[\s*["'']value["'']\s*\]|\.get\(\s*["'']value["'']\s*\))'
+        code_lacks: 'lower\(\)|casefold\(\)|same_value'
+      say: >-
+        Two records can say the same thing in a different case or with a stray
+        space. Does your comparison treat that as a disagreement?
+    - id: hidden-verified-account
+      when: { test_failed: a_newer_chat_message_does_not_replace_a_verified_account }
+      say: >-
+        In that run the verified payout account was six months old and a chat
+        message named a different account last week. Which of the two did your
+        prompt call a fact?
+    - id: hidden-held-number
+      when: { test_failed: a_newer_number_from_chat_is_held_for_confirmation }
+      say: >-
+        The customer gave a new number in chat, and a support agent's older
+        number outranks it. Does the chat number appear anywhere in your
+        prompt?
+    - id: hidden-same-address
+      when: { test_failed: the_same_address_typed_again_is_not_a_conflict }
+      say: >-
+        The customer typed their verified address again in chat, in lower case
+        and with a stray space. Does your prompt treat that as a disagreement?
+    - id: hidden-older-account
+      when: { test_failed: an_account_older_than_the_call_back_is_dropped }
+      say: >-
+        In that run a support agent typed a different account in December,
+        three months before the call-back verified 4471. A record older than
+        the fact that beat it is dropped. Does your prompt still show the
+        December account as unconfirmed?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write the comparison for two records first. Given the fact you hold and
+        a new record, which one wins? Try it on the March call-back and last
+        week's chat message.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Hints open after one failed run on this tier,
+        and the first one says where to look.
+  wrap_up: >-
+    Rank sources by how each fact was checked, and let the date break ties
+    only inside a rank. A newer claim from a weaker source goes in front of a
+    person as unconfirmed, where it can be checked before anything is paid.
+
+tests:
+  - name: each_field_comes_from_its_only_record
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Where should the settlement be paid?" }
+      llm_script:
+        - { match: { contains: "\npayout_account: ending 4471" },
+            reply: "The settlement goes to the account ending 4471." }
+        - { match: "*", reply: "I do not have a payout account on file." }
+      tools:
+        facts:
+          returns:
+            status: 200
+            records:
+              - { field: address, value: "14 Mill Lane, Leeds", source: verified, at: "2026-03-02" }
+              - { field: payout_account, value: "ending 4471", source: verified, at: "2026-03-02" }
+              - { field: phone, value: "07700 900123", source: agent, at: "2026-05-10" }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: facts }
+        - { type: returns_matches, value: "ending 4471" }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: the_newer_record_wins_between_two_agent_notes
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Which number should we call about the claim?" }
+      llm_script:
+        - { match: { contains: "\nphone: 07700 900456" }, reply: "Call 07700 900456." }
+        - { match: { contains: "\nphone: 07700 900123" }, reply: "Call 07700 900123." }
+        - { match: "*", reply: "There is no phone number on file." }
+      tools:
+        facts:
+          returns:
+            status: 200
+            records:
+              - { field: phone, value: "07700 900456", source: agent, at: "2026-08-21" }
+              - { field: phone, value: "07700 900123", source: agent, at: "2026-05-10" }
+              - { field: address, value: "14 Mill Lane, Leeds", source: verified, at: "2026-03-02" }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "900456" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_newer_chat_message_does_not_replace_a_verified_account
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Where should the settlement be paid?" }
+      llm_script:
+        - { match: { contains: "\npayout_account: ending 9902" },
+            reply: "The settlement goes to the account ending 9902." }
+        - { match: { contains: "\npayout_account: ending 4471" },
+            reply: "The settlement goes to the account ending 4471." }
+        - { match: "*", reply: "I do not have a payout account on file." }
+      tools:
+        facts:
+          returns:
+            status: 200
+            records:
+              - { field: payout_account, value: "ending 4471", source: verified, at: "2026-03-02" }
+              - { field: payout_account, value: "ending 9902", source: chat, at: "2026-09-24" }
+              - { field: address, value: "14 Mill Lane, Leeds", source: verified, at: "2026-03-02" }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "ending 4471" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_newer_number_from_chat_is_held_for_confirmation
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which number should we call about the claim?" }
+      llm_script:
+        - { match: { contains: "\nphone: 07700 900789" }, reply: "Call 07700 900789." }
+        - { match: { contains: "\nunconfirmed phone: 07700 900789" },
+            reply: "Call 07700 900123. The customer gave 07700 900789 in chat, so confirm it with them before using it." }
+        - { match: "*", reply: "Call 07700 900123." }
+      tools:
+        facts:
+          returns:
+            status: 200
+            records:
+              - { field: phone, value: "07700 900123", source: agent, at: "2026-05-10" }
+              - { field: phone, value: "07700 900789", source: chat, at: "2026-09-20" }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)confirm it with them" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: the_same_address_typed_again_is_not_a_conflict
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Where should the replacement documents be posted?" }
+      llm_script:
+        - { match: { contains: "\nunconfirmed address" },
+            reply: "Before I post anything, can you confirm your address?" }
+        - { match: { contains: "\naddress: 14 Mill Lane, Leeds" },
+            reply: "The documents go to 14 Mill Lane, Leeds." }
+        - { match: "*", reply: "I do not have an address on file." }
+      tools:
+        facts:
+          returns:
+            status: 200
+            records:
+              - { field: address, value: "14 Mill Lane, Leeds", source: verified, at: "2026-03-02" }
+              - { field: address, value: " 14 mill lane, leeds", source: chat, at: "2026-09-18" }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "^The documents go to 14 Mill Lane" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: an_account_older_than_the_call_back_is_dropped
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which account should the settlement go to?" }
+      llm_script:
+        - { match: { contains: "\nunconfirmed payout_account: ending 6158" },
+            reply: "Pay nothing until the customer confirms whether the account ends in 4471 or 6158." }
+        - { match: { contains: "\npayout_account: ending 4471" },
+            reply: "The settlement goes to the account ending 4471." }
+        - { match: "*", reply: "I do not have a payout account on file." }
+      tools:
+        facts:
+          returns:
+            status: 200
+            records:
+              - { field: payout_account, value: "ending 6158", source: agent, at: "2025-12-09" }
+              - { field: payout_account, value: "ending 4471", source: verified, at: "2026-03-02" }
+              - { field: address, value: "14 Mill Lane, Leeds", source: verified, at: "2026-03-02" }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "^The settlement goes to the account ending 4471" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 1 }
+
+reference_md: |
+  Last write wins is the default of almost every table ever built, and it is
+  a fine rule when every write is the same kind of evidence. These are not. A
+  call-back is somebody at the insurer confirming the account with the
+  customer. A chat message is text from whoever was holding the customer's
+  session. The chat record is newer, and its date says nothing about which of
+  the two is true.
+
+  So trust decides, and the date only breaks ties inside one source. Two agent
+  notes a month apart are the same kind of evidence, and the later one is the
+  better guess. A chat message six months after a call-back is weaker evidence
+  that happens to be recent.
+
+  Dropping the losing record is the other half of the mistake. Customers do
+  change accounts and do move house, and the chat message may be the first
+  anybody heard of it. Showing it as unconfirmed keeps it in view, and a
+  person confirms it before a settlement goes anywhere new. That confirmation
+  is what stops a payment diversion; the ranking only stops the automatic one.
+
+  The same-value rule exists because the failure it prevents is friction. A
+  customer who retypes their verified address in lower case has agreed with
+  the record, and asking them to confirm it teaches them that confirmations
+  mean nothing.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A chat message says the customer has a new bank account, and your memory holds one verified on a call-back. Which one does the agent use, and what happens to the other?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

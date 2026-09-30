@@ -78,16 +78,22 @@ exemplars:
   - band: strong
     score: 90
     body_md: |
-      The failure is not that four systems were missed. It is that nothing in
-      the architecture knew a summary was made of anything.
+      Four systems kept the fact because nothing in the architecture knew a
+      summary was made of anything.
 
       The mechanism is provenance. Every derived artefact carries the record
-      ids it was built from, written at build time, not inferred later. A
-      nightly summary carries the ids of the records it summarised. A vector
-      chunk carries the id of the text it was embedded from. A cache entry
-      carries the ids of every record that contributed to the answer. Deletion
-      then stops being a checklist of systems and becomes one query: find
-      everything derived from record X.
+      ids it was built from, written at build time by the code that builds it,
+      because provenance inferred later is a guess. A nightly summary carries
+      the ids of the records it summarised. A vector chunk carries the id of
+      the text it was embedded from. A cache entry carries the ids of every
+      record that contributed to the answer. The ids go into one provenance
+      table that every writer appends to. Deletion then stops being a checklist
+      of systems and becomes one query: find everything derived from record X.
+
+      Provenance has to be transitive, because the index was rebuilt from the
+      summaries rather than from the records. A chunk inherits the record ids
+      of the summary it was embedded from, so the query that finds the April
+      summary also finds its chunks.
 
       Artefacts fall into three classes and the class decides the remedy.
       Regenerable, like the nightly summary, is rebuilt without the deleted
@@ -98,77 +104,253 @@ exemplars:
       retired on a fixed clock rather than repaired. That last sentence is the
       expensive one and it is the one that has to be agreed today.
 
+      Nothing that exists today carries provenance, so the first run is a
+      backfill. The summaries and the index are rebuilt from the records with
+      provenance attached, the cache is flushed once, and every fixture already
+      exported is treated as frozen.
+
       Proof is a deletion record per artefact, written when the artefact is
       repaired, naming the artefact, the record and the time. The data
       protection officer gets one report per request listing every artefact
-      touched and the search that returned nothing afterwards. If an artefact
-      class has no deletion record, the request is not complete, and the
-      report says so rather than omitting it.
+      touched and the search that returned nothing afterwards. The search runs
+      twice, once by record id through the provenance table and once for the
+      old address as text across every store, because a copy that lost its
+      provenance is the copy the first search cannot see. If an artefact class
+      has no deletion record, the request is not complete, and the report says
+      so rather than omitting it.
 
-      The fifth store is the real problem. The eval fixture was exported by an
-      engineer debugging a bug and no design that enumerates stores would have
-      caught it. The control goes where artefacts are born: a derived store
-      cannot be written without declaring its provenance, and the export path
-      that produced the fixture is one of the writers. That turns an
+      The real problem is the fifth store, the one nobody has listed yet. The
+      eval fixture shows how one appears: an engineer exported it to debug a
+      bug, and no design that enumerates stores would have caught it. The
+      control goes where artefacts are born: a derived store cannot be written
+      without declaring its provenance, and the export path that produced the
+      fixture is one of the writers. Engineers debug through a database role
+      that can no longer bulk export customer records, so the next fixture
+      comes through the export path and declares what it holds. That turns an
       unbounded list into a rule.
 
-      Timing and what we say. Primary deletion in minutes, derived artefacts
-      within twenty four hours because the summaries are nightly, frozen
-      artefacts on their retirement clock. The confirmation email says the
-      record is deleted and derived copies are removed within a day, with a
-      line for anything on a longer clock. It does not say "done", because on
-      the day it said that it was not true.
+      The last part is timing and what we tell the customer. Primary deletion
+      takes minutes, derived artefacts clear within twenty four hours because
+      the summaries are nightly, and frozen artefacts clear on their retirement
+      clock. During that window, retrieval skips any artefact whose provenance
+      names a deleted record, so the assistant cannot quote the address before
+      the nightly rebuild has run. The confirmation email says the record is
+      deleted and derived copies are removed within a day, with a line for
+      anything on a longer clock. It does not say "done", because on the day it
+      said that it was not true.
   - band: adequate
     score: 61
     body_md: |
-      We need deletion to propagate to the four places the fact ended up.
+      We need deletion to propagate to the four places the fact ended up. Today
+      it stops at the primary record, which is why the April summary still held
+      the old address six weeks after the customer was told it had gone.
 
       I would build a deletion service that fans out to each of them. When a
       record is deleted it publishes an event. The summary service regenerates
       any summary containing that customer. The index service drops the
       affected chunks and reindexes. The cache is invalidated for that
       customer. The eval fixtures are scanned and the matching rows removed.
+      Using an event means the primary deletion does not wait on four other
+      systems, and a consumer that is down picks the event up when it comes
+      back.
+
+      Three of these need more than a subscription to the event. The index
+      takes its text from the summaries, so the index service has to wait until
+      the summary service has finished, or it will reindex the old summary and
+      put the address straight back. The cache is keyed on the question, so
+      today there is no way to find the entries for one customer. I would add
+      the customer id to every new cache entry and flush the existing cache
+      once when this ships. The fixtures were exported by hand, so the scan
+      covers the shared buckets and the evaluation repository, and matching
+      rows are replaced with synthetic ones so each fixture still reproduces
+      its bug.
 
       Each consumer acknowledges the event, and we hold the request open until
       all four have acknowledged, so we know it completed. If one fails we
-      retry and alert.
+      retry and alert. Retries back off for an hour, and after that the team
+      that owns the consumer is paged and the request shows as stuck on a
+      dashboard, so a deletion cannot fail without somebody seeing it.
 
       We should also keep a register of derived stores, so that when a new one
       is built it gets added to the fan-out. I would make it part of the
-      design review checklist.
+      design review checklist. Each entry names the store, the team that owns
+      it and how that store finds a customer's data, and the deletion service
+      reads its consumers from the register, so adding a store means adding one
+      entry.
 
       On timing, the summaries are nightly so worst case is about a day. The
-      confirmation email should say the deletion will complete within
-      twenty four hours rather than saying it is done immediately.
+      primary record still goes in minutes, as it does now. The confirmation
+      email should say the deletion will complete within twenty four hours
+      rather than saying it is done immediately.
 
-      The fine-tuned model is a harder problem and I would flag it separately.
-      We cannot remove a fact from a checkpoint, so we would need to decide
-      whether to retrain or accept it, and that is a conversation with the data
-      protection officer rather than an engineering decision.
+      If any model has been fine-tuned on these records, that is a harder
+      problem and I would flag it separately. We cannot remove a fact from a
+      checkpoint, so we would need to decide whether to retrain or accept it,
+      and that is a conversation with the data protection officer rather than
+      an engineering decision.
   - band: weak
     score: 29
     body_md: |
       The core issue is that deletion is only happening in the primary
-      database. We need to extend it to cover all downstream systems.
+      database. We need to extend it to cover all downstream systems. The
+      customer was told their data had been deleted, and weeks later the
+      assistant quoted their old address to another agent, which is a serious
+      problem for customer trust and for compliance. Data protection rules are
+      strict, so a request like this has to be handled properly everywhere the
+      customer's data is stored.
 
       I would add deletion calls for each of the four systems mentioned. When
       a customer requests deletion we delete from the primary store, then
       delete from the summaries, then remove from the vector index, then clear
       the cache, then clean the eval fixtures. Doing them in sequence means we
-      know each one finished before the next starts.
+      know each one finished before the next starts. If a step fails, the steps
+      after it do not run, so we never end up with a partial deletion. Keeping
+      it in one sequence also makes it simple for anyone who maintains it
+      later.
+
+      Each system needs its own deletion logic. For the summaries, we find any
+      summary that mentions the customer and delete it, although the nightly
+      job would replace them soon anyway. For the vector index, we search for
+      the customer's name and address and remove whatever comes back, and if
+      the search misses anything we can rebuild the whole index overnight. The
+      cache is the simplest, because we can clear all of it and it fills up
+      again on its own. For the eval fixtures, we ask the engineer who exported
+      them to delete their copy, and we remind everyone not to export customer
+      data in future.
 
       We should add logging so we can see that each step ran, and monitoring to
-      alert if any of them fails. It would also be good to have a periodic job
+      alert if any of them fails. The logs will show the data protection
+      officer that the deletion happened, and the alerts mean an engineer can
+      pick up any failure quickly. It would also be good to have a periodic job
       that checks for orphaned data and cleans it up, as a safety net.
 
       Going forward, any new system that stores customer data should be added
-      to the deletion process. We can document this so it is not forgotten.
+      to the deletion process. We can document this so it is not forgotten, and
+      remind the team at the next engineering meeting that customer data has to
+      be cleaned up everywhere it is stored. Each team knows its own system
+      best, so each team should own the deletion step for the data it holds.
+
+      The whole process should only take a few minutes, so the customer gets an
+      answer quickly. Once every step has finished, we tell the customer their
+      data has been deleted, as we do now. With these changes in place,
+      deletion will cover every system where customer data lives, and this kind
+      of problem should not happen again.
 
 hints:
-  - The four stores are the symptom. What does the architecture not know?
-  - One of the artefacts cannot have a fact removed from it at any price, and
-    the design has to say so out loud rather than hoping.
-  - The data protection officer will ask how you know it worked.
+  - The four stores are the symptom. Ask what the architecture did not know
+    about the April summary.
+  - Deletion found the primary record because something pointed at it.
+    Nothing pointed from the summary, the index entry or the fixture back to
+    the record each was built from.
+  - "Sort the artefacts by what can be done to them: rebuilt, dropped, or
+    neither. One of them cannot have a fact removed at any price, and the
+    design has to say so out loud."
+  - The data protection officer will ask, six weeks later, how you know it
+    worked. A log line saying a job ran does not answer that.
+  - The confirmation email said done. Say what it should have said, and when
+    each class of artefact is actually clear.
+
+scenario:
+  who: The platform team and data protection officer behind a support assistant
+  situation: >-
+    A customer's deletion request removed their primary record in twenty
+    minutes, and the confirmation email said it was done. Six weeks later the
+    assistant quoted their old address to another agent.
+  stakes: >-
+    The customer was told the deletion was complete. The same fact still sat
+    in a summary, a vector index, a response cache and an exported eval
+    fixture.
+  metrics:
+    - { label: Primary record deleted in, value: 20 min }
+    - { label: Old address quoted after, value: 6 weeks }
+    - { label: Derived copies, value: "4" }
+
+diagram:
+  title: Deletion reached the record and none of its copies
+  caption: >-
+    Each derived store knew where its input came from. Nothing recorded where
+    the record went, so deletion stopped at the primary store.
+  direction: lr
+  nodes:
+    - { id: request, label: Deletion request, sub: confirmed as done, kind: actor, tone: blue, at: [0, 1] }
+    - { id: primary, label: Primary record, sub: deleted in 20 minutes, kind: store, tone: green, at: [1, 1] }
+    - { id: summary, label: Nightly summary, sub: built in April, kind: doc, tone: orange, at: [2, 0] }
+    - { id: index, label: Vector index, sub: rebuilt from the summaries, kind: store, tone: orange, at: [3, 0] }
+    - { id: cache, label: Response cache, sub: keyed on the question, kind: store, tone: orange, at: [2, 1] }
+    - { id: fixture, label: Eval fixture, sub: exported to debug a bug, kind: doc, tone: orange, at: [2, 2] }
+    - { id: assistant, label: Assistant, sub: quotes the old address, kind: model, tone: pink, at: [4, 1] }
+  edges:
+    - { from: request, to: primary, label: delete, tone: success, step: 1 }
+    - { from: primary, to: summary, label: summarised in April, tone: muted }
+    - { from: summary, to: index, label: embedded from, tone: muted }
+    - { from: primary, to: cache, label: an answer cached, tone: muted }
+    - { from: primary, to: fixture, label: exported by hand, tone: muted }
+    - { from: index, to: assistant, label: "old address, six weeks on", tone: danger }
+
+approach:
+  goal: Make deletion find every copy of a fact, including the unlisted ones
+  branches:
+    - label: Ask what each artefact is made of
+      leaves: ["who records it, and when?", deletion as a query over artefacts]
+    - label: Sort artefacts by remedy
+      leaves: [rebuild, drop, "neither: then what?"]
+    - label: Prove it afterwards
+      leaves: [something the data protection officer can check, a search that should come back empty]
+    - label: Guard the next store
+      detail: The eval fixture was never designed. Somebody exported it to debug a bug.
+      leaves: ["where are artefacts created?"]
+    - label: Say what is true meanwhile
+      leaves: [the window, what the email claims]
+
+coach:
+  opening: >-
+    Before you name a single store, decide what the architecture would need
+    to know for deletion to find a store nobody listed.
+  signals:
+    - id: store-by-store
+      when: { code_lacks: '(?i)provenance|built from|derived from|lineage|record ids?\b|source ids?\b' }
+      say: >-
+        Your design names stores. Until the incident, the eval fixture was a
+        store nobody had listed. What would let deletion find a store it was
+        never told about?
+    - id: no-frozen-class
+      when: { code_lacks: '(?i)fine-?tun|frozen|retrain|retire|cannot (?:be )?(?:edit|repair|change|remove)' }
+      say: >-
+        One kind of artefact cannot have a fact removed at any price. Where
+        does your design say what happens to it?
+    - id: no-proof
+      when: { code_lacks: '(?i)\bproof\b|\bprove|provabl|deletion record|\baudit|come back empty|returns? nothing' }
+      say: >-
+        The data protection officer will ask, six weeks from now, how you know
+        it worked. What would you show them besides a log line saying a job
+        ran?
+    - id: list-will-go-stale
+      when:
+        code_matches: '(?i)added to the (?:deletion|list|register|process|checklist)|document (?:this|it)\b|review checklist'
+        code_lacks: '(?i)provenance|declar|lineage|built from|derived from|record ids?\b'
+      say: >-
+        A list of stores starts going out of date the day it is written. Where
+        would the control sit so a new store cannot appear without saying what
+        it was built from?
+    - id: says-done
+      when: { code_lacks: '(?i)\bwithin\b|\bwindow\b|\bhours?\b|\bdays?\b|confirmation|\bemail' }
+      say: >-
+        Deletion across derived copies takes time. What does the customer's
+        confirmation email claim, and when does that claim become true?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one sentence: what would deletion have to know about the
+        April summary to find it? Build the design out from that.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three drafts have not landed. The first hint asks what the
+        architecture did not know, which is where the strongest answers start.
+  wrap_up: >-
+    Deletion reaches every copy of a fact only when every artefact records
+    what it was built from. Put that control where artefacts are created, and
+    prove the result with something a person can check.
 
 reference_md: |
   The four named stores are a trap and most answers walk into it.
@@ -182,8 +364,8 @@ reference_md: |
   Provenance inverts it. If every derived artefact records what it was built
   from, deletion is a query over artefacts rather than a broadcast to systems,
   and an artefact nobody remembers is still found, because it was written by
-  code that had to declare its inputs. The control belongs at write time, not
-  at deletion time, which is the general shape of every problem like this one.
+  code that had to declare its inputs. The control belongs at write time,
+  before anything is derived, which is the general shape of every problem like this one.
 
   The classes matter because the remedies are not the same and one of them is
   not a remedy. Regenerable and droppable artefacts are engineering. A frozen

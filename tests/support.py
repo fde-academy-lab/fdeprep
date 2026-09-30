@@ -201,7 +201,8 @@ def run_case(slug):
         "budget": budget,
         "assertions": assertions,
     }
-    assert {a["type"] for a in assertions} >= set(DEFAULT_ASSERTIONS[slug]) or True
+    missing = set(DEFAULT_ASSERTIONS[slug]) - {a["type"] for a in assertions}
+    assert not missing, f"the {slug} scenario never checks its default assertions {missing}"
     return run_single_case(slug, spec, source, allowed_imports=["json"], time_limit_s=10)
 
 

@@ -124,9 +124,114 @@ exemplars:
 
 hints:
   - Both lines were written by someone who was right about something.
-  - Order is not the only thing that decides which rule wins, but an
-    unconditional line at the bottom is doing more than sitting there.
+  - An unconditional line at the bottom of a prompt is doing more than
+    sitting there. Where a rule sits is one of the things that decides which
+    rule wins.
   - The March complaint will come back if the only change is a deletion.
+  - Put the 24 hour rule where nothing after it can override it, give the
+    March line a range it applies in, and write what the customer hears
+    inside the window.
+
+scenario:
+  who: The practice manager at a physiotherapy clinic
+  situation: >-
+    In March somebody added "do whatever the customer asks" to the bottom of
+    the scheduling assistant's prompt, after complaints that it was
+    unhelpful. It sits below the 24 hour rule and overrides it.
+  stakes: >-
+    Each move inside 24 hours leaves a rostered clinician with an hour nobody
+    can buy. The March line answered real complaints, so deleting it brings
+    them back.
+  metrics:
+    - { label: Moves inside 24 hours, value: 61 since March }
+    - { label: Manager codes given, value: "0" }
+    - { label: Word limit, value: "350" }
+
+diagram:
+  title: Two true rules, and the unscoped one wins
+  caption: >-
+    The March line has no range, so it overrides the one rule with a reason
+    behind it. Give it a range and both rules hold.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: wants to move a 4pm slot, kind: actor, tone: blue, at: [0, 1] }
+    - { id: rule, label: 24 hour rule, sub: needs a manager code, kind: guard, tone: green, at: [1, 0] }
+    - { id: march, label: March line, sub: do whatever the customer asks, kind: doc, tone: pink, at: [1, 2] }
+    - { id: assistant, label: Scheduling assistant, sub: reads both, kind: model, tone: teal, at: [2, 1] }
+    - { id: moved, label: Moved inside 24 hours, sub: 61 with no code, kind: output, tone: pink, at: [3, 0] }
+    - { id: routes, label: Two routes out, sub: "a code, or a late cancellation", kind: output, tone: green, at: [3, 2] }
+  edges:
+    - { from: customer, to: assistant, label: move it to tomorrow }
+    - { from: rule, to: assistant, label: a rule with a reason }
+    - { from: march, to: assistant, label: "unconditional, and last", tone: danger }
+    - { from: assistant, to: moved, label: the later line wins, tone: danger }
+    - { from: assistant, to: routes, label: each rule has a range, tone: success }
+
+approach:
+  goal: Keep the 24 hour rule a rule and keep the assistant accommodating
+  branches:
+    - label: Find the two rules that collide
+      leaves: [the 24 hour rule and its code, the March service line]
+    - label: Ask why each one was written
+      detail: The March line answered real complaints. Deleting it restores the behaviour that produced them.
+      leaves: [a clinician already rostered, an assistant that said no too often]
+    - label: Give the broad rule a range
+      leaves: [where saying yes costs nothing, where it costs an unsellable hour]
+    - label: Leave the customer a next step
+      leaves: [a manager code, a late cancellation and what it means]
+
+coach:
+  opening: >-
+    Read the prompt from the bottom up. The last line was added in March, and
+    the model reads it as the final word on everything above it.
+  signals:
+    - id: override-kept
+      when: { code_matches: '(?i)do\s+whatever\s+the\s+customer\s+asks' }
+      say: >-
+        The March line still overrides everything above it. An unconditional
+        instruction at the end of a prompt is the one a model settles a
+        conflict with.
+    - id: softened-without-a-range
+      when: { code_matches: '(?i)(?:(?<![\s\S])|[.!?]\s+)(?![^.!?]*(24|window|outside|more\s+than|beyond|unless|except))[^.!?]*as\s+accommodating\s+as' }
+      say: >-
+        A softer version of the March line is still unconditional. A model
+        holding a hard rule and an open invitation to accommodate will find a
+        way to do both. Where does the invitation stop?
+    - id: nothing-accommodating
+      when: { code_lacks: '(?i)accommodat|flexib|whatever\s+the\s+customer|any\s+(slot|time|day|reason)|freely|without\s+(pushing\s+back|question|fuss)|happy\s+to|helpful|say\s+yes' }
+      say: >-
+        The March line is gone and nothing replaced it. The complaints behind
+        it were real. Where should the assistant say yes without pushing back?
+    - id: short-notice-moved
+      when: { test_failed: a_short_notice_move_asks_for_the_code }
+      say: >-
+        A move a few hours away was handled as if no rule applied. Read your
+        prompt the way the model does: which sentence still lets it say yes?
+    - id: next-week-obstructed
+      when: { test_failed: a_move_next_week_is_not_obstructed }
+      say: >-
+        A move next week was treated as short notice. Does your prompt say
+        where the 24 hour rule stops applying?
+    - id: authority-accepted
+      when: { test_failed: an_assertion_of_authority_is_not_a_code }
+      say: >-
+        A customer said a manager had approved the move, and the assistant
+        moved it. What does your prompt accept as a manager code?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write one sentence for each rule saying when it applies. If both
+        sentences can be true of the same appointment, one of them needs a
+        narrower range.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Open the next hint: each one narrows the
+        problem by one rung, and none of them hands over the answer.
+  wrap_up: >-
+    Most contradictory prompts are two correct rules and one missing range.
+    Give the broad rule a boundary and it stops cancelling the narrow one, and
+    the complaint that produced it stays fixed.
 
 reference_md: |
   Two correct rules and one of them is unscoped, which is all it takes.

@@ -1,0 +1,391 @@
+slug: choose-retrieval-or-fine-tuning-from-the-failures
+title: Choose retrieval or fine-tuning from what actually failed
+artefact_type: design
+difficulty: hard
+track: fde-practice
+est_minutes: 40
+competencies:
+  - { slug: retrieval, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: client-communication, weight: 0.5 }
+
+brief_md: |
+  A travel insurer uses an assistant you built to draft claim decision
+  letters. It retrieves the policy wording for the customer's product and
+  drafts the letter for a claims handler to approve. There are fourteen
+  products, and a batch of wording updates goes live every Monday. The
+  regulator can ask which wording any decision relied on.
+
+  The head of claims has budget for a fine-tuning project. "The model doesn't
+  know our business," she says. "We have 60,000 past letters. Train it on
+  those." The letters go back four years, across every wording that has been
+  live in that time.
+
+  Last month your team reviewed 300 drafts and 63 failed. The claims handlers
+  labelled the failures:
+
+  | Their label | Failures |
+  |---|---|
+  | Missing knowledge | 31 |
+  | Wrong tone or format | 19 |
+  | Wrong decision | 13 |
+
+  You then looked at what was in the model's context for each one. Of the 31
+  labelled missing knowledge, 22 had retrieved a wording that had since been
+  replaced, because the index is rebuilt once a month. The other 9 gave a
+  wrong settlement code, from a closed list of 212 codes that has not changed
+  since 2024, and in all 9 the right code was in the context. Most of the 19
+  format failures left out the regulated paragraph on complaint rights. In the
+  13 wrong decisions, the exclusion that applied was in the context and was
+  not applied.
+
+contract_md: |
+  Write your recommendation to the head of claims. She has the budget, a clear
+  preference and a board that has heard about fine-tuning. She will accept a
+  different answer if she can see the reasoning in her own failures.
+
+  Between 300 and 550 words. There is no template and no required structure.
+
+  Say what you recommend for what, which of the 63 failures each change
+  addresses, and what evidence would change your recommendation.
+
+word_range: [300, 550]
+required_headings: []
+
+rubric:
+  - label: Diagnoses each failure by what was in the context
+    weight: 30
+    descriptor_md: |
+      Strong answers sort the 63 by what the model was shown when the letter
+      went wrong. Twenty-two were shown a replaced wording, which is a stale
+      index. Nine had the right code in front of them. Nineteen are format and
+      thirteen are reasoning with the right clause present. None of these is
+      a model that lacks knowledge. An answer that accepts the label and
+      proposes teaching the model the business has been led by the label.
+  - label: Ties the choice to how often the knowledge changes and who audits it
+    weight: 20
+    descriptor_md: |
+      Weekly wording changes, and a regulator who asks which wording a
+      decision relied on, both mean the policy knowledge has to come from a
+      document the letter can point to. Strong answers add that fine-tuning
+      on 60,000 letters written under four years of wordings teaches the
+      model wordings that are no longer true, with no record of which week
+      they came from.
+  - label: Treats the settlement codes as a lookup
+    weight: 15
+    descriptor_md: |
+      A closed list of 212 codes that has not changed since 2024, with the
+      right code already in the context, is an exact-recall problem. More
+      retrieval cannot make the code more present and training cannot make
+      an exact string reliable. Strong answers take the code out of free
+      text: the model chooses a reason and a table supplies the code.
+  - label: Says what evidence would change the recommendation
+    weight: 20
+    descriptor_md: |
+      Strong answers name a result and a threshold rather than a feeling:
+      format failures above an agreed rate on the next review after a fixed
+      template, which would justify training for style on letters filtered
+      to current wordings; a product range frozen long enough for trained
+      knowledge to stay true; wrong decisions that persist with the right
+      exclusion placed first.
+  - label: Gives the head of claims a plan she can act on
+    weight: 15
+    descriptor_md: |
+      The fixes in order, which failures each one removes, when the next
+      review runs, and what the fine-tuning budget would be spent on if the
+      evidence asks for it. An answer that only says no leaves her with a
+      board and nothing to tell it.
+
+exemplars:
+  - band: strong
+    score: 91
+    body_md: |
+      Recommendation: keep retrieval for policy knowledge, fix what the
+      failures show, and hold the fine-tuning budget for one narrow job if the
+      evidence asks for it.
+
+      What the 63 failures say. I checked what was in the model's context each
+      time. Of the 31 labelled missing knowledge, 22 were handed a wording
+      that had been replaced after our index was built, because the index is
+      rebuilt monthly and the wordings change every Monday. The model used
+      exactly what it was shown, and we showed it the wrong week. In the other
+      9 the right settlement code was in front of it and it wrote a different
+      one. That is a copying failure, and more knowledge would not fix it.
+
+      Why not fine-tune on the 60,000 letters. They were written under four
+      years of wordings, most since replaced, so the model would learn
+      wordings that are no longer true with nothing to show which week they
+      came from. When the regulator asks which wording a decision relied on,
+      a retrieved document answers and a trained model cannot. Each Monday's
+      update would also need a training run rather than a re-index.
+
+      What I would do, in order:
+
+      1. Rebuild the index whenever a wording changes. That addresses the 22.
+      2. Take the settlement code out of free text. The model picks the
+         reason and the code comes from the 212-row table. That addresses the
+         9, and a table cannot misquote a code.
+      3. Write letters into a fixed template with the complaint-rights
+         paragraph as fixed text. That should remove most of the 19.
+      4. For the 13 wrong decisions, put the applicable exclusions first in
+         the context and route every declined claim to a handler with the
+         exclusion highlighted. These are reasoning failures, and neither
+         approach fixes them alone.
+
+      What would change my mind. If format failures stay above 2 percent on
+      the next 300 drafts after the template, I would spend the budget on
+      style: a model trained on letters filtered to current wordings, taught
+      structure while the facts still come from retrieval. If the product
+      range were frozen for a year, training for knowledge would be worth
+      testing. If wrong decisions persist with the right exclusion placed
+      first, I would test a stronger model before training one.
+
+      We rerun the same 300-draft review in four weeks. If the first three
+      steps land, I expect around 45 of the 63 failures to go, and we will
+      know which of the rest deserve the budget.
+  - band: adequate
+    score: 60
+    body_md: |
+      I would recommend improving the retrieval system rather than fine-tuning.
+
+      The main reason is that the policy wordings change every week. A
+      fine-tuned model would be out of date within days of training, and
+      retraining every week would be expensive and slow. Retrieval can pick
+      up new wordings as soon as they are indexed, which fine-tuning cannot,
+      and that keeps the letters in step with what customers actually bought.
+
+      Looking at the failures, the 31 missing knowledge cases are the biggest
+      group. 22 of them are because the index is only rebuilt monthly, so the
+      first step is to rebuild it weekly, straight after the Monday updates.
+      The other 9 are wrong settlement codes. We should add the full list of
+      212 codes to the index as its own document, so the model can retrieve
+      the right code whenever a letter needs one.
+
+      For the 19 tone and format failures, I would update the prompt with
+      clearer instructions and two example letters showing the house
+      structure and the complaint rights paragraph. This is much cheaper than
+      fine-tuning and can be tested in a day.
+
+      The 13 wrong decisions are harder. The exclusion was in the context, so
+      the model did have the information. I would try a larger model for the
+      decision step and see whether it applies exclusions more reliably.
+
+      The 60,000 past letters are still useful. We can use a sample of them
+      as test cases to check the new setup, since they show what good letters
+      look like.
+
+      Next steps: rebuild the index weekly, add the code list, update the
+      prompt, and then review another 300 drafts to see how many failures
+      remain. I would ask the claims handlers to label the failures the same
+      way as before, so the two reviews can be compared. If the numbers are
+      good, there is no need for fine-tuning at all, and the budget can go to
+      other improvements.
+  - band: weak
+    score: 29
+    body_md: |
+      I agree with the head of claims that fine-tuning is the right next step
+      for the assistant.
+
+      The failure review shows that missing knowledge is the biggest problem,
+      with 31 of the 63 failures. The model simply does not know enough about
+      the insurer's products and processes, and the current setup is not
+      closing that gap. Fine-tuning on the 60,000 past letters would teach the
+      model how the business works, how decisions are made and how letters
+      should be written, all at once. The letters are also a record of how the
+      most experienced handlers write, so training on them spreads their
+      judgement to the whole team.
+
+      This also fixes the 19 tone and format failures, because the model will
+      learn the house style directly from thousands of real letters written
+      by experienced handlers. Prompt instructions only go so far, while a
+      fine-tuned model absorbs the style naturally.
+
+      The 13 wrong decisions should also improve, because the past letters
+      contain thousands of real decisions, including many where exclusions
+      were applied correctly by experienced staff.
+
+      We can keep the current search in place as a backup for anything the
+      fine-tuned model is unsure about, so there is no loss of capability
+      while we make the switch. The fine-tuned model should also be faster,
+      because it will not need to look documents up for every letter.
+
+      Plan:
+
+      1. Clean the 60,000 letters and remove personal data.
+      2. Fine-tune a model on the letters over the next six weeks.
+      3. Compare the fine-tuned model with the current one on 300 drafts.
+      4. Switch over once the fine-tuned model scores higher.
+
+      The six weeks also give the team time to prepare the update for the
+      board.
+
+      Fine-tuning is a bigger investment up front, but it gives the insurer a
+      model that understands their business, which is a lasting advantage over
+      the current setup and something the board will recognise.
+
+hints:
+  - Treat the claims handlers' labels as symptoms. For each failure, ask what
+    was in the model's context when the letter went wrong.
+  - Twenty-two of the missing knowledge failures were shown a wording that had
+    been replaced. What is actually broken there, and which approach does the
+    weekly change rate argue for?
+  - The right settlement code was in front of the model nine times. Retrieval
+    cannot make it more present, and training cannot make an exact code
+    reliable. What can?
+  - Ask what 60,000 letters written under four years of wordings would teach
+    a model about wordings that have since been replaced, and what the
+    regulator's question needs.
+  - Finish with the result that would change your mind, a failure rate on the
+    next review above which you would spend the budget, and on what.
+
+scenario:
+  who: The head of claims at a travel insurer
+  situation: >-
+    She has budget to fine-tune a model on 60,000 past claim letters, because
+    the assistant keeps failing in ways her team labels missing knowledge.
+  stakes: >-
+    Policy wordings change every week and the regulator can ask which one a
+    decision relied on. Four years of letters would teach a model the old
+    ones.
+  metrics:
+    - { label: Failed drafts, value: 63 of 300 }
+    - { label: Labelled missing knowledge, value: "31" }
+    - { label: Wording changes, value: every Monday }
+
+diagram:
+  title: What the model was shown when each letter went wrong
+  caption: >-
+    The label says missing knowledge. The context shows a stale wording, a
+    code copied wrong, a missing paragraph and an exclusion left unapplied.
+  direction: lr
+  nodes:
+    - { id: wordings, label: Policy wordings, sub: "14 products, updated every Monday", kind: doc, tone: blue, at: [0, 0] }
+    - { id: index, label: Retrieval index, sub: rebuilt once a month, kind: store, tone: orange, at: [1, 0] }
+    - { id: codes, label: Settlement codes, sub: "212 of them, unchanged since 2024", kind: store, tone: neutral, at: [1, 2] }
+    - { id: context, label: Model context, sub: what each letter was written from, kind: doc, tone: teal, at: [2, 1] }
+    - { id: letters, label: "60,000 old letters", sub: four years of replaced wordings, kind: doc, tone: pink, at: [2, 3] }
+    - { id: model, label: Drafting model, sub: writes from what it is shown, kind: model, tone: purple, at: [3, 1] }
+    - { id: review, label: 300 drafts reviewed, sub: 63 failed, kind: output, tone: green, at: [4, 1] }
+  edges:
+    - { from: wordings, to: index, label: weekly change, step: 1 }
+    - { from: index, to: context, label: a wording since replaced, tone: danger, step: 2 }
+    - { from: codes, to: context, label: the right code was there, tone: success }
+    - { from: context, to: model, step: 3 }
+    - { from: model, to: review, step: 4 }
+    - { from: letters, to: model, label: the proposed fine-tune, tone: danger }
+
+approach:
+  goal: A recommendation built from what failed, with the evidence that would reverse it
+  branches:
+    - label: Diagnose by context
+      leaves: ["was the right fact in the context?", "if it was, what would more knowledge change?"]
+    - label: Match each fix to its failure
+      leaves: [facts that went stale, values that must be exact, format, reasoning]
+    - label: Weigh change rate and audit
+      detail: How often the knowledge changes, and who asks where an answer came from.
+      leaves: [weekly wording updates, the regulator's question]
+    - label: Name what would change your mind
+      leaves: [a measured rate on the next review, a fact about the business that could change]
+
+coach:
+  opening: >-
+    Before choosing, sort the 63 failures by one question: was the right fact
+    in the model's context when the letter went wrong?
+  signals:
+    - id: took-the-label
+      when: { code_lacks: '(?i)in\s+(the\s+)?context|in\s+front\s+of|was\s+retrieved|were\s+retrieved|already\s+(there|present)|stale|replaced|out\s+of\s+date|refresh|re-?index|rebuil' }
+      say: >-
+        You have taken the claims team's labels as the diagnosis. For each
+        failure, what was in the model's context when it went wrong?
+    - id: fine-tune-for-knowledge
+      when:
+        code_matches: '(?i)fine-?tun\w*[^.]{0,80}(know|learn|teach)\w*[^.]{0,40}(business|polic|wordings?|products?)|(know|learn|teach)\w*\s+(our|the|their)\s+(business|policies|products)'
+        code_lacks: '(?i)(old|replaced|superseded|previous|stale|out\s+of\s+date)\s+wordings?|wordings?\s+(that\s+)?(have|has|had)\s+(since\s+)?(been\s+)?(replaced|changed)|no\s+longer\s+true|\bcite|audit|regulator'
+      say: >-
+        Your plan teaches the model the policies by training it. The wordings
+        change every Monday. What does a trained model say when the regulator
+        asks which wording a letter relied on?
+    - id: codes-as-knowledge
+      when:
+        code_matches: '(?i)settlement\s+codes?'
+        code_lacks: '(?i)look-?up|\btable\b|\benum|closed\s+list|constrain|pick\s+(from|one\s+of)|choose\s+from|\bvalidat|out\s+of\s+(the\s+)?free\s+text|copying|copied'
+      say: >-
+        The right settlement code was already in the context nine times. What
+        makes an exact code from a closed list of 212 reliable?
+    - id: no-evidence-to-change
+      when: { code_lacks: '(?i)change\s+my\s+mind|would\s+change|change\s+(the|this|my)\s+(choice|recommendation|decision)|revisit|reconsider|would\s+reverse|\bthreshold|(above|over|more\s+than|below|under)\s+\d+(\.\d+)?\s*(percent|%)' }
+      say: >-
+        The brief asks what evidence would change your recommendation. Which
+        result, measured how and above what level, would do it?
+    - id: no-audit
+      when: { code_lacks: '(?i)regulat|audit|\bcite|citation|which\s+wording|relied\s+on' }
+      say: >-
+        The regulator can ask which wording any decision relied on. Where does
+        your recommendation answer that?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Make four lines, one for each kind of failure you found in the
+        context, and write the fix beside each. The recommendation falls out of
+        that list.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three tries without a pass. Open the hints; the third one is about the
+        nine settlement codes.
+  wrap_up: >-
+    The failures decide between retrieval and fine-tuning, and the labels do
+    not. Facts that change or must be cited come from documents, exact values
+    come from tables, and style is what training is for. Say what evidence
+    would move you.
+
+reference_md: |
+  The label is the trap. "Missing knowledge" is what a claims handler sees
+  when a letter says something wrong about a policy, and it is the phrase
+  that makes fine-tuning sound like the cure. Looking at the context for each
+  failure takes the label apart. Twenty-two letters were written from a
+  wording that had been replaced, because the index is rebuilt monthly and the
+  wordings change weekly. The model did not lack knowledge. It was given the
+  wrong week, faithfully, and a rebuild on every wording change fixes it.
+
+  The nine settlement codes are the clearest case in the brief of a
+  memorisation problem wearing a knowledge label. The right code was in the context every time.
+  A closed list of 212 codes that has not changed since 2024 is exactly the
+  kind of thing a model is unreliable at reproducing and a table is perfect
+  at. The fix is to stop asking the model for the code at all: it chooses a
+  reason, and the code comes from a lookup. Indexing the code list, which is
+  the retrieval-shaped answer, puts in front of the model something it
+  already had in front of it.
+
+  Fine-tuning on the 60,000 letters fails on two counts before quality is
+  even measured. The letters span four years of wordings, so training on them
+  teaches wordings that are no longer true, with nothing to show which week
+  they came from. And the regulator's question, which wording did this
+  decision rely on, has an answer when the wording was retrieved and none
+  when it was learned. Weekly change and auditability both point to
+  documents rather than weights.
+
+  That does not make fine-tuning wrong everywhere, and saying so is what
+  makes the recommendation credible to someone with a budget. Structure and
+  tone are what training is good at, and the complaint-rights paragraph is a
+  format failure. The honest order is a template first, measured on the next
+  review, and training for style on letters filtered to current wordings only
+  if the format rate stays above a threshold agreed now. The thirteen wrong
+  decisions are reasoning with the right clause present, and neither approach
+  fixes that on its own.
+
+  The evidence that would change the choice is the part the interview
+  question is really about. Naming it, as a rate and a date, turns a no into
+  a plan.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A client wants to fine-tune a model on their past documents so it knows their business. When would you choose retrieval instead, and what evidence would change your mind?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I009,
+    whose follow-up pairs daily policy updates with a consistent response style.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

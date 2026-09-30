@@ -1,7 +1,13 @@
 /** Screen S1. docs/01 section S1 fixes the copy and the three refusals. */
+import type { Metadata } from "next";
+import { LogIn } from "lucide-react";
 import { githubConfigured } from "@/lib/auth/config";
+import { STAGES } from "@/lib/problems/vocabulary";
+import { LogoMark } from "@/components/ui/logo";
+import { cn } from "@/components/ui/cn";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Sign in" };
 
 /**
  * Every way this screen can be reached with something to say.
@@ -32,43 +38,67 @@ export default async function SignInPage(
   const start = next ? `/api/auth/start?next=${encodeURIComponent(next)}` : "/api/auth/start";
 
   return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center px-6 py-12">
-      <h1 className="text-xl font-semibold">Sign in to FDE Prep</h1>
-      <p className="mt-2 text-text-dim">
-        Access is granted through your FDE Academy GitHub account.
-      </p>
+    <main className="grid min-h-dvh lg:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+      <section aria-hidden className="relative hidden overflow-hidden border-r border-border bg-surface lg:block">
+        <div className="pointer-events-none absolute inset-0
+                        bg-[radial-gradient(90%_70%_at_10%_0%,rgb(110_151_242/0.10),transparent_60%)]" />
+        <div className="relative flex h-full flex-col justify-between p-12">
+          <p className="flex items-center gap-2.5 font-semibold text-text"><LogoMark /> FDE Prep</p>
+          <div className="max-w-md">
+            <p className="text-display font-semibold leading-[1.15] tracking-[-0.02em] text-text">
+              Build the agent, break it on purpose, then defend it out loud.
+            </p>
+            <ol className="mt-10 space-y-5">
+              {STAGES.map((stage, index) => (
+                <li key={stage.id} className="flex gap-4">
+                  <span className={cn("grid size-7 shrink-0 place-items-center rounded-full border font-mono text-meta",
+                                      index === 0 ? "border-accent text-accent" : "border-border-strong text-text-faint")}>
+                    {index + 1}
+                  </span>
+                  <span>
+                    <span className="block font-medium text-text">{stage.name}</span>
+                    <span className="block text-meta text-text-dim">{stage.blurb}</span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+          </div>
+          <p className="text-meta text-text-faint">FDE Academy</p>
+        </div>
+      </section>
 
-      {message && (
-        <p
-          role="status"
-          className={`mt-6 border px-3 py-2 ${
-            error === "signed_out"
-              ? "border-border text-text-dim"
-              : "border-fail/40 bg-surface text-fail"
-          }`}
-        >
-          {message}
-        </p>
-      )}
+      <section className="flex items-center justify-center px-6 py-12">
+        <div className="w-full max-w-sm">
+          <LogoMark className="size-9" />
+          <h1 className="mt-6 text-display font-semibold tracking-[-0.02em] text-text">Sign in to FDE Prep</h1>
+          <p className="mt-2 text-text-dim">Access is granted through your FDE Academy GitHub account.</p>
 
-      {configured ? (
-        <a
-          href={start}
-          className="mt-6 inline-block border border-accent px-4 py-2 text-center text-accent"
-        >
-          Continue with GitHub
-        </a>
-      ) : (
-        <p className="mt-6 border border-border bg-surface px-3 py-2 text-text-dim">
-          This deployment has no GitHub application configured, so there is nothing to sign in
-          to yet. Set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET and AUTH_SECRET, or set
-          AUTH_DEV_LEARNER=1 to run without sign-in on your own machine.
-        </p>
-      )}
+          {message ? (
+            <p role="status"
+               className={cn("mt-6 rounded-control border px-3 py-2.5",
+                             error === "signed_out" ? "border-border bg-surface text-text-dim"
+                               : "border-fail/40 bg-fail-soft text-text")}>
+              {message}
+            </p>
+          ) : null}
 
-      <p className="mt-8 text-text-faint">
-        Trouble signing in? Contact your programme manager.
-      </p>
+          {configured ? (
+            <a href={start}
+               className="mt-6 flex h-11 w-full items-center justify-center gap-2 rounded-control bg-text
+                          font-medium text-bg hover:bg-white active:translate-y-px">
+              <LogIn aria-hidden className="size-4" /> Continue with GitHub
+            </a>
+          ) : (
+            <p className="mt-6 rounded-control border border-border bg-surface px-3 py-2.5 text-meta leading-relaxed text-text-dim">
+              This deployment has no GitHub application configured, so there is nothing to sign in
+              to yet. Set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET and AUTH_SECRET, or set
+              AUTH_DEV_LEARNER=1 to run without sign-in on your own machine.
+            </p>
+          )}
+
+          <p className="mt-8 text-meta text-text-faint">Trouble signing in? Contact your programme manager.</p>
+        </div>
+      </section>
     </main>
   );
 }

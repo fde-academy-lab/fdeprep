@@ -1,0 +1,413 @@
+slug: extraction-pilot-4-write-the-rescue-plan
+title: Write the rescue plan the sponsor takes into the room
+artefact_type: design
+difficulty: extreme
+track: builds
+est_minutes: 45
+competencies:
+  - { slug: client-communication, weight: 1.0 }
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+
+build: { id: extraction-pilot, title: "Rescue a document extraction pilot", stage: 4, of: 4 }
+
+brief_md: |
+  Stages 1 to 3 are live at the insurer. A record holds only values the
+  letter contains, meets the intake rules or reaches an adjuster after one
+  repair, and carries invoice lines that add up to the penny. The head of
+  claims operations sponsors the pilot. At next month's steering meeting she
+  decides whether to extend it or end it, and she has asked you for the plan
+  she will take in.
+
+  The vendor's scorecard says 94 percent field accuracy, measured on the 150
+  letters the pilot was tuned on. Six of those letters had an invoice. In the
+  last four weeks the pilot read 1,900 live letters:
+
+  | Live letters, last four weeks | Plain | With an invoice |
+  |---|---|---|
+  | Share of letters | 82% | 18% |
+  | Share of money claimed | 29% | 71% |
+  | Straight through to the claims system | 79% | 22% |
+
+  The business case that funded the pilot assumed 80 percent straight
+  through. The median wait in the human queue is three days. An adjuster
+  audit of 200 submitted records found four wrong values, each a real date
+  from the letter in the incident date field, usually the date the letter
+  was written.
+
+  Write the rescue plan: what the pilot measures now and why that number
+  misled everyone, what it should measure instead, and the go or no-go
+  criteria for the next month.
+
+contract_md: |
+  Write the plan as you would send it. It goes to the head of claims
+  operations, who is not an engineer and will take your plan into the
+  steering meeting as it stands.
+
+  Between 400 and 600 words. There is no template and no required structure.
+
+  Cover three things: what the pilot measures now and why that number misled
+  everyone, what it should measure instead, and the go or no-go criteria for
+  the next month.
+
+word_range: [400, 600]
+required_headings: []
+
+rubric:
+  - label: Says what the 94 percent measured and what it hid
+    weight: 25
+    descriptor_md: |
+      Strong answers say the number comes from the 150 letters the pilot was
+      tuned on, that six of them had an invoice against 18 percent of live
+      letters, and that field accuracy counts a misspelt name the same as a
+      wrong payout. The segment carrying 71 percent of the money was barely in
+      the sample, so the score could not see where the pilot fails. Answers
+      that call 94 percent good but not good enough have not asked where it
+      came from.
+  - label: Measures by segment and by money, on live letters
+    weight: 25
+    descriptor_md: |
+      Strong answers replace one accuracy number with a small set measured
+      separately for plain and itemised letters on letters drawn from live
+      traffic: straight through, wrong values in submitted records with money
+      fields counted on their own, and time in the human queue. Averaging
+      across segments is what produced the misleading number, and a plan that
+      averages again repeats it.
+  - label: Sets go and no-go criteria with a number, a population and a consequence
+    weight: 25
+    descriptor_md: |
+      Every criterion names a number, the letters it is measured on, and what
+      happens when it is missed. "Accuracy improves" is not a criterion. "Zero
+      wrong amounts in a 200-record audit of submitted plain letters, or plain
+      letters return to adjusters" is one. Strong answers keep the list short
+      and say who decides on the day.
+  - label: Keeps the pilot alive where it already works
+    weight: 15
+    descriptor_md: |
+      Plain letters go straight through at 79 percent against an 80 percent
+      business case. Strong answers run those automatically and keep itemised
+      claims with adjusters, with the pipeline preparing the record and naming
+      any mismatch, instead of choosing between extending everything and
+      ending everything.
+  - label: Reads as something the sponsor can act on
+    weight: 10
+    descriptor_md: |
+      The sponsor decides in a steering meeting. Strong answers lead with the
+      recommendation, use the pilot's own numbers, and explain field accuracy
+      in one plain sentence. A plan that needs an engineer to read it aloud
+      will not survive the meeting.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      My recommendation is to extend the pilot for one month on plain letters
+      only, keep every claim with an invoice with the adjusters, and judge the
+      month on three numbers set out below.
+
+      The 94 percent misled everyone for two reasons. It was measured on the 150
+      letters the pilot was tuned on, and only six of them had an invoice. In live
+      traffic 18 percent of letters have one, and those letters carry 71 percent of
+      the money claimed. The score was taken almost entirely on the letters the
+      pilot handles well. It also counts fields, so a misspelt surname and a wrong
+      payout each cost one point. The failure that costs you most was nearly
+      absent from the sample, and scored like a typo when it did appear.
+
+      The live numbers tell the real story. Plain letters go straight through at
+      79 percent, against the 80 percent the business case assumed. Letters with
+      an invoice go straight through at 22 percent, and the rest wait a median of
+      three days for an adjuster. The pilot works on the cheap letters and does
+      not yet work on the expensive ones.
+
+      From now on we measure three things every week, on letters drawn from live
+      traffic and reported separately for plain and itemised claims:
+
+      - Straight through: letters that reach the claims system with no person
+        involved.
+      - Wrong values in submitted records, from an adjuster audit of 200 records,
+        with amounts and policy numbers counted on their own.
+      - Days in the human queue, because a growing queue is a cost moved from the
+        claims system to your adjusters.
+
+      The criteria for the next steering meeting:
+
+      Go, on plain letters: straight through at or above 75 percent, zero wrong
+      amounts or policy numbers in the 200-record audit, and wrong dates below 1
+      percent. Last week's audit found four wrong incident dates in 200 records,
+      each the date the letter was written, so that last figure depends on a fix
+      we still have to ship.
+
+      No-go, and plain letters return to adjusters the same day: one wrong amount
+      reaches payment, or the median wait in the queue passes five days.
+
+      Itemised claims stay with adjusters for the month. The pipeline still reads
+      the invoice and checks the lines against the total, so the adjuster starts
+      from a prepared record with any mismatch named. We measure how often the
+      adjuster accepts that record unchanged. If that passes 90 percent on 200
+      claims, itemised letters become next month's candidate.
+
+      You decide on the day, on these numbers, and you will have them a week
+      before the meeting so nothing in the room is a surprise.
+
+      If we extend everything as it stands, the 80 percent case will not be met,
+      because the letters that carry most of the money cannot yet go through
+      unattended. If we end the pilot, we give up 79 percent automation on four
+      fifths of the letters. The smaller extension keeps what works and puts a
+      date on the rest.
+  - band: adequate
+    score: 61
+    body_md: |
+      The pilot should be extended, but the way we measure it has to change first.
+
+      The 94 percent field accuracy comes from the vendor's sample of 150 letters,
+      which were the letters the pilot was built on. That is a problem, because a
+      system usually scores well on the examples it was tuned against. Live
+      letters are messier, and the numbers show it: overall, 69 percent of letters
+      go straight through, against the 80 percent the business case assumed.
+
+      The gap is mostly in letters with an invoice. Those go straight through only
+      22 percent of the time, while plain letters manage 79 percent. Invoices are
+      where the reconciliation step sends claims to adjusters, and those claims
+      wait three days on average.
+
+      I would replace the single accuracy figure with a small dashboard:
+
+      - straight-through rate, overall and for letters with an invoice
+      - accuracy on a sample of live letters rather than the vendor's set
+      - median time in the human queue
+      - number of records the claims system rejects
+
+      These should be reviewed every week by the project team and shared with you
+      before each steering meeting. I would also report the adjusters' audit of
+      submitted records, which last week found four wrong incident dates in 200,
+      so that errors reaching the claims system are tracked as well as volumes.
+
+      For the next month I would set the following targets. Straight-through
+      should reach 75 percent overall. Accuracy on live letters should be at least
+      95 percent. The median queue time should come down to two days. If we meet
+      these, the pilot moves to a wider rollout. If we miss them, we should look
+      at why and agree a revised plan at the following meeting.
+
+      The main work for the month is improving how the pipeline handles invoices,
+      since that is where most claims are falling out to adjusters. The
+      reconciliation check is doing its job by stopping totals that do not match,
+      but some of the mismatches are small and could perhaps be accepted within a
+      tolerance, which would raise the straight-through rate quickly.
+
+      I would also ask the adjusters to record why they changed each record they
+      handled from the queue, so that we build up evidence about which failures
+      are most common and can prioritise fixes.
+
+      Ending the pilot now would waste the progress made in stages 1 to 3, which
+      have removed invented values and made the records much more reliable. The
+      right decision is to extend it with better measurement and clear targets.
+  - band: weak
+    score: 27
+    body_md: |
+      The pilot has performed well overall and I recommend extending it for a
+      further three months so the team can keep improving it.
+
+      A field accuracy of 94 percent is a strong result for a first version of an
+      extraction system, and it is close to the industry benchmark of around 95
+      percent for document processing. The remaining gap should close as the
+      model sees more letters, so the priority for the next phase is to collect
+      more training data and tune the prompts further. With more examples I would
+      expect accuracy to reach 97 or 98 percent within the quarter.
+
+      The straight-through rate of 69 percent is lower than the business case
+      assumed, but this is normal in the early stages of an automation project.
+      Adjusters are still handling a share of the letters, and as accuracy rises
+      that share will fall on its own. I would not change the overall approach at
+      this stage, because the pipeline now has good checks in place and the
+      foundations are solid.
+
+      For measurement, I suggest we keep reporting field accuracy as the headline
+      number, since it is well understood by the vendor and easy to compare over
+      time. We could also add some additional metrics such as processing time per
+      letter and the number of letters handled each week, to show the volume the
+      pilot is taking on. A monthly report to the steering group would keep
+      everyone informed.
+
+      For the next month the goals should be to increase accuracy, reduce the
+      number of letters going to adjusters, and improve the experience for
+      customers. The team should also run a review of the prompts and look at
+      whether a newer model version would help. It would be useful to hold a
+      workshop with the adjusters to gather their feedback on the records they
+      see, since they are closest to the day-to-day work.
+
+      There are some risks to manage. Adjusters may lose confidence in the
+      records if they see errors, so we should communicate the improvements that
+      have been made. We should also make sure there is enough budget for the
+      extended period and for any additional training data.
+
+      Overall the pilot is on track. The early problems with invented values have
+      been fixed, the records are more reliable than they were at the start, and
+      with more time and data the system should reach the level the business
+      case expects. I recommend we continue.
+
+hints:
+  - Before you argue with the 94 percent, find out which letters it was
+    measured on.
+  - Compare the share of letters with an invoice in the vendor's sample with
+    the share in live traffic, then look at where the money is.
+  - One number over every letter is what misled everyone. Measure plain and
+    itemised letters separately, on live letters, and count money fields on
+    their own.
+  - A criterion is a number, the letters it is measured on, and what happens
+    when it is missed. Write three of those and nothing vaguer.
+  - The sponsor has been offered two choices, extend or end. The table holds a
+    third one.
+
+scenario:
+  who: The head of claims operations at a regional home insurer
+  situation: >-
+    Stages 1 to 3 are live. At next month's steering meeting she decides
+    whether to extend the pilot or end it, and she wants the plan she will
+    take in.
+  stakes: >-
+    The vendor's 94 percent came from 150 tuning letters with six invoices.
+    Live letters with an invoice carry 71 percent of the money and go straight
+    through 22 percent of the time.
+  metrics:
+    - { label: Vendor score, value: "94%" }
+    - { label: Invoices in its sample, value: 6 of 150 }
+    - { label: Itemised straight through, value: "22%" }
+
+diagram:
+  title: Where the scorecard stopped seeing the money
+  caption: >-
+    The 94 percent came from 150 tuning letters with six invoices. Live
+    letters with an invoice carry 71 percent of the money and never reached
+    the score.
+  direction: lr
+  nodes:
+    - { id: letter, label: Claim letter, sub: "82% of live letters are plain", kind: doc, tone: blue, at: [0, 1] }
+    - { id: invoice, label: Invoice, sub: "on 18% of letters, 71% of the money", kind: doc, tone: pink, at: [0, 2] }
+    - { id: model, label: Model, sub: reads the letter and the invoice, kind: model, tone: teal, at: [1, 0] }
+    - { id: extractor, label: Extractor, sub: "asks, then repairs once", kind: agent, tone: purple, at: [1, 1] }
+    - { id: grounding, label: Source check, sub: "fields in the letter, lines in the invoice", kind: guard, tone: green, at: [2, 1] }
+    - { id: validator, label: Validator, sub: the claims system's intake rules, kind: guard, tone: blue, at: [3, 1] }
+    - { id: reconcile, label: Reconciliation, sub: lines against the total in pence, kind: guard, tone: green, at: [3, 2] }
+    - { id: claims, label: Claims system, sub: "79% of plain, 22% of itemised", kind: service, tone: orange, at: [4, 1] }
+    - { id: queue, label: Human queue, sub: a three-day median wait, kind: queue, tone: neutral, at: [4, 2] }
+    - { id: scorecard, label: Scorecard, sub: "94% on 150 tuning letters", kind: output, tone: purple, at: [5, 1] }
+  edges:
+    - { from: letter, to: extractor, label: letter text, step: 1 }
+    - { from: invoice, to: extractor, label: invoice text, step: 2 }
+    - { from: extractor, to: model, label: fields and line items }
+    - { from: extractor, to: grounding, label: every value and line }
+    - { from: grounding, to: validator, label: a grounded record }
+    - { from: validator, to: reconcile, label: a valid record }
+    - { from: reconcile, to: claims, label: straight through, tone: success }
+    - { from: reconcile, to: queue, label: to an adjuster }
+    - { from: claims, to: scorecard, label: audited by segment, tone: success }
+    - { from: queue, to: scorecard, label: days waiting, tone: success }
+    - { from: invoice, to: scorecard, label: 6 of 150 in the sample, tone: danger }
+
+approach:
+  goal: A plan the sponsor can decide on, built from the pilot's own numbers
+  branches:
+    - label: Say what the score measured
+      leaves: [the letters the pilot was tuned on, every field counted the same]
+    - label: Measure what costs money
+      detail: Report plain and itemised letters separately, on letters drawn from live traffic.
+      leaves: [straight through, wrong values in submitted records, days in the human queue]
+    - label: Set criteria with consequences
+      leaves: [a number, the letters it is measured on, what happens on a miss]
+    - label: Keep what already works
+      leaves: [plain letters are near the business case, itemised letters stay with adjusters]
+
+coach:
+  opening: >-
+    Before you write, find out which letters the 94 percent was measured on,
+    and which letters carry the money.
+  signals:
+    - id: one-number
+      when: { code_lacks: '(?i)itemi[sz]ed|invoice' }
+      say: >-
+        Your plan treats every letter alike. Letters with an invoice are 18
+        percent of the traffic and 71 percent of the money. Where are they in
+        your plan?
+    - id: where-the-score-came-from
+      when: { code_lacks: '(?i)\bsample|\b150\b|tuned on|built on|trained on' }
+      say: >-
+        You are arguing about the 94 percent without saying where it came
+        from. Which letters was it measured on, and what did they leave out?
+    - id: no-money
+      when: { code_lacks: '(?i)money|£|pounds|payout|payment|\bpaid\b|\bamounts?\b' }
+      say: >-
+        Field accuracy counts a misspelt name the same as a wrong payout. What
+        does your plan measure that tracks the money?
+    - id: no-consequence
+      when: { code_lacks: '(?i)no-go|no go|return(?:s|ed)? to (?:the )?adjusters|back to (?:the )?adjusters|\bstop\b|end the pilot|\bpause' }
+      say: >-
+        Nothing in your plan says what happens if next month goes badly. A
+        criterion without a consequence is a preference the steering meeting
+        can ignore.
+    - id: benchmark
+      when: { code_matches: '(?i)industry (?:standard|benchmark|average)|best practice' }
+      say: >-
+        No benchmark decides this pilot. Argue from its own numbers: where the
+        money is, and what happens to it now.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with two sentences: what the 94 percent was measured on, and
+        which letters carry the money. The plan hangs off those.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        The hints are open. The first one asks where the number came from,
+        which is where most weak plans go wrong.
+  wrap_up: >-
+    A pilot is judged by the number somebody chose to measure. Measure the
+    letters that carry the money, on live traffic, and give the sponsor
+    criteria with consequences she can hold you to.
+
+reference_md: |
+  The plan turns on noticing where the 94 percent came from.
+
+  It was measured on the 150 letters the pilot was tuned on, which is the one
+  population guaranteed to flatter it. Six of those letters had an invoice. In
+  live traffic 18 percent do, and they carry 71 percent of the money, so the
+  score was taken almost entirely on the segment the pilot already handled and
+  barely saw the segment that decides whether the pilot pays for itself. Field
+  accuracy makes it worse by counting fields: a surname with a missing letter
+  and a payout £412.50 too high each cost one point. A number with both of
+  those properties reads well for a pilot that is losing money.
+
+  The replacement is a small set of measures, taken on live letters and
+  reported per segment, each tied to a cost somebody pays. Straight through
+  is the business case. Wrong values in submitted records, with money fields
+  counted on their own, is the harm, and it has to come from an audit because
+  no automated check catches a real date in the wrong field. Time in the human
+  queue is the cost the pipeline moves onto the adjusters, and a pipeline that
+  routes everything to a person can report perfect accuracy while it does.
+
+  A criterion earns the name when it has a number, a population and a
+  consequence. Zero wrong amounts in a 200-record audit of submitted plain
+  letters, with plain letters returned to adjusters on the first miss, is a
+  criterion. "Accuracy continues to improve" is a hope, and a steering meeting
+  reads it as one.
+
+  The strongest answers find the option the sponsor was not offered. Plain
+  letters already run at 79 percent against an 80 percent business case, and
+  itemised letters run at 22. Extending everything asks her to fund the
+  failure alongside the success, and ending everything throws the success
+  away. Running plain letters automatically and keeping itemised claims with
+  adjusters, with the pipeline preparing their records, is a decision she can
+  take into the room, and it puts a date on the next step. It trades away
+  automation on the 18 percent of letters that carry 71 percent of the money,
+  for now, in exchange for a pipeline within a point of its business case on
+  the letters it already handles.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    The pilot reports 94 percent field accuracy and the sponsor is about to end it. What would you measure instead, and what would make you recommend stopping?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I030.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

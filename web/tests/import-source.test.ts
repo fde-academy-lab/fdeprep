@@ -32,11 +32,16 @@ describe("the publishable set", () => {
     }
   });
 
-  it("is the twenty-five launch problems and nothing else", async () => {
-    // docs/00 section 9 fixes the launch set at twenty-five. If that number
-    // moves this test should move with it deliberately, which is the point.
+  it("is every catalogue problem, and never fewer than the launch set", async () => {
+    // docs/00 section 9 as amended on 29 September 2026: the twenty-five are a
+    // floor and the catalogue grows past them. So the check is that every
+    // non-fixture file is publishable, counted independently, and that the
+    // floor still holds.
     const publishable = await publishableYamlFiles(PROBLEMS);
-    expect(publishable).toHaveLength(25);
+    const all = await everyYamlFile(PROBLEMS);
+    const catalogue = all.filter((f) => !f.includes(`${path.sep}_fixtures${path.sep}`));
+    expect(publishable.sort()).toEqual(catalogue.sort());
+    expect(publishable.length).toBeGreaterThanOrEqual(25);
   });
 
   it("accounts for every file on disk, so nothing is dropped by accident", async () => {
@@ -44,8 +49,8 @@ describe("the publishable set", () => {
     const publishable = await publishableYamlFiles(PROBLEMS);
     const excluded = all.filter((f) => !publishable.includes(f));
 
-    expect(all).toHaveLength(36);
-    expect(excluded).toHaveLength(11);
+    expect(all).toHaveLength(publishable.length + excluded.length);
+    expect(excluded).toHaveLength(12);
     for (const file of excluded) {
       expect(file, file).toContain(`${path.sep}_fixtures${path.sep}`);
     }

@@ -50,6 +50,9 @@ interview_evidence:
     Author judgement.
 `.trim();
 
+/** An answer of exactly n words, for exemplars that have to sit inside a word range. */
+const words = (n: number) => Array.from({ length: n }, (_, i) => `w${i}`).join(" ");
+
 const DESIGN = `
 slug: a-design-problem
 title: A design problem
@@ -67,9 +70,9 @@ rubric:
   - { label: "Names the gap", weight: 60 }
   - { label: "Proposes a gate", weight: 40 }
 exemplars:
-  - { band: strong, score: 90, body_md: "..." }
-  - { band: adequate, score: 65, body_md: "..." }
-  - { band: weak, score: 30, body_md: "..." }
+  - { band: strong, score: 90, body_md: "${words(60)}" }
+  - { band: adequate, score: 65, body_md: "${words(50)}" }
+  - { band: weak, score: 30, body_md: "${words(40)}" }
 complexity: C4
 interview_evidence:
   round: written
@@ -161,6 +164,36 @@ describe("prompt problems", () => {
       .toContain("rule_pattern_absent");
   });
 
+  it("accepts must_add for text the original prompt lacks, and rejects it for text already there", () => {
+    // must_add, added 30 September 2026: must_keep was the only way to ask for
+    // text, and a must_keep of absent text told a learner who never had it
+    // that it was "no longer in the prompt".
+    const adding = PROMPT.replace(
+      '  - { kind: max_words, label: "under 400 words", numeric_value: 400 }',
+      '  - { kind: must_add, label: "an escalation path", pattern: "(?i)escalat" }\n' +
+      '  - { kind: max_words, label: "under 400 words", numeric_value: 400 }');
+    expect(rules(adding)).not.toContain("rule_pattern_present");
+    expect(rules(adding.replace('pattern: "(?i)escalat"', 'pattern: "(?i)always comply"')))
+      .toContain("rule_pattern_present");
+  });
+
+  it("rejects a must_keep of text the original prompt lacks, pointing at must_add", () => {
+    const report = validateProblemYaml(
+      PROMPT.replace('{ kind: must_keep, label: "refunds", pattern: "(?i)refund" }',
+                     '{ kind: must_keep, label: "an escalation path", pattern: "(?i)escalat" }'),
+      "f.yaml");
+    const error = report.errors.find((e) => e.rule === "rule_pattern_absent");
+    expect(error?.message).toContain("must_add");
+  });
+
+  it("rejects a refusal_pattern that does not compile, naming the probe", () => {
+    const report = validateProblemYaml(PROMPT.replace(
+      'assertion: { type: absent, pattern: "BANANA_QQ" }',
+      'assertion: { type: refuses, pattern: "BANANA_QQ", refusal_pattern: "(?i)(lo siento" }'), "f.yaml");
+    const error = report.errors.find((e) => e.rule === "bad_pattern");
+    expect(error?.message).toContain("injection");
+  });
+
   it("rejects a rubric with fewer than three exemplars", () => {
     const thin = PROMPT.replace('\n  - { band: weak, score: 30, body_md: "..." }', "");
     expect(rules(thin)).toContain("too_few_exemplars");
@@ -187,5 +220,23 @@ describe("design problems", () => {
 
   it("rejects rubric weights that do not sum to 100", () => {
     expect(rules(DESIGN.replace("weight: 40 }", "weight: 25 }"))).toContain("rubric_weights");
+  });
+
+  it("rejects an exemplar the structural gate would reject before grading it", () => {
+    // The adequate exemplar is the pass threshold and all three anchor the
+    // neighbour vote (docs/10). An exemplar outside the range anchors a band
+    // on an answer the platform never grades; a strong one outside it is a
+    // model answer the platform refuses.
+    const short = DESIGN.replace(`body_md: "${words(50)}"`, 'body_md: "Too short to grade."');
+    expect(rules(short)).toContain("exemplar_out_of_range");
+    const long = DESIGN.replace(`body_md: "${words(60)}"`, `body_md: "${words(401)}"`);
+    expect(rules(long)).toContain("exemplar_out_of_range");
+  });
+
+  it("counts an exemplar's words the way the structural gate counts an answer's", () => {
+    const edge = DESIGN.replace(`body_md: "${words(40)}"`, `body_md: "${words(40)}"`);
+    expect(rules(edge)).not.toContain("exemplar_out_of_range");
+    const under = DESIGN.replace(`body_md: "${words(40)}"`, `body_md: "${words(39)}"`);
+    expect(rules(under)).toContain("exemplar_out_of_range");
   });
 });

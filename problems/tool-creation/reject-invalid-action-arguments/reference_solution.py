@@ -8,6 +8,10 @@ subclasses int in Python and True would otherwise be spent as one penny. The
 range check is where the policy about how much an agent may move without a
 person actually lives, which is in dispatching code rather than in an editable
 prompt.
+
+The loop stops at the three model calls the budget allows. A model that never
+sends a payload that passes ends the run with a refusal the customer can read,
+rather than with the budget's exception.
 """
 
 import json
@@ -15,6 +19,7 @@ import re
 
 MIN_CENTS = 1
 MAX_CENTS = 20000
+MAX_MODEL_CALLS = 3  # the contract's budget
 
 _ACTION = re.compile(r"Action:\s*(\w+)\((\{.*\})\)\s*$", re.MULTILINE | re.DOTALL)
 
@@ -51,7 +56,7 @@ def _problems(payload: dict) -> list:
 def run_agent(question: str, llm, tools: dict) -> str:
     scratchpad = f"Request: {question}\n"
 
-    for _ in range(8):
+    for _ in range(MAX_MODEL_CALLS):
         output = llm(scratchpad)
 
         if "Final Answer:" in output:

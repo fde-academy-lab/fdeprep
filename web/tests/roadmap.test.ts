@@ -6,7 +6,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "../lib/db/pool.ts";
 import { listProblems } from "../lib/problems/catalogue.ts";
-import { nextUp, roadmapFor, seedTracks, SHAPES } from "../lib/policy/roadmap.ts";
+import { nextUp, orderFor, roadmapFor, seedTracks, SHAPES } from "../lib/policy/roadmap.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 
 const PERSONAS = ["builder", "navigator", "accelerator"] as const;
@@ -68,6 +68,48 @@ describe("acceptance 1: three personas, three different Next Up sets", () => {
     const roadmap = await roadmapFor(learners["accelerator"]!.enrolmentId);
     const first = roadmap.items.filter((item) => !item.isOptional)[0]!;
     expect(["hard", "extreme"]).toContain(first.difficulty);
+  });
+});
+
+describe("the order inside a tier follows the journey", () => {
+  // Found in the 29 September 2026 review: inside a tier every track outside
+  // the persona's emphasis tied, and the slug decided, so a builder met a
+  // capstone build's first stage between two retrieval problems.
+  const row = (slug: string, track: string, difficulty: "easy" | "medium" = "easy") =>
+    ({ id: slug.length, slug, track, difficulty, artefact_type: "code" });
+
+  it("puts the foundations tracks before a capstone build in the same tier", () => {
+    const order = orderFor("builder", [
+      row("a-capstone-stage-one", "builds"),
+      row("z-structured-output", "structured-output"),
+      row("m-guardrail", "guardrails"),
+    ]).map((item) => item.track);
+    expect(order).toEqual(["structured-output", "guardrails", "builds"]);
+  });
+
+  it("still lets the tier decide first", () => {
+    const order = orderFor("builder", [
+      row("medium-structured", "structured-output", "medium"),
+      row("easy-capstone", "builds", "easy"),
+    ]).map((item) => item.slug);
+    expect(order).toEqual(["easy-capstone", "medium-structured"]);
+  });
+
+  it("still lets the persona's emphasis beat the journey", () => {
+    const order = orderFor("navigator", [
+      row("s-structured", "structured-output", "medium"),
+      row("r-retrieval", "rag", "medium"),
+    ]).map((item) => item.track);
+    expect(order).toEqual(["rag", "structured-output"]);
+  });
+});
+
+describe("the problems page", () => {
+  it("sorts by the learner's own roadmap when asked for path order", async () => {
+    const builder = learners["builder"]!.enrolmentId;
+    const page = await listProblems({ enrolmentId: builder, perPage: 100, sort: "roadmap" });
+    const roadmap = await roadmapFor(builder);
+    expect(page.rows.map((r) => r.slug)).toEqual(roadmap.items.map((i) => i.slug));
   });
 });
 

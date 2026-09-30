@@ -1,0 +1,534 @@
+slug: reply-once-to-a-retried-webhook
+title: Reply once when the help desk delivers the same ticket twice
+artefact_type: code
+difficulty: medium
+track: fde-practice
+est_minutes: 30
+competencies:
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  Your client, a subscription software company, has its help desk send a
+  webhook for every new ticket. The handler you inherited asks the model for
+  a first reply and posts it with `post_reply`. The help desk waits ten
+  seconds for a 2xx and then retries, and on a long ticket the model takes
+  twelve.
+
+  So every long ticket is answered twice. Last week that was 312 customers,
+  and some of them got two different first replies, one promising a refund in
+  five days and one in ten. The handler does have a duplicate check. It looks
+  up the delivery id, which the help desk sets fresh on every attempt, and it
+  writes the key only once the reply is posted, twelve seconds in, by which
+  time the retry has already arrived and looked.
+
+  Repair the handler so a retry never repeats the reply, and so the help desk
+  hears the truth about every delivery.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is one delivery from the help desk, as a JSON string:
+
+      {"delivery_id": "dlv_7f2c", "attempt": 2, "event_id": "evt_881",
+       "type": "ticket.created",
+       "ticket": {"id": "T-5120", "subject": "Charged twice for my March plan"}}
+
+  `delivery_id` is new on every attempt. `event_id` names the ticket event and
+  is the same on every retry of it.
+
+  The idempotency store is shared by every worker running this handler:
+
+  | Tool | Returns |
+  |---|---|
+  | `lookup(key=...)` | `{"status": 200, "state": "absent"}`, or `"in_progress"`, or `"done"`. A read and nothing more. |
+  | `claim(key=...)` | `{"status": 200, "claimed": true}` when this delivery now holds the key, or `{"status": 200, "claimed": false, "state": "in_progress"}` (or `"done"`) when another delivery holds it. One atomic step. |
+  | `mark_done(key=...)` | `{"status": 200}`, and the key reads done from then on. |
+  | `release(key=...)` | `{"status": 200}`, and the key reads absent again, so a retry can claim it. |
+
+  `llm(prompt)` returns `Reply: <text>`. `post_reply(ticket=..., body=...)`
+  returns `{"status": 201, "reply_id": "..."}` when the reply went out, and a
+  status outside 2xx when it did not.
+
+  Return the HTTP response your handler sends the help desk, as a JSON string
+  `{"http_status": <code>, "note": "<one sentence>"}`:
+
+  - 200 when the reply went out, now or on an earlier attempt. The help desk
+    stops retrying.
+  - 409 when another delivery of the same event holds the key and has not
+    finished. The help desk retries later.
+  - 503 when the reply could not be posted. The help desk retries later.
+
+  Budget: at most 2 model calls. A delivery whose reply is out, or being
+  drafted by another delivery, spends none. Allowed imports: json, re.
+
+stub_code: |
+  import json
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      delivery = json.loads(question)
+      ticket = delivery["ticket"]
+
+      # TODO 1: key on the id that every retry of this event shares
+      key = delivery["delivery_id"]
+
+      # TODO 2: claim the key before the model call. Reading it and writing it
+      #         twelve seconds later leaves a gap that a retry walks through
+      if tools["lookup"](key=key).get("state") == "done":
+          return json.dumps({"http_status": 200, "note": "already handled"})
+
+      # TODO 3: a delivery that did not win the key does no work. Answer 200
+      #         when the event is done and 409 while it is still in progress
+
+      reply = llm(f"Write a first reply to this ticket: {ticket['subject']}")
+      tools["post_reply"](ticket=ticket["id"], body=reply.replace("Reply:", "", 1).strip())
+
+      # TODO 4: mark the key done only when the reply went out. When it did
+      #         not, give the key back and answer 503
+      tools["mark_done"](key=key)
+      return json.dumps({"http_status": 200, "note": "replied"})
+
+steps:
+  - id: s1
+    text: Key on the id that every retry of the same event shares, and claim that key.
+    check_id: s1
+  - id: s2
+    text: Claim the key before the model call, in one step.
+    check_id: s2
+  - id: s3
+    text: Answer 200 for a finished event and 409 for one still in progress, doing no work.
+    check_id: s3
+  - id: s4
+    text: Mark the key done only after the reply posted, and release it when the post failed.
+    check_id: s4
+
+step_checks:
+  # The store answers by key, but nothing holds evt_870 in
+  # a_new_ticket_gets_one_reply, so every key there reads absent and can be
+  # claimed. Which id became the key shows only in the claim's own arguments.
+  # That case carries evt_870 and dlv_31a0.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: claim, args: { key: evt_870 } }
+  # In both public retries the lookup already reads the event as held, so a
+  # handler that trusts the lookup can pass them. This check runs its own
+  # race: every key reads absent to the lookup, and evt_925 is claimed by the
+  # time this delivery tries. Any other key can still be claimed.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_e6b1", "attempt": 2, "event_id": "evt_925", "type": "ticket.created", "ticket": {"id": "T-5167", "subject": "The mobile app logs me out every few minutes"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: I am sorry about the logouts. The app team is releasing a fix tonight." }
+      tools:
+        lookup: { returns: { status: 200, state: absent } }
+        claim:
+          by_arg:
+            arg: key
+            values: { evt_925: { status: 200, claimed: false, state: in_progress } }
+            default: { status: 200, claimed: true }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 201, reply_id: "R-7790" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: claim }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: does_not_call_tool, name: post_reply }
+  # Reads a_retry_while_the_first_is_drafting_gets_no_second_reply, where
+  # another delivery holds the key. The stub's own lookup answers 200 for a
+  # finished event once the key is right, so the 409 is the half of this
+  # step a check can see.
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"http_status":\s*409' }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: does_not_call_tool, name: post_reply }
+        - { type: does_not_call_tool, name: mark_done }
+        - { type: does_not_call_tool, name: release }
+  # Every public reply posts, so this check runs its own delivery, whose post
+  # the help desk refuses with a 429.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_0d4a", "attempt": 1, "event_id": "evt_931", "type": "ticket.created", "ticket": {"id": "T-5174", "subject": "My invoice shows an old VAT number"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: You are right about the VAT number. I have corrected it and sent you a new invoice." }
+      tools:
+        lookup: { returns: { status: 200, state: absent } }
+        claim: { returns: { status: 200, claimed: true } }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 429, error: "rate limited, retry in 30 seconds" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: release }
+        - { type: does_not_call_tool, name: mark_done }
+
+hints:
+  - Put two deliveries of the same ticket side by side. Only one of their ids
+    is the same in both.
+  - A lookup followed by a write leaves a gap as long as the model call, and
+    the retry arrives inside it. Two deliveries that look at the same moment
+    both read absent.
+  - Take the key before you spend anything. A claim answers and writes in one
+    step, so only one delivery can win it.
+  - A 200 tells the help desk to stop retrying. Ask what happens to the ticket
+    if the delivery holding the key then fails.
+  - A reply that did not post should leave the key as if nobody had claimed
+    it, and only the delivery that claimed a key may give it back.
+
+scenario:
+  who: The support team at a subscription software company
+  situation: >-
+    The help desk retries any webhook it has not seen acknowledged within ten
+    seconds. On a long ticket the model takes twelve to draft a reply, so the
+    handler answers the ticket twice.
+  stakes: >-
+    312 customers got two first replies last week, some promising a refund in
+    five days and some in ten.
+  metrics:
+    - { label: Double replies last week, value: "312" }
+    - { label: Help desk timeout, value: 10 s }
+    - { label: Model time on a long ticket, value: 12 s }
+
+diagram:
+  title: Where a retry slips past the duplicate check
+  caption: >-
+    The lookup and the write sit twelve seconds apart and the retry lands
+    between them. A claim reads and writes in one step, so there is no gap.
+  direction: lr
+  nodes:
+    - { id: helpdesk, label: Help desk, sub: retries after ten seconds, kind: actor, tone: blue, at: [0, 1] }
+    - { id: handler, label: Webhook handler, sub: one delivery at a time, kind: agent, tone: purple, at: [1, 1] }
+    - { id: store, label: Idempotency store, sub: shared by every worker, kind: store, tone: green, at: [2, 0] }
+    - { id: model, label: Model, sub: twelve seconds on a long ticket, kind: model, tone: teal, at: [2, 2] }
+    - { id: post, label: post_reply, sub: the customer reads this, kind: tool, tone: orange, at: [3, 1] }
+    - { id: double, label: Second reply, sub: a different promise, kind: output, tone: pink, at: [4, 1] }
+  edges:
+    - { from: helpdesk, to: handler, label: "attempt 1, then attempt 2", step: 1 }
+    - { from: handler, to: store, label: lookup reads absent twice, tone: danger, step: 2 }
+    - { from: handler, to: model, label: drafts the reply, step: 3 }
+    - { from: handler, to: post, label: posts it, step: 4 }
+    - { from: post, to: double, label: attempt 2 posts again, tone: danger }
+    - { from: store, to: handler, label: "claim: already held", tone: success }
+
+approach:
+  goal: Make a retry find the work already claimed
+  branches:
+    - label: Pick a key every retry shares
+      leaves: ["the event id, which every retry repeats", "the delivery id, which every retry renews"]
+    - label: Claim before you spend
+      detail: A read and then a write leaves a gap. A claim reads and writes in one step.
+      leaves: [before the model call, exactly one delivery wins]
+    - label: Tell the help desk the truth
+      leaves: [200 only when the reply is out, 409 while another delivery works, 503 when the post failed]
+    - label: Give back what you cannot finish
+      leaves: [a failed post releases the key, never release a key you do not hold]
+
+coach:
+  opening: >-
+    Find the two lines that decide whether this ticket was already answered:
+    where the key comes from, and when the store is written.
+  signals:
+    - id: keyed-on-delivery
+      when: { code_matches: '(?i)\bkey\s*=\s*[^\n]*delivery_id' }
+      say: >-
+        Your key is the delivery id, and the help desk sets a new one on every
+        attempt. Which id stays the same when the same ticket is retried?
+    - id: lookup-then-act
+      when: { code_matches: '["'']lookup["'']', code_lacks: '["'']claim["'']' }
+      say: >-
+        Your handler reads the key and acts on what it read. Two deliveries can
+        both read absent before either writes. Which tool reads and writes in
+        one step?
+    - id: never-releases
+      when: { code_lacks: '["'']release["'']' }
+      say: >-
+        Nothing in your handler ever gives a key back. What happens to this
+        ticket when post_reply fails after you claimed its key?
+    - id: hidden-unfinished
+      when: { test_failed: an_unfinished_event_is_not_acknowledged }
+      say: >-
+        Another delivery held that event and had not finished. What does your
+        status code tell the help desk to do next, and what if that delivery
+        then fails?
+    - id: hidden-race
+      when: { test_failed: two_deliveries_race_past_the_same_lookup }
+      say: >-
+        In that run the store had nothing recorded when one call looked, and
+        the key was taken by the time another call tried. Which of your calls
+        can lose that race?
+    - id: hidden-failed-post
+      when: { test_failed: a_reply_that_did_not_post_is_released }
+      say: >-
+        The reply did not go out in that run. Trace what your handler writes to
+        the store and what it tells the help desk after post_reply fails.
+    - id: hidden-posted-reply
+      when: { test_failed: a_posted_reply_marks_the_event_done }
+      say: >-
+        The reply went out in that run. Which key did your handler mark done,
+        and is it the one the next retry of that ticket will claim?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1: print a retry next to its first attempt and see
+        which id they share. Then move the store call above the model call.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. Open the hints; the second one describes the
+        gap the retries in the brief went through.
+  wrap_up: >-
+    Retries are how at-least-once delivery works, so the handler has to make
+    the side effect happen once. Key on what every retry shares, claim before
+    you spend, and acknowledge only what is finished.
+
+tests:
+  - name: a_new_ticket_gets_one_reply
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_31a0", "attempt": 1, "event_id": "evt_870", "type": "ticket.created", "ticket": {"id": "T-5108", "subject": "Cannot log in after the password reset"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: Sorry you are locked out. I have sent a fresh reset link to the address on the account." }
+      tools:
+        lookup: { returns: { status: 200, state: absent } }
+        claim: { returns: { status: 200, claimed: true } }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 201, reply_id: "R-7731" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: post_reply }
+        - { type: calls_tool, name: mark_done }
+        - { type: returns_matches, value: '"http_status":\s*200' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  # The first delivery holds evt_881 and every other key reads absent, so a
+  # retry keyed on its delivery id wins a fresh claim and replies again.
+  - name: a_retry_while_the_first_is_drafting_gets_no_second_reply
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_7f2c", "attempt": 2, "event_id": "evt_881", "type": "ticket.created", "ticket": {"id": "T-5120", "subject": "Charged twice for my March plan"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: Sorry about the double charge. Billing will refund the second payment within five days." }
+      tools:
+        lookup:
+          by_arg:
+            arg: key
+            values: { evt_881: { status: 200, state: in_progress } }
+            default: { status: 200, state: absent }
+        claim:
+          by_arg:
+            arg: key
+            values: { evt_881: { status: 200, claimed: false, state: in_progress } }
+            default: { status: 200, claimed: true }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 201, reply_id: "R-7740" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: post_reply }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: no_exception }
+
+  # An earlier attempt answered evt_864 and every other key reads absent, so
+  # a retry keyed on its delivery id drafts and posts the reply a second time.
+  - name: a_finished_event_is_acknowledged_without_a_second_reply
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_90be", "attempt": 3, "event_id": "evt_864", "type": "ticket.created", "ticket": {"id": "T-5101", "subject": "Invoice shows the wrong company name"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: Thanks, I have corrected the company name and reissued the invoice." }
+      tools:
+        lookup:
+          by_arg:
+            arg: key
+            values: { evt_864: { status: 200, state: done } }
+            default: { status: 200, state: absent }
+        claim:
+          by_arg:
+            arg: key
+            values: { evt_864: { status: 200, claimed: false, state: done } }
+            default: { status: 200, claimed: true }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 201, reply_id: "R-7702" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: post_reply }
+        - { type: returns_matches, value: '"http_status":\s*200' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  # Another delivery holds evt_893 and has not finished, so the answer is 409
+  # with no work. Every other key reads absent, so a handler keyed on the
+  # delivery id wins a fresh claim and posts; the claim's argument names it.
+  - name: an_unfinished_event_is_not_acknowledged
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_c41d", "attempt": 2, "event_id": "evt_893", "type": "ticket.created", "ticket": {"id": "T-5133", "subject": "Export to CSV has been spinning for an hour"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: Sorry about the stuck export. I have restarted it and it should finish within ten minutes." }
+      tools:
+        lookup:
+          by_arg:
+            arg: key
+            values: { evt_893: { status: 200, state: in_progress } }
+            default: { status: 200, state: absent }
+        claim:
+          by_arg:
+            arg: key
+            values: { evt_893: { status: 200, claimed: false, state: in_progress } }
+            default: { status: 200, claimed: true }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 201, reply_id: "R-7751" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"http_status":\s*409' }
+        - { type: does_not_call_tool, name: post_reply }
+        - { type: does_not_call_tool, name: mark_done }
+        - { type: does_not_call_tool, name: release }
+        - { type: calls_tool_with, name: claim, args: { key: evt_893 } }
+
+  # The race: every key reads absent to the lookup, and evt_902 is claimed by
+  # the time this delivery tries, so a handler that acts on the lookup posts
+  # a second reply. Any other key can be claimed, so one keyed on the
+  # delivery id posts a second reply too; the claim's argument names it.
+  - name: two_deliveries_race_past_the_same_lookup
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_5e07", "attempt": 2, "event_id": "evt_902", "type": "ticket.created", "ticket": {"id": "T-5141", "subject": "Please cancel before the renewal on Friday"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: Your plan is cancelled and will not renew on Friday." }
+      tools:
+        lookup: { returns: { status: 200, state: absent } }
+        claim:
+          by_arg:
+            arg: key
+            values: { evt_902: { status: 200, claimed: false, state: in_progress } }
+            default: { status: 200, claimed: true }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 201, reply_id: "R-7760" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: post_reply }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: returns_matches, value: '"http_status":\s*409' }
+        - { type: calls_tool_with, name: claim, args: { key: evt_902 } }
+
+  # The post fails, so the key goes back and the answer is 503. Nothing holds
+  # evt_911, so every key can be claimed and only the claim's argument shows
+  # which id became the key. release answers alike for every key too, so only
+  # its argument shows that the key given back is evt_911, the one the next
+  # retry will claim.
+  - name: a_reply_that_did_not_post_is_released
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_a3f9", "attempt": 1, "event_id": "evt_911", "type": "ticket.created", "ticket": {"id": "T-5150", "subject": "Two seats were added that nobody asked for"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: Sorry about the extra seats. I have removed them and credited the difference." }
+      tools:
+        lookup: { returns: { status: 200, state: absent } }
+        claim: { returns: { status: 200, claimed: true } }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 503, error: "help desk API unavailable" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: release }
+        - { type: does_not_call_tool, name: mark_done }
+        - { type: returns_matches, value: '"http_status":\s*503' }
+        - { type: calls_tool_with, name: claim, args: { key: evt_911 } }
+        - { type: calls_tool_with, name: release, args: { key: evt_911 } }
+
+  # The reply posts, so the event is marked done under the key the next retry
+  # of it will claim. mark_done answers alike for every key, so only its
+  # argument shows which id was marked. A handler that marks the delivery id
+  # leaves evt_958 in progress, and every later retry answers 409 until the
+  # help desk gives up. Nothing holds evt_958, so every key can be claimed.
+  - name: a_posted_reply_marks_the_event_done
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: '{"delivery_id": "dlv_68d3", "attempt": 1, "event_id": "evt_958", "type": "ticket.created", "ticket": {"id": "T-5192", "subject": "Our team invite links have expired"}}'
+      llm_script:
+        - { match: "*", reply: "Reply: Sorry about the expired links. I have sent fresh invites to everyone on your list." }
+      tools:
+        lookup: { returns: { status: 200, state: absent } }
+        claim: { returns: { status: 200, claimed: true } }
+        mark_done: { returns: { status: 200 } }
+        release: { returns: { status: 200 } }
+        post_reply: { returns: { status: 201, reply_id: "R-7815" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"http_status":\s*200' }
+        - { type: calls_tool_with, name: mark_done, args: { key: evt_958 } }
+
+reference_md: |
+  The handler had a duplicate check, and it failed twice over. It was keyed on
+  the one field that changes between attempts, and it was a lookup separated
+  from its write by a model call.
+
+  The key is the easy half. A delivery id identifies an attempt, and the help
+  desk mints a new one every time it retries, so a check keyed on it can only
+  ever find the attempt it is already handling. The event id is the thing the
+  customer experiences once, so it is the thing to key on.
+
+  The claim is the half that matters. A lookup says what the store held when
+  you asked, and nothing about the next twelve seconds. Two deliveries that
+  look inside that window both read absent and both reply, no matter how
+  carefully each one checks. A claim reads and writes in one atomic step, so exactly one
+  of them wins, and taking it before the model call means the window is
+  closed before the slow, expensive part starts rather than after.
+
+  The status codes are a contract with the help desk, and 200 means stop
+  retrying. Acknowledging an event another delivery is still drafting sounds
+  harmless, until that delivery crashes and the retry that would have
+  recovered the ticket never comes. A 409 costs one more delivery; a lost
+  ticket costs a customer who never hears back. The same reasoning releases
+  the key when a post fails, and only the delivery that holds a key releases
+  it, or a failing delivery frees a claim somebody else is honouring.
+
+  The store owes one thing this handler cannot provide: a claim should expire.
+  A worker that dies holding a key leaves it in progress, and every retry
+  answers 409 until the help desk gives up. Put a lease on the claim, longer
+  than the slowest draft and shorter than the help desk's retry schedule, and
+  a crash costs a delay rather than a ticket.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A webhook provider retries a delivery while your handler is still processing the first one. How do you stop the side effect happening twice, and what do you tell the provider?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I014,
+    turned round: I014 asks whether the caller should retry, and this asks what the
+    receiver of a retry must do. That bank labels every entry "Original interview-style
+    practice; actual employer frequency unverified", and this inherits the caveat.

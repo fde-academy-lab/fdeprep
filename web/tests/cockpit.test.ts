@@ -21,7 +21,7 @@ import { CockpitRun } from "@/lib/voice/run";
 import { MAX_WORDS, wordCount } from "@/lib/voice/nudges";
 import type { Beat } from "@/lib/voice/cues";
 
-const APP = path.join(import.meta.dirname, "..", "app", "voice", "session");
+const APP = path.join(import.meta.dirname, "..", "app", "(focus)", "voice", "session");
 const LIB = path.join(import.meta.dirname, "..", "lib", "voice");
 
 const read = (file: string) => readFile(file, "utf8");

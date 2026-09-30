@@ -26,7 +26,9 @@ export async function validateAll(files?: string[]): Promise<ValidationError[]> 
   const failures: ValidationError[] = [];
   for (const file of targets) {
     const relative = path.relative(path.join(ROOT, ".."), file);
-    const report = validateProblemYaml(await readFile(file, "utf8"), relative);
+    // The catalogue carries the full kit; the fixtures are one-line stand-ins.
+    const requireKit = !relative.split(path.sep).includes("_fixtures");
+    const report = validateProblemYaml(await readFile(file, "utf8"), relative, { requireKit });
     if (report.ok) {
       console.log(`  ok    ${relative}`);
     } else {
@@ -42,7 +44,8 @@ export async function validateAll(files?: string[]): Promise<ValidationError[]> 
 if (import.meta.filename === process.argv[1]) {
   const failures = await validateAll(process.argv.slice(2).map((p) => path.resolve(p)));
   if (failures.length) {
-    console.error(`\n${failures.length} problem(s) failed validation.`);
+    const files = new Set(failures.map((f) => f.file)).size;
+    console.error(`\n${failures.length} error(s) in ${files} problem(s).`);
     process.exit(1);
   }
   console.log("\nevery problem validates.");

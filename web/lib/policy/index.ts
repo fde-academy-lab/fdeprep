@@ -11,22 +11,17 @@
 import type { Pool, PoolClient } from "pg";
 import { db } from "../db/pool.ts";
 import { allowanceFor, humanise, type Allowance } from "./caps.ts";
-import { LAYERS, tierFor, type Difficulty, type Layer, type Visibility } from "./tiers.ts";
+import {
+  LAYERS, SCREEN_CONDITIONS, tierFor, type Difficulty, type Layer, type Visibility,
+} from "./tiers.ts";
 import { degradedMessage, readDegradedMode, type DegradedMode } from "./settings.ts";
+import { buildLock, type BuildLock } from "./build-lock.ts";
 
 export * from "./tiers.ts";
 export { readDegradedMode, setDegradedMode, degradedMessage, DEGRADED_MODE } from "./settings.ts";
+export { buildLock, type BuildLock } from "./build-lock.ts";
 export type { DegradedMode } from "./settings.ts";
 
-/**
- * The tier a rehearsal borrows its rules from.
- *
- * docs/00 section 7.4: "runs them under Extreme rules regardless of their
- * native difficulty: no hints, no test names, no acceptance rates, one submit
- * each". Named here so the rehearsal reads the same tier table as everything
- * else rather than restating what Extreme means.
- */
-const REHEARSAL_TIER: Difficulty = "extreme";
 export { RateLimitError, consume, refund, allowanceFor, humanise } from "./caps.ts";
 export type { Allowance, Scope } from "./caps.ts";
 
@@ -60,6 +55,10 @@ export interface Decision {
   rehearsal: boolean;
   /** Set while the platform is degraded. Submit is closed; Run is not. */
   degraded: DegradedMode;
+  /** Whether the live coach speaks, and whether it may read the code yet. */
+  coach: { enabled: boolean; codeSignalsOpen: boolean };
+  /** Set on a build stage whose previous stage has not passed. Nothing runs. */
+  locked: BuildLock | null;
 }
 
 interface AttemptState {
@@ -95,8 +94,14 @@ export async function resolvePolicy(options: {
   const client = options.client ?? db();
   const state = await loadState(client, options.enrolmentId, options.problemId);
   const rehearsal = options.rehearsal === true;
-  const tier = tierFor(rehearsal ? REHEARSAL_TIER : state.difficulty);
+  // docs/00 section 7.4: a rehearsal runs under screen conditions whatever the
+  // native tier. Those used to be Extreme's rules; since the 29 September 2026
+  // amendment they are their own profile, so loosening Extreme's scaffolding
+  // for practice cannot loosen the rehearsal with it.
+  const tier = rehearsal ? SCREEN_CONDITIONS : tierFor(state.difficulty);
   const degraded = await readDegradedMode(client);
+  // A rehearsal draws problems whole, so the build order does not apply there.
+  const locked = rehearsal ? null : await buildLock(options.enrolmentId, options.problemId, client);
 
   // Sequential on purpose. When a PoolClient is passed in, this runs inside
   // someone's transaction, and a single client cannot serve concurrent
@@ -132,7 +137,7 @@ export async function resolvePolicy(options: {
   // The hints layer renders only where the tier has hints at all.
   layers.hints = tier.hints.kind !== "never";
 
-  return {
+  const decision: Decision = {
     difficulty: state.difficulty,
     layers,
     visibility: tier.visibility,
@@ -154,10 +159,34 @@ export async function resolvePolicy(options: {
     confirmBeforeSubmit: tier.confirmBeforeSubmit,
     rehearsal,
     degraded,
+    coach: {
+      enabled: tier.coach.enabled,
+      codeSignalsOpen: tier.coach.enabled &&
+        state.failedRuns >= tier.coach.codeSignalsAfterFailedRuns,
+    },
     state: {
       solved: state.solved, gaveUp: state.gaveUp,
       failedRuns: state.failedRuns, hintsUsed: state.hintsUsed,
     },
+    locked,
+  };
+  return locked ? closedByLock(decision, locked) : decision;
+}
+
+/**
+ * A locked build stage: every action that would run or reveal something is
+ * closed, and each says why in the same words.
+ */
+function closedByLock(decision: Decision, lock: BuildLock): Decision {
+  const closed = { allowed: false, reason: lock.reason };
+  return {
+    ...decision,
+    run: { ...decision.run, ...closed, label: "Run is locked" },
+    submit: { ...decision.submit, ...closed, label: "Submit is locked" },
+    live: { ...decision.live, ...closed, label: "Live run is locked" },
+    hints: { ...decision.hints, ...closed, label: "Hints are locked" },
+    giveUp: { ...decision.giveUp, ...closed, label: "Give up is locked" },
+    coach: { enabled: false, codeSignalsOpen: false },
   };
 }
 
@@ -174,8 +203,11 @@ function resolveHints(rule: ReturnType<typeof tierFor>["hints"], state: AttemptS
   const base = { total: state.hintTotal, revealed: state.hintsUsed, nextOrdinal };
 
   if (rule.kind === "never") {
-    return { ...base, allowed: false, reason: "Extreme carries no hints at any point.",
-             label: "No hints on Extreme" };
+    // Only screen conditions carry no hints since the 29 September 2026
+    // amendment, and only a rehearsal runs under them.
+    return { ...base, allowed: false,
+             reason: "A rehearsal runs under screen conditions, so there are no hints.",
+             label: "No hints in a rehearsal" };
   }
   if (nextOrdinal === null) {
     return { ...base, allowed: false,

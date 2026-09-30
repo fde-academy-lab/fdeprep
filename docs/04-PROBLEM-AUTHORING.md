@@ -17,9 +17,20 @@ The last six rows land with `eval/` and are not enforced today, because no probl
 | Fewer than two public tests | A learner needs something to iterate against |
 | Fewer than two hidden tests on Medium and above | One hidden test is guessable |
 | No adversarial fixture on Hard or Extreme | The adversarial battery is what those tiers exist for |
-| Hints present on an Extreme problem | Contradicts the tier |
+| A catalogue problem missing its scenario, diagram, approach map or coach | A brief alone is text a learner has to picture unaided. Section 2.1. Fixtures under `problems/_fixtures` are exempt. |
+| Fewer than three or more than five hints on a catalogue problem | The ladder has rungs: where to look, the mechanism, the shape of the fix, then an outline, and none of them the answer |
+| A code problem with no `stub_code`, or a stub that does not define `run_agent(...)` | Every tier has starter code since the 29 September 2026 amendment to docs/00 section 3.2, and the runner calls the entry point the contract names |
+| A kit field longer than its box, a diagram with fewer than 2 or more than 10 nodes, an edge to a node that does not exist, or an unknown key anywhere in the kit | The renderer draws fixed boxes. An unknown key is usually an unquoted comma that split a value, which YAML does without complaint. |
+| A coach signal with no condition, a pattern that does not compile, or a `test_failed` naming a test the problem does not have | A signal that can never fire, or always fires, is noise the learner learns to ignore |
+| A `track` outside the vocabulary in `web/lib/problems/vocabulary.ts` | The journey map groups problems by track, and an invented track is a problem nobody can find |
 | Steps present without matching `step_check` entries | The Easy checklist would show items that never turn green |
+| A `step_check` with no assertions | It holds for any code, the stub's included, so its step reads unchecked forever. Added 30 September 2026. |
+| A `must_keep` of text the original prompt lacks, or a `must_add` of text it already has | The first asks for an addition under the wrong name, and the second passes before the learner types anything. Added 30 September 2026. |
+| A tool that is not exactly one of `returns`, `fixture`, `sequence` or `by_arg`, or that names a fixture the runner does not have | A typo such as `return:` used to load as a tool that answers null. docs/03 section 3 has the forms. Added 30 September 2026. |
 | Fewer than three rubric exemplars on a design problem | The judge drifts without anchors |
+| An exemplar outside the problem's `word_range` | The structural gate refuses such an answer before grading, and the exemplars anchor the pass threshold and the neighbour vote, so the band would rest on an answer the platform never grades. Added 29 September 2026, when two strong exemplars sat below their own floor. |
+| A test assertion type the runner does not evaluate | The runner raises on it, and the learner sees an infrastructure error on the one case that uses it. To check that something is absent from the answer, use `returns_lacks` rather than a negative lookahead in `returns_matches`: its failure names the text it found. |
+| An assertion without a key the runner reads, or with a key it does not read | A missing key raises when the case runs, in front of the learner. Any other key is a typo the check ignores, so `valid_json_return` with `schem` accepted any JSON. The keys each type reads are in docs/03 section 2.4, and every regex goes in `value`. The runner's loader refuses the same specs. |
 | A probe whose assertion references a pattern absent from the problem | Author error, always |
 | `call_budget` not set on a code problem | Budget scoring silently disables |
 | A `contains` or `regex` matcher that already matches the case's own `input`, with a later entry after it | The input is in the first prompt and a scratchpad keeps it there, so that entry wins on every call and every entry below it is unreachable. Use `call_index` when the intent is "the first call". |
@@ -76,12 +87,16 @@ brief_md: |
   ...                                      # L0, always rendered
 
 contract_md: |
-  ...                                      # L1, omitted on extreme
+  ...                                      # L1, every tier
 
 stub_code: |
-  ...                                      # L2, omitted on hard and extreme
+  ...                                      # L2, every tier; depth varies:
+                                           # a TODO scaffold on Easy, the
+                                           # signature and its contract as a
+                                           # docstring on Extreme. It must not
+                                           # pass the public tests as written.
 
-steps:                                      # L3, easy only
+steps:                                      # L3, easy and medium
   - id: s1
     text: Call the model with the running scratchpad.
     check_id: s1
@@ -89,13 +104,27 @@ steps:                                      # L3, easy only
 reference_md: |
   ...                                      # L5, revealed after pass or give-up
 
-hints:                                      # L4, omitted on extreme
+hints:                                      # L4, three to five, every tier;
+                                            # the policy decides what a reveal costs
   - Look at what the tool returns when it fails, not at the status code.
   - A retry that sends an identical prompt will get an identical reply.
+  - Change something in the prompt before the retry, and say what failed.
 
-step_checks:
-  - step_id: s1
-    spec: { ... }
+step_checks:                                # one per step, run on every Run
+  - step_id: s1                             # read against the public cases:
+    spec:                                   # green when any one satisfies all
+      assertions: [ ... ]                   # of these
+  - step_id: s2                             # or a case of its own, shaped like
+    spec:                                   # a test's spec and marked by kind,
+      kind: agent_run                       # for a step no public case exercises
+      input: { ... }
+      llm_script: [ ... ]
+      assertions: [ ... ]
+  - step_id: s3                             # or several, when a step keeps some
+    spec:                                   # things and drops others; it holds
+      cases:                                # only when every case holds
+        - { kind: agent_run, input: { ... }, llm_script: [ ... ], assertions: [ ... ] }
+        - { kind: agent_run, input: { ... }, llm_script: [ ... ], assertions: [ ... ] }
 
 tests:
   - name: terminates_on_final
@@ -111,11 +140,76 @@ tests:
     spec: { ... }
 ```
 
-Prompt problems replace `stub_code` and `tests` with `original_prompt`, `prompt_rules` and `probes`. Design problems replace them with `word_range`, `required_headings`, `rubric` and `exemplars`.
+Prompt problems replace `stub_code` and `tests` with `original_prompt`, `prompt_rules` and `probes`. A prompt rule is one of five kinds, each checked on every keystroke with no model call: `must_remove` (text in the original prompt that has to go), `must_keep` (text in the original that has to stay), `must_add` (text the original lacks that the learner has to add), `max_words` and `min_words`. `must_add` was added on 30 September 2026. Before it, a `must_keep` of text the original lacked asked for an addition and told a learner who never had the text that it was "no longer in the prompt". Design problems replace them with `word_range`, `required_headings`, `rubric` and `exemplars`.
+
+### 2.1 The kit
+
+Added 29 September 2026. A brief says what is wrong. The kit is what lets a learner picture it and get unstuck on it, and every catalogue problem carries one. The renderer draws each piece in a fixed box, so the limits below are enforced in CI.
+
+```yaml
+scenario:                                  # the card above the brief
+  who: Support operations at a parcel carrier          # 80 characters
+  situation: >-                                         # 320
+    The triage agent ran for eleven minutes on one ticket last Tuesday.
+  stakes: Every stuck ticket holds a refund for a day.  # 200
+  metrics:                                              # up to 3
+    - { label: Longest run, value: 11 min }             # 28 and 16
+
+diagram:                                   # where the failure lives
+  title: Where the loop never ends                      # 72
+  caption: Nothing between the model and the next call counts anything.  # 160
+  direction: lr                                         # lr | tb
+  nodes:                                                # 2 to 10
+    - { id: agent, label: Agent loop, sub: calls the model again,
+        kind: agent, tone: purple, at: [1, 0] }         # label 26, sub 44
+  edges:                                                # 1 to 14
+    - { from: agent, to: model, label: next step, step: 2, tone: danger }
+
+approach:                                  # the mind map: how to think about it
+  goal: Make the loop end on its own terms              # 90
+  branches:                                             # 2 to 5
+    - label: Count what costs money                     # 48
+      detail: A budget is a number the loop checks.     # 140, optional
+      leaves: [every model call, every tool call]       # up to 4, 64 each
+
+coach:                                     # a deterministic live coach
+  opening: Find the line that decides whether the loop goes round again.
+  signals:                                              # up to 12, first match speaks
+    - id: no-budget
+      when: { code_lacks: 'range\(|budget|max_' }
+      say: Nothing in this loop counts calls yet. Where would the count live?
+    - id: hidden-failed
+      when: { test_failed: hidden_multi_tool }
+      say: The hidden case never says final. What does your loop do then?
+  wrap_up: A loop without a budget is a bill without a ceiling.   # said after a pass
+
+build:                                     # only on a stage of a multi-stage build
+  { id: support-copilot, title: Ship a support copilot, stage: 2, of: 5 }
+```
+
+| Piece | What it is for | Rules |
+|---|---|---|
+| `scenario` | Who is asking, what happened, what it costs. The numbers go in `metrics` so the card can set them large. | Every field within its limit. |
+| `diagram` | The system, with the failure drawn on it. Kinds are `actor`, `model`, `agent`, `tool`, `store`, `service`, `decision`, `output`, `doc`, `queue` and `guard`. Tones are `blue`, `green`, `purple`, `teal`, `orange`, `pink` and `neutral`; edge tones are `default`, `danger`, `success` and `muted`. `at: [column, row]` places a node; without it the renderer lays nodes out in order. | Every edge joins two declared nodes. |
+| `approach` | How to think about the problem, as a goal and its branches. It never contains the answer. | Two to five branches. |
+| `coach` | What a coach watching over the learner's shoulder would say. A signal fires when every condition in its `when` holds: `code_matches` and `code_lacks` take a pattern in the prompt-rule dialect, so `(?i)` works, and read the editor text or the answer text; `test_failed` names a test or probe from this file; `idle_minutes`, `runs_at_least` and `failed_runs_at_least` read the attempt. The first firing signal in file order is the one the learner sees, so put the most fundamental mistake first. | The coach stays quiet on the reference solution (or the strong exemplar) and fires on the naive solution (or the weak exemplar, or a prompt problem's original prompt). CI checks both. |
+| `build` | Marks the problem as one stage of a multi-stage build, so the journey map can show the stages as one project. | `stage` sits between 1 and `of`, and every stage shares the `id`. |
+
+The coach is deterministic on purpose. Learner code never reaches a model endpoint, so the coach reads the code with patterns and reads runs by the names of the tests that failed. That also makes it instant and free, and a nudge a learner disputes traces to one line of this file. It runs on the server; the browser receives the nudge that fired and never the script.
+
+Three behaviours to write for:
+
+- On a code problem, `code_matches` and `code_lacks` read the code with its full-line comments removed. Starter code narrates its TODOs in comments, and a signal written to notice that nothing handles a Final Answer would otherwise be satisfied by the comment that says to handle one. Trailing comments stay, so prefer patterns that match code rather than prose. Prompt and design answers are read whole.
+- When a run fails and no authored signal fires, the coach says how many public tests failed and points at the first failure. An author does not need a signal per public test; one per hidden and adversarial test is what adds information the results pane cannot show.
+- On Hard and Extreme the code-reading signals wait for failed runs (docs/00 section 3.2). Write the first signal of a Hard problem so it still helps after a failed run, rather than as a first step.
+
+Quote any value that holds a comma, a colon or a question mark. The runner parses problems with PyYAML, which implements YAML 1.1 and rejects an unquoted `?` inside a flow mapping that the web validator's YAML 1.2 parser accepts, and both parsers read `{ sub: fix, rerun }` as `sub: fix` plus an empty key `rerun`. The validator rejects the unknown key, which is how the split gets caught.
 
 ---
 
 ## 3. Worked seed problem: code, Medium
+
+This copy shows the schema's shape as it was first written. The catalogue file, `problems/agent-loop/recover-from-soft-tool-errors.yaml`, has moved on since, with its kit, its step checks and more hidden cases, and it is the one that runs. Amended 30 September 2026, when a reader found the two had drifted apart.
 
 ```yaml
 slug: recover-from-soft-tool-errors
@@ -272,6 +366,8 @@ The adversarial case is worth reading closely. The scripted model is written so 
 
 ## 4. Worked seed problem: prompt surgery, Hard
 
+As in section 3, the catalogue file, `problems/prompt/stop-the-tool-list-leak.yaml`, is the one that runs.
+
 ```yaml
 slug: stop-the-tool-list-leak
 title: Stop a support agent leaking its tool list
@@ -340,6 +436,8 @@ The `social_engineering` probe is deliberately not listed in the brief. On Hard 
 
 ## 5. Worked seed problem: design argument, Extreme
 
+As in section 3, the catalogue file, `problems/evals/design-eval-for-a-support-agent.yaml`, is the one that runs.
+
 ```yaml
 slug: design-eval-for-a-support-agent
 title: Design the evaluation for a support agent going to production
@@ -403,7 +501,7 @@ Before opening a pull request on a new problem, confirm each of these.
 1. The brief describes a situation, not a task. A learner should be able to picture who is asking.
 2. The naive solution fails at least one hidden test. If the obvious approach passes everything, the problem teaches nothing.
 3. Every adversarial fixture has an annotation that explains itself after the attempt.
-4. The hints do not contain the answer. Hint one narrows the search space, hint two names the mechanism, hint three describes the shape of the fix.
+4. The hints do not contain the answer. There are three to five of them. Hint one narrows the search space, hint two names the mechanism, hint three describes the shape of the fix, and a fourth or fifth may outline the steps.
 5. The call budget is one above what a clean solution spends. Measure it by
    running the reference with every ceiling lifted, and leave out any case
    where it spends the whole allowance: a case that exists to prove the loop
@@ -420,3 +518,6 @@ Before opening a pull request on a new problem, confirm each of these.
    either way.
 6. You have solved your own problem from the stub, in the editor, under the time estimate.
 7. The reference walkthrough explains why, not what. The code is already visible by then.
+8. The stub does not pass. Run it through the battery: a stub that already passes the public tests hands the learner a finished problem.
+9. The kit is complete and the coach clears both CI checks: quiet on the reference solution or strong exemplar, and firing on the naive solution, the weak exemplar or the original prompt.
+10. Every step turns green on the reference and stays short of green on the stub. A check any code passes, such as `no_exception` alone, reads unchecked forever. Check what the step's work changes in the answer or the calls, on a public case that exercises it, or give the step its own case when none does; a step case uses its own names and values, because its input is staged in the learner's process. CI enforces this since 30 September 2026.

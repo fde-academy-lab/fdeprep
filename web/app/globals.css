@@ -1,39 +1,185 @@
 @import "tailwindcss";
 
-/* docs/08 section 3. One accent, four state colours, each meaning one thing. */
+/*
+ * docs/08, as amended 29 September 2026.
+ *
+ * Geist for the interface and Geist Mono for code and figures, self-hosted from
+ * the geist package so a build needs no font network. The variables come from
+ * next/font in app/layout.tsx, which is why this block is `inline`.
+ */
+@theme inline {
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
 @theme {
-  --color-bg: #0B0C0E;
-  --color-surface: #131519;
-  --color-surface-2: #1A1D23;
-  --color-border: #24282F;
-  --color-text: #E6E9EF;
-  --color-text-dim: #9AA3B0;
-  --color-text-faint: #5C6470;
-  --color-accent: #4F8EF7;
-  --color-pass: #3FB950;
-  --color-fail: #F85149;
-  --color-warn: #D29922;
-  --color-info: #58A6FF;
+  /* Surfaces, darkest first. Elevation is a step up this ramp, never a shadow. */
+  --color-bg: #0A0B0D;
+  --color-surface: #101216;
+  --color-surface-2: #16191E;
+  --color-surface-3: #1D2127;
+  --color-border: #23272E;
+  --color-border-strong: #30353D;
+  /* An input or a checkbox has to be findable: 3:1 against bg and surface. */
+  --color-border-control: #5C636E;
 
-  --font-sans: Inter, ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  /* Text. Contrast on surface-2: 15.2, 7.3 and 5.2 to 1. */
+  --color-text: #ECEEF2;
+  --color-text-dim: #A0A7B2;
+  --color-text-faint: #858C98;
+
+  /* The one accent: focus, selection, the active item, links, progress. */
+  --color-accent: #6E97F2;
+  --color-accent-solid: #3A68CF;
+  --color-accent-soft: rgb(110 151 242 / 0.14);
+
+  /* State. Each means one thing and always travels with a glyph or a word. */
+  --color-pass: #46C25A;
+  --color-pass-soft: rgb(70 194 90 / 0.12);
+  --color-fail: #F26B63;
+  --color-fail-soft: rgb(242 107 99 / 0.12);
+  --color-warn: #D9A441;
+  --color-warn-soft: rgb(217 164 65 / 0.12);
+  --color-info: #6E97F2;
+
+  /*
+   * Diagram tones, from the explainer grammar and lifted for a dark canvas.
+   * Content, not chrome: they appear inside a diagram or an approach map and
+   * nowhere in the interface around it, where the one accent rule holds.
+   */
+  --color-tone-blue: #4FA6F2;
+  --color-tone-green: #43C77B;
+  --color-tone-purple: #9582FF;
+  --color-tone-teal: #2BB8B1;
+  --color-tone-orange: #F2AC45;
+  --color-tone-pink: #EC5FA6;
+  --color-tone-neutral: #8C94A1;
+
+  /* Six sizes: docs/08 section 2. */
+  --text-meta: 12px;
+  --text-meta--line-height: 1.4;
+  --text-body: 14px;
+  --text-body--line-height: 1.55;
+  --text-lead: 16px;
+  --text-lead--line-height: 1.5;
+  --text-title: 20px;
+  --text-title--line-height: 1.3;
+  --text-display: 28px;
+  --text-display--line-height: 1.2;
+  --text-clock: 40px;
+  --text-clock--line-height: 1;
+
+  /* One radius scale: panels 12, controls 8, keys 4, chips a full pill. */
+  --radius-key: 4px;
+  --radius-control: 8px;
+  --radius-panel: 12px;
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-panel: cubic-bezier(0.2, 0, 0, 1);
 }
 
-:root { color-scheme: dark; }
+/* Base rules sit in the base layer so a utility on an element always wins. */
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
 
-html, body {
-  background: var(--color-bg);
-  color: var(--color-text);
-  font-family: var(--font-sans);
-  font-size: 14px;
-  line-height: 1.5;
+  html {
+    background: var(--color-bg);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+    font-feature-settings: "ss01" 1, "cv11" 1;
+  }
+
+  /* Figures that change width while a timer runs make a dashboard feel unstable. */
+  table, .tnum, time, code, kbd {
+    font-variant-numeric: tabular-nums;
+  }
+
+  ::selection {
+    background: var(--color-accent-soft);
+    color: var(--color-text);
+  }
+
+  /* docs/08 section 5: 120ms for a small state change, and none in a results pane. */
+  button, a, input, select, textarea, summary, [role="tab"], [role="option"] {
+    transition-property: background-color, border-color, color, opacity, box-shadow, transform;
+    transition-duration: 120ms;
+    transition-timing-function: ease-out;
+  }
+  .results-pane, .results-pane * {
+    transition: none !important;
+    animation: none !important;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  /* Quiet scrollbars that still read as scrollbars. */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border-strong) transparent;
+  }
+  *::-webkit-scrollbar { width: 10px; height: 10px; }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-border-strong);
+    border: 3px solid transparent;
+    border-radius: 999px;
+    background-clip: padding-box;
+  }
+  *::-webkit-scrollbar-track { background: transparent; }
 }
 
-/* Figures that change width while a timer runs make a dashboard feel unstable. */
-table, .tnum { font-feature-settings: "tnum" 1; }
+/*
+ * The only continuous motion in the product: a dashed edge in a diagram moves
+ * in the direction the data flows. Motion means "this is a flow" and only that.
+ */
+@keyframes flow-dash {
+  to { stroke-dashoffset: -24; }
+}
+@utility flow-dash {
+  stroke-dasharray: 7 5;
+  animation: flow-dash 1.1s linear infinite;
+}
 
-/* docs/08: transitions under 150ms, and none in a results pane. */
-button, a, input, select { transition: background-color 120ms, border-color 120ms, color 120ms; }
-.results-pane * { transition: none !important; animation: none !important; }
+/* Skeletons hold the final layout's shape while a server component streams. */
+@keyframes skeleton {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 0.9; }
+}
+@utility skeleton {
+  background: var(--color-surface-2);
+  border-radius: 6px;
+  animation: skeleton 1.4s ease-in-out infinite;
+}
 
-:focus-visible { outline: 2px solid var(--color-accent); outline-offset: 1px; }
+/* A panel or a coach message arriving: 180ms, no bounce. */
+@keyframes rise-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+@utility rise-in {
+  animation: rise-in 180ms var(--ease-panel) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0ms !important;
+  }
+  .flow-dash { animation: none; }
+}

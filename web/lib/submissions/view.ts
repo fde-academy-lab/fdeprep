@@ -65,6 +65,28 @@ export interface CorrectionView {
   at: string;
 }
 
+/**
+ * docs/01 S4: one step of the checklist. Green when a public case satisfied
+ * its check and the untouched stub did not; unchecked when the stub satisfies
+ * it too, because then the public cases cannot tell the learner's work from
+ * no work.
+ */
+export interface StepView {
+  id: string;
+  status: "pass" | "fail" | "unchecked";
+}
+
+/** The runner's step statuses, kept only where they have the contract's shape. */
+export function trimSteps(value: unknown): StepView[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((entry) => {
+    const step = entry as { id?: unknown; status?: unknown } | null;
+    if (typeof step?.id !== "string") return [];
+    if (step.status !== "pass" && step.status !== "fail" && step.status !== "unchecked") return [];
+    return [{ id: step.id, status: step.status }];
+  });
+}
+
 export interface SubmissionView {
   id: number;
   status: "queued" | "running" | "evaluating" | "terminal";
@@ -83,6 +105,8 @@ export interface SubmissionView {
   message: string | null;
   /** Present only when faculty changed this grade. */
   correction: CorrectionView | null;
+  /** Empty unless the run reached the public tests of a problem with steps. */
+  steps: StepView[];
 }
 
 const EMPTY: GateView = { status: "skipped", passed: 0, total: 0, cases: [] };
@@ -138,6 +162,7 @@ export async function publicView(submissionId: number): Promise<SubmissionView> 
       ? null : Number(row.result["model_calls"]),
     budget: (row.result?.["budget"] ?? null) as Record<string, unknown> | null,
     correction: trimCorrection(row.result?.["evaluation"]),
+    steps: trimSteps(row.result?.["steps"]),
     message: (row.result?.["message"] ?? null) as string | null,
   };
 }

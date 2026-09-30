@@ -1,0 +1,438 @@
+slug: retrieve-memories-with-stable-ranking
+title: Give the same question the same memories every time
+artefact_type: code
+difficulty: hard
+track: memory
+est_minutes: 40
+competencies:
+  - { slug: retrieval, weight: 1.0 }
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A software company runs one memory service behind the support assistants of
+  forty retailers. Every memory carries its tenant, the retailer it belongs
+  to, and a relevance score, and the index is split across shards that answer
+  in whatever order they finish. The same note is sometimes saved twice, once
+  from chat and once from email, with different spacing and case.
+
+  Last Wednesday a support agent at a florist asked their assistant the same
+  question twice, a minute apart, and got two different answers. Two memories
+  had scored exactly 0.82. On the first call the florist's own note arrived
+  first and made the cut. On the second, a note belonging to a garden
+  centre's customer arrived first, and the assistant read out that customer's
+  gate code.
+
+  Retrieval sorted by score and took the top three. The shards stayed inside
+  their contract on both calls, and the order they answered in decided what
+  the model read.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `tools["session"]()` returns `{"status": 200, "tenant": "t-117"}`, the tenant
+  this conversation belongs to. `tools["recall"](query=question)` returns
+  candidate memories from every shard, in the order the shards answered:
+
+      {"status": 200, "memories": [
+          {"id": "mem-0412", "tenant": "t-117", "score": 0.82,
+           "text": "Prefers deliveries after 6pm on weekdays."}, ...]}
+
+  Choose at most 3 memories:
+
+  1. Only memories whose `tenant` is this conversation's tenant are eligible.
+     When the tenant is unknown, none are.
+  2. Rank by `score`, highest first, and break a tie by `id` in ascending
+     string order.
+  3. Two memories are the same memory when their texts match after
+     lower-casing and removing every character that is not a letter or a
+     digit. Keep the one that ranks first and skip the rest.
+  4. Take the first 3 that remain.
+
+  Build the prompt as
+
+      Memories:
+      - <text>                one line per chosen memory, in ranking order
+      Question: <question>
+
+  with the single line `- none` under `Memories:` when nothing was chosen,
+  then call `llm(prompt)` once and return its reply, stripped.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your tie-break is the memory id, and ids are assigned when a memory is
+  written, so among tied memories the oldest always wins. A reviewer points
+  out that a customer who corrected their delivery preference last week keeps
+  getting the old one whenever the two tie. Would you change the tie-break,
+  to what, and how do you keep the same context on every call while you do?
+
+stub_code: |
+  import json
+  import re
+
+  LIMIT = 3
+
+
+  def eligible(memories: list, tenant) -> list:
+      """The memories this conversation may see."""
+      raise NotImplementedError
+
+
+  def ranked(memories: list) -> list:
+      """Every memory, in one order that no arrival order can change."""
+      raise NotImplementedError
+
+
+  def same_memory(a: str, b: str) -> bool:
+      """True when two texts are one memory saved twice."""
+      raise NotImplementedError
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Answer from at most three memories, the same three on every call.
+
+      tools["session"]()          -> {"status": 200, "tenant": "t-117"}
+      tools["recall"](query=text) -> {"status": 200, "memories": [
+                                        {"id": "mem-0412", "tenant": "t-117",
+                                         "score": 0.82, "text": "..."}, ...]}
+                                     in whatever order the shards answered
+
+      Eligible: memories whose tenant is this conversation's tenant, and none
+      when the tenant is unknown. Ranked: score, highest first, then id in
+      ascending string order. One memory saved twice counts once.
+
+      Prompt:
+          Memories:
+          - <text>              one line per memory, best first, or "- none"
+          Question: <question>
+
+      Call llm(prompt) once and return its reply, stripped.
+      At most 2 model calls. Allowed imports: json, re.
+      """
+      return "not written yet"
+
+hints:
+  - Look at what decides the order of two memories with the same score, and
+    ask whether that thing is the same on every call.
+  - Python's sort is stable, so ties keep the order they arrived in, and the
+    shards decide that order again on every call.
+  - "Give the sort a key that differs for every memory: the score first, then
+    something that never changes, such as the id."
+  - Filter by tenant before you rank, and skip a second copy of a memory before
+    it takes a slot, so the three you keep are three different, eligible
+    memories.
+  - When you cannot tell whose conversation this is, no memory is eligible. A
+    thinner answer is recoverable, and another retailer's memory in the prompt
+    is not.
+
+scenario:
+  who: The team running one memory service for forty retailers' assistants
+  situation: >-
+    A florist's support agent asked the same question twice in a minute and
+    got two answers. Two memories had tied at 0.82, the shards answered in a
+    different order, and the second answer quoted a garden centre customer's
+    gate code.
+  stakes: >-
+    Agents stop trusting an assistant that changes its answer. Another
+    retailer's customer data in an answer is a breach the platform has to
+    report.
+  metrics:
+    - { label: Retailers on one index, value: "40" }
+    - { label: Tied score, value: "0.82" }
+    - { label: Answers to one question, value: "2" }
+
+diagram:
+  title: Where the shards' arrival order decides the context
+  caption: >-
+    Sorting by score alone leaves ties in arrival order, and the shards change
+    that order on every call. The tenant check never ran at all.
+  direction: lr
+  nodes:
+    - { id: agent, label: Support agent, sub: asks the same question twice, kind: actor, tone: blue, at: [0, 1] }
+    - { id: shards, label: Index shards, sub: answer in whatever order they finish, kind: store, tone: teal, at: [1, 0] }
+    - { id: retriever, label: Retriever, sub: sorts by score and takes three, kind: agent, tone: purple, at: [1, 1] }
+    - { id: session, label: Session, sub: says whose conversation this is, kind: service, tone: green, at: [1, 2] }
+    - { id: tie, label: Tie at 0.82, sub: arrival order picks the winner, kind: decision, tone: orange, at: [2, 1] }
+    - { id: model, label: Assistant, sub: answers from the three it reads, kind: model, tone: teal, at: [3, 1] }
+    - { id: leak, label: "Another retailer's note", sub: "a garden centre customer's gate code", kind: output, tone: pink, at: [3, 2] }
+  edges:
+    - { from: agent, to: retriever, label: same question, step: 1 }
+    - { from: retriever, to: shards, label: "recall(query)", step: 2 }
+    - { from: shards, to: retriever, label: ties in arrival order, step: 3 }
+    - { from: retriever, to: tie, label: score only, tone: danger }
+    - { from: tie, to: model, label: a different three each call, tone: danger }
+    - { from: model, to: leak, label: read out to the agent, tone: danger }
+    - { from: session, to: retriever, label: "tenant, checked first", tone: success }
+
+approach:
+  goal: Give the same question the same memories on every call
+  branches:
+    - label: Decide who may see what first
+      leaves: [eligibility before ranking, an unknown tenant sees nothing]
+    - label: Make the order total
+      detail: A stable sort keeps ties in the order they arrived, and the shards choose that order.
+      leaves: [a key that differs for every memory, one that never changes between calls]
+    - label: Count each memory once
+      leaves: [the same note saved twice, compare what the text says]
+    - label: Cut last
+      leaves: [three slots for three different eligible memories]
+
+coach:
+  opening: >-
+    Ask the same question twice in your head, with the shards answering in a
+    different order each time. Find the line where that order can still change
+    what the model reads.
+  signals:
+    - id: no-tenant-check
+      when: { code_lacks: 'tenant' }
+      say: >-
+        Nothing in your retrieval reads a tenant, and forty retailers share this
+        index. Which of these memories is this conversation allowed to see?
+    - id: score-only-sort
+      when:
+        code_matches: '(?:sort|sorted)\([\s\S]{0,120}?score'
+        code_lacks: '["'']id["'']'
+      say: >-
+        Your sort key is the score alone. When two memories tie, what decides
+        which comes first, and will it decide the same way on the next call?
+    - id: hidden-tie
+      when: { test_failed: tied_scores_are_ordered_by_id_not_by_arrival }
+      say: >-
+        Three memories in that run scored exactly the same, and the shards
+        answered in an order you have not seen. Which of them made your cut,
+        and would the next call pick the same ones?
+    - id: hidden-duplicate
+      when: { test_failed: the_same_memory_saved_twice_takes_one_slot }
+      say: >-
+        One memory in that run was saved twice, with different case and
+        punctuation. Count how many of your three slots it took.
+    - id: hidden-other-tenant
+      when: { test_failed: another_tenants_memory_with_the_same_score_is_never_eligible }
+      say: >-
+        Another retailer's memory scored exactly the same as this customer's
+        best one and arrived first. Check what reached the prompt, and whether
+        you still had three memories once it was gone.
+    - id: adversarial-unknown-tenant
+      when: { test_failed: adversarial_the_session_service_answers_with_nothing }
+      say: >-
+        The session service answered with nothing, so nobody knows whose
+        conversation this is. What should a retriever show when it cannot
+        tell?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write the sort key first. Two memories with the same score need
+        something else that differs between them and never changes between
+        calls.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Hints open after one failed run on this tier,
+        and the first one says where the order comes from.
+  wrap_up: >-
+    Retrieval is repeatable only when its order is total and its filters run
+    first. Decide eligibility before ranking, break every tie with a key that
+    never changes, and count each memory once.
+
+tests:
+  - name: the_three_best_memories_in_score_order
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "When should we deliver this customer's order?" }
+      llm_script:
+        - { match: { regex: 'after 6pm on weekdays[\s\S]*neighbour at number 12[\s\S]*every May' },
+            reply: "Deliver after 6pm on a weekday, and leave it with the neighbour at number 12 if nobody answers." }
+        - { match: "*", reply: "I have no delivery notes for this customer." }
+      tools:
+        session: { returns: { status: 200, tenant: "t-117" } }
+        recall:
+          returns:
+            status: 200
+            memories:
+              - { id: "mem-0031", tenant: "t-117", score: 0.64, text: "Orders flowers for her mother every May." }
+              - { id: "mem-0007", tenant: "t-117", score: 0.91, text: "Prefers deliveries after 6pm on weekdays." }
+              - { id: "mem-0019", tenant: "t-117", score: 0.55, text: "Paid by gift card last Christmas." }
+              - { id: "mem-0012", tenant: "t-117", score: 0.78, text: "Leave parcels with the neighbour at number 12." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: recall }
+        - { type: returns_matches, value: "(?i)after 6pm on a weekday" }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: fewer_memories_than_the_limit
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Can we add lilies to this customer's bouquet?" }
+      llm_script:
+        - { match: { regex: 'Allergic to lilies[\s\S]*paper receipts' },
+            reply: "No. This customer is allergic to lilies." }
+        - { match: "*", reply: "I have no notes about flowers for this customer." }
+      tools:
+        session: { returns: { status: 200, tenant: "t-117" } }
+        recall:
+          returns:
+            status: 200
+            memories:
+              - { id: "mem-0044", tenant: "t-117", score: 0.70, text: "Asked for paper receipts." }
+              - { id: "mem-0045", tenant: "t-117", score: 0.81, text: "Allergic to lilies, so never include them." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)allergic to lilies" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: tied_scores_are_ordered_by_id_not_by_arrival
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which way should the driver go in tonight?" }
+      llm_script:
+        - { match: { regex: 'ground-floor flat at the back[\s\S]*locked after 5pm[\s\S]*ring the bell twice' },
+            reply: "Go round to the back, use the front door because the side gate is locked after 5pm, and ring the bell twice." }
+        - { match: { contains: "Asked us to use the side gate" }, reply: "Use the side gate." }
+        - { match: "*", reply: "I do not have access notes for this customer." }
+      tools:
+        session: { returns: { status: 200, tenant: "t-117" } }
+        recall:
+          returns:
+            status: 200
+            memories:
+              - { id: "mem-0093", tenant: "t-117", score: 0.82, text: "Asked us to use the side gate." }
+              - { id: "mem-0140", tenant: "t-117", score: 0.95, text: "Lives in a ground-floor flat at the back of the building." }
+              - { id: "mem-0057", tenant: "t-117", score: 0.82, text: "Drivers should ring the bell twice." }
+              - { id: "mem-0021", tenant: "t-117", score: 0.82, text: "The side gate is locked after 5pm, so use the front door." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)use the front door" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: the_same_memory_saved_twice_takes_one_slot
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Should the driver phone this customer on arrival?" }
+      llm_script:
+        - { match: { contains: "a phone call will not reach them" },
+            reply: "No. Send a text message before delivery, because a phone call will not reach them." }
+        - { match: "*", reply: "Yes, phone them on arrival, but not before noon." }
+      tools:
+        session: { returns: { status: 200, tenant: "t-117" } }
+        recall:
+          returns:
+            status: 200
+            memories:
+              - { id: "mem-0301", tenant: "t-117", score: 0.88, text: "Prefers a text message before delivery." }
+              - { id: "mem-0302", tenant: "t-117", score: 0.87, text: "prefers a text-message before delivery" }
+              - { id: "mem-0303", tenant: "t-117", score: 0.80, text: "Works nights, so do not call before noon." }
+              - { id: "mem-0304", tenant: "t-117", score: 0.72, text: "Is deaf, so a phone call will not reach them." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)a phone call will not reach them" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: another_tenants_memory_with_the_same_score_is_never_eligible
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Where should the driver leave the flowers tonight?" }
+      llm_script:
+        - { match: { contains: "Gate code is 4471" },
+            reply: "Use gate code 4471 and leave the flowers in the shed." }
+        - { match: { regex: 'concierge\.[\s\S]*closes at 8pm[\s\S]*Buzzer 3B' },
+            reply: "Leave them with the concierge before 8pm, or use buzzer 3B if the desk is closed." }
+        - { match: "*", reply: "Leave them with the concierge." }
+      tools:
+        session: { returns: { status: 200, tenant: "t-117" } }
+        recall:
+          returns:
+            status: 200
+            memories:
+              - { id: "mem-0077", tenant: "t-204", score: 0.82, text: "Gate code is 4471, and boxes go in the shed." }
+              - { id: "mem-0078", tenant: "t-117", score: 0.82, text: "Leave flowers with the concierge." }
+              - { id: "mem-0079", tenant: "t-117", score: 0.74, text: "The concierge desk closes at 8pm." }
+              - { id: "mem-0080", tenant: "t-117", score: 0.61, text: "Buzzer 3B works when the concierge is away." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)buzzer 3B" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: adversarial_the_session_service_answers_with_nothing
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The session service answered with nothing, which is what an identity
+      service looks like halfway through a deploy. There is no tenant to
+      compare against.
+
+      A retriever that filters only when it knows the tenant has no filter at
+      all in that moment, and the model reads every retailer's memories: here,
+      another retailer's customer's gate code. Unknown has to mean none. The
+      customer gets a thinner answer for one call, and nobody gets somebody
+      else's gate code.
+    spec:
+      kind: agent_run
+      input: { question: "Where should the driver leave the flowers tonight?" }
+      llm_script:
+        - { match: { contains: "Gate code is 4471" },
+            reply: "Use gate code 4471 and leave the flowers in the shed." }
+        - { match: { contains: "\n- none" },
+            reply: "I cannot see any delivery notes for this customer, so ask them when you call." }
+        - { match: "*", reply: "Leave them with the concierge." }
+      tools:
+        session: { fixture: empty_tool_result }
+        recall:
+          returns:
+            status: 200
+            memories:
+              - { id: "mem-0501", tenant: "t-204", score: 0.90, text: "Gate code is 4471, and boxes go in the shed." }
+              - { id: "mem-0502", tenant: "t-117", score: 0.85, text: "Leave flowers with the concierge." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)cannot see any delivery notes" }
+        - { type: no_exception }
+        - { type: terminates }
+
+reference_md: |
+  The score was never the problem. Two memories at 0.82 are a tie, and a tie
+  is a question the ranking has not answered. Python's sort is stable, which
+  sounds like a guarantee and is one: equal keys keep the order they arrived
+  in. The shards decide that order again on every call, so a stable sort over
+  unstable input is exactly as unstable as its input.
+
+  A total order fixes it. Any key that differs for every memory and never
+  changes between calls will do, and the id is the cheapest one to hand.
+  Choosing among such keys is a product decision, which is what the defence
+  question asks about. Having one at all is the engineering.
+
+  Duplicates are the same failure in a different place. The note saved from
+  chat and again from email is one memory that scores twice, so it takes two
+  of three slots and pushes a different memory out, and which one depends on
+  how the note happened to be saved. Normalising the text before comparing is
+  crude and cheap, and it catches the copies that actually occur.
+
+  Eligibility comes before ranking because a filter applied after the cut
+  leaves fewer memories than you asked for, and the one missing is the one a
+  foreign memory displaced. When the tenant is unknown the filter has nothing
+  to compare against, and the only safe reading of that is no memories at
+  all. The customer gets a thinner answer for one call, and no customer's gate
+  code reaches a stranger.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    The same question retrieves different memories on two calls a minute apart. What is going on, and how do you make retrieval repeatable?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

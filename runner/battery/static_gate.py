@@ -7,6 +7,8 @@ and generates a support message.
 from __future__ import annotations
 
 import ast
+import string
+from collections import Counter
 from dataclasses import dataclass, field
 
 from runner.problem import ALWAYS_ALLOWED_IMPORTS
@@ -16,15 +18,35 @@ MAX_SOURCE_BYTES = 64 * 1024
 FORBIDDEN_NAMES = (
     "__import__", "eval", "exec", "open", "compile", "globals", "locals",
     "vars", "getattr", "setattr", "delattr", "input", "breakpoint", "memoryview",
+    # The builtins module itself, which every name above is an attribute of.
+    "__builtins__",
 )
 
 FORBIDDEN_MODULES = (
     "subprocess", "socket", "ctypes", "importlib", "os", "sys", "shutil",
     "multiprocessing", "threading", "signal", "resource", "pickle", "marshal",
     "urllib", "http", "requests", "ssl", "asyncio", "pty", "code", "builtins",
+    # Both hand back an object's private state without an attribute access
+    # the rule below could see: gc.get_referents(llm) returns its __dict__.
+    # Closed whatever a problem's allowed_imports says.
+    "gc", "inspect",
 )
 
 FORBIDDEN_ATTRS = ("system", "popen", "spawn", "fork", "__subclasses__", "__globals__")
+
+# The modules a solution may import hold public references to the
+# interpreter's own: typing.contextlib.os, json.codecs.sys, re.enum.bltns,
+# dataclasses.inspect. None of those names starts with an underscore, so the
+# private rule below never saw them. These are the last-hop names of every
+# such route, found by walking every module a solution may import;
+# tests/test_static_gate.py repeats the walk, so a Python upgrade or a newly
+# allowed module cannot add a route nobody named.
+#
+# This list names a route so that an honest learner reads a reason. It is not
+# the boundary. The scripted model and the trace are not in the sandbox's
+# process at all, and the sandbox starts with no credentials in reach
+# (runner/battery/host.py), so a route this list misses reaches nothing.
+MODULE_ROUTE_ATTRS = ("sys", "os", "builtins", "bltns", "importlib", "inspect", "io")
 
 # docs/03 section 9.1 says learner code can read anything staged into its own
 # process, and the harness objects are staged into it. Assertions are not, so
@@ -43,10 +65,23 @@ FORBIDDEN_ATTRS = ("system", "popen", "spawn", "fork", "__subclasses__", "__glob
 # is why __class__ and __mro__ need no entry of their own.
 PRIVATE_BASES = ("self", "cls")
 
+# Names with underscores that read a plain string and lead nowhere. A content
+# author found that type(exc).__name__, the usual way to name an exception's
+# type, failed the private rule; a contract that asks for the type set a trap
+# the learner could not avoid.
+PUBLIC_DUNDERS = ("__name__", "__qualname__")
+
 # namedtuple's public interface carries underscores so that the names cannot
 # collide with a field. Rejecting `_asdict()` would fail correct code for a
 # reason the learner could do nothing about.
 NAMEDTUPLE_API = ("_asdict", "_replace", "_fields", "_field_defaults", "_make")
+
+# str.format resolves "{0._script}" with a real getattr at run time, so a
+# format string is an attribute access the walk never sees as one. A format
+# string written as a literal, or as a module-level constant bound once, is
+# checked field by field; one built at run time cannot be, and an f-string
+# does everything a learner needs, so it wins.
+FORMAT_ATTRS = ("format", "format_map")
 
 
 @dataclass
@@ -71,6 +106,7 @@ def check(source: str, allowed_imports) -> StaticResult:
         ])
 
     allowed = set(ALWAYS_ALLOWED_IMPORTS) | {str(m) for m in (allowed_imports or ())}
+    templates = _constant_templates(tree)
 
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
@@ -86,7 +122,15 @@ def check(source: str, allowed_imports) -> StaticResult:
         elif isinstance(node, ast.Name) and node.id in FORBIDDEN_NAMES:
             reasons.append(f"line {node.lineno}: {node.id} is not available in the sandbox")
         elif isinstance(node, ast.Attribute):
-            reasons += _check_attribute(node)
+            reasons += _check_attribute(node, templates)
+        elif isinstance(node, ast.MatchClass):
+            # case object(_script=s) binds s to obj._script by keyword.
+            for name in node.kwd_attrs:
+                if name.startswith("_"):
+                    reasons.append(
+                        f"line {node.lineno}: a class pattern that binds {name} reads a private "
+                        "attribute of another object, which the sandbox does not allow"
+                    )
 
     if not _defines_run_agent(tree):
         reasons.append("the solution defines no run_agent function at module level")
@@ -100,18 +144,124 @@ def check(source: str, allowed_imports) -> StaticResult:
     return StaticResult("fail" if unique else "pass", unique)
 
 
-def _check_attribute(node: ast.Attribute) -> list[str]:
+def _check_attribute(node: ast.Attribute, templates: dict[str, str]) -> list[str]:
     """One attribute access, checked for a private name and then for a name on
     the fixed list."""
-    if node.attr.startswith("_") and not _private_is_the_learners_own(node):
+    if (node.attr.startswith("_") and node.attr not in PUBLIC_DUNDERS
+            and not _private_is_the_learners_own(node)):
         return [
             f"line {node.lineno}: {node.attr} is a private attribute of another object, "
             "and the sandbox does not allow reading one. Everything this problem gives you "
             "is reachable without it: call llm(prompt) and the callables in tools"
         ]
+    if node.attr in FORMAT_ATTRS:
+        return _check_format(node, templates)
     if node.attr in FORBIDDEN_ATTRS:
         return [f"line {node.lineno}: the {node.attr} attribute is not reachable"]
+    if node.attr in MODULE_ROUTE_ATTRS and not _on_the_learners_own_object(node):
+        return [
+            f"line {node.lineno}: .{node.attr} reaches one of the interpreter's own modules "
+            "through another module, which the sandbox does not allow. Import what you need "
+            "from this problem's allowed imports instead"
+        ]
     return []
+
+
+def _check_format(node: ast.Attribute, templates: dict[str, str]) -> list[str]:
+    """str.format and format_map, which read attributes named inside a string."""
+    if node.attr == "format_map":
+        return [
+            f"line {node.lineno}: format_map looks up attributes at run time, which the "
+            "sandbox does not allow. Use an f-string"
+        ]
+    base = node.value
+    if isinstance(base, ast.Constant) and isinstance(base.value, str):
+        text = base.value
+    elif isinstance(base, ast.Name) and base.id in templates:
+        text = templates[base.id]
+    else:
+        return [
+            f"line {node.lineno}: str.format on a string built at run time can read attributes "
+            "the sandbox keeps private. Use an f-string, or a template defined once at the top "
+            "of the file"
+        ]
+    field_name = _traversing_field(text)
+    if field_name:
+        return [
+            f"line {node.lineno}: the format field {{{field_name}}} reads an attribute or an "
+            "item through str.format, which the sandbox does not allow. Use an f-string"
+        ]
+    return []
+
+
+def _constant_templates(tree: ast.Module) -> dict[str, str]:
+    """Module-level names bound exactly once, anywhere in the file, to a string literal.
+
+    PROMPT = "..." followed by PROMPT.format(...) is how most people write a
+    prompt template, and the literal is as readable to the gate as one written
+    inline. A second binding of the name, in any scope and by any means,
+    means the gate can no longer say which string is being formatted, so the
+    name is left out and the call is rejected like any string built at run
+    time.
+    """
+    literals: dict[str, list[str]] = {}
+    for node in tree.body:
+        target = value = None
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target, value = node.targets[0], node.value
+        elif isinstance(node, ast.AnnAssign):
+            target, value = node.target, node.value
+        if (isinstance(target, ast.Name) and isinstance(value, ast.Constant)
+                and isinstance(value.value, str)):
+            literals.setdefault(target.id, []).append(value.value)
+
+    bound: Counter[str] = Counter()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name) and not isinstance(node.ctx, ast.Load):
+            bound[node.id] += 1
+        elif isinstance(node, ast.arg):
+            bound[node.arg] += 1
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound[node.name] += 1
+        elif isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                bound[(alias.asname or alias.name).split(".")[0]] += 1
+        elif isinstance(node, (ast.Global, ast.Nonlocal)):
+            bound.update(node.names)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            bound[node.name] += 1
+        elif isinstance(node, (ast.MatchAs, ast.MatchStar)) and node.name:
+            bound[node.name] += 1
+        elif isinstance(node, ast.MatchMapping) and node.rest:
+            bound[node.rest] += 1
+    return {name: values[0] for name, values in literals.items()
+            if len(values) == 1 and bound[name] == 1}
+
+
+def _traversing_field(text: str, depth: int = 0) -> str | None:
+    """The first replacement field that walks into an object, if any.
+
+    A field such as {0.name} or {0[key]} makes str.format call getattr or
+    __getitem__. Nested fields inside a format spec are read too. A string the
+    parser rejects is left alone, because str.format rejects it the same way
+    at run time and reads nothing.
+    """
+    try:
+        for _literal, field_name, spec, _conversion in string.Formatter().parse(text):
+            if field_name and ("." in field_name or "[" in field_name):
+                return field_name
+            if spec and depth < 2:
+                inner = _traversing_field(spec, depth + 1)
+                if inner:
+                    return inner
+    except ValueError:
+        return None
+    return None
+
+
+def _on_the_learners_own_object(node: ast.Attribute) -> bool:
+    """self.io is the learner's attribute, whatever it happens to be called."""
+    return isinstance(node.value, ast.Name) and node.value.id in PRIVATE_BASES
 
 
 def _private_is_the_learners_own(node: ast.Attribute) -> bool:
@@ -132,6 +282,10 @@ def _private_is_the_learners_own(node: ast.Attribute) -> bool:
 
 def _check_module(name: str, allowed: set[str], lineno: int) -> list[str]:
     top = name.split(".")[0]
+    if top == "__future__":
+        # A compiler directive. `from __future__ import annotations` is how a
+        # lot of people start every file.
+        return []
     if top in FORBIDDEN_MODULES:
         return [f"line {lineno}: {top} is not importable in the sandbox"]
     if top not in allowed:

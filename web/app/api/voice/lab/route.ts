@@ -16,6 +16,12 @@ export const dynamic = "force-dynamic";
 export async function POST() {
   try {
     const learner = await currentLearner();
+    // The transport check is for whoever runs the platform, like its page.
+    if (learner.role === "learner") {
+      return NextResponse.json(
+        { message: "The transport check is for faculty. Open the Voice Screen from the header instead." },
+        { status: 404 });
+    }
     const started = await startVoiceSession({
       enrolmentId: learner.enrolmentId,
       cohortId: learner.cohortId,

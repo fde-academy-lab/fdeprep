@@ -27,9 +27,9 @@ rubric:
   - { label: "Holds a position under commercial pressure", weight: 25 }
 
 exemplars:
-  - { band: strong,   score: 90, body_md: "Names selection bias and the cost of a wrong refund, then gives two numeric gates." }
-  - { band: adequate, score: 65, body_md: "Names one gap and one gate, and concedes the date." }
-  - { band: weak,     score: 30, body_md: "Says the agent needs more testing before launch." }
+  - { band: strong,   score: 90, body_md: "Names selection bias in the forty hand-picked conversations and the cost of a wrong refund, which is money that does not come back. Then gives two numeric gates: no more than one wrong refund in two hundred replayed tickets, and a correct escalation on every ticket that mentions a chargeback." }
+  - { band: adequate, score: 65, body_md: "Names one gap, that the forty conversations were chosen by the people who built the agent, and one gate, a replay of two hundred real tickets before launch. Concedes the launch date rather than arguing for a later one, and says nothing about what a wrong refund costs." }
+  - { band: weak,     score: 30, body_md: "Says the agent needs more testing before launch because the forty conversations might not be enough, and that the team should test more carefully and keep an eye on quality after it goes live. Names no gate, no number and no cost, so nobody could tell when the testing is done." }
 
 complexity: C4
 

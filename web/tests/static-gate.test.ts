@@ -75,6 +75,16 @@ describe("prompt rules", () => {
     expect(keep.message).toContain("no longer");
   });
 
+  it("passes a must_add rule once the text is in, and says it is not in yet before", () => {
+    const rule = [{ kind: "must_add", label: "an escalation path", pattern: "(?i)escalat" }] as const;
+    const before = evaluatePromptRules("You are a support assistant.", rule as never).checks[0]!;
+    expect(before.status).toBe("fail");
+    expect(before.message).toBe("not in the prompt yet");
+    const after = evaluatePromptRules("Escalate refunds over 40 pounds to a person.", rule as never).checks[0]!;
+    expect(after.status).toBe("pass");
+    expect(after.message).toBe("added");
+  });
+
   it("passes every rule on a hardened prompt", () => {
     const gate = evaluatePromptRules(hardened, RULES as never);
     expect(gate.status).toBe("pass");

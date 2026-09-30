@@ -27,5 +27,11 @@ COPY runner/ ${LAMBDA_TASK_ROOT}/runner/
 ENV PYTHONPATH="${LAMBDA_TASK_ROOT}"
 ENV PYTHONDONTWRITEBYTECODE=1
 
+# /tmp outlives an invocation and the sandbox runs as the runner's own user,
+# so the runner empties it before an invocation and after every case
+# (runner/battery/scratch.py). Set here and nowhere else, because a
+# developer's /tmp is shared with the rest of the machine.
+ENV RUNNER_SCRATCH_DIR=/tmp
+
 # No USER instruction on purpose: Lambda defines a least-privileged user itself.
 CMD [ "runner.handler.lambda_handler" ]

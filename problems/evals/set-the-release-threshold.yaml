@@ -20,8 +20,8 @@ brief_md: |
 
   Eight of the 120 cases are the "emailed without a grade attached" slice,
   added after a pilot incident where a student got an email saying their work
-  had been reviewed and nothing else. Three of those eight fail. Every other
-  case passes.
+  had been reviewed and nothing else. Three of those eight fail. One case
+  outside the slice fails too, and every other case passes.
 
   Write the release threshold you would put in front of the head of delivery.
 
@@ -83,13 +83,21 @@ exemplars:
       that slice has eight cases in it. Within the thing we said we would
       never do again, we are failing more than a third of the time.
 
+      Raising the overall bar does not fix this. A 99 percent bar over 120
+      cases still allows one failure anywhere, including in this slice, and
+      two unrelated failures anywhere else would stop Friday.
+
       Here is what I would gate on.
 
       Blocking, both of them: zero failures on the emailed-without-a-grade
       slice, and no email sent by the agent in any case where the grade is
-      absent or unparsed. Those two are the incident. Everything else is
-      reported and none of it blocks, including the overall number, because a
-      single overall threshold is what let this through.
+      absent or unparsed. Those two are the incident. The second is checked
+      on all 120 cases, because a grade can go missing from any of them.
+      Everything else is reported and none of it blocks, including the
+      overall number, because a single overall threshold is what let this
+      through. You see the overall rate and the result for every slice at
+      each release, and a drop in any of them starts a conversation without
+      stopping the launch.
 
       One thing the gate cannot tell us. Eight cases cannot measure a failure
       rate. Three of eight means the real rate is somewhere between about 10
@@ -101,7 +109,13 @@ exemplars:
       Friday is still available. The path is to hold the email capability and
       launch grading with a human sending results, which removes the failure
       mode entirely and keeps the intake date. That is a smaller launch and it
-      is a real one.
+      is a real one. The agent still grades and writes the feedback, and a
+      person on your team sends each result with the grade in front of them.
+
+      The decision is yours, and I would ask you to make it on Wednesday. If
+      the forty-case slice has come back with zero failures by then, email
+      goes out on Friday with everything else. If it has not, Friday goes
+      ahead without it, and email switches on the day the slice passes.
 
       If we launch as-is: an unknown but plausibly large share of the students
       in this intake get an email saying their work has been reviewed, with no
@@ -112,38 +126,71 @@ exemplars:
     body_md: |
       96.7 percent is not enough to launch on. I would want 99 percent on the
       full eval set before we ship, which means fixing the four failing cases
-      rather than accepting them.
+      rather than accepting them. That is the level I would expect from
+      anything that sends results straight to students, and it gives the
+      team one clear number to work toward.
 
       The four failures matter more than the number suggests because three of
       them are in the email slice, which is the one we added after the pilot
       incident. That slice should pass completely. Sending a student an email
       with no grade in it is exactly the thing we said would not happen again.
+      I would ask the team to look at the three failures together first. If
+      they share a cause, one fix may clear all of them, and that is worth
+      knowing before anyone promises a date. If the causes are different,
+      each one should be understood before it is fixed, so the same failure
+      does not come back in a later release.
 
       I would also report the per-slice numbers in the launch review rather
       than just the headline, so that a failure concentrated in one area is
       visible. A single overall percentage hides this kind of clustering and
-      it nearly did.
+      it nearly did. The review should list every slice with its pass count
+      next to it, so anyone reading it can see where the failures sit without
+      asking an engineer. After launch I would keep adding cases to the email
+      slice, so it covers more of the ways a grade can go missing.
 
       On the date: I do not think Friday works unless the three cases are
       fixed and re-run. If they are fixed by Wednesday there is time. If they
       are not, I would move the launch rather than accept the slice, because
       the cost of getting this wrong is paid by students who cannot tell a bug
-      from a mark.
+      from a mark. Either way I would confirm the decision on Wednesday, so
+      the next intake hears about any change with a few days of notice
+      rather than on the morning itself.
   - band: weak
     score: 28
     body_md: |
       The agent is at 96.7 percent which is quite good but not production
       ready. Industry standard for this kind of system is usually 99 percent
-      or above, so we should aim for that before launch.
+      or above, so we should aim for that before launch. Other automated
+      grading tools aim for similar levels, and the client's students will
+      expect the same. Going live below that level would also reflect badly
+      on the client. At 96.7 percent, roughly one submission in thirty could
+      come back with the wrong result, and for coursework that is too many
+      students affected.
 
       I would suggest we fix the four failing test cases and then re-run the
-      full suite. If everything passes we are good to go. We should also add
-      more test cases over time to improve coverage, and set up monitoring so
-      we can see if anything goes wrong in production.
+      full suite. If everything passes we are good to go. The four failures
+      look like edge cases, so they should not take long to fix. We should
+      also add more test cases over time to improve coverage, and set up
+      monitoring so we can see if anything goes wrong in production.
+
+      The new test cases could cover more subjects and more types of
+      assignment, so the pass rate reflects a wider range of work. For
+      monitoring, a dashboard with the daily pass rate and the number of
+      results sent would let the team react quickly, and any drop below 95
+      percent after launch should trigger a review.
+
+      The problem from the pilot also needs to stay fixed. With 116 of 120
+      cases passing, most of the email handling is clearly working, and the
+      remaining failures should be covered by the fixes above. If a student
+      does get an email without a grade, the delivery team can resend it
+      with the grade attached. Once the full suite is green there is no need
+      to treat the email feature separately.
 
       Friday might be tight but it depends how quickly the fixes land. I would
       recommend we aim for the following week to be safe and use the extra
-      time for more testing.
+      time for more testing. A week's delay should make little difference to
+      the intake, and the extra testing will be worth it. Once the suite
+      passes and everyone has signed off, we can confirm the new launch date.
 
 hints:
   - One number over 120 cases and one number over 8 cases are not the same
@@ -151,6 +198,92 @@ hints:
   - The head of delivery is going to ask whether Friday is still possible.
     Having an answer to that is part of the job.
   - Three out of eight is a fraction, not a rate.
+  - Separate what blocks a release from what is reported. The overall number
+    can be reported without deciding anything.
+  - Close on Friday. Say what has to be true by when, and what ships instead
+    if it is not.
+
+scenario:
+  who: The head of delivery at a coursework grading service
+  situation: >-
+    The grading agent passes 116 of 120 eval cases, 96.7 percent, and they
+    want to launch on Friday in time for the next intake.
+  stakes: >-
+    Three failures sit in an eight-case slice added after a student was
+    emailed that their work was reviewed, with no grade attached.
+  metrics:
+    - { label: Overall pass rate, value: 96.7% }
+    - { label: Critical slice, value: 5 of 8 }
+    - { label: Launch, value: Friday }
+
+diagram:
+  title: One number hides the slice that matters
+  caption: >-
+    Gate on the slice you would apologise for, and report the rest. The
+    overall number decides nothing on its own.
+  direction: lr
+  nodes:
+    - { id: evalset, label: Eval set, sub: 120 cases, kind: store, tone: blue, at: [0, 1] }
+    - { id: overall, label: Overall 96.7%, sub: 116 of 120 pass, kind: output, tone: green, at: [1, 0] }
+    - { id: slice, label: Email slice, sub: 5 of 8 pass, kind: guard, tone: pink, at: [1, 2] }
+    - { id: gate, label: Release gate, sub: "one number or per slice?", kind: decision, tone: purple, at: [2, 1] }
+    - { id: ship, label: Ship Friday, sub: if one number decides, kind: output, tone: orange, at: [3, 0] }
+    - { id: hold, label: Hold the slice, sub: "fix, rerun, then ship", kind: output, tone: teal, at: [3, 2] }
+  edges:
+    - { from: evalset, to: overall, label: aggregate }
+    - { from: evalset, to: slice, label: the eight that matter }
+    - { from: overall, to: gate, label: reported }
+    - { from: slice, to: gate, label: blocks }
+    - { from: gate, to: ship, label: one threshold, tone: danger }
+    - { from: gate, to: hold, label: per-slice threshold, tone: success }
+
+approach:
+  goal: A threshold the head of delivery can act on
+  branches:
+    - label: Split what blocks from what reports
+      leaves: [a slice that harms a student blocks, the overall number is reported]
+    - label: Set a number per slice
+      leaves: [eight of eight on the email slice, a floor for everything else]
+    - label: Be honest about eight cases
+      detail: Three of eight is a fraction. It cannot measure a failure rate.
+      leaves: [say what eight cases can and cannot show]
+    - label: Answer the Friday question
+      leaves: [what must be true by when, what ships instead]
+
+coach:
+  opening: >-
+    Before you write, decide which failures should stop a launch whatever the
+    overall number says.
+  signals:
+    - id: one-number
+      when: { code_lacks: '(?i)\bslice' }
+      say: >-
+        You are arguing from one number over 120 cases. Which eight cases would
+        you refuse to ship with even at 99 percent?
+    - id: no-blocking-rule
+      when: { code_lacks: '(?i)\bblock|\bgate\b|must pass|zero failures' }
+      say: >-
+        Nothing in your answer stops a launch. Which result would block Friday
+        on its own?
+    - id: industry-standard
+      when: { code_matches: '(?i)industry standard' }
+      say: >-
+        There is no industry standard for this agent. Argue from what the slice
+        costs a student, not from a benchmark number.
+    - id: fraction-not-rate
+      when: { code_lacks: '(?i)three of (the )?eight|3 of 8|3/8|eight cases|8 cases' }
+      say: >-
+        Three failures in eight cases is a fraction, not a rate. What can eight
+        cases tell the head of delivery, and what can they not?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with two lines: the slice that blocks, and the number that is
+        only reported. The rest of the plan hangs off those.
+  wrap_up: >-
+    Aggregates hide the cases that hurt people. Gate on the slices you would
+    apologise for, report the rest, and say out loud what a small slice cannot
+    measure.
 
 reference_md: |
   The whole answer turns on noticing that the failures are not scattered.
@@ -158,8 +291,8 @@ reference_md: |
   Four out of 120 reads as an edge case tax. Three out of the eight cases in
   the slice you added after an incident reads as the incident recurring, and
   the arithmetic that produces 96.7 percent is exactly the arithmetic that
-  hides it. Averaging is not a neutral summary; it is a choice to weight a
-  case by how common it is rather than by what it costs.
+  hides it. Averaging is a choice: it weights a case by how common it is
+  rather than by what it costs.
 
   Raising the overall bar is the response that feels rigorous and is not.
   Ninety nine percent over 120 cases permits one failure anywhere, including
@@ -168,8 +301,8 @@ reference_md: |
   the day the date is tight, which is the only day they would have helped.
 
   The sample size point separates the strong answers from the adequate ones.
-  Three out of eight is not a 37 percent failure rate; it is three out of
-  eight. A slice small enough to fail on one bad case is small enough to pass
+  Three out of eight is best reported as three out of eight, because a 37
+  percent failure rate claims a precision that eight cases cannot carry. A slice small enough to fail on one bad case is small enough to pass
   on one lucky one, and a gate set on it is measuring noise in both
   directions. Saying so, and saying what you would do about it, is the
   difference between someone who runs evals and someone who knows what they

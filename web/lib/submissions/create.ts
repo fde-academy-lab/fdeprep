@@ -12,7 +12,7 @@
 import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { inTransaction } from "../db/pool.ts";
-import { consume, resolvePolicy, tierFor, type Difficulty } from "../policy/index.ts";
+import { buildLock, consume, resolvePolicy, tierFor, type Difficulty } from "../policy/index.ts";
 
 export { RateLimitError } from "../policy/caps.ts";
 
@@ -83,6 +83,13 @@ export async function createSubmission(input: CreateInput): Promise<CreatedSubmi
         where p.id = $1`, [input.problemId]);
     const problem = rows[0];
     if (!problem) throw new Error(`problem ${input.problemId} has no current version`);
+
+    // A build stage runs nothing until the stage before it passes. Checked
+    // before the attempt row exists, so a refused request leaves no trace.
+    if (input.kind !== "rehearsal_submit") {
+      const lock = await buildLock(input.enrolmentId, input.problemId, client);
+      if (lock) throw new GateRefused(lock.reason);
+    }
 
     const attemptId = await upsertAttempt(client, input);
 

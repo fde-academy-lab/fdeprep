@@ -150,8 +150,8 @@ async function insertVersion(
                                   time_limit_s, allowed_imports,
                                   original_prompt, prompt_rules, word_range,
                                   required_headings, rubric, probe_count,
-                                  defence_question, defence_criterion)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+                                  defence_question, defence_criterion, kit)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
      returning id`,
     [problemId, version, sourceYaml, parsed.brief_md, parsed.contract_md ?? null,
      parsed.stub_code ?? null, JSON.stringify(parsed.steps), parsed.reference_md ?? null,
@@ -163,7 +163,8 @@ async function insertVersion(
      parsed.word_range ? JSON.stringify(parsed.word_range) : null,
      JSON.stringify(parsed.required_headings), JSON.stringify(parsed.rubric),
      parsed.probes.length, parsed.defence_question ?? null,
-     parsed.defence_criterion ? JSON.stringify(parsed.defence_criterion) : null]);
+     parsed.defence_criterion ? JSON.stringify(parsed.defence_criterion) : null,
+     Object.keys(parsed.kit).length ? JSON.stringify(parsed.kit) : null]);
   return Number(rows[0]!.id);
 }
 

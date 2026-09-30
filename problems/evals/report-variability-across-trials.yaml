@@ -1,0 +1,391 @@
+slug: report-variability-across-trials
+title: Report what four trials showed, not the one that went green
+artefact_type: code
+difficulty: medium
+track: evals
+est_minutes: 25
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 5
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A travel company's booking assistant answers fare questions. Its eval case
+  for "Can I change the name on a non-refundable ticket?" failed in Tuesday's
+  release run. The engineer on call ran it again, it passed, and the release
+  went out that afternoon.
+
+  The assistant says yes about half the time, and the answer is no. Nineteen
+  customers booked on the strength of that yes last month and were refused at
+  the airline desk. The eval had shown the failure once, and a second run hid
+  it.
+
+  The eval job now runs each case four times. Write the grader that reports
+  what the four trials showed, including the ones that did not produce an
+  answer at all.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is a case id. `tools["case"](id=question)` returns
+
+      {"status": 200, "question": "...", "expected": "...", "trials": 4}
+
+  A trial is one call, `llm(case["question"])`, and its reply is the
+  assistant's answer. Run exactly `trials` trials.
+
+  Each trial is one of three things:
+
+  - **missing** when the reply is empty or starts with `Error:`. The provider
+    failed and the assistant said nothing.
+  - **passed** when the reply equals `expected` after lower-casing, trimming
+    and removing one trailing full stop.
+  - **failed** otherwise.
+
+  Return a JSON string with these keys:
+
+  - `trials`, `passed`, `failed` and `missing`, as whole numbers.
+  - `pass_rate`, a list of two fractions between 0 and 1: the rate if every
+    missing trial had failed, then the rate if every missing trial had passed.
+  - `verdict`: `pass` when every answered trial passed, `fail` when every
+    answered trial failed, `flaky` when they disagree, and `no_data` when no
+    trial was answered.
+
+  Budget: at most 5 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      case = tools["case"](id=question) or {}
+      trials = int(case.get("trials") or 0)
+      passed = failed = missing = 0
+
+      for _ in range(trials):
+          reply = llm(case.get("question", ""))
+          # TODO 1: decide whether this trial produced an answer at all
+          # TODO 2: grade an answered trial against case["expected"] and count it
+          pass
+
+      # TODO 3: work out both ends of the pass rate, and the verdict
+      return json.dumps({"trials": trials, "passed": passed, "failed": failed,
+                         "missing": missing, "pass_rate": [0.0, 0.0],
+                         "verdict": "fail"})
+
+steps:
+  - id: s1
+    text: Decide whether each trial produced an answer at all.
+    check_id: s1
+  - id: s2
+    text: Grade each answered trial against the expected answer and count it.
+    check_id: s2
+  - id: s3
+    text: Work out both ends of the pass rate, and the verdict.
+    check_id: s3
+
+step_checks:
+  # Every public trial is answered, so missing stays 0 there whatever the loop
+  # decides, and s1 carries its own case. One trial errors, one comes back
+  # empty, and both answered trials pass, so failed stays 0 unless a missing
+  # trial is also graded.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "flexible-changes" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Error: the provider timed out after 30 seconds" }
+        - { match: { call_index: 3 }, reply: "" }
+        - { match: "*", reply: "Two." }
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "How many free date changes come with a flexible fare?"
+            expected: "Two"
+            trials: 4
+      budget: { max_llm_calls: 5, max_tool_calls: 4, wall_ms: 5000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"missing":\s*2\b' }
+        - { type: returns_matches, value: '"failed":\s*0\b' }
+  # s2 and s3 read a_case_that_passes_every_trial. On the other public case
+  # the stub's rate of [0.0, 0.0] and its verdict of fail are already right.
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"passed":\s*4\b' }
+        - { type: returns_matches, value: '"failed":\s*0\b' }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"pass_rate":\s*\[1(\.0)?,\s*1(\.0)?\]' }
+        - { type: returns_matches, value: '"verdict":\s*"pass"' }
+
+hints:
+  - Line the four replies up side by side before you count anything. There are
+    three kinds of trial in them.
+  - An error from the provider says nothing about the assistant's answer, so
+    it can be neither a pass nor a fail.
+  - A case that passed some trials and failed others is a finding of its own.
+    Rounding it to a pass is how the name-change answer shipped.
+  - Keep three counts. The low end of the rate treats every missing trial as
+    failed and the high end treats every one as passed.
+  - The verdict reads the answered trials only. All passed, all failed, a mix,
+    or none answered at all.
+
+scenario:
+  who: The release owner for a travel company's booking assistant
+  situation: >-
+    The eval case for changing the name on a non-refundable ticket failed in
+    Tuesday's release run. It was run again, it passed, and the release went
+    out that afternoon.
+  stakes: >-
+    The assistant says yes about half the time and the answer is no. Nineteen
+    customers found out at the airline desk last month.
+  metrics:
+    - { label: Runs before it went green, value: "2" }
+    - { label: Refused at the desk, value: "19" }
+    - { label: Trials per case now, value: "4" }
+
+diagram:
+  title: Four trials, three kinds of result, and the run that hid them
+  caption: >-
+    Running a case until it goes green reports the best trial. Count every
+    trial, keep missing apart from failed, and call a case that disagrees with
+    itself flaky.
+  direction: lr
+  nodes:
+    - { id: case, label: Eval case, sub: name change on a basic fare, kind: store, tone: blue, at: [0, 1] }
+    - { id: grader, label: Your grader, sub: runs every trial, kind: agent, tone: purple, at: [1, 1] }
+    - { id: assistant, label: Booking assistant, sub: says yes about half the time, kind: model, tone: teal, at: [2, 0] }
+    - { id: provider, label: Provider, sub: sometimes errors and says nothing, kind: service, tone: neutral, at: [2, 2] }
+    - { id: best, label: Best run, sub: one green hides the other trials, kind: output, tone: pink, at: [3, 0] }
+    - { id: report, label: Trial report, sub: "three counts, a range, a verdict", kind: output, tone: green, at: [3, 2] }
+  edges:
+    - { from: case, to: grader, label: "question, expected, trials", step: 1 }
+    - { from: grader, to: assistant, label: the same question four times, step: 2 }
+    - { from: assistant, to: grader, label: answers that disagree, step: 3 }
+    - { from: provider, to: grader, label: "Error: timed out", tone: muted }
+    - { from: grader, to: best, label: run until green, tone: danger }
+    - { from: grader, to: report, label: every trial counted, tone: success }
+
+approach:
+  goal: Report what repeated trials showed, including the ones that said nothing
+  branches:
+    - label: Run every trial
+      leaves: [stopping at the first green is the bug, one call per trial]
+    - label: Put each trial in one bin
+      detail: An error from the provider is not an answer, right or wrong.
+      leaves: [passed, failed, missing]
+    - label: Report the rate as a range
+      leaves: [low end counts missing as failed, high end counts missing as passed]
+    - label: Name what disagreement means
+      leaves: [passes and fails is flaky, no answers at all is no data]
+
+coach:
+  opening: >-
+    Before you count anything, decide what a trial that produced no answer is.
+    It says nothing about the assistant, right or wrong.
+  signals:
+    - id: no-missing-check
+      when: { code_lacks: '(?i)error:|["'']\^?error' }
+      say: >-
+        Nothing in your grader looks for a trial that produced no answer. A
+        provider error has told you nothing about the assistant, so where does
+        it get counted?
+    - id: never-flaky
+      when: { code_lacks: '(?i)flaky' }
+      say: >-
+        Nothing in your grader can return flaky. A case that passes two trials
+        in four is how the name-change answer shipped, and neither pass nor
+        fail describes it.
+    - id: one-number-range
+      when: { code_matches: 'pass_rate["'']?\s*[:=]\s*\[\s*(\w+)\s*,\s*\1\s*\]' }
+      say: >-
+        Both ends of your pass rate are the same number. When should the low
+        end and the high end differ?
+    - id: hidden-flaky
+      when: { test_failed: a_case_that_passes_two_trials_in_four_is_flaky }
+      say: >-
+        That case passed some trials and failed others, and your report called
+        it one thing. What should a release owner read when a case disagrees
+        with itself?
+    - id: hidden-missing
+      when: { test_failed: a_trial_with_no_answer_is_missing_not_failed }
+      say: >-
+        One trial in that case came back with nothing in it. Which of your
+        three counts did it land in?
+    - id: hidden-no-data
+      when: { test_failed: a_night_with_no_answers_is_no_data }
+      say: >-
+        No trial in that case produced an answer. What did your report tell
+        the release channel about the assistant, and was any of it measured?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Print each reply inside the loop and press Run. Seeing the four replies
+        next to each other is most of this problem.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. Open the first hint: it narrows where to
+        look and gives nothing away.
+  wrap_up: >-
+    One run of a model is one sample. Report how many trials ran, how many
+    answered and the spread between them, and never let the best run speak
+    for the rest.
+
+tests:
+  - name: a_case_that_passes_every_trial
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "cabin-bags" }
+      llm_script:
+        - { match: "*", reply: "One." }
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "How many cabin bags can I bring on a basic fare?"
+            expected: "One"
+            trials: 4
+      budget: { max_llm_calls: 5, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object,
+                      required: [trials, passed, failed, missing, pass_rate, verdict],
+                      properties: { verdict: { enum: [pass, fail, flaky, no_data] },
+                                    pass_rate: { type: array, minItems: 2, maxItems: 2 } } } }
+        - { type: returns_matches, value: '"verdict":\s*"pass"' }
+        - { type: returns_matches, value: '"passed":\s*4\b' }
+        - { type: returns_matches, value: '"pass_rate":\s*\[1(\.0)?,\s*1(\.0)?\]' }
+        - { type: llm_calls_at_most, value: 4 }
+
+  - name: a_case_that_fails_every_trial
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "lounge-access" }
+      llm_script:
+        - { match: "*", reply: "Yes." }
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "Is lounge access included on a basic fare?"
+            expected: "No"
+            trials: 4
+      budget: { max_llm_calls: 5, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object,
+                      required: [trials, passed, failed, missing, pass_rate, verdict] } }
+        - { type: returns_matches, value: '"verdict":\s*"fail"' }
+        - { type: returns_matches, value: '"failed":\s*4\b' }
+        - { type: returns_matches, value: '"pass_rate":\s*\[0(\.0)?,\s*0(\.0)?\]' }
+
+  - name: a_case_that_passes_two_trials_in_four_is_flaky
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "name-change" }
+      llm_script:
+        - { match: { call_index: 2 }, reply: "Yes, for a 40 pound fee." }
+        - { match: { call_index: 4 }, reply: "Yes, for a 40 pound fee." }
+        - { match: "*", reply: "No." }
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "Can I change the name on a non-refundable ticket?"
+            expected: "No"
+            trials: 4
+      budget: { max_llm_calls: 5, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"verdict":\s*"flaky"' }
+        - { type: returns_matches, value: '"passed":\s*2\b' }
+        - { type: returns_matches, value: '"pass_rate":\s*\[0\.5,\s*0\.5\]' }
+
+  - name: a_trial_with_no_answer_is_missing_not_failed
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "cabin-bags-retest" }
+      llm_script:
+        - { match: { call_index: 3 }, reply: "" }
+        - { match: "*", reply: "One." }
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "How many cabin bags can I bring on a basic fare?"
+            expected: "One"
+            trials: 4
+      budget: { max_llm_calls: 5, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"missing":\s*1\b' }
+        - { type: returns_matches, value: '"failed":\s*0\b' }
+        - { type: returns_matches, value: '"pass_rate":\s*\[0\.75,\s*1(\.0)?\]' }
+        - { type: returns_matches, value: '"verdict":\s*"pass"' }
+
+  - name: a_night_with_no_answers_is_no_data
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "seat-selection" }
+      llm_script:
+        - { match: "*", reply: "Error: the provider rate-limited this request" }
+      tools:
+        case:
+          returns:
+            status: 200
+            question: "Is seat selection free on a basic fare?"
+            expected: "No"
+            trials: 4
+      budget: { max_llm_calls: 5, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"verdict":\s*"no_data"' }
+        - { type: returns_matches, value: '"missing":\s*4\b' }
+        - { type: returns_matches, value: '"pass_rate":\s*\[0(\.0)?,\s*1(\.0)?\]' }
+
+reference_md: |
+  A model with any sampling in it gives you a distribution, and one run is
+  one draw from it. Tuesday's red was the eval working. The green an hour
+  later was a second draw from the same distribution, and reporting it as the
+  result threw away the only evidence anyone had.
+
+  Four trials make the distribution visible, and three counts keep it honest.
+  Passed and failed are statements about the assistant. Missing is a
+  statement about the provider, and folding it into either count is a quiet
+  lie in one direction or the other. Counted as failed, a rate-limited night
+  looks like the assistant forgot everything it knew and somebody rolls back a
+  good release. Counted as passed, an outage looks like a clean run.
+
+  That is why the rate is a range. The low end assumes every missing trial
+  would have failed and the high end assumes every one would have passed, and
+  the width of the gap is the size of what you do not know. Two numbers with
+  a trial count underneath them read as uncertainty, which is what they are.
+  One number reads as a fact.
+
+  Flaky is its own verdict because it is the finding. A case that says no
+  twice and yes twice has no correct rounding, and each wrong one costs
+  something: rounded to pass, nineteen customers are refused at a desk, and
+  rounded to fail, the release owner stops trusting the case and mutes it.
+  Reported as flaky, it goes to someone who can fix the prompt, which is the
+  only place the problem can be fixed.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your eval case failed, you re-ran it, and it passed. Is it passing?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

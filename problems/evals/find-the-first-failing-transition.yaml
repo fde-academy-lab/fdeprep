@@ -29,8 +29,9 @@ contract_md: |
 
       def run_agent(question: str, llm, tools: dict) -> str
 
-  `llm(prompt)` returns `Action: trace()` first, and after that a one-line
-  summary when you ask for one.
+  `llm(prompt)` returns `Action: trace()` until you ask for the summary. Ask
+  with a prompt that carries a line starting `First broken step:`, and it
+  returns one line an on-call engineer can read.
 
   `trace()` returns
 
@@ -58,6 +59,41 @@ contract_md: |
 
   Budget: at most 3 model calls. Allowed imports: json, re.
 
+stub_code: |
+  import json
+  import re
+
+  EMPTY = (None, {}, [], "")
+
+
+  def broken_steps(steps: list) -> list:
+      """Every broken step as a (step number, kind) pair, in trace order.
+
+      Kinds are empty_observation, repeated_call and error, as the contract
+      defines them. A repeated run is reported at its first call.
+      """
+      raise NotImplementedError
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Name the first broken step of a failed run and list the rest.
+
+      llm(prompt) replies Action: trace() until a prompt carries a line that
+      starts First broken step:, and then replies with one line for the
+      on-call engineer.
+
+      tools["trace"]() returns {"status": 200, "steps": [...]}, or something
+      that is not a step list at all.
+
+      Return json.dumps({"first_failure": <step number or None>,
+                         "kind": <kind or None>,
+                         "later_symptoms": [<step number>, ...],
+                         "note": <the model's line>}).
+      At most 3 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"first_failure": None, "kind": None,
+                         "later_symptoms": [], "note": "not written yet"})
+
 hints:
   - Walk forwards and stop. Every later match is a symptom, and symptoms are
     worth listing and not worth diagnosing.
@@ -65,6 +101,112 @@ hints:
     anything, and the interesting step is the first one.
   - The model writes the summary. It does not decide which step is the cause,
     because you already know and it does not.
+  - Walk the steps once, in order, collecting every broken step with its kind.
+    The first is the cause and the rest are symptoms, and only the first goes
+    into the model's prompt.
+  - Check the shape of what trace() returned before you walk it. A result with
+    no step list still gets a report, with nothing in it.
+
+scenario:
+  who: The on-call engineer for an order agent that takes payments
+  situation: >-
+    A failed run's trace is forty steps long and ends in a red 500 from the
+    payments API. The run broke at step six, where a lookup came back empty
+    and the loop carried on.
+  stakes: >-
+    Two hours went to the payments team, who were not having an outage, while
+    the empty order id kept producing well-formed requests about nothing.
+  metrics:
+    - { label: Steps in the trace, value: "40" }
+    - { label: Where it got loud, value: step 31 }
+    - { label: Hours with the wrong team, value: "2" }
+
+diagram:
+  title: Where the run broke, and where it got loud
+  caption: >-
+    The 500 is the first symptom loud enough to raise. Walk forwards from step
+    one and stop at the first broken step.
+  direction: lr
+  nodes:
+    - { id: lookup, label: "Step 5: lookup", sub: called with an empty id, kind: tool, tone: blue, at: [0, 0] }
+    - { id: empty, label: "Step 6: observation", sub: "the value is {}", kind: output, tone: pink, at: [1, 0] }
+    - { id: charge, label: "Step 30: charge", sub: a payment for no order, kind: tool, tone: neutral, at: [2, 0] }
+    - { id: loud, label: "Step 31: error", sub: payments returned 500, kind: output, tone: orange, at: [3, 0] }
+    - { id: analyser, label: Your analyser, sub: "walks forwards, stops at the first", kind: agent, tone: purple, at: [1, 1] }
+    - { id: model, label: Model, sub: writes one line, kind: model, tone: teal, at: [2, 1] }
+    - { id: report, label: Report, sub: "first failure, then symptoms", kind: output, tone: green, at: [3, 1] }
+  edges:
+    - { from: lookup, to: empty, label: returns nothing, step: 1 }
+    - { from: empty, to: charge, label: the loop carries on, step: 2 }
+    - { from: charge, to: loud, label: a request about nothing, step: 3 }
+    - { from: analyser, to: empty, label: first match, tone: success }
+    - { from: analyser, to: loud, label: reading from the end, tone: danger }
+    - { from: analyser, to: model, label: step 6 and nothing after }
+    - { from: model, to: report, label: one line }
+
+approach:
+  goal: Name the step that broke the run, and list what followed as symptoms
+  branches:
+    - label: Define broken before you look
+      leaves: [an observation with nothing in it, three identical calls in a row, a step whose type is error]
+    - label: Walk forwards and stop
+      detail: A run carries its state forward, so everything after the first break is downstream of it.
+      leaves: [the first match is the cause, later matches are symptoms, a loop is reported at its first call]
+    - label: Keep the model on the sentence
+      leaves: [your code picks the step, the model writes the line]
+    - label: Expect a trace that is not a trace
+      leaves: [check the shape before you walk it]
+
+coach:
+  opening: >-
+    Decide what counts as broken before you read a single trace, then decide
+    which direction you will walk it.
+  signals:
+    - id: no-observation-check
+      when: { code_lacks: '["'']observation["'']' }
+      say: >-
+        Nothing in your analyser checks an observation yet. An observation with
+        nothing in it never raises, and it is often where a run actually
+        breaks.
+    - id: no-repeat-check
+      when: { code_lacks: '["'']tool_call["'']' }
+      say: >-
+        Nothing in your analyser reads tool calls yet. Three identical calls in
+        a row never raise an error either, and they end the run all the same.
+    - id: last-match
+      when: { code_matches: '\[\s*-1\s*\]\s*(\.get\(\s*["'']n["'']|\[\s*["'']n["''])|reversed\(' }
+      say: >-
+        You report the last match. The last error is the loudest one, and in a
+        run that carries its state forward it is usually a symptom.
+    - id: hidden-quiet-cause
+      when: { test_failed: the_loud_error_is_a_symptom_of_the_quiet_one }
+      say: >-
+        That run has a loud error near the end and a quiet failure much
+        earlier. Which one does your walk reach first, and does it stop there?
+    - id: hidden-repeat
+      when: { test_failed: three_identical_calls_report_the_first_of_them }
+      say: >-
+        That run repeated one call. Your rule fires on the third copy. Which
+        step number does the engineer need to read?
+    - id: adversarial-not-a-trace
+      when: { test_failed: adversarial_a_trace_that_is_not_a_trace }
+      say: >-
+        The trace service answered with something that is not a step list.
+        What does your analyser return when there is nothing to walk?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write the walk first: loop over the steps in order and print each
+        type. Then add one kind of broken step at a time.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. Open the first hint: it narrows where to
+        look and gives nothing away.
+  wrap_up: >-
+    A run carries its state forward, so one broken step produces well-formed
+    requests about nothing until something loud fails. Walk forwards, stop at
+    the first break, and list the rest as symptoms.
 
 defence_question: |
   The trace ends in a 500 from payments and your analyser reports step six, an
@@ -198,6 +340,9 @@ tests:
         - { type: terminates }
         - { type: valid_json_return,
             schema: { type: object, required: [first_failure, kind, later_symptoms, note] } }
+        - { type: calls_tool, name: trace }
+        - { type: returns_matches, value: '"first_failure":\s*null' }
+        - { type: returns_matches, value: '"later_symptoms":\s*\[\]' }
 
 reference_md: |
   Walk forwards, stop at the first match, and list the rest without
@@ -221,7 +366,7 @@ reference_md: |
   trace and asking which step broke gets you an answer that agrees with
   whichever step had the scariest message.
 
-  The unreadable trace is not a corner case, it is Tuesday. Services change
+  The unreadable trace is an ordinary Tuesday. Services change
   shape mid-incident precisely because somebody is deploying a fix.
 
 complexity: C2

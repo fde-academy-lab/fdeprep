@@ -5,7 +5,7 @@
  * `track_item`, which is what keeps the whole pool open to everyone.
  */
 import { db } from "../db/pool.ts";
-import { policyFor, type Difficulty } from "../policy/difficulty.ts";
+import { tierFor, type Difficulty } from "../policy/tiers.ts";
 
 export type SolveState = "solved" | "attempted" | "untouched";
 export type Sort = "roadmap" | "difficulty" | "recent" | "least_attempted";
@@ -13,6 +13,8 @@ export type Sort = "roadmap" | "difficulty" | "recent" | "least_attempted";
 export interface CatalogueFilters {
   search?: string;
   track?: string;
+  /** Any of these tracks, which is how a stage filters. */
+  tracks?: readonly string[];
   difficulty?: string;
   artefactType?: string;
   status?: SolveState | "all";
@@ -30,8 +32,10 @@ export interface CatalogueRow {
   artefactType: string;
   estMinutes: number;
   state: SolveState;
-  /** Null when the tier hides it, which the policy module decides. */
+  /** Null when the tier hides it, which the policy module decides, or nobody has tried. */
   solveRate: number | null;
+  /** Whether this tier shows a solve rate at all. */
+  solveRateShown: boolean;
   attemptCount: number;
 }
 
@@ -47,7 +51,9 @@ const DIFFICULTY_ORDER = "case p.difficulty when 'easy' then 1 when 'medium' the
   "when 'hard' then 3 else 4 end";
 
 const SORTS: Record<Sort, string> = {
-  roadmap: `${DIFFICULTY_ORDER}, p.track, p.id`,
+  // The learner's own persona roadmap, which lib/policy orders. A problem no
+  // roadmap carries yet sorts after all of them rather than disappearing.
+  roadmap: `road.ordinal nulls last, ${DIFFICULTY_ORDER}, p.track, p.id`,
   difficulty: `${DIFFICULTY_ORDER}, p.title`,
   recent: "p.created_at desc, p.id desc",
   least_attempted: "coalesce(stats.attempts, 0) asc, p.title",
@@ -72,6 +78,7 @@ export async function listProblems(
         "or p.track ilike '%' || $$ || '%')", options.search);
   }
   if (options.track && options.track !== "all") add("p.track = $$", options.track);
+  if (options.tracks?.length) add("p.track = any($$::text[])", [...options.tracks]);
   if (options.difficulty && options.difficulty !== "all") {
     add("p.difficulty::text = $$", options.difficulty);
   }
@@ -104,6 +111,9 @@ export async function listProblems(
       from problem p
       left join stats on stats.problem_id = p.id
       left join attempt mine on mine.problem_id = p.id and mine.enrolment_id = $1
+      left join track_item road on road.problem_id = p.id and road.track_id = (
+        select t.id from track t join enrolment e on t.slug = 'roadmap-' || e.persona::text
+         where e.id = $1)
      ${where.length ? `where ${where.join(" and ")}` : ""}
      order by ${sort}
      limit ${perPage} offset ${(page - 1) * perPage}`;
@@ -143,9 +153,10 @@ function toRow(row: Record<string, any>): CatalogueRow {
     state: row["is_solved"] ? "solved" : row["is_attempted"] ? "attempted" : "untouched",
     // The tier decides whether a solve rate renders. No component reads
     // difficulty to answer that question itself.
-    solveRate: policyFor(difficulty).showsSolveRate && attempts > 0
+    solveRate: tierFor(difficulty).visibility.acceptanceRate && attempts > 0
       ? Math.round((solved / attempts) * 100)
       : null,
+    solveRateShown: tierFor(difficulty).visibility.acceptanceRate,
     attemptCount: attempts,
   };
 }
@@ -154,4 +165,43 @@ export async function facets(): Promise<{ tracks: string[] }> {
   const { rows } = await db().query<{ track: string }>(
     "select distinct track from problem order by track");
   return { tracks: rows.map((r) => r.track) };
+}
+
+/** One row of the command palette's index: enough to find a problem and go. */
+export interface PaletteProblem {
+  slug: string;
+  title: string;
+  track: string;
+  difficulty: Difficulty;
+  artefactType: string;
+  state: SolveState;
+}
+
+/**
+ * Every problem in the pool, for the palette to search in the browser.
+ *
+ * Titles and tracks only, the same fields the catalogue already shows, so the
+ * index carries nothing a learner could not read on S3.
+ */
+export async function paletteIndex(enrolmentId: number): Promise<PaletteProblem[]> {
+  const { rows } = await db().query<{
+    slug: string; title: string; track: string; difficulty: Difficulty;
+    artefact_type: string; solved: boolean; attempted: boolean;
+  }>(
+    `select p.slug, p.title, p.track, p.difficulty::text as difficulty,
+            p.artefact_type::text as artefact_type,
+            bool_or(a.solved_at is not null) is true as solved,
+            count(a.id) > 0 as attempted
+       from problem p
+       left join attempt a on a.problem_id = p.id and a.enrolment_id = $1
+      group by p.id
+      order by p.track, p.title`, [enrolmentId]);
+  return rows.map((row) => ({
+    slug: row.slug,
+    title: row.title,
+    track: row.track,
+    difficulty: row.difficulty,
+    artefactType: row.artefact_type,
+    state: row.solved ? "solved" : row.attempted ? "attempted" : "untouched",
+  }));
 }

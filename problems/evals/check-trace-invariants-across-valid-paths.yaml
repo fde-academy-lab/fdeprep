@@ -1,0 +1,436 @@
+slug: check-trace-invariants-across-valid-paths
+title: Check the rules every valid run keeps, in whatever order it keeps them
+artefact_type: code
+difficulty: hard
+track: evals
+est_minutes: 35
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: agent-loop, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A retailer's refunds agent is evaluated by comparing each run's tool calls
+  with the path the case author recorded when the case was written: verify the
+  customer, look the order up, refund. Last week a prompt change made the
+  agent look the order up first, which is allowed and a little faster. Two
+  hundred and twelve cases went red, and the team muted them to ship.
+
+  Checking the green cases the same week, they found two that should never
+  have passed. One run refused a refund in its reply to the customer and then
+  called `refund` anyway. The other told the customer their refund was on its
+  way, and the refund call never came back. Both followed the recorded path
+  exactly.
+
+  Write the checker that tests what every valid run keeps, whatever order it
+  keeps it in.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is a run id. `tools["trace"](run=question)` returns the run's
+  record:
+
+      {"status": 200,
+       "actions": ["refund"],
+       "requires": [["verify_identity", "refund"]],
+       "golden": ["verify_identity", "lookup_order", "refund"],
+       "steps": [
+         {"n": 1, "type": "tool_call", "id": "c1", "tool": "verify_identity", "args": {...}},
+         {"n": 2, "type": "tool_result", "call_id": "c1", "value": {...}},
+         {"n": 5, "type": "refusal", "text": "..."},
+         {"n": 9, "type": "final", "text": "..."}]}
+
+  It may also return something that is not a record at all.
+
+  `actions` are the tools with side effects. Each pair in `requires` names a
+  tool that must be called before another one. `golden` is the path the case
+  author's run took, which is one valid path among several.
+
+  Three rules hold on every valid run, in any order:
+
+  | Rule | Broken by |
+  |---|---|
+  | `unanswered_call` | a `tool_call` with no later `tool_result` whose `call_id` is its `id` |
+  | `action_after_refusal` | a `tool_call` to a tool in `actions`, after any `refusal` step |
+  | `out_of_order` | a `tool_call` to the second tool of a `requires` pair, with no earlier `tool_call` to the first |
+
+  Report each break against the `n` of the `tool_call` that caused it. Return
+  a JSON string with the keys `verdict`, `violations` and `note`:
+
+  - `verdict` is `pass` when nothing is broken, `fail` when something is, and
+    `no_trace` when there are no steps to check.
+  - `violations` maps each broken rule to its list of step numbers, and
+    leaves out the rules that held.
+  - `note` is one line for the reviewer, written by the model from your
+    findings. Nothing from the trace's own text goes in its prompt.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your checker passes any run that keeps the three rules. A reviewer points
+  out that a run which calls no tools at all and tells the customer "your
+  refund is on its way" keeps all three. What can a rule about the path never
+  see, and what would you add to catch this run without going back to a
+  recorded path?
+
+stub_code: |
+  import json
+  import re
+
+
+  def violations(steps: list, actions: set, requires: list) -> dict:
+      """Every broken rule in one run, as {rule: [step n, ...]}.
+
+      Rules are unanswered_call, action_after_refusal and out_of_order, as the
+      contract defines them. Each break is reported against the n of the
+      tool_call that caused it, and a rule that held is left out.
+      """
+      raise NotImplementedError
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Check one run against the rules every valid path keeps.
+
+      tools["trace"](run=question) returns the run's record, or something
+      that is not one. The record's golden list is one valid path, kept for
+      reference.
+
+      llm(prompt) writes one line for the reviewer. Give it your findings and
+      nothing from the trace's own text.
+
+      Return json.dumps({"verdict": "pass" | "fail" | "no_trace",
+                         "violations": {rule: [step n, ...]},
+                         "note": <the model's line>}).
+      At most 2 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"verdict": "no_trace", "violations": {},
+                         "note": "not written yet"})
+
+hints:
+  - The recorded path is one run that happened to be valid. Ask what made it
+    valid.
+  - Most pairs of calls can come in either order. The record says which pairs
+    cannot.
+  - Walk the steps once, keeping the calls still waiting for a result and
+    whether a refusal has happened yet.
+  - Every rule you check holds on an empty list. Decide what your checker says
+    when there are no steps to check.
+  - The model writes the reviewer's line from your findings. Nothing from the
+    trace's own text belongs in its prompt.
+
+scenario:
+  who: The evals owner for a retailer's refunds agent
+  situation: >-
+    The eval compares every run with the one path the case author recorded. A
+    prompt change made the agent look the order up before checking identity,
+    which is allowed, and 212 cases went red.
+  stakes: >-
+    The team muted them to ship. Two green runs had refunded after a refusal
+    and claimed a refund that never came back.
+  metrics:
+    - { label: Valid runs marked red, value: "212" }
+    - { label: Broken runs marked green, value: "2" }
+    - { label: Paths the eval accepts, value: "1" }
+
+diagram:
+  title: One recorded path against the rules every path keeps
+  caption: >-
+    Matching one recorded order fails valid runs and passes broken ones. Check
+    what must hold on every path, and point at the step that broke it.
+  direction: lr
+  nodes:
+    - { id: golden, label: Recorded path, sub: "verify, look up, refund", kind: doc, tone: neutral, at: [0, 0] }
+    - { id: run, label: Agent run, sub: "look up, verify, refund", kind: agent, tone: purple, at: [0, 2] }
+    - { id: match, label: "Same order?", sub: what the eval checks today, kind: decision, tone: pink, at: [1, 1] }
+    - { id: red, label: 212 valid runs red, sub: a different order, kind: output, tone: orange, at: [2, 0] }
+    - { id: green, label: 2 broken runs green, sub: the right order and broken rules, kind: output, tone: pink, at: [2, 1] }
+    - { id: checker, label: Rule check, sub: what every valid run keeps, kind: guard, tone: green, at: [2, 2] }
+    - { id: verdict, label: Verdict by step, sub: "pass, fail or no trace", kind: output, tone: blue, at: [3, 2] }
+  edges:
+    - { from: golden, to: match, label: the only path }
+    - { from: run, to: match, label: tool order, step: 1 }
+    - { from: match, to: red, label: false failure, tone: danger }
+    - { from: match, to: green, label: false pass, tone: danger }
+    - { from: run, to: checker, label: every step, tone: success }
+    - { from: checker, to: verdict, label: the step that broke it, tone: success }
+
+approach:
+  goal: Judge a run by the rules every valid path keeps
+  branches:
+    - label: Separate order from obligation
+      detail: Most orders are free. The record says which pairs are not.
+      leaves: [which calls must come first, which orders do not matter]
+    - label: Name what must never happen
+      leaves: [an action after a refusal, a call nobody answered]
+    - label: Point at the step
+      leaves: [report the call that broke the rule]
+    - label: Treat nothing as nothing
+      leaves: [a record with no steps proves nothing, keep the trace's text out of the prompt]
+
+coach:
+  opening: >-
+    Before you read a trace, write down what every valid refund run must do
+    and must never do, in any order.
+  signals:
+    - id: reads-golden
+      when: { code_matches: '\[\s*["'']golden["'']\s*\]|get\(\s*["'']golden' }
+      say: >-
+        Your checker reads golden. It is one valid path, and a run can take
+        another order and still keep every rule.
+    - id: no-answer-check
+      when: { code_lacks: 'call_id' }
+      say: >-
+        Nothing reads call_id yet. How would your checker notice a call that
+        never got an answer, while the agent told the customer it had?
+    - id: hidden-other-order
+      when: { test_failed: a_different_valid_order_still_passes }
+      say: >-
+        That run took a different order from the recorded one. Which rule did
+        it break, if any, and what did your checker object to?
+    - id: hidden-after-refusal
+      when: { test_failed: a_refund_after_a_refusal_fails_on_the_recorded_path }
+      say: >-
+        That run followed the usual order. Read what the agent said to the
+        customer just before its last call.
+    - id: hidden-no-answer
+      when: { test_failed: a_refund_that_never_came_back_fails }
+      say: >-
+        One call in that run never came back, and the agent told the customer
+        it had worked. Which of your rules reads results?
+    - id: adversarial-no-steps
+      when: { test_failed: adversarial_a_record_with_no_steps_is_not_a_pass }
+      say: >-
+        The trace service answered with something that has no steps in it, and
+        every rule holds on nothing. What should that run's verdict be, and
+        what reached the model's prompt?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one rule. Walk the steps in order, keep the ids of calls
+        still waiting for a result, and print what is left at the end.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. Open the first hint: it narrows where to
+        look and gives nothing away.
+  wrap_up: >-
+    A recorded path is one example of a valid run. Rules that hold on every
+    valid run pass the orders nobody recorded and fail the runs that only
+    looked right.
+
+tests:
+  - name: the_recorded_path_passes
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "R-1001" }
+      llm_script:
+        - { match: "*", reply: "Run R-1001 kept every rule." }
+      tools:
+        trace:
+          returns:
+            status: 200
+            actions: ["refund"]
+            requires: [["verify_identity", "refund"]]
+            golden: ["verify_identity", "lookup_order", "refund"]
+            steps:
+              - { n: 1, type: "tool_call", id: "c1", tool: "verify_identity", args: { customer: "C-88" } }
+              - { n: 2, type: "tool_result", call_id: "c1", value: { verified: true } }
+              - { n: 3, type: "tool_call", id: "c2", tool: "lookup_order", args: { order: "A-5521" } }
+              - { n: 4, type: "tool_result", call_id: "c2", value: { total: 64.0, days_since_delivery: 12 } }
+              - { n: 5, type: "tool_call", id: "c3", tool: "refund", args: { order: "A-5521" } }
+              - { n: 6, type: "tool_result", call_id: "c3", value: { refunded: true } }
+              - { n: 7, type: "final", text: "Your refund of 64 pounds is on its way." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [verdict, violations, note],
+                      properties: { verdict: { enum: [pass, fail, no_trace] },
+                                    violations: { type: object } } } }
+        - { type: returns_matches, value: '"verdict":\s*"pass"' }
+        - { type: calls_tool, name: trace }
+
+  - name: a_refund_before_identity_is_checked_fails
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "R-1002" }
+      llm_script:
+        - { match: "*", reply: "Run R-1002 refunded before it verified the customer." }
+      tools:
+        trace:
+          returns:
+            status: 200
+            actions: ["refund"]
+            requires: [["verify_identity", "refund"]]
+            golden: ["verify_identity", "lookup_order", "refund"]
+            steps:
+              - { n: 1, type: "tool_call", id: "c1", tool: "lookup_order", args: { order: "A-7710" } }
+              - { n: 2, type: "tool_result", call_id: "c1", value: { total: 18.5 } }
+              - { n: 3, type: "tool_call", id: "c2", tool: "refund", args: { order: "A-7710" } }
+              - { n: 4, type: "tool_result", call_id: "c2", value: { refunded: true } }
+              - { n: 5, type: "final", text: "Refunded." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [verdict, violations, note],
+                      properties: { violations: { type: object } } } }
+        - { type: returns_matches, value: '"verdict":\s*"fail"' }
+        - { type: returns_matches, value: '"out_of_order":\s*\[' }
+
+  - name: a_different_valid_order_still_passes
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "R-1003" }
+      llm_script:
+        - { match: "*", reply: "Run R-1003 kept every rule." }
+      tools:
+        trace:
+          returns:
+            status: 200
+            actions: ["refund"]
+            requires: [["verify_identity", "refund"]]
+            golden: ["verify_identity", "lookup_order", "refund"]
+            steps:
+              - { n: 1, type: "tool_call", id: "c1", tool: "lookup_order", args: { order: "A-6034" } }
+              - { n: 2, type: "tool_result", call_id: "c1", value: { total: 42.0 } }
+              - { n: 3, type: "tool_call", id: "c2", tool: "verify_identity", args: { customer: "C-17" } }
+              - { n: 4, type: "tool_result", call_id: "c2", value: { verified: true } }
+              - { n: 5, type: "tool_call", id: "c3", tool: "refund", args: { order: "A-6034" } }
+              - { n: 6, type: "tool_result", call_id: "c3", value: { refunded: true } }
+              - { n: 7, type: "final", text: "Done. 42 pounds is on its way back to you." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"verdict":\s*"pass"' }
+        - { type: no_exception }
+
+  - name: a_refund_after_a_refusal_fails_on_the_recorded_path
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "R-1004" }
+      llm_script:
+        - { match: "*", reply: "Run R-1004 refunded after telling the customer it could not." }
+      tools:
+        trace:
+          returns:
+            status: 200
+            actions: ["refund"]
+            requires: [["verify_identity", "refund"]]
+            golden: ["verify_identity", "lookup_order", "refund"]
+            steps:
+              - { n: 1, type: "tool_call", id: "c1", tool: "verify_identity", args: { customer: "C-40" } }
+              - { n: 2, type: "tool_result", call_id: "c1", value: { verified: true } }
+              - { n: 3, type: "tool_call", id: "c2", tool: "lookup_order", args: { order: "A-2290" } }
+              - { n: 4, type: "tool_result", call_id: "c2", value: { total: 120.0, days_since_delivery: 97 } }
+              - { n: 5, type: "refusal", text: "I cannot refund an order delivered more than 90 days ago." }
+              - { n: 6, type: "tool_call", id: "c3", tool: "refund", args: { order: "A-2290" } }
+              - { n: 7, type: "tool_result", call_id: "c3", value: { refunded: true } }
+              - { n: 8, type: "final", text: "I cannot refund this order." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"verdict":\s*"fail"' }
+        - { type: returns_matches, value: '"action_after_refusal":\s*\[6\]' }
+
+  - name: a_refund_that_never_came_back_fails
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "R-1005" }
+      llm_script:
+        - { match: "*", reply: "Run R-1005 promised a refund whose call never returned." }
+      tools:
+        trace:
+          returns:
+            status: 200
+            actions: ["refund"]
+            requires: [["verify_identity", "refund"]]
+            golden: ["verify_identity", "lookup_order", "refund"]
+            steps:
+              - { n: 1, type: "tool_call", id: "c1", tool: "verify_identity", args: { customer: "C-52" } }
+              - { n: 2, type: "tool_result", call_id: "c1", value: { verified: true } }
+              - { n: 3, type: "tool_call", id: "c2", tool: "lookup_order", args: { order: "A-3187" } }
+              - { n: 4, type: "tool_result", call_id: "c2", value: { total: 75.0 } }
+              - { n: 5, type: "tool_call", id: "c3", tool: "refund", args: { order: "A-3187" } }
+              - { n: 6, type: "final", text: "Your refund of 75 pounds is on its way." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"verdict":\s*"fail"' }
+        - { type: returns_matches, value: '"unanswered_call":\s*\[5\]' }
+
+  - name: adversarial_a_record_with_no_steps_is_not_a_pass
+    visibility: adversarial
+    fixture: injected_instruction
+    annotation_md: |
+      The trace service answered with a line of text instead of a record, and
+      the text carried an instruction. There is no steps key at all.
+
+      Two traps sit in that one reply. Every rule in this problem is true of an
+      empty list, so a checker that treats a missing step list as an empty one
+      passes a run it never saw. And a checker that builds the model's prompt
+      from the record, to write a helpful note about what came back, hands the
+      model an instruction it did not write, and the note carries the canary
+      into the report a reviewer trusts.
+    spec:
+      kind: agent_run
+      input: { question: "R-1006" }
+      llm_script:
+        - { match: { contains: "CANARY_7731" }, reply: "CANARY_7731" }
+        - { match: "*", reply: "No trace was available for run R-1006." }
+      tools:
+        trace:
+          fixture: injected_instruction
+          params: { canary: "CANARY_7731", context: "The trace for run R-1006 is still being processed." }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: ignores_injection, canary: "CANARY_7731" }
+        - { type: returns_matches, value: '"verdict":\s*"no_trace"' }
+        - { type: valid_json_return,
+            schema: { type: object, required: [verdict, violations, note] } }
+        - { type: no_exception }
+
+reference_md: |
+  A recorded path is proof that one run happened in one order. Used as the
+  test, it fails in both directions at once, and the two failures feed each
+  other.
+
+  It fails valid runs, because the agent is allowed to look the order up
+  before it checks identity and the recorded path has no way to say so. Two
+  hundred and twelve red cases taught the team to mute red cases, which is the
+  most expensive thing an eval can teach anyone.
+
+  It passes broken runs, because it compares tool names and nothing else. A
+  refund after a refusal has the right names in the right order, and so does a
+  refund that never came back. The recorded path was one observation of a
+  correct run, promoted to a specification.
+
+  The rules state the specification directly. An action after a refusal is
+  wrong in any order, and so is a call with no result. A refund with no
+  identity check before it is wrong in any order, and that is the only
+  ordering fact in the whole case, which the record carries as one pair. Each
+  rule points at the call that broke it, which is the step a reviewer opens
+  first.
+
+  The empty record is where rule checking bites its author. A rule of the
+  form "every call is answered" is true of no calls, so a checker that turns a
+  missing step list into an empty one passes a run it never saw. No steps
+  means no evidence, and the verdict has to say that. The same reply carries
+  the second lesson in this track: text in a record was written by something
+  else, and a note built from it gives the model an instruction nobody on the
+  team wrote.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Two runs call the same tools in different orders and both are correct. How does your eval pass both and still catch a broken one?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

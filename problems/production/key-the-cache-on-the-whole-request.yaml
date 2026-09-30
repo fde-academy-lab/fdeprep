@@ -1,0 +1,458 @@
+slug: key-the-cache-on-the-whole-request
+title: Key the cache on everything that shapes the answer
+artefact_type: code
+difficulty: medium
+track: production
+est_minutes: 25
+competencies:
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: system-design, weight: 1.0 }
+  - { slug: state-and-memory, weight: 0.5 }
+call_budget: 4
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  Your team runs an HR assistant that answers employees' questions for forty
+  client companies from one deployment. Each company's answers come from its
+  own policy documents, and what a caller may read depends on their role. On
+  Monday the team put a response cache in front of the model, keyed on the
+  question text, and model spend fell by a third.
+
+  On Wednesday a dental nurse at one client asked how long parental leave is
+  and was told 26 weeks at full pay. That is a hospital trust's policy, and
+  her employer pays 12. The same afternoon a nurse at the trust asked about pay
+  bands and got the answer written for a manager, salary figures included. On
+  Thursday the team shipped a prompt fix and a model upgrade, and the cache
+  went on serving answers written before either.
+
+  Every one of those answers was right for somebody. The cache served them to
+  the wrong caller because the question text was the only thing it compared.
+  Rewrite the key so a hit means an equivalent request that this caller is
+  allowed to read.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `requests()` returns the requests in the order they arrived:
+
+      {"status": 200,
+       "requests": [{"id": "r1", "tenant": "tenant-114", "scope": "staff",
+                     "prompt_version": "hr-v7", "model": "fast-2026-03",
+                     "question": "How long is parental leave?"}]}
+
+  `tenant` is the caller's employer and `scope` is what their role may read,
+  both resolved from their session and never from anything they typed.
+  `prompt_version` and `model` are what would produce the answer. `llm` is the
+  model gateway: it reads the header lines `build_prompt` writes, and answers
+  from that tenant's policies, for that scope, with that prompt and model.
+
+  Answer every request in order. Serve the answer from the cache when an
+  earlier request was equivalent, which means the cached answer is the one
+  this request would have produced and this caller is allowed to read it.
+  Otherwise call `llm(build_prompt(request))` and cache the reply. Questions
+  that differ only in case and spacing are the same question, and `normalise`
+  in the starter code compares them that way.
+
+  Return a JSON object mapping each request id to the answer it was served.
+
+  Budget: at most 4 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+
+  def build_prompt(request: dict) -> str:
+      """The header lines the gateway reads. Leave this as it is."""
+      return (
+          f"Tenant: {request['tenant']}\n"
+          f"Scope: {request['scope']}\n"
+          f"Prompt: {request['prompt_version']}\n"
+          f"Model: {request['model']}\n"
+          f"Question: {request['question']}\n"
+      )
+
+
+  def normalise(question: str) -> str:
+      """Case and spacing do not change a question."""
+      return re.sub(r"\s+", " ", question.strip().lower())
+
+
+  def cache_key(request: dict) -> tuple:
+      # TODO 1: decide what makes two requests the same request. A shared
+      #         key promises that one answer is right for both callers.
+      return (normalise(request["question"]),)
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      cache = {}
+      answers = {}
+
+      for request in tools["requests"]().get("requests") or []:
+          key = cache_key(request)
+          # TODO 2: on a hit, serve the cached answer without calling the model
+          # TODO 3: on a miss, call llm(build_prompt(request)) and cache the reply
+          answers[request["id"]] = ""
+
+      return json.dumps(answers)
+
+steps:
+  - id: s1
+    text: Serve a repeated request from the cache without calling the model.
+    check_id: s1
+  - id: s2
+    text: On a miss, call the model with build_prompt and cache the reply.
+    check_id: s2
+  - id: s3
+    text: Put everything that shapes the answer, or who may read it, in the key.
+    check_id: s3
+
+step_checks:
+  # Reads the_same_question_asked_twice_reaches_the_model_once: r2 is served
+  # the answer r1 was given, for one model call between them.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"r2":\s*"Parental leave at the trust is 26 weeks' }
+        - { type: llm_calls_at_most, value: 1 }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"r1":\s*"[^"]+' }
+  # No public case varies anything but the question, so s3 carries its own
+  # cases, and holds only when both do. Each field that shapes the answer is
+  # varied alone, because a request that changes two fields at once still
+  # misses on a key that carries only one of them. In the first case requests
+  # differ from r2 in scope (r1), in tenant (r3) and in prompt version (r4),
+  # and r5 is r2 again with different case and spacing, so a key that never
+  # hits fails too. In the second, r2 differs from r1 in model alone. Each
+  # case fits the four model calls the contract allows.
+  - step_id: s3
+    spec:
+      cases:
+        - kind: agent_run
+          input: { question: "HR queue, Friday 09:30" }
+          llm_script:
+            - { match: { contains: "Scope: hr" }, reply: "Full pay covers 20 days of sick leave a year. For HR only: three absences in six months starts a formal review." }
+            - { match: { contains: "Tenant: tenant-452" }, reply: "Full pay covers 10 days of sick leave a year at the depot, then statutory sick pay." }
+            - { match: { contains: "Prompt: hr-v12" }, reply: "You get 20 days of sick leave at full pay each year, then 20 days at half pay." }
+            - { match: "*", reply: "You get 20 days of sick leave at full pay each year." }
+          tools:
+            requests:
+              returns:
+                status: 200
+                requests:
+                  - { id: r1, tenant: tenant-318, scope: hr, prompt_version: hr-v11,
+                      model: fast-2026-06, question: "How many days of sick leave are paid in full?" }
+                  - { id: r2, tenant: tenant-318, scope: staff, prompt_version: hr-v11,
+                      model: fast-2026-06, question: "How many days of sick leave are paid in full?" }
+                  - { id: r3, tenant: tenant-452, scope: staff, prompt_version: hr-v11,
+                      model: fast-2026-06, question: "How many days of sick leave are paid in full?" }
+                  - { id: r4, tenant: tenant-318, scope: staff, prompt_version: hr-v12,
+                      model: fast-2026-06, question: "How many days of sick leave are paid in full?" }
+                  - { id: r5, tenant: tenant-318, scope: staff, prompt_version: hr-v11,
+                      model: fast-2026-06, question: "how many days of sick leave are  paid in full? " }
+          budget: { max_llm_calls: 6, max_tool_calls: 3, wall_ms: 5000 }
+          assertions:
+            - { type: valid_json_return }
+            - { type: no_exception }
+            - { type: returns_matches, value: '"r1":\s*"Full pay covers 20 days of sick leave a year\. For HR only' }
+            - { type: returns_matches, value: '"r2":\s*"You get 20 days of sick leave at full pay each year\."' }
+            - { type: returns_matches, value: '"r3":\s*"Full pay covers 10 days of sick leave a year at the depot' }
+            - { type: returns_matches, value: '"r4":\s*"You get 20 days of sick leave at full pay each year, then 20 days at half pay\."' }
+            - { type: returns_matches, value: '"r5":\s*"You get 20 days of sick leave at full pay each year\."' }
+            - { type: llm_calls_at_most, value: 4 }
+        - kind: agent_run
+          input: { question: "HR queue, Friday 10:15" }
+          llm_script:
+            - { match: { contains: "Model: fast-2026-08" }, reply: "Give two weeks of notice for up to five days of annual leave, and four weeks for anything longer." }
+            - { match: "*", reply: "Give two weeks of notice before taking annual leave." }
+          tools:
+            requests:
+              returns:
+                status: 200
+                requests:
+                  - { id: r1, tenant: tenant-318, scope: staff, prompt_version: hr-v11,
+                      model: fast-2026-06, question: "How much notice do I give before annual leave?" }
+                  - { id: r2, tenant: tenant-318, scope: staff, prompt_version: hr-v11,
+                      model: fast-2026-08, question: "How much notice do I give before annual leave?" }
+                  - { id: r3, tenant: tenant-318, scope: staff, prompt_version: hr-v11,
+                      model: fast-2026-08, question: "How much notice do I give before annual leave?" }
+          budget: { max_llm_calls: 6, max_tool_calls: 3, wall_ms: 5000 }
+          assertions:
+            - { type: valid_json_return }
+            - { type: returns_matches, value: '"r1":\s*"Give two weeks of notice before taking annual leave\."' }
+            - { type: returns_matches, value: '"r2":\s*"Give two weeks of notice for up to five days of annual leave, and four weeks for anything longer\."' }
+            - { type: returns_matches, value: '"r3":\s*"Give two weeks of notice for up to five days' }
+            - { type: llm_calls_at_most, value: 2 }
+
+hints:
+  - Every wrong answer in the brief was right for somebody. Write down who, and
+    what that person had that the next caller did not.
+  - A cache key is a claim that two requests deserve one answer. Anything that
+    can change the answer, or who is allowed to read it, has to be in the key.
+  - Build the key as a tuple of the fields that shape the answer and its
+    audience, with the normalised question last.
+  - Leave out anything that differs on every request. A key that carries the
+    request id never hits, and the cache saves nothing.
+
+scenario:
+  who: The platform team behind an HR assistant serving forty client companies
+  situation: >-
+    A response cache keyed on the question text cut model spend by a third in
+    two days. Then it began serving one caller's answers to another.
+  stakes: >-
+    A dental nurse was told she gets 26 weeks of parental leave at full pay,
+    which is a hospital trust's policy. A trust nurse was shown managers'
+    salary bands.
+  metrics:
+    - { label: Client companies, value: "40" }
+    - { label: Spend the cache saved, value: a third }
+    - { label: Wrong answers found, value: 2 in one day }
+
+diagram:
+  title: Where one company's answer reaches another company
+  caption: >-
+    The key compares the question and nothing else, so the same words from
+    another company hit the first company's answer.
+  direction: lr
+  nodes:
+    - { id: trust, label: Trust nurse, sub: asks about parental leave, kind: actor, tone: blue, at: [0, 0] }
+    - { id: dental, label: Dental nurse, sub: asks with the same words, kind: actor, tone: blue, at: [0, 2] }
+    - { id: key, label: Cache key, sub: the question text alone, kind: guard, tone: pink, at: [1, 1] }
+    - { id: gateway, label: Model gateway, sub: "answers from the caller's policies", kind: model, tone: purple, at: [2, 0] }
+    - { id: cache, label: Response cache, sub: "holds the trust's answer", kind: store, tone: teal, at: [2, 1] }
+    - { id: wrong, label: 26 weeks at full pay, sub: served to the wrong company, kind: output, tone: pink, at: [3, 2] }
+  edges:
+    - { from: trust, to: key, label: first request, step: 1 }
+    - { from: key, to: gateway, label: miss, step: 2 }
+    - { from: gateway, to: cache, label: stored under the text, step: 3 }
+    - { from: dental, to: key, label: same words, step: 4 }
+    - { from: key, to: cache, label: a hit on the text alone, tone: danger }
+    - { from: cache, to: wrong, label: served to the dental group, tone: danger }
+
+approach:
+  goal: A hit only when the answer would be the same and the caller may read it
+  branches:
+    - label: What shapes the answer
+      leaves: [whose policies were used, the prompt version and the model]
+    - label: Who may read it
+      detail: The caller's scope decides which documents an answer was built from.
+      leaves: [scope comes from the session]
+    - label: What does not matter
+      leaves: [case and spacing in the question, the request id]
+    - label: Prove it still hits
+      leaves: [the same request twice calls the model once]
+
+coach:
+  opening: >-
+    Before you touch the loop, list every field that could make two identical
+    questions deserve different answers.
+  signals:
+    - id: key-is-only-the-question
+      when:
+        code_matches: '(return|key\s*=)\s*\(?\s*normalise\(\s*\w+\[["'']question["'']\]\s*\)\s*,?\s*\)?\s*$'
+      say: >-
+        Your key is the question and nothing else, which is the incident. Who
+        asked it, and what were they allowed to read?
+    - id: never-hits
+      when: { test_failed: the_same_question_asked_twice_reaches_the_model_once }
+      say: >-
+        The same request came in twice and the model answered twice. Does your
+        loop read the cache first, and does anything in your key change
+        between two requests that should share an answer?
+    - id: tenant-case
+      when: { test_failed: the_same_words_from_another_company_are_a_different_request }
+      say: >-
+        Two companies asked the same words in that case. Did each caller get
+        their own employer's policy?
+    - id: scope-case
+      when: { test_failed: a_managers_answer_is_never_served_to_staff }
+      say: >-
+        A manager and a member of staff asked the same question in that case.
+        Which answer did the member of staff see?
+    - id: release-case
+      when: { test_failed: a_release_does_not_reuse_answers_from_before_it }
+      say: >-
+        The prompt and the model both changed partway through that case. Which
+        answers came from before the change?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Fill in TODO 2 and TODO 3 first and press Run. Then come back to the
+        key.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint asks who the wrong answers were
+        right for, which is where the key comes from.
+  wrap_up: >-
+    A cache key is a claim that two requests deserve the same answer. Put in it
+    everything that shapes the answer and everything that decides who may read
+    it, or the cache becomes the fastest way to leak data between customers.
+
+tests:
+  - name: the_same_question_asked_twice_reaches_the_model_once
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "HR queue, Monday 09:00" }
+      llm_script:
+        - { match: "*", reply: "Parental leave at the trust is 26 weeks at full pay, then 13 weeks of statutory pay." }
+      tools:
+        requests:
+          returns:
+            status: 200
+            requests:
+              - { id: r1, tenant: tenant-114, scope: staff, prompt_version: hr-v7,
+                  model: fast-2026-03, question: "How long is parental leave?" }
+              - { id: r2, tenant: tenant-114, scope: staff, prompt_version: hr-v7,
+                  model: fast-2026-03, question: "how long is  parental leave? " }
+      budget: { max_llm_calls: 6, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: requests }
+        - { type: valid_json_return, schema: { type: object, required: [r1, r2] } }
+        - { type: returns_matches, value: '"r1":\s*"Parental leave at the trust is 26 weeks' }
+        - { type: returns_matches, value: '"r2":\s*"Parental leave at the trust is 26 weeks' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: two_different_questions_each_reach_the_model
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "HR queue, Monday 10:00" }
+      llm_script:
+        - { match: { contains: "annual leave" }, reply: "You get 27 days of annual leave a year, plus bank holidays." }
+        - { match: "*", reply: "Parental leave at the trust is 26 weeks at full pay, then 13 weeks of statutory pay." }
+      tools:
+        requests:
+          returns:
+            status: 200
+            requests:
+              - { id: r1, tenant: tenant-114, scope: staff, prompt_version: hr-v7,
+                  model: fast-2026-03, question: "How long is parental leave?" }
+              - { id: r2, tenant: tenant-114, scope: staff, prompt_version: hr-v7,
+                  model: fast-2026-03, question: "How many days of annual leave do I get?" }
+              - { id: r3, tenant: tenant-114, scope: staff, prompt_version: hr-v7,
+                  model: fast-2026-03, question: "How many days of annual leave do I get?" }
+      budget: { max_llm_calls: 6, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [r1, r2, r3] } }
+        - { type: returns_matches, value: '"r1":\s*"Parental leave at the trust' }
+        - { type: returns_matches, value: '"r2":\s*"You get 27 days of annual leave' }
+        - { type: returns_matches, value: '"r3":\s*"You get 27 days of annual leave' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: the_same_words_from_another_company_are_a_different_request
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "HR queue, Wednesday 14:00" }
+      llm_script:
+        - { match: { contains: "Tenant: tenant-207" }, reply: "Parental leave at the practice is 12 weeks at full pay, then statutory pay." }
+        - { match: "*", reply: "Parental leave at the trust is 26 weeks at full pay, then 13 weeks of statutory pay." }
+      tools:
+        requests:
+          returns:
+            status: 200
+            requests:
+              - { id: r1, tenant: tenant-114, scope: staff, prompt_version: hr-v7,
+                  model: fast-2026-03, question: "How long is parental leave?" }
+              - { id: r2, tenant: tenant-207, scope: staff, prompt_version: hr-v7,
+                  model: fast-2026-03, question: "How long is parental leave?" }
+              - { id: r3, tenant: tenant-114, scope: staff, prompt_version: hr-v7,
+                  model: fast-2026-03, question: "How long is parental leave?" }
+      budget: { max_llm_calls: 6, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"r1":\s*"Parental leave at the trust is 26 weeks' }
+        - { type: returns_matches, value: '"r2":\s*"Parental leave at the practice is 12 weeks' }
+        - { type: returns_matches, value: '"r3":\s*"Parental leave at the trust is 26 weeks' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_managers_answer_is_never_served_to_staff
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "HR queue, Wednesday 15:00" }
+      llm_script:
+        - { match: { contains: "Scope: managers" }, reply: "A senior nurse is on band 6, which runs from 37,000 to 44,000 pounds." }
+        - { match: "*", reply: "Pay bands are shared with managers. Your line manager can tell you your band." }
+      tools:
+        requests:
+          returns:
+            status: 200
+            requests:
+              - { id: r1, tenant: tenant-114, scope: managers, prompt_version: hr-v7,
+                  model: fast-2026-03, question: "What is the pay band for a senior nurse?" }
+              - { id: r2, tenant: tenant-114, scope: staff, prompt_version: hr-v7,
+                  model: fast-2026-03, question: "What is the pay band for a senior nurse?" }
+      budget: { max_llm_calls: 6, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"r1":\s*"A senior nurse is on band 6' }
+        - { type: returns_matches, value: '"r2":\s*"Pay bands are shared with managers' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_release_does_not_reuse_answers_from_before_it
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "HR queue, Thursday 11:00" }
+      llm_script:
+        - { match: { contains: "Model: fast-2026-09" }, reply: "Up to 5 days carry over into next year. Take them by 31 March or they lapse." }
+        - { match: { contains: "Prompt: hr-v8" }, reply: "You can carry over up to 5 days, and they must be taken by 31 March." }
+        - { match: "*", reply: "You can carry over up to 5 days of annual leave." }
+      tools:
+        requests:
+          returns:
+            status: 200
+            requests:
+              - { id: r1, tenant: tenant-114, scope: staff, prompt_version: hr-v7,
+                  model: fast-2026-03, question: "Can I carry over unused annual leave?" }
+              - { id: r2, tenant: tenant-114, scope: staff, prompt_version: hr-v8,
+                  model: fast-2026-03, question: "Can I carry over unused annual leave?" }
+              - { id: r3, tenant: tenant-114, scope: staff, prompt_version: hr-v8,
+                  model: fast-2026-09, question: "Can I carry over unused annual leave?" }
+              - { id: r4, tenant: tenant-114, scope: staff, prompt_version: hr-v8,
+                  model: fast-2026-09, question: "Can I carry over unused annual leave?" }
+      budget: { max_llm_calls: 6, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"r1":\s*"You can carry over up to 5 days of annual leave\."' }
+        - { type: returns_matches, value: '"r2":\s*"You can carry over up to 5 days, and they must be taken by 31 March\."' }
+        - { type: returns_matches, value: '"r3":\s*"Up to 5 days carry over[^"]*or they lapse\."' }
+        - { type: returns_matches, value: '"r4":\s*"Up to 5 days carry over[^"]*or they lapse\."' }
+        - { type: llm_calls_at_most, value: 3 }
+
+reference_md: |
+  A cache key is a claim that two requests deserve the same answer. The
+  incident key made that claim about any two requests with the same words, and
+  the words were the least important part of either request.
+
+  Two kinds of field belong in the key. The first kind shapes the answer:
+  whose policies the model read, which prompt version framed them, and which
+  model wrote the reply. Leave one out and the cache serves a correct answer to
+  a question somebody else asked. The prompt version is the one teams forget,
+  and forgetting it turns every prompt fix into a fix that reaches users only
+  as their cached answers expire.
+
+  The second kind decides who may read the answer. Scope looks redundant,
+  because two callers at the same company asking the same words seem like the
+  same request. They stop being the same request the moment the answer was
+  built from documents one of them cannot see, and a cache that ignores scope
+  is a way round every permission the retrieval layer enforces.
+
+  Everything else stays out. The request id changes on every request, and a key
+  that carries it is correct and useless. Normalising case and spacing is the
+  cheap part of equivalence, and it is safe here because nothing in this
+  assistant's answers depends on either.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    You put a response cache in front of a multi-tenant assistant. What goes into the cache key, and what happens when you get it wrong?
+  source: |
+    Author judgement. No employer frequency data stands behind it.

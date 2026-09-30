@@ -1,0 +1,11 @@
+-- The problem kit, docs/04 section 2: scenario card, system diagram, approach
+-- map, coach script and build stage, as validated at import.
+--
+-- Nullable, so a version imported before this migration still renders: the
+-- workspace shows the brief alone until the problem is re-imported with a kit.
+-- Additive only, so the previous release keeps working against this schema.
+--
+-- The coach script lives here rather than in a column the workspace selects,
+-- because it names what a learner's code is missing. The coach endpoint reads
+-- it server-side and returns only the nudge that fired.
+alter table problem_version add column if not exists kit jsonb;

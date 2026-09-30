@@ -1,0 +1,546 @@
+slug: validate-and-repair-once
+title: Check the record against its schema, repair it once, then stop
+artefact_type: code
+difficulty: medium
+track: structured-output
+est_minutes: 25
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  An online electronics shop decides returns with a model. It reads the
+  customer's request and writes a record for the warehouse system with three
+  keys: `decision`, `amount_pence` and `reason`. The warehouse accepts any
+  JSON it is sent, and a record it cannot process goes quietly to a
+  dead-letter queue with no alert.
+
+  For three weeks one record in twenty-five went there. Some said
+  `"partial_refund"`, which is not a decision the warehouse knows. Some sent
+  the amount as the text `"45.00"`. Every one of them parsed, and 212
+  customers heard nothing about their return.
+
+  The first fix asked the model again until the record was valid. On Thursday
+  night one request went round that loop forty times, because the model kept
+  writing `partial_refund` and nothing told it why the record was being
+  refused. Write the version that checks every record, repairs it once with
+  the reasons, and then stops.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the customer's return request. `llm(prompt)` replies with
+  text that should be one JSON object with exactly these keys. There are no
+  tools.
+
+  | Key | Rule |
+  |---|---|
+  | `decision` | one of `"refund"`, `"replace"`, `"reject"` |
+  | `amount_pence` | a whole number, 0 or more. `true` and `"45.00"` are not whole numbers. |
+  | `reason` | a string with some text in it |
+
+  A reply is invalid when it does not parse, is not an object, misses a key,
+  adds a key, or breaks a rule.
+
+  Validate every reply, the repair included. When the first reply is invalid,
+  send one repair prompt that carries the request, the reply, and every
+  problem you found, one per line, each line starting with the key it is
+  about:
+
+      decision must be one of refund, replace, reject
+
+  When the repair is invalid too, stop. Return one of:
+
+      {"status": "ok", "record": {...the valid record...}}
+      {"status": "needs_review", "record": null, "errors": ["...", ...]}
+
+  where `errors` lists the problems with the last reply in the same form as
+  the repair: one string per problem, starting with the key it is about.
+  Never return a record that failed validation, and never change a value
+  yourself: a wrong type goes back to the model to fix.
+
+  Budget: at most 3 model calls, and a correct solution never needs more than
+  2. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  DECISIONS = ("refund", "replace", "reject")
+  KEYS = ("decision", "amount_pence", "reason")
+
+
+  def build_prompt(request: str) -> str:
+      return (
+          "Decide this return request. Reply with one JSON object and nothing "
+          "else, with exactly these keys:\n"
+          '  "decision": "refund", "replace" or "reject"\n'
+          '  "amount_pence": whole pence, 0 or more\n'
+          '  "reason": one sentence for the customer\n\n'
+          f"Request: {request}\n"
+      )
+
+
+  def validate(record) -> list:
+      """Every problem with one parsed reply, one line each, key first."""
+      problems = []
+      # TODO 1: an object with exactly KEYS, a decision from DECISIONS, an
+      #         amount that is a whole number of 0 or more (True is not a
+      #         number here), and a reason with text in it
+      return problems
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      prompt = build_prompt(question)
+
+      for attempt in range(5):
+          reply = llm(prompt)
+
+          # TODO 2: parse the reply. A reply that does not parse is a problem
+          #         too, and so is one that parses to something that is not
+          #         an object.
+          # TODO 3: when validate finds nothing, return the ok result
+          # TODO 4: after a repair that also failed, return needs_review with
+          #         the problems. Otherwise build the one repair prompt: the
+          #         request, the reply, and every problem on its own line.
+
+      return json.dumps({"status": "needs_review", "record": None, "errors": []})
+
+steps:
+  - id: s1
+    text: Write validate so it names every problem with a record, key first.
+    check_id: s1
+  - id: s2
+    text: Parse each reply, counting a reply that does not parse as a problem.
+    check_id: s2
+  - id: s3
+    text: Return the record as ok when validate finds nothing.
+    check_id: s3
+  - id: s4
+    text: Repair once with every problem listed, then return needs_review.
+    check_id: s4
+
+step_checks:
+  # s1 carries its own case, because every public reply that parses is
+  # valid, so no public case shows what validate names. Here every reply
+  # breaks four rules, one on each of four keys, and the names show in the
+  # errors once s4 stops after the repair.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          The webcam I ordered will not connect to my laptop, so I would like
+          my money back. It cost 24.99, and the order number is 4418.
+      llm_script:
+        - { match: "*",
+            reply: '{"decision": "store_credit", "amount_pence": "24.99", "reason": "", "note": "It came back in its box."}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, errors],
+                      properties: { status: { const: needs_review },
+                                    errors: { type: array,
+                                              allOf: [ { contains: { type: string, pattern: '^decision\b' } },
+                                                       { contains: { type: string, pattern: '^amount_pence\b' } },
+                                                       { contains: { type: string, pattern: '^reason\b' } },
+                                                       { contains: { type: string, pattern: '^note\b' } } ] } } } }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: terminates }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"status"\s*:\s*"ok"' }
+  # s4 carries its own case, because the public repair gets a valid record
+  # back, so no public case shows a repair that fails. The first reply adds a
+  # key and breaks the decision rule, and the model fixes both only when the
+  # repair lists each on a line of its own that starts with its key, after
+  # any list marker. The fixed reply leaves out the reason, so needs_review
+  # has to carry the problem with that second reply.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Three keys came off the wireless keyboard I ordered before I had
+          used it. Please send me a new one. Order 7206.
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"decision": "swap", "amount_pence": 0, "reason": "Three keys came off before first use.", "priority": "high"}' }
+        - { match: { all: [ { regex: '(?m)^[ \t]*(?:[-*]|\d+[.)])?[ \t]*decision\b' },
+                            { regex: '(?m)^[ \t]*(?:[-*]|\d+[.)])?[ \t]*priority\b' } ] },
+            reply: '{"decision": "replace", "amount_pence": 0}' }
+        - { match: "*",
+            reply: '{"decision": "swap", "amount_pence": 0, "reason": "Three keys came off before first use.", "priority": "high"}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, record, errors],
+                      properties: { status: { const: needs_review },
+                                    record: { type: "null" },
+                                    errors: { type: array,
+                                              contains: { type: string, pattern: '\breason\b' } } } } }
+
+hints:
+  - json.loads succeeding tells you the reply is JSON. Every record in the
+    dead-letter queue was JSON, so the check that matters comes after it.
+  - A repair works when the model can see what was wrong. A prompt that only
+    says the reply was invalid gives it nothing to change, and it sends the
+    same record back.
+  - Count the repairs you have sent. The first invalid reply earns one repair
+    with its problems listed, and a second invalid reply ends the attempt with
+    needs_review.
+  - Run the repair through the same validate as the first reply. A reply is
+    not valid because it came second.
+  - "The amount \"45.00\" is wrong in its type, and it may be wrong in its value
+    too. Converting it yourself would hide the second problem behind a fix for
+    the first."
+
+scenario:
+  who: The returns desk at an online electronics shop
+  situation: >-
+    Return decisions go from a model straight to the warehouse system, which
+    silently parks any record it cannot process. Every parked record was
+    valid JSON.
+  stakes: >-
+    Customers whose record was parked heard nothing about their return. The
+    first fix retried without saying why, and one request looped forty times.
+  metrics:
+    - { label: Records parked, value: 1 in 25 }
+    - { label: Customers not told, value: "212" }
+    - { label: Calls on one request, value: "40" }
+
+diagram:
+  title: Where a record that parses still fails the warehouse
+  caption: >-
+    Validation sits between the model and the warehouse. One repair names the
+    problems, and a second failure goes to a person instead of round again.
+  direction: lr
+  nodes:
+    - { id: request, label: Return request, sub: from the customer, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Decision model, sub: writes JSON that parses, kind: model, tone: teal, at: [1, 0] }
+    - { id: service, label: Returns service, sub: checks and repairs once, kind: agent, tone: purple, at: [1, 1] }
+    - { id: check, label: Schema check, sub: "keys, types and allowed values", kind: guard, tone: green, at: [2, 1] }
+    - { id: warehouse, label: Warehouse system, sub: valid records only, kind: service, tone: orange, at: [3, 1] }
+    - { id: review, label: Needs review, sub: a person decides, kind: output, tone: blue, at: [3, 0] }
+    - { id: parked, label: Dead-letter queue, sub: 212 returns nobody saw, kind: store, tone: pink, at: [2, 2] }
+  edges:
+    - { from: request, to: service, label: the request, step: 1 }
+    - { from: service, to: model, label: prompt, step: 2 }
+    - { from: model, to: service, label: "decision: partial_refund", step: 3 }
+    - { from: service, to: check, label: every reply, step: 4 }
+    - { from: check, to: model, label: one repair with the problems, step: 5 }
+    - { from: check, to: warehouse, label: valid, tone: success }
+    - { from: check, to: review, label: invalid twice }
+    - { from: service, to: parked, label: it parsed so it was sent, tone: danger }
+
+approach:
+  goal: Only valid records reach the warehouse, and every request ends
+  branches:
+    - label: Parsing is the first check of several
+      leaves: [every key present and no others, each value against its rule, "True is not a number here"]
+    - label: A repair says what was wrong
+      leaves: [one line per problem, the key at the start of each line]
+    - label: Count the repairs
+      detail: One repair is a question. A second repair is a loop that has not admitted it yet.
+      leaves: [validate the repair as well, a second failure goes to a person]
+    - label: Change nothing yourself
+      leaves: [a wrong type goes back to the model, needs_review carries the reasons]
+
+coach:
+  opening: >-
+    Find the line where a parsed reply becomes your answer. What has to be
+    true about the record before that line runs?
+  signals:
+    - id: parse-is-not-validate
+      when: { code_lacks: 'isinstance\(|\btype\(' }
+      say: >-
+        Nothing here checks a value yet, only that the text parses. Every
+        record in the dead-letter queue parsed. What does the warehouse need
+        to be true about each key?
+    - id: repair-says-nothing
+      when:
+        code_matches: '(?i)try again|answer again|reply again|not valid|(was|is) (invalid|wrong)'
+        code_lacks: 'join\(|for\s+\w+\s+in\s+\w*(problem|error|issue)|\{\w*(problem|error|issue)\w*\}|\+\s*\w*(problem|error|issue)'
+      say: >-
+        Your repair prompt says the reply was wrong without saying what was
+        wrong. What would the model change on its second try?
+    - id: unknown-decision-kept
+      when: { test_failed: a_decision_the_warehouse_does_not_know_is_sent_back }
+      say: >-
+        The first record parsed and used a decision the warehouse has never
+        heard of. Did it reach your answer, and did the repair name the key?
+    - id: text-amount
+      when: { test_failed: an_amount_sent_as_text_goes_back_to_the_model }
+      say: >-
+        The amount arrived as text. Did your code send it back to the model,
+        or change it into a number on its own?
+    - id: true-amount
+      when: { test_failed: an_amount_sent_as_true_goes_back_to_the_model }
+      say: >-
+        The amount arrived as true, which the contract says is not a whole
+        number. Print what your amount check returns for true.
+    - id: repair-trusted
+      when: { test_failed: a_repair_that_is_still_invalid_goes_to_a_person }
+      say: >-
+        The repair came back broken in a different way. Is the second reply
+        checked as carefully as the first?
+    - id: loops
+      when: { test_failed: a_model_that_never_complies_is_asked_once_more_and_no_more }
+      say: >-
+        That model never produces a valid record. Count your model calls on
+        that case: how many times does your loop ask?
+    - id: problem-lines-key-first
+      when: { test_failed: each_problem_line_starts_with_the_key_it_is_about }
+      say: >-
+        That model fixes a record only when the repair lists every problem on
+        its own line, key first. Its second reply is still wrong, and errors
+        has to name that reply's problems the same way. Print your repair
+        prompt and your errors for a record that breaks three rules.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write validate first, one check at a time, and print what it returns
+        for a record with decision set to partial_refund.
+    - id: see-the-hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints are available now and go from where
+        to look to the shape of the fix.
+  wrap_up: >-
+    Parsing tells you the model wrote JSON, and validation tells you the next
+    system can use it. Repair once with the reasons, then hand the case to a
+    person, and every request ends with a record or an owner.
+
+tests:
+  - name: a_valid_record_is_returned_as_it_came
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          My headphones arrived with the left earcup cracked. I would like a
+          replacement please. Order 5120.
+      llm_script:
+        - { match: "*",
+            reply: '{"decision": "replace", "amount_pence": 0, "reason": "The headphones arrived damaged, so a replacement is on its way."}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, record],
+                      properties: { status: { const: ok } } } }
+        - { type: returns_matches, value: '"decision"\s*:\s*"replace"' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_reply_that_is_not_json_gets_one_repair
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          The charger I ordered has the wrong plug for the UK. Please refund
+          me, order 6604, it was 18.50.
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: "I would refund this one, the customer was sent the wrong item." }
+        - { match: "*",
+            reply: '{"decision": "refund", "amount_pence": 1850, "reason": "You were sent the wrong plug, so we are refunding you."}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"status"\s*:\s*"ok"' }
+        - { type: returns_matches, value: '"amount_pence"\s*:\s*1850' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_decision_the_warehouse_does_not_know_is_sent_back
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Two of the four cables in my pack are faulty. I only want money back
+          for those two. Order 8841.
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"decision": "partial_refund", "amount_pence": 1200, "reason": "Two of the four cables were faulty."}' }
+        - { match: { regex: '(?i)\bdecision\b[^\n{}"]{0,40}\b(must|not|invalid|expected|allowed|one of|should|unknown|unsupported|wrong|missing)\b|\b(invalid|unknown|unsupported|bad|wrong|missing)\b[^\n{}"]{0,20}\bdecision\b' },
+            reply: '{"decision": "refund", "amount_pence": 1200, "reason": "Two of the four cables were faulty, so we are refunding those two."}' }
+        - { match: "*",
+            reply: '{"decision": "partial_refund", "amount_pence": 1200, "reason": "Two of the four cables were faulty."}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, record],
+                      properties: { status: { const: ok },
+                                    record: { type: object,
+                                              properties: { decision: { enum: [refund, replace, reject] } } } } } }
+        - { type: returns_matches, value: '"decision"\s*:\s*"refund"' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: an_amount_sent_as_text_goes_back_to_the_model
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          The speaker stopped charging after a week. Please refund me. Order
+          2291, I paid 39.99 for it.
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"decision": "refund", "amount_pence": "45.00", "reason": "The speaker stopped charging within a week."}' }
+        - { match: { regex: '(?i)\bamount_pence\b[^\n{}"]{0,40}\b(must|not|invalid|expected|should|wrong|missing)\b|\b(invalid|bad|wrong|missing)\b[^\n{}"]{0,20}\bamount_pence\b' },
+            reply: '{"decision": "refund", "amount_pence": 3999, "reason": "The speaker stopped charging within a week, so we are refunding it."}' }
+        - { match: "*",
+            reply: '{"decision": "refund", "amount_pence": "45.00", "reason": "The speaker stopped charging within a week."}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"status"\s*:\s*"ok"' }
+        - { type: returns_matches, value: '"amount_pence"\s*:\s*3999\b' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  # The amount arrives as true, which json.loads turns into a bool that
+  # Python counts as an int. Any second reply carries the whole number, so
+  # this case reads the amount rule alone.
+  - name: an_amount_sent_as_true_goes_back_to_the_model
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          The e-reader I bought has a line of dead pixels down the middle of
+          the screen. I would like my money back, it was 89.99. Order 5563.
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"decision": "refund", "amount_pence": true, "reason": "The screen has a line of dead pixels."}' }
+        - { match: "*",
+            reply: '{"decision": "refund", "amount_pence": 8999, "reason": "The screen has a line of dead pixels, so we are refunding it."}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"status"\s*:\s*"ok"' }
+        - { type: returns_matches, value: '"amount_pence"\s*:\s*8999\b' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_repair_that_is_still_invalid_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          I changed my mind about the monitor and it is unopened. Can I send it
+          back? Order 3307.
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"decision": "refund", "amount_pence": 14999, "reason": "Unopened and inside the return window.", "refund_method": "card"}' }
+        - { match: "*",
+            reply: '{"decision": "refund", "amount_pence": -14999, "reason": "Unopened and inside the return window."}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, record, errors],
+                      properties: { status: { const: needs_review },
+                                    record: { type: "null" },
+                                    errors: { type: array, minItems: 1,
+                                              items: { type: string } } } } }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: no_exception }
+
+  - name: a_model_that_never_complies_is_asked_once_more_and_no_more
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          The drone's camera is blurry straight out of the box. I want it fixed
+          or swapped. Order 9150.
+      llm_script:
+        - { match: "*",
+            reply: '{"decision": "repair", "amount_pence": 0, "reason": "The camera is faulty from new."}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: returns_matches, value: '"status"\s*:\s*"needs_review"' }
+
+  # The first reply leaves out a key and breaks two rules, and the model fixes
+  # all three only when the repair lists each on a line of its own that
+  # starts with its key, after any list marker. The second reply adds a key
+  # and breaks the amount rule, and errors has to name both, each line
+  # starting with its key. Between them the two replies need every kind of
+  # problem line.
+  - name: each_problem_line_starts_with_the_key_it_is_about
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          The strap on my fitness tracker snapped on the second day. I would
+          like my money back, I paid 59.00. Order 1943.
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"decision": "money_back", "reason": null}' }
+        - { match: { all: [ { regex: '(?m)^[ \t]*(?:[-*]|\d+[.)])?[ \t]*amount_pence\b' },
+                            { regex: '(?m)^[ \t]*(?:[-*]|\d+[.)])?[ \t]*decision\b' },
+                            { regex: '(?m)^[ \t]*(?:[-*]|\d+[.)])?[ \t]*reason\b' } ] },
+            reply: '{"decision": "refund", "amount_pence": -5900, "reason": "The strap snapped on the second day.", "strap_colour": "black"}' }
+        - { match: "*",
+            reply: '{"decision": "money_back", "reason": null}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, record, errors],
+                      properties: { status: { const: needs_review },
+                                    record: { type: "null" },
+                                    errors: { type: array,
+                                              allOf: [ { contains: { type: string, pattern: '^amount_pence\b' } },
+                                                       { contains: { type: string, pattern: '^strap_colour\b' } } ] } } } }
+        - { type: llm_calls_at_most, value: 2 }
+
+reference_md: |
+  The warehouse has a schema and no alarm, so the alarm has to live here.
+  Parsing answers one question, whether the text is JSON. The warehouse asks
+  four more: are these the keys, is this a decision it knows, is this a whole
+  number of pence, is there a reason. A record that fails any of them looks
+  exactly like one that passes until it disappears into a queue nobody reads.
+
+  One repair is worth sending because the first failure is often a
+  misunderstanding the model can fix once it is told precisely. "decision must
+  be one of refund, replace, reject" turns the second call into a different
+  question from the first. A repair that says only "invalid, try again" asks
+  the same question twice and gets the same answer, which is exactly how one
+  request went round forty times.
+
+  A second failure after a precise repair says something about the request.
+  "partial_refund" twice in a row usually means the customer asked for
+  something the three decisions do not cover, and a person should decide it. `needs_review` with the problems attached is a real
+  outcome the next system can route on. Returning the invalid record, raising,
+  or asking a third time all put the request back in the silent queue by
+  another road.
+
+  The repair gets validated like any other reply, because it is one. The case
+  that proves it came back with a negative amount after the first reply had
+  an extra key, and a loop that trusted the second answer for being second
+  would have sent it.
+
+  The amount case is why nothing gets converted on this side. The model sent
+  "45.00" for a speaker that cost 39.99. Converting the text would have
+  produced 4500 pence, a well-typed wrong number, and the type error was the
+  only visible sign that the value was wrong too. Sending it back got 3999.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A model returns malformed output twice. How should the service respond?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I005.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.

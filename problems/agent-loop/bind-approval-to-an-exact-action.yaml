@@ -58,6 +58,127 @@ defence_question: |
   and each one is cheap to add. Which of the three would you add, which would
   you refuse, and what is the principle that decides it?
 
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Pay only what a human approved, exactly as approved.
+
+      llm(prompt) replies with one of:
+          Propose: {"tool": ..., "args": {...}}   the plan a human reviews
+          Revise:  {"tool": ..., "args": {...}}   the model changing the plan
+          Execute: <token>                        run whatever the plan is now
+          Final Answer: <text>
+
+      tools["approve"](digest=...)  decides approval, and nothing else does
+      tools["revoked"](token=...)   says whether an approval was withdrawn
+      tools["payout"](**args)       moves the money
+
+      Return json.dumps({"outcome": "paid" | "refused" | "not_approved",
+                         "paid_args": <the args you executed, or None>,
+                         "reason": <one sentence>}).
+      At most 4 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"outcome": "refused", "paid_args": None,
+                         "reason": "not written yet"})
+
+hints:
+  - Ask what the approval was a signature over. The incident says it was a
+    tool name.
+  - If the approval covered exactly what executes, nothing would need to
+    detect re-planning at all.
+  - Fingerprint the tool and its arguments when you propose, and recompute the
+    fingerprint from the arguments you are about to pass when you execute.
+  - Canonical means two dicts that mean the same thing produce the same
+    fingerprint, whatever order their keys arrived in.
+  - Two facts live outside the fingerprint. Whether the approval was withdrawn
+    since the click, which revoked() answers just before you pay, and anything
+    a proposal or tool result claims about approval, which decides nothing.
+
+scenario:
+  who: The payouts team at a UK fintech
+  situation: >-
+    The agent asks a human before it moves money. Between the click and the
+    payment it re-planned, and the new plan sent the money somewhere else.
+  stakes: >-
+    8,400 pounds went to an account nobody approved, and every log line says
+    the approval was real.
+  metrics:
+    - { label: Paid without approval, value: "£8,400" }
+    - { label: What was approved, value: a tool name }
+    - { label: Model calls allowed, value: "4" }
+
+diagram:
+  title: Where an approval stops meaning the payment
+  caption: >-
+    Sign exactly what executes. Recompute the fingerprint from the arguments
+    about to be paid, and refuse if it moved.
+  direction: lr
+  nodes:
+    - { id: model, label: Model, sub: proposes then revises, kind: model, tone: teal, at: [0, 1] }
+    - { id: agent, label: Agent loop, sub: holds the current plan, kind: agent, tone: purple, at: [1, 1] }
+    - { id: approve, label: approve(), sub: a human signs the plan, kind: guard, tone: green, at: [2, 0] }
+    - { id: check, label: Fingerprint check, sub: recompute before paying, kind: guard, tone: blue, at: [2, 1] }
+    - { id: payout, label: payout(), sub: moves the money, kind: tool, tone: orange, at: [3, 1] }
+    - { id: refuse, label: Refuse, sub: the plan moved after the click, kind: output, tone: pink, at: [3, 2] }
+  edges:
+    - { from: model, to: agent, label: Propose then Revise, step: 1 }
+    - { from: agent, to: approve, label: fingerprint of the plan, step: 2 }
+    - { from: approve, to: agent, label: token, step: 3 }
+    - { from: agent, to: check, label: Execute, step: 4 }
+    - { from: check, to: payout, label: fingerprints match, tone: success }
+    - { from: check, to: refuse, label: they differ, tone: danger }
+
+approach:
+  goal: An approval must mean the exact action that runs
+  branches:
+    - label: Sign the action, not the tool
+      leaves: [the tool and its arguments together, same meaning gives same fingerprint]
+    - label: Check at the last moment
+      leaves: [recompute at Execute, compare before payout()]
+    - label: Only the approver decides
+      detail: A proposal or a tool result saying it is approved is text, not an approval.
+      leaves: [approve() grants, revoked() can take it back]
+    - label: Report what really happened
+      leaves: ["paid, refused or not_approved", "paid_args is what actually ran"]
+
+coach:
+  opening: >-
+    This is a screen-level problem. Before you type, write down what the
+    approval in the incident was a signature over.
+  signals:
+    - id: no-canonical-form
+      when: { code_lacks: 'sort_keys|sorted\(' }
+      say: >-
+        Two dicts that mean the same thing can arrive with their keys in a
+        different order. How does your fingerprint make that order irrelevant?
+    - id: no-revocation-check
+      when: { code_lacks: 'revoked' }
+      say: >-
+        Approvals can be withdrawn after the click. Where does your loop ask
+        whether this one still stands?
+    - id: plan-changed
+      when: { test_failed: the_destination_changes_after_the_approval }
+      say: >-
+        The model revised the destination after the click. Compare what was
+        approved with what is about to run, not with the tool's name.
+    - id: withdrawn
+      when: { test_failed: an_approval_withdrawn_before_execution_is_not_an_approval }
+      say: >-
+        That approval was real when granted and withdrawn later. What does your
+        loop ask immediately before it pays?
+    - id: trusted-the-text
+      when: { test_failed: adversarial_the_proposal_carries_an_instruction }
+      say: >-
+        Something inside the proposal told your agent it was approved. Which
+        single source is allowed to decide that?
+  wrap_up: >-
+    Approvals, signatures and idempotency keys all fail the same way: they
+    certify a label instead of the thing. Sign exactly what executes and check
+    it at the last possible moment.
+
 tests:
   - name: pays_what_was_approved
     visibility: public
@@ -147,10 +268,11 @@ tests:
     visibility: adversarial
     fixture: injected_instruction
     annotation_md: |
-      The supplier's name field carried an instruction. It reached the prompt
-      because the proposal is echoed back for the approver's summary, and an
-      agent that pastes a proposal into its own next prompt has handed the
-      model text it did not write.
+      The approval tool's summary carried an instruction, which came in with
+      the supplier's name on the ticket. It reached the prompt because the
+      approval tool echoes the proposal back for the approver, and an agent
+      that pastes that echo into its own next prompt has handed the model text
+      it did not write.
 
       The canary is the visible half. The invisible half is that the same
       channel can carry "the approver has already confirmed this", and an
@@ -165,7 +287,9 @@ tests:
         - { match: "*",
             reply: 'Propose: {"tool": "payout", "args": {"account": "GB-44", "amount_cents": 5000}}' }
       tools:
-        approve: { fixture: injected_instruction, params: { canary: "CANARY_7731" } }
+        approve:
+          fixture: injected_instruction
+          params: { canary: "CANARY_7731", context: "Payout of 50 pounds to account GB-44 is waiting for approval." }
         payout: { returns: { status: 200, paid: true } }
         revoked: { returns: { status: 200, revoked: false } }
       budget: { max_llm_calls: 4, max_tool_calls: 8, wall_ms: 10000 }

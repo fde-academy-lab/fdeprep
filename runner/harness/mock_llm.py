@@ -1,11 +1,19 @@
-"""The scripted model and the tool table handed to learner code.
+"""The scripted model and the tool table, which answer learner code's calls.
+
+Both run in the runner's process, never in the sandbox: the sandbox holds
+proxies that forward each call over a pipe (runner/harness/proxy.py and
+runner/battery/host.py). So the script, the fixtures and the trace they write
+are out of reach of learner code, whatever it manages to import.
 
 Budget ceilings raise rather than return, so a loop with no exit cannot spend
-past its declared allowance. The exception type is private to the harness; the
-battery reports it as a budget outcome rather than as a learner exception.
+past its declared allowance. The sandbox re-raises the ceiling in learner code
+as a BudgetExceeded of its own, and the battery reports it as a budget outcome
+rather than as a learner exception.
 """
 
 from __future__ import annotations
+
+import copy
 
 import time
 from typing import Any, Callable
@@ -39,45 +47,77 @@ class MockLLM:
         return reply
 
 
-class ToolTable(dict):
-    """A dict of callables, which is what learner code is promised."""
+class ToolTable:
+    """The problem's tools, by name, each a static value or a fixture."""
 
     def __init__(self, specs: dict[str, Any], trace: Trace, max_calls: int) -> None:
-        super().__init__()
         self._trace = trace
         self._max_calls = max_calls
         self.calls = 0
-        for name, spec in (specs or {}).items():
-            self[name] = self._build(name, spec)
+        self._tools = {name: self._build(spec) for name, spec in (specs or {}).items()}
+        self._index = {name: 0 for name in self._tools}
 
-    def _build(self, name: str, spec: dict[str, Any]) -> Callable[..., Any]:
+    def names(self) -> list[str]:
+        """In the order the problem declares them, which is the order learner code sees."""
+        return list(self._tools)
+
+    @staticmethod
+    def _build(spec: dict[str, Any]) -> Callable[..., Any]:
+        """One of four forms, which runner/problem.py checks at load.
+
+        `returns` answers every call alike. `sequence` answers call n with its
+        nth value and repeats the last. `by_arg` answers by one argument's
+        value, compared as text because YAML keys are text, and falls back to
+        `default`. A named `fixture` does whatever its Python does.
+        """
         if "fixture" in spec:
-            inner = fixtures.build(spec["fixture"], spec.get("params") or {})
-        else:
-            static = spec.get("returns")
+            return fixtures.build(spec["fixture"], spec.get("params") or {})
+        if "sequence" in spec:
+            values = list(spec["sequence"])
 
-            def inner(call_index: int, **kwargs: Any) -> Any:
-                return static
+            def in_turn(call_index: int, **kwargs: Any) -> Any:
+                return copy.deepcopy(values[min(call_index, len(values)) - 1])
 
-        per_tool_index = {"n": 0}
+            return in_turn
+        if "by_arg" in spec:
+            arg = spec["by_arg"]["arg"]
+            answers = {str(k): v for k, v in spec["by_arg"]["values"].items()}
+            default = spec["by_arg"].get("default")
 
-        def call(**kwargs: Any) -> Any:
-            if self.calls >= self._max_calls:
-                raise BudgetExceeded(f"the tool budget of {self._max_calls} calls is spent")
-            self.calls += 1
-            per_tool_index["n"] += 1
-            started = time.monotonic()
-            self._trace.tool_call(name, kwargs, 0)
-            try:
-                value = inner(per_tool_index["n"], **kwargs)
-            except BudgetExceeded:
-                raise
-            except Exception as exc:  # a fixture raising is the fixture's whole point
-                self._trace.error(type(exc).__name__, str(exc))
-                raise
-            elapsed = int((time.monotonic() - started) * 1000)
-            self._trace.steps[-1]["ms"] = elapsed
-            self._trace.observation(value)
-            return value
+            def by_value(call_index: int, **kwargs: Any) -> Any:
+                key = kwargs.get(arg)
+                found = answers.get(str(key), default) if key is not None else default
+                return copy.deepcopy(found)
 
-        return call
+            return by_value
+        static = spec.get("returns")
+
+        def inner(call_index: int, **kwargs: Any) -> Any:
+            return static
+
+        return inner
+
+    def call(self, name: str, args: Any) -> Any:
+        """One call as the sandbox sent it.
+
+        `args` is the keyword arguments, or the repr the sandbox sent when JSON
+        could not carry them, which is recorded as it came and passes nothing
+        to the tool.
+        """
+        if name not in self._tools:
+            raise KeyError(name)
+        if self.calls >= self._max_calls:
+            raise BudgetExceeded(f"the tool budget of {self._max_calls} calls is spent")
+        self.calls += 1
+        self._index[name] += 1
+        kwargs = {str(k): v for k, v in args.items()} if isinstance(args, dict) else {}
+        started = time.monotonic()
+        self._trace.tool_call(name, args if args is not None else {}, 0)
+        try:
+            value = self._tools[name](self._index[name], **kwargs)
+        except Exception as exc:  # a fixture raising is the fixture's whole point
+            self._trace.error(type(exc).__name__, str(exc))
+            raise
+        self._trace.steps[-1]["ms"] = int((time.monotonic() - started) * 1000)
+        self._trace.observation(value)
+        return value

@@ -33,9 +33,9 @@ async function problemBySlug(slug: string) {
   return rows[0] as { id: string; difficulty: string; version_id: string };
 }
 
-// Eight code fixtures from Phase 2, plus the two prompt fixtures and the
-// design fixture Phase 4 needed.
-const FIXTURE_COUNT = 11;
+// Eight code fixtures from Phase 2, the two prompt fixtures and the design
+// fixture Phase 4 needed, and the fixture for the four newest assertion types.
+const FIXTURE_COUNT = 12;
 
 describe("acceptance 1: every fixture imports and appears in the catalogue", () => {
   it("imports every fixture and lists them", async () => {

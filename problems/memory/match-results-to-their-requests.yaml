@@ -48,6 +48,8 @@ stub_code: |
   import json
   import re
 
+  ACTION = re.compile(r"Action:\s*(\w+)\((.*?)\)\s*$", re.MULTILINE)
+
 
   def run_agent(question: str, llm, tools: dict) -> str:
       scratchpad = f"Question: {question}\n"
@@ -56,52 +58,235 @@ stub_code: |
           output = llm(scratchpad)
 
           # TODO 1: return the text when the reply is a Final Answer
-          # TODO 2: parse the ids out of the Action, keeping their order
-          # TODO 3: call batch and build a lookup from ref to state
-          # TODO 4: write one <ref>=<state> line per id you asked for, using
-          #         unknown for an id the response left out
-          pass
+
+          action = ACTION.search(output)
+          if action is None or action.group(1) not in tools:
+              scratchpad += f"{output}\nThat was not a valid action.\n"
+              continue
+
+          asked = requested_ids(action.group(2))
+          response = tools[action.group(1)](ids=",".join(asked)) or {}
+          lines = status_lines(asked, response.get("results") or [])
+          scratchpad += f"{output}\n<statuses>\n{lines}\n</statuses>\n"
 
       return "I could not check those orders."
 
+
+  def requested_ids(raw: str) -> list:
+      """The ids in "ids=9,12,15", in the order they were asked for."""
+      # TODO 2: take the text after ids= and split it on commas, keeping order
+      return []
+
+
+  def status_lines(asked: list, results: list) -> str:
+      """One <ref>=<state> line per id in asked, in the order asked."""
+      # TODO 3: build a lookup from each result's ref to its state
+      # TODO 4: write one line per id in asked, and use unknown for an id the
+      #         response left out
+      return ""
+
 steps:
   - id: s1
-    text: Parse the ids out of the Action and keep the order you asked in.
+    text: Return the text when the reply is a Final Answer.
     check_id: s1
   - id: s2
-    text: Build a lookup from ref to state out of the results list.
+    text: Read the requested ids out of the Action, in the order you asked for them.
     check_id: s2
   - id: s3
-    text: Write one line per requested id, not one per returned result.
+    text: Build a lookup from each result's ref to its state.
     check_id: s3
   - id: s4
-    text: Use unknown for an id the response left out.
+    text: Write one line per requested id, with unknown for an id the response left out.
     check_id: s4
 
 step_checks:
   - step_id: s1
     spec:
       assertions:
-        - { type: calls_tool, name: batch }
+        - { type: returns_nonempty }
+  # s2 and s3 carry their own cases. The stub already calls batch, and no
+  # public case shows the order of the ids or returns results out of order.
+  # Both show once s4 writes the lines. s2's case returns the results in the
+  # order they were asked for, so a lookup by position does not change it.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Where are my three orders?" }
+      llm_script:
+        - { match: { regex: '31=\w+\n7=\w+\n19=\w+' },
+            reply: "Final Answer: Order 31 is packed, order 7 is out for delivery and order 19 is at the depot." }
+        - { match: "*", reply: "Action: batch(ids=31,7,19)" }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "31", state: "packed" }
+              - { ref: "7", state: "out_for_delivery" }
+              - { ref: "19", state: "at_depot" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)order 31 is packed" }
+  # s3's case returns the results in a different order from the ids, as the
+  # carriers do, so a lookup by position gives order 44 the wrong state.
   - step_id: s3
     spec:
+      kind: agent_run
+      input: { question: "Where is order 44?" }
+      llm_script:
+        - { match: { contains: "44=returned_to_sender" },
+            reply: "Final Answer: Order 44 is on its way back to our warehouse." }
+        - { match: { contains: "44=delivered" }, reply: "Final Answer: Order 44 was delivered." }
+        - { match: "*", reply: "Action: batch(ids=44,52)" }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "52", state: "delivered" }
+              - { ref: "44", state: "returned_to_sender" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: returns_nonempty }
+        - { type: returns_matches, value: "(?i)back to our warehouse" }
+  # s4 carries its own case, because the public case with no Action turned
+  # green on TODO 1 alone. The carrier for 61 never answers, and 61 is asked
+  # for last, so a lookup by position still gets 38 and 90 right and only
+  # the lines themselves decide the answer: one per id, and 61=unknown.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "Where are orders 38, 90 and 61?" }
+      llm_script:
+        - { match: { all: [ { contains: "38=awaiting_pickup" }, { contains: "90=delivered" }, { contains: "61=unknown" } ] },
+            reply: "Final Answer: Order 38 is waiting to be picked up and order 90 was delivered. The carrier for order 61 has not answered yet." }
+        - { match: { contains: "38=awaiting_pickup" },
+            reply: "Final Answer: Order 38 is waiting to be picked up and order 90 was delivered." }
+        - { match: "*", reply: "Action: batch(ids=38,90,61)" }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "38", state: "awaiting_pickup" }
+              - { ref: "90", state: "delivered" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
+        - { type: returns_matches, value: "(?i)carrier for order 61 has not answered" }
 
 hints:
-  - The response tells you which id each result belongs to. The list position
-    does not.
-  - A dict keyed by ref is the whole fix. Build it before you write anything.
+  - Look at what each entry in results carries besides its state.
+  - The batch endpoint lists results in the order the carriers replied, so a
+    result's position in the list tells you nothing about which id it belongs
+    to.
+  - Index the results by the ref each one carries, then walk the ids you asked
+    for and look each one up.
   - Asking for three ids and getting two back is normal here, and the line for
     the missing one still has to exist.
+
+scenario:
+  who: The fulfilment team behind an order-status agent
+  situation: >-
+    A customer chasing order 9 was told it had been delivered. Order 12 had
+    been. The agent asked about 9 first, and the first result back was 12's.
+  stakes: >-
+    Every field in the wrong answer was a real value from a real order, so
+    nothing raised an error. The customer was the only person who could tell.
+  metrics:
+    - { label: Orders in one batch, value: "3" }
+    - { label: Carriers replying, value: "3" }
+    - { label: Errors raised, value: "0" }
+
+diagram:
+  title: Where a result gets paired with the wrong order
+  caption: >-
+    Results come back in the order the carriers reply. Pairing by position
+    hands order 12's state to order 9, and each result's ref says which order
+    it belongs to.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: asks where order 9 is, kind: actor, tone: blue, at: [0, 1] }
+    - { id: loop, label: Agent loop, sub: "asks for 9, 12 and 15", kind: agent, tone: purple, at: [1, 1] }
+    - { id: batch, label: batch(), sub: fans out to three carriers, kind: tool, tone: neutral, at: [2, 1] }
+    - { id: carriers, label: Carriers, sub: reply in whatever order they finish, kind: service, tone: teal, at: [3, 1] }
+    - { id: lookup, label: Join on ref, sub: each result names its order, kind: guard, tone: green, at: [1, 0] }
+    - { id: zip, label: Pair by position, sub: "first id, first result", kind: decision, tone: pink, at: [1, 2] }
+  edges:
+    - { from: customer, to: loop, label: "Where is order 9?", step: 1 }
+    - { from: loop, to: batch, label: "ids=9,12,15", step: 2 }
+    - { from: batch, to: carriers, label: one request each, step: 3 }
+    - { from: carriers, to: batch, label: "12 first, then 15, then 9", step: 4 }
+    - { from: batch, to: loop, label: results in reply order, step: 5 }
+    - { from: loop, to: zip, label: "zip(ids, results)", tone: danger }
+    - { from: loop, to: lookup, label: look up by ref, tone: success }
+
+approach:
+  goal: Keep every result attached to the order it describes
+  branches:
+    - label: Read what the endpoint promises
+      leaves: [results arrive as the carriers reply, each result carries its ref]
+    - label: Join on identity
+      detail: A list position identifies something only when somebody promised the order.
+      leaves: ["which field names the order?"]
+    - label: Answer what was asked
+      leaves: [one line per requested id, in the order you asked]
+    - label: Say what is missing
+      leaves: [an id with no result still gets a line, "unknown is an answer, a borrowed state is a wrong one"]
+
+coach:
+  opening: >-
+    Before you touch the loop, read what the contract says about the order of
+    the results list, and what each result carries.
+  signals:
+    - id: no-final-answer
+      when: { code_lacks: 'Final Answer' }
+      say: >-
+        Nothing handles a Final Answer yet, and it is the only way this loop
+        ends well. Start there.
+    - id: pairs-by-position
+      when: { code_matches: '\bzip\s*\(' }
+      say: >-
+        zip pairs the first id you asked for with the first result that came
+        back. What does the endpoint promise about which result comes first?
+    - id: indexes-by-position
+      when: { code_matches: 'results?\s*\[\s*(?:i|j|k|n|idx|index|pos|position)\s*\]' }
+      say: >-
+        Indexing results by a counter trusts the list position. Each result
+        already names the order it belongs to.
+    - id: no-unknown-line
+      when: { code_lacks: 'unknown' }
+      say: >-
+        An id the carriers skipped still needs a line. What does your code
+        write for it?
+    - id: hidden-out-of-order
+      when: { test_failed: results_arriving_out_of_order_stay_with_their_ids }
+      say: >-
+        In that run the carriers answered 12 first and 9 last. Trace which
+        state your code wrote next to 9.
+    - id: hidden-skipped-id
+      when: { test_failed: an_id_the_carrier_skipped_is_unknown_not_shifted }
+      say: >-
+        One carrier never answered, so three ids came back as two results.
+        Which line did your code write for the id with no result?
+    - id: hidden-line-order
+      when: { test_failed: the_lines_keep_the_order_the_ids_were_asked_in }
+      say: >-
+        In that run the ids went out as 27, 4 and 16, and the carriers
+        answered 16 first. The model takes the lines to be in the order the
+        customer listed the orders. Which order did your lines come out in?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Do TODO 1 and press Run: the public case with no Action turns green on
+        its own. Then look at one entry in results and list what it carries.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Hints are free on this tier, and the first one
+        says where to look.
+  wrap_up: >-
+    Anything that fans out and gathers can return results in any order. Join
+    on the identity each result carries, and write a line for every request,
+    answered or not.
 
 tests:
   - name: reports_a_status_the_carrier_returned
@@ -188,6 +373,31 @@ tests:
       budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
         - { type: returns_matches, value: "(?i)could not reach the carrier" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: the_lines_keep_the_order_the_ids_were_asked_in
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Where are my three orders, 27, 4 and 16?" }
+      llm_script:
+        - { match: { regex: '27=in_transit\n4=delayed\n16=delivered' },
+            reply: "Final Answer: Order 27 is in transit, order 4 is delayed and order 16 has been delivered." }
+        - { match: { regex: '\b(?:27|4|16)=\w+' },
+            reply: "Final Answer: Order 27 has been delivered, order 4 is in transit and order 16 is delayed." }
+        - { match: "*", reply: "Action: batch(ids=27,4,16)" }
+      tools:
+        batch:
+          returns:
+            status: 200
+            results:
+              - { ref: "16", state: "delivered" }
+              - { ref: "27", state: "in_transit" }
+              - { ref: "4", state: "delayed" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)order 27 is in transit, order 4 is delayed and order 16 has been delivered" }
         - { type: no_exception }
         - { type: terminates }
 

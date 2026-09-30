@@ -110,24 +110,38 @@ exemplars:
     body_md: |
       Forty hand-written conversations is not enough evidence to launch on,
       and 95 percent is not as reassuring as it sounds because we do not know
-      what the two failures were.
+      what the two failures were. The first thing I would do is read those
+      two conversations. If either of them involved a refund, that matters
+      more than the percentage.
 
       I would want to see a few things before launch. First, a larger test set
       drawn from real conversations rather than written by the team, because
-      hand-written cases tend to cover what the author expected. Second, a set
-      of adversarial cases specifically targeting the refund path, since that
-      is where the money is. Third, a breakdown of the 95 percent by category
-      rather than one overall number, so we can see whether the failures
-      cluster.
+      hand-written cases tend to cover what the author expected. A few
+      hundred conversations from the support inbox over recent months would
+      be a good start. Second, a set of adversarial cases specifically
+      targeting the refund path, since that is where the money is. A customer
+      asking for a refund on an order that is not theirs is the obvious case,
+      along with a request above the 200 dollar limit. Third, a breakdown of
+      the 95 percent by category rather than one overall number, so we can
+      see whether the failures cluster. Refunds, order questions and account
+      changes would be enough categories to start with.
 
       For gates, I would say no unauthorised refunds at all, and a minimum
-      overall pass rate of 98 percent on the expanded set. I would also want
-      monitoring in place before launch so we can catch problems quickly, and
-      a way to turn the refund capability off without a deploy.
+      overall pass rate of 98 percent on the expanded set. On a few hundred
+      conversations that allows only a handful of failures, which seems the
+      right level for something customers will use directly. I would also
+      want monitoring in place before launch so we can catch problems
+      quickly, and a way to turn the refund capability off without a deploy.
+      For the first week, someone on the support team should read a sample
+      of the refund conversations every day.
 
       Two weeks is tight for all of this. If the date cannot move I would
       prioritise the adversarial refund cases, because that is the highest
-      cost failure, and accept less coverage elsewhere.
+      cost failure, and accept less coverage elsewhere. The real
+      conversations could then be run in the weeks after launch. I would be
+      clear with the head of support that keeping the date means launching
+      on less evidence, and leave that decision with them once the refund
+      results are in.
   - band: weak
     score: 31
     body_md: |
@@ -141,19 +155,137 @@ exemplars:
       robust. We should also implement comprehensive monitoring and logging so
       that any issues in production can be identified quickly.
 
+      The team that built the agent understands its capabilities best, so
+      they are well placed to write the new cases. Writing them in the same
+      style as the original forty will keep the suite consistent. The cases
+      should cover simple questions, complex queries, long conversations and
+      unusual requests, so that testing is as thorough as possible. Each new
+      case should be reviewed by a second person to check that it is
+      realistic and that the expected answer is correct.
+
       Before launch I would want to see a higher pass rate, ideally 99 percent
-      or above, along with sign-off from stakeholders. A phased rollout would
-      also reduce risk, starting with a small percentage of traffic and
-      increasing gradually as confidence grows.
+      or above, along with sign-off from stakeholders. Support, engineering
+      and finance should all review the results, since each of them has a
+      stake in the launch going well. A phased rollout would also reduce
+      risk, starting with a small percentage of traffic and increasing
+      gradually as confidence grows. The team can widen the rollout once
+      they are comfortable with how the agent is performing.
+
+      It would also be sensible to run a security review of the refund
+      feature before launch, to make sure it follows best practices. After
+      launch, the pass rate should be tracked every week and shared with
+      stakeholders, so everyone can see whether quality is improving.
 
       Two weeks is likely not enough time to do this properly and I would
-      recommend pushing the date to ensure quality.
+      recommend pushing the date to ensure quality. A delay of three or four
+      weeks would give the team time to write the new cases, reach the
+      target pass rate and plan the rollout. In my experience a delay is
+      easier to explain than a problem in production.
+
+hints:
+  - Ask who wrote the forty conversations, and what that means for the cases
+    nobody thought of.
+  - An average over correctness and harm goes up when you fix the cheap half.
+  - Give every gate a number, a population and a consequence, and keep the
+    list short enough that nobody waives it on the day.
+  - Say which gates can move and which cannot before the pushback arrives,
+    and name the version that ships on their date.
+
+scenario:
+  who: The head of support at a client launching a refund-capable agent
+  situation: >-
+    Two weeks before launch, the support agent passes 38 of 40 hand-written
+    test conversations. It can issue refunds of up to 200 dollars on its own.
+  stakes: >-
+    A refund to the wrong account costs money and a complaint, and nothing in
+    the 95 percent says how often the agent issues one.
+  metrics:
+    - { label: Pass rate, value: 95% }
+    - { label: Hand-written cases, value: "40" }
+    - { label: Refund ceiling, value: $200 }
+
+diagram:
+  title: What the 95 percent can see, and what it averages away
+  caption: >-
+    Forty cases written before launch cannot show what real customers or
+    attackers send, and one average cannot tell a vague answer from a wrong
+    refund.
+  direction: lr
+  nodes:
+    - { id: written, label: 40 hand-written cases, sub: "38 pass, 95 percent", kind: store, tone: blue, at: [0, 0] }
+    - { id: unseen, label: What nobody wrote down, sub: "real phrasings, attacks, other accounts", kind: doc, tone: neutral, at: [0, 2] }
+    - { id: agent, label: Support agent, sub: answers and refunds up to $200, kind: agent, tone: purple, at: [1, 1] }
+    - { id: average, label: One pass rate, sub: a vague answer and a wrong refund averaged, kind: output, tone: pink, at: [2, 0] }
+    - { id: harm, label: Harm gate, sub: wrong refunds counted on their own, kind: guard, tone: green, at: [2, 2] }
+    - { id: decision, label: Launch decision, sub: two weeks away, kind: decision, tone: orange, at: [3, 1] }
+  edges:
+    - { from: written, to: agent, label: tested on }
+    - { from: unseen, to: agent, label: never tested, tone: muted }
+    - { from: agent, to: average, label: 38 of 40 }
+    - { from: average, to: decision, label: decides alone, tone: danger }
+    - { from: agent, to: harm, label: every refund it issued }
+    - { from: harm, to: decision, label: blocks on its own, tone: success }
+
+approach:
+  goal: An evaluation plan the head of support can launch against
+  branches:
+    - label: Ask what forty cases can see
+      leaves: [who wrote them, what real customers send, what an attacker sends]
+    - label: Split harm from quality
+      detail: A vague answer costs a follow-up message. A wrong refund costs money and a complaint.
+      leaves: [one gate per kind of failure]
+    - label: Make every gate a number
+      leaves: [a population, a threshold, a consequence]
+    - label: Plan for the date
+      leaves: [what can be built in two weeks, the launch that keeps the date]
+
+coach:
+  opening: >-
+    Before you write the plan, decide which single failure would stop this
+    launch whatever the pass rate says.
+  signals:
+    - id: no-harm-gate
+      when: { code_lacks: '(?i)unauthori[sz]ed|wrong (account|customer|order|person)|someone else|somebody else|\bharm' }
+      say: >-
+        Your plan treats every failure alike. Which failure costs money rather
+        than a follow-up message, and does it get a gate of its own?
+    - id: no-real-traffic
+      when: { code_lacks: '(?i)real (traffic|conversations|customers|tickets)|replay|production (traffic|conversations|logs)|last (quarter|month)' }
+      say: >-
+        Where would your extra cases come from? Five hundred cases written by
+        the same people share the blind spots of the first forty.
+    - id: adjectives-for-gates
+      when: { code_matches: '(?i)\b(robust|comprehensive|significantly|properly|thorough(ly)?)\b' }
+      say: >-
+        An adjective cannot block a launch. Give each gate a number, the
+        population it is measured on, and what happens when it fails.
+    - id: only-the-date-moves
+      when:
+        code_matches: '(?i)push(ing)? (back )?the (date|launch)|delay(ing)? the launch|move the (date|launch)|following week'
+        code_lacks: '(?i)smaller launch|reduced launch|human approv|approval on refunds|refunds? (off|held|disabled)'
+      say: >-
+        Moving the date is one answer, and the head of support has heard it
+        before. What could ship on the date with the risky part held back?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with two lines: the failure that stops the launch on its own, and
+        the population you would measure it on. The plan hangs off those.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hint ladder is open, and its first rung
+        narrows where to look.
+  wrap_up: >-
+    A pass rate over cases the builders wrote measures their imagination.
+    Measure real traffic and an outside attack set, gate harm apart from
+    quality, and name the smaller launch before anyone pushes on the date.
 
 reference_md: |
   This is where the FDE part of the programme shows up. An engineer who can
   write the loop and cannot hold this conversation fails the screen.
 
-  The 95 percent is not wrong, it is a measurement of the wrong population.
+  The 95 percent is an accurate measurement of the wrong population.
   Forty conversations written by the people who built the agent are forty
   situations they had already imagined, and the score is high because
   imagination and implementation came from the same place. Saying this without

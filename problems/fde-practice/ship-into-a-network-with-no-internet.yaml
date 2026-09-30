@@ -1,0 +1,407 @@
+slug: ship-into-a-network-with-no-internet
+title: Ship the assistant into a network that cannot reach the internet
+artefact_type: design
+difficulty: hard
+track: fde-practice
+est_minutes: 40
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: evaluation-design, weight: 0.5 }
+  - { slug: client-communication, weight: 0.5 }
+
+brief_md: |
+  A regional electricity network operator wants the maintenance assistant you
+  built running inside their engineering network. It answers field engineers'
+  questions from 38,000 pages of equipment manuals and twelve years of fault
+  reports. The prototype you demonstrated last month ran on your side and
+  scored 88 percent on a 220-question set their senior engineers wrote.
+
+  Their engineering network has no outbound internet, by regulation. There is
+  no hosted model endpoint, no package mirror and no route to either. What
+  they do have is a small Kubernetes cluster with two GPU nodes, each carrying
+  one 48 GB GPU, and an internal container registry. Every file entering the
+  network goes through a scanned transfer that takes three working days and
+  needs a checksum for each file. Changes are installed in a change window on
+  the second Tuesday of each month.
+
+  The prototype calls a hosted model and a hosted embedding API. Its deploy
+  script runs `pip install -r requirements.txt`, and on first start it
+  downloads the embedding model from a public model hub. Their platform team
+  has approved the deploy script in principle.
+
+  Write the delivery plan.
+
+contract_md: |
+  Write the plan for the client's head of engineering and their security
+  lead, who will read the same document. The first wants to know when field
+  engineers get answers. The second will read every line for anything that
+  reaches outside the network.
+
+  Between 350 and 600 words. There is no template and no required structure.
+
+  Say what replaces each part of the prototype that cannot cross, how every
+  file gets in, how you will know it works before it crosses, what the client
+  should expect of its answers, and how the second release gets in.
+
+word_range: [350, 600]
+required_headings: []
+
+rubric:
+  - label: Replaces the hosted services with inference that fits their hardware
+    weight: 20
+    descriptor_md: |
+      Strong answers serve an open-weight model from the client's own
+      cluster, sized so that after quantisation it runs on one 48 GB GPU with
+      room for the context the answers need, and run the embedding model
+      there too, re-embedding the documents inside the network. Naming a
+      specific model matters less than showing the hardware decided it.
+  - label: Ships every artifact in, built and checked outside
+    weight: 25
+    descriptor_md: |
+      The deploy script the platform team approved cannot run: an install
+      step and a model download both need the internet the network does not
+      have. Strong answers build everything outside, with dependencies
+      installed at build time and weights and tokenizer files shipped as
+      files, and send it through the transfer with a checksum per file and a
+      bill of materials for security. Nothing on site installs or downloads
+      anything. An answer that opens a temporary connection, allowlists an
+      endpoint or tunnels back to a hosted model has kept the one thing the
+      regulation forbids.
+  - label: Proves it runs with no route out before it crosses
+    weight: 15
+    descriptor_md: |
+      Some libraries fetch a file the first time they run, and no
+      requirements file lists them. Strong answers run the exact bundle,
+      first start included, in an environment with no route out before the
+      transfer, because three working days per attempt make finding it on
+      site very expensive.
+  - label: Measures quality on the model that will run
+    weight: 15
+    descriptor_md: |
+      The 88 percent belongs to the hosted model. Strong answers re-run the
+      220 questions on the self-hosted model, expect a lower score, and agree
+      with the client in advance what score counts as ready and what happens
+      if it falls short, such as narrowing the assistant to the documents
+      where it holds up.
+  - label: Plans the second release as well as the first
+    weight: 15
+    descriptor_md: |
+      Every patch, model update and security fix crosses the same three-day
+      route into a monthly window. Strong answers say how releases are built,
+      rehearsed and carried, how an urgent fix travels, and how rollback works
+      without waiting for another transfer, for example by shipping the
+      previous version in every bundle.
+  - label: Tells the client what they give up
+    weight: 10
+    descriptor_md: |
+      Answers weaker and slower than the demo, fixes on a monthly rhythm, and
+      no remote look at the system without the client's people present.
+      Strong answers say this plainly to the head of engineering, before go-live
+      rather than after.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      Delivery plan for the engineering network
+
+      Three things in the prototype cannot cross into your network: the hosted
+      model, the hosted embedding API, and a deploy script that installs
+      packages and fetches the embedding model from a public hub on first
+      start. Each is replaced before any file is transferred.
+
+      Inference. We serve an open-weight model on your cluster, chosen so that
+      after quantisation it runs on one 48 GB GPU with room for the context
+      the answers need. The second GPU carries the embedding model and takes
+      over if the first node fails. The 38,000 pages are embedded again
+      inside your network, so no document ever leaves it.
+
+      Files. Everything is built on our side into container images, with every
+      dependency installed at build time and the model weights and tokenizer
+      files shipped as files beside them. The bundle carries a checksum for
+      every file and a bill of materials for your security team. It crosses
+      through your scanned transfer, which we plan as three working days, and
+      is pushed to your internal registry. Nothing on site installs or
+      downloads anything.
+
+      Proof before transfer. The exact bundle, first start included, runs for
+      a week on our side in an environment with no route out. That is how we
+      find the libraries that fetch a file the first time they run, which no
+      requirements file lists and which would otherwise fail on your cluster
+      on go-live day. The rehearsal ends with all 220 questions answered with
+      the network cut.
+
+      Quality. The 88 percent was measured on the hosted model, and the model
+      that will run is a different one. We re-run the same 220 questions on
+      it before go-live, and I expect a lower score. I propose we agree now
+      what score counts as ready. If it falls short, we launch on the manuals
+      where it holds up rather than on everything.
+
+      Second release. Every change comes in the way the first bundle does:
+      built outside, rehearsed with no route out, carried through the transfer
+      and installed in the second-Tuesday window. An urgent security fix takes
+      the same route with priority. Each bundle includes the previous release,
+      so rollback is a change of image tag on your registry instead of a new
+      transfer.
+
+      What you give up. Answers will be somewhat weaker and slower than the
+      demo, fixes arrive monthly unless they are urgent, and we cannot look at
+      the system without your team present, because logs and monitoring stay
+      inside as well.
+
+      What I need from you: a named person to receive each bundle and run the
+      transfer, and an agreed score on the 220 questions that counts as ready.
+  - band: adequate
+    score: 62
+    body_md: |
+      Deployment plan
+
+      Because the network has no internet access, we cannot use the hosted
+      model or the hosted embedding service, so both need to run on the
+      client's own hardware.
+
+      Model: we will deploy an open-weight model on the GPU cluster using a
+      standard inference server. With two 48 GB GPUs we can run a reasonably
+      capable model, and we will use the second GPU for the embedding model
+      and as a backup. The documents will be embedded on site so nothing
+      leaves the network.
+
+      Packaging: we will build container images on our side with all the
+      Python dependencies installed, and include the model weights in the
+      images so nothing has to be downloaded. The images will go through the
+      client's transfer process with checksums for every file, and then be
+      pushed to their internal registry. This replaces the pip install step in
+      the current deploy script, which would not work without internet access.
+
+      Timeline: the transfer takes three working days, so we need the images
+      ready at least a week before the change window. I would aim for the
+      change window in six weeks, which gives us time to build and test the
+      images properly. We will start each image on our own servers before
+      sending it, to make sure it comes up cleanly.
+
+      Updates: after go-live we will send updates quarterly, following the
+      same process, with urgent security fixes sent as needed. Each update
+      will be a new set of images with the version number in the tag, so the
+      client's team can see what is running.
+
+      Monitoring: logs will stay on the client's cluster. We will give their
+      operations team a dashboard showing request volumes, response times and
+      errors, and a runbook for restarting the services if something goes
+      wrong.
+
+      Support: since we cannot connect remotely, we will run a handover
+      session with their team before go-live, and agree a process for them to
+      send us log extracts through the transfer route when they need help.
+
+      I think this plan covers the main constraints. The model will be
+      different from the prototype, but the retrieval part of the system is
+      unchanged, so the answers should be similar to what the engineers saw
+      in the demo.
+  - band: weak
+    score: 27
+    body_md: |
+      Deployment approach
+
+      The prototype is working well and the engineers liked the demo, so the
+      priority is to get the same system running inside their network with as
+      few changes as possible.
+
+      The main blocker is connectivity. I suggest we ask the security lead to
+      allowlist two addresses for the assistant: the hosted model endpoint and
+      the hosted embedding API. These are well-known cloud services with
+      strong security certifications, and the traffic can be encrypted and
+      restricted to the assistant's server only, so the risk is low. This
+      keeps the answer quality at the 88 percent the engineers already saw,
+      and the field engineers get exactly the system they tested.
+
+      The assistant only sends the question and a few document snippets to
+      the hosted model, never whole manuals, and the provider does not keep
+      the data after answering, so the exposure is limited to short extracts.
+
+      For installation, the simplest route is to open a temporary connection
+      during the change window so we can run the existing deploy script. It
+      installs the Python packages and downloads the embedding model
+      automatically, and the platform team has already approved it. Once the
+      install finishes, the temporary connection can be closed again.
+
+      The documents would be embedded in the first week after go-live, which
+      may take a few days given the size of the manuals and the fault reports.
+
+      Before go-live we will run the deploy script on our own servers to make
+      sure it completes cleanly, and ask the senior engineers to try a few of
+      their questions again on the installed system.
+
+      After go-live, the operations team should monitor the assistant and let
+      us know if anything breaks. We can provide a support email and a short
+      guide for the engineers on how to phrase their questions for the best
+      results.
+
+      If security refuses to allowlist the endpoints, a fallback would be a
+      VPN tunnel from the assistant's server to our environment, with the
+      model calls running through it.
+
+      Overall this plan reuses what has already been built and approved, keeps
+      the timeline short and avoids the cost of buying or configuring new
+      infrastructure on their side.
+
+hints:
+  - List every moment the prototype reaches outside itself, at build, at
+    deploy, at first start, and on every question.
+  - A package index and a model hub are as unreachable at install time as at
+    run time. Nothing on site can install or download anything.
+  - Some libraries fetch a file the first time they run, and no requirements
+    file lists it. How would you find those before the transfer rather than
+    after?
+  - The 88 percent belongs to a model that will not run there. Say how you
+    will measure the one that will, and what score the client accepts.
+  - The first delivery is the easy one. Say how next month's security patch
+    gets in, and how you roll back without waiting three days.
+
+scenario:
+  who: The engineering and security leads at an electricity network operator
+  situation: >-
+    They want the maintenance assistant inside an engineering network with no
+    outbound internet: no hosted model, no package mirror, and a three-day
+    scanned transfer for every file that goes in.
+  stakes: >-
+    The approved deploy script installs packages and downloads a model on
+    first start. On their network both steps fail on go-live day.
+  metrics:
+    - { label: Outbound internet, value: none }
+    - { label: GPUs on site, value: 2 × 48 GB }
+    - { label: Transfer time, value: 3 working days }
+
+diagram:
+  title: Everything the prototype reaches for is outside the network
+  caption: >-
+    Three calls that worked in the demo fail on go-live day. The scanned
+    transfer and the internal registry are the only way anything gets in.
+  direction: lr
+  nodes:
+    - { id: hosted, label: Hosted model API, sub: called on every question, kind: model, tone: pink, at: [0, 0] }
+    - { id: hub, label: Public model hub, sub: embedding model on first start, kind: store, tone: pink, at: [0, 1] }
+    - { id: index, label: Package index, sub: pip install at deploy, kind: store, tone: pink, at: [0, 2] }
+    - { id: transfer, label: Scanned transfer, sub: "three days, a checksum per file", kind: guard, tone: orange, at: [1, 3] }
+    - { id: registry, label: Internal registry, sub: the only source inside, kind: store, tone: green, at: [2, 3] }
+    - { id: cluster, label: Their GPU cluster, sub: "two 48 GB GPUs, no route out", kind: service, tone: blue, at: [2, 1] }
+    - { id: engineers, label: Field engineers, sub: ask about faults and manuals, kind: actor, tone: teal, at: [3, 1] }
+  edges:
+    - { from: cluster, to: hosted, label: every question, tone: danger }
+    - { from: cluster, to: hub, label: first start, tone: danger }
+    - { from: cluster, to: index, label: the approved deploy script, tone: danger }
+    - { from: transfer, to: registry, label: the only way in, tone: success }
+    - { from: registry, to: cluster, label: images and weights, tone: success }
+    - { from: engineers, to: cluster, label: questions }
+
+approach:
+  goal: A plan in which nothing reaches outside, proven before it crosses
+  branches:
+    - label: List everything that reaches out
+      leaves: ["at build, deploy, first start and run time", including what no requirements file lists]
+    - label: Decide what runs inside
+      leaves: ["what fits on the hardware they have?", "what serves the embeddings?"]
+    - label: Decide how files get in
+      detail: Three working days and a checksum per file is the only door.
+      leaves: ["what is built where?", "what does security need to see?"]
+    - label: Decide how you will know
+      leaves: [that it runs with no route out, that its answers are still good enough]
+    - label: Plan the second release
+      leaves: [patches and model updates, rollback without another transfer]
+
+coach:
+  opening: >-
+    Start by listing every moment the prototype reaches outside itself. The
+    brief names three, and there are usually more.
+  signals:
+    - id: hosted-model-kept
+      when: { code_lacks: '(?i)open[-\s]?weights?|self[-\s]?hosted|on\s+(your|their|the\s+client''s)\s+(own\s+)?(cluster|gpus?|hardware|servers?|nodes?)|run(s|ning)?\s+(it|the\s+model)\s+locally|local(ly)?\s+(model|inference|serv)|serve\s+(it|the\s+model|an?\s+[\w-]+\s+model)|on[-\s]?prem|inside\s+(the|their|the\s+client''s)\s+network|replac\w*\s+the\s+hosted\s+model' }
+      say: >-
+        Your plan still depends on a hosted model. What runs the model inside
+        a network that cannot reach one?
+    - id: reaches-out
+      when:
+        code_matches: '(?i)temporary\s+(internet|connection|link|access|route)|open\s+(a|the|up\s+a)\s+(port|firewall|connection|route|link)|(allow|white)[-\s]?list|\bvpn\b|\bproxy\b|(connect|connection)\s+(back\s+)?to\s+(the\s+|our\s+)?(hosted|public|internet|cloud)'
+        code_lacks: '(?i)\b(not|never|no|without)\b[^.]{0,40}(temporary|vpn|allow-?list|whitelist|firewall|proxy)'
+      say: >-
+        Part of your plan opens a route out of a network whose regulation says
+        there is none. Which step needs it, and what could it be replaced with?
+    - id: no-offline-proof
+      when: { code_lacks: '(?i)no\s+route\s+out|egress|offline\s+(rehearsal|test|run|environment|staging|trial)|(isolated|air[-\s]?gapped|disconnected|sealed|closed)\s+(network|environment|staging|test|lab)|rehears|dry[-\s]?run|network(ing)?\s+(cut|disabled|off|turned\s+off|unplugged|removed)' }
+      say: >-
+        Nothing in your plan proves the bundle works with no route out before
+        it crosses. How would you find a library that fetches a file the
+        first time it runs?
+    - id: same-score-assumed
+      when: { code_lacks: '(?i)re-?run\s+(the\s+)?(same\s+)?(eval|evaluation|220|questions|question\s+set)|re-?evaluat|re-?measur|88\s*(percent|%)[^.]{0,80}(hosted|different|prototype)|(different|new|smaller|self-hosted)\s+model[^.]{0,80}(score|eval|quality|lower)' }
+      say: >-
+        The 88 percent was measured on the hosted model. What do you know about
+        the answers of the model that will actually run?
+    - id: first-release-only
+      when: { code_lacks: '(?i)\bupdates?\b|\bpatch|next\s+release|second\s+release|monthly|quarterly|security\s+fix|roll\s*back' }
+      say: >-
+        Your plan ends at go-live. How does next month's security fix get in,
+        and how do you undo a bad release?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write down the three things in the brief that reach outside, and next
+        to each, what replaces it inside. That is your first section.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three tries without a pass. Open the hints; the third one is about the
+        failure no requirements file will show you.
+  wrap_up: >-
+    In a closed network the site only loads what you carried in. Build
+    everything outside, prove it runs with no route out, re-measure the model
+    that will actually answer, and plan the second release before the first.
+
+reference_md: |
+  The approved deploy script is the trap, and the approval makes it worse. A
+  platform team that signed off on `pip install` and a model download has
+  approved something that cannot run on their own network, and the first
+  person to find out would be whoever is standing in the change window on
+  go-live day.
+
+  The inventory comes first, and it has to cover time as well as place. The
+  brief names three things the prototype reaches for, and those are the ones
+  a person can see. The dangerous ones are the libraries that fetch a file the
+  first time they run: tokenizer vocabularies, model configuration, update
+  checks, telemetry. No requirements file lists them, so the only reliable way
+  to find them is to run the exact bundle, first start included, somewhere
+  with no route out. With three working days per transfer, a failure found on
+  site costs a week at best, while a failure found in rehearsal costs an
+  afternoon.
+
+  Replacing the hosted model is where most answers spend their words, and it
+  is the least interesting decision. The hardware decides it: one 48 GB GPU
+  per node sets the size of model you can serve with room for context, and
+  the second GPU buys you embeddings and failover. What matters more is the
+  consequence. The 88 percent belongs to a different model, and the
+  engineers who wrote those 220 questions will judge the assistant against
+  the demo they saw. Re-running the set, agreeing the threshold before the
+  number exists, and having a narrower launch ready if it falls short turns a
+  quality drop into a decision the client took with you instead of a surprise
+  they discovered.
+
+  The second release is where closed networks actually hurt. Every patch
+  crosses the same three-day door into a monthly window, and a security fix
+  that has to wait for both is a conversation the security lead will want to
+  have before go-live. Shipping the previous version inside every bundle makes
+  rollback a registry change instead of another transfer.
+
+  None of this is exotic. It is ordinary delivery with the network's
+  guarantees removed, which is why the interview question behind it is about
+  what you do when a key assumption disappears.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your design assumed a hosted model endpoint. The client's network has no outbound internet. What changes, and what do you prove before you ship?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I036,
+    whose follow-up removes outbound internet from the model service. That bank labels
+    every entry "Original interview-style practice; actual employer frequency
+    unverified", and this inherits the caveat.

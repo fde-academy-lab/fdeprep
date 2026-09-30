@@ -34,9 +34,10 @@ contract_md: |
 
       {"status": 200, "chunks": [{"id": "a1", "score": 0.83, "text": "..."}]}
 
-  A chunk scoring below 0.55 is not evidence. Do not put it in the prompt,
-  and do not ask the model to write an answer without it. When nothing
-  reaches the threshold, return the sentence
+  A chunk scoring 0.55 or above is evidence, and that includes a chunk
+  scoring exactly 0.55. A chunk scoring below 0.55 is not evidence. Do not
+  put it in the prompt, and do not ask the model to write an answer without
+  it. When nothing reaches the threshold, return the sentence
 
       "I could not find anything in the help centre that answers this."
 
@@ -58,10 +59,14 @@ stub_code: |
       for _ in range(8):
           output = llm(scratchpad)
 
-          # TODO 1: return the text when the reply is a Final Answer
-          # TODO 2: call search when the reply is an Action
-          # TODO 3: keep only the chunks scoring THRESHOLD or above
-          # TODO 4: when none are left, return NOTHING_FOUND instead of asking
+          if "Final Answer:" in output:
+              return output.split("Final Answer:", 1)[1].strip() or NOTHING_FOUND
+
+          # TODO 1: parse the Action and call search with its query
+          # TODO 2: keep only the chunks scoring THRESHOLD or above
+          # TODO 3: put the chunks that survived, and nothing else, in the
+          #         scratchpad so the next model call reads them
+          # TODO 4: when none survived, return NOTHING_FOUND instead of asking
           #         the model to write something
           pass
 
@@ -86,23 +91,162 @@ step_checks:
     spec:
       assertions:
         - { type: calls_tool, name: search }
+  # s2 carries its own case, because no public answer changes when a weak
+  # chunk reaches the prompt. Here the weak chunk contradicts the only chunk
+  # that survives, which scores exactly 0.55. s2 shows once s3 writes the
+  # survivors into the scratchpad.
   - step_id: s2
     spec:
+      kind: agent_run
+      input: { question: "Can I return headphones I have opened?" }
+      llm_script:
+        - { match: { contains: "can never be returned" },
+            reply: "Final Answer: Opened headphones can never be returned." }
+        - { match: { contains: "within 21 days if they are undamaged" },
+            reply: "Final Answer: Opened headphones can be returned within 21 days if they are undamaged." }
+        - { match: "*", reply: "Action: search(query=returning opened headphones)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "h1", score: 0.41, text: "Opened audio products can never be returned." }
+              - { id: "h2", score: 0.55, text: "Opened headphones can be returned within 21 days if they are undamaged." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)within 21 days if they are undamaged" }
   - step_id: s3
     spec:
       assertions:
         - { type: returns_nonempty }
+  # s4 carries its own case, because every public answer turned green once
+  # TODO 3 wrote the survivors, before anything abstained. Both chunks here
+  # score below 0.55, so the step holds only when the loop returns the
+  # sentence itself after the one model call that asked for search.
   - step_id: s4
     spec:
+      kind: agent_run
+      input: { question: "Do you deliver to Norway?" }
+      llm_script:
+        - { match: { contains: "ship in 3 to 5 working days" },
+            reply: "Final Answer: Orders to Norway arrive in 3 to 5 working days." }
+        - { match: "*", reply: "Action: search(query=delivery to Norway)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "k1", score: 0.36, text: "Orders to the EU ship in 3 to 5 working days." }
+              - { id: "k2", score: 0.14, text: "Customs forms are printed on the dispatch note." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
       assertions:
-        - { type: terminates }
+        - { type: returns_equals, value: "I could not find anything in the help centre that answers this." }
+        - { type: llm_calls_at_most, value: 1 }
 
 hints:
   - The score is already on every chunk. Nothing needs computing, only reading.
   - Filtering after the model has seen the text is too late. It has read it.
   - Abstaining is a return, not another model call. There is nothing left to ask.
+  - "After search: drop every chunk under 0.55, return the abstention sentence if
+    the list is now empty, and otherwise write only the survivors into the
+    scratchpad before the next model call."
+
+scenario:
+  who: The help centre team at an online retailer
+  situation: >-
+    A customer asked for the refund window on a custom order, which no article
+    covers. The best search match scored 0.21, and the assistant replied that
+    refunds are processed within 30 days.
+  stakes: >-
+    Nobody ever wrote a 30 day window. The customer now has it in writing, and
+    support has to honour an invented policy or explain where it came from.
+  metrics:
+    - { label: Best match score, value: "0.21" }
+    - { label: Published threshold, value: "0.55" }
+    - { label: Articles on custom refunds, value: "0" }
+
+diagram:
+  title: Where a 0.21 match turns into a refund policy
+  caption: >-
+    The score arrives on every chunk. Check it before the prompt is built, and
+    when nothing passes, return the abstention without asking the model.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: asks about a custom order, kind: actor, tone: blue, at: [0, 1] }
+    - { id: search, label: search, sub: every chunk carries a score, kind: tool, tone: neutral, at: [1, 0] }
+    - { id: loop, label: Agent loop, sub: builds the prompt, kind: agent, tone: purple, at: [1, 1] }
+    - { id: check, label: Score check, sub: 0.55 or above is evidence, kind: guard, tone: green, at: [2, 1] }
+    - { id: model, label: Model, sub: writes from what it reads, kind: model, tone: teal, at: [3, 0] }
+    - { id: invented, label: Invented policy, sub: refunds within 30 days, kind: output, tone: pink, at: [4, 0] }
+    - { id: abstain, label: Abstention, sub: a fixed sentence and no model call, kind: output, tone: orange, at: [3, 2] }
+  edges:
+    - { from: customer, to: loop, label: question, step: 1 }
+    - { from: loop, to: search, label: query, step: 2 }
+    - { from: search, to: loop, label: three chunks and scores, step: 3 }
+    - { from: loop, to: check, label: scores first, step: 4 }
+    - { from: check, to: model, label: 0.55 or above, tone: success }
+    - { from: check, to: abstain, label: nothing passes, tone: success }
+    - { from: search, to: model, label: pasted in unread, tone: danger }
+    - { from: model, to: invented, label: a 0.21 match read as fact, tone: danger }
+
+approach:
+  goal: Let only evidence reach the model
+  branches:
+    - label: Read the score you already have
+      leaves: [every chunk arrives with one, "0.55 is published, so it can be quoted"]
+    - label: Filter before the prompt exists
+      detail: A model cannot un-read a sentence it has been shown.
+      leaves: [drop weak chunks first, then write the scratchpad]
+    - label: Judge each chunk on its own
+      leaves: [a weak chunk can sit beside a strong one, drop the weak one and keep the strong]
+    - label: Abstain with a return
+      leaves: [the sentence is already written, no model call to ask for it]
+
+coach:
+  opening: >-
+    Find the line where search results go into the scratchpad. Everything this
+    problem is about happens just before it.
+  signals:
+    - id: score-never-read
+      when: { code_lacks: '\[\s*[''"]score[''"]\s*\]|get\(\s*[''"]score[''"]' }
+      say: >-
+        Nothing reads a chunk's score yet. It arrives on every chunk, so which
+        of them count as evidence?
+    - id: whole-result-in-prompt
+      when: { code_matches: 'dumps\(\s*(result|response|res|raw)\s*\)' }
+      say: >-
+        The whole search result goes into the scratchpad, weak chunks and all.
+        Which part of it should the model be allowed to read?
+    - id: hidden-nothing-reaches
+      when: { test_failed: abstains_when_nothing_reaches_the_threshold }
+      say: >-
+        In that run the best chunk scored 0.21. Trace what your loop puts in
+        front of the model when nothing reaches 0.55.
+    - id: hidden-weak-beside-strong
+      when: { test_failed: a_weak_chunk_never_reaches_the_prompt }
+      say: >-
+        That search returned one strong chunk and one weak chunk that
+        contradicts it. Which of the two does your prompt contain?
+    - id: hidden-exact-threshold
+      when: { test_failed: a_chunk_scoring_exactly_the_threshold_is_evidence }
+      say: >-
+        In that run the only chunk that answers the question scored exactly
+        0.55. Check what your filter does with a score equal to the threshold.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1: parse the Action, call search and put its chunks in
+        the scratchpad. That turns the public tests green, and the filter comes
+        next.
+    - id: keep-failing
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Open the first hint: on Easy it is free, and it
+        narrows where to look without giving the fix away.
+  wrap_up: >-
+    Retrieval scores exist so a loop can refuse. An assistant that says it
+    could not find something is one a client can trust with the questions it
+    does answer.
 
 tests:
   - name: answers_from_a_strong_match
@@ -195,10 +339,31 @@ tests:
         - { type: no_exception }
         - { type: terminates }
 
+  - name: a_chunk_scoring_exactly_the_threshold_is_evidence
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Do gift cards expire?" }
+      llm_script:
+        - { match: { contains: "expire 24 months after" },
+            reply: "Final Answer: Gift cards expire 24 months after the date of purchase." }
+        - { match: "*", reply: "Action: search(query=gift card expiry)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "g1", score: 0.55, text: "Gift cards expire 24 months after the date of purchase." }
+              - { id: "g2", score: 0.29, text: "Gift wrap is free on orders over 40 pounds." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)24 months" }
+        - { type: no_exception }
+        - { type: terminates }
+
 reference_md: |
-  The score was always there. The loop that ignored it was not missing
-  information, it was declining to use information it already had, which is
-  the version of this bug that reaches production, because nothing about the
+  The score was always there. The loop that ignored it had the information and
+  declined to use it, which is the version of this bug that reaches production, because nothing about the
   code looks wrong.
 
   Two orderings matter and only one of them works. Filter, then assemble the

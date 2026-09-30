@@ -147,18 +147,14 @@ create table step_check (
   unique (problem_version_id, step_id)
 );
 
--- Prompt-surgery static rules.
-create type prompt_rule_kind as enum ('must_remove', 'must_keep', 'max_words', 'regex_absent', 'regex_present');
-
-create table prompt_rule (
-  id                 bigint generated always as identity primary key,
-  problem_version_id bigint not null references problem_version(id),
-  kind               prompt_rule_kind not null,
-  label              text not null,             -- shown in the checklist
-  pattern            text,                      -- regex or literal
-  numeric_value      int,                       -- for max_words
-  ordinal            int not null
-);
+-- Prompt-surgery static rules live on problem_version.prompt_rules as jsonb,
+-- which migration 006_judge.sql added. Amended 30 September 2026: this block
+-- used to show a prompt_rule table and a prompt_rule_kind enum that no
+-- migration created, with two kinds, regex_absent and regex_present, that
+-- nothing evaluates. The kinds are must_remove, must_keep, must_add,
+-- max_words and min_words, and the validator in web/lib/problems/validate.ts
+-- is what holds a problem to them. Each entry carries kind, label, and
+-- pattern or numeric_value.
 
 create table prompt_probe (
   id                 bigint generated always as identity primary key,

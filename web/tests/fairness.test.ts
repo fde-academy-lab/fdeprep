@@ -93,7 +93,7 @@ describe("delivery never reaches the score", () => {
     expect(importers.sort()).toEqual([
       // The debrief assembles it, the debrief screen shows it, the scoring
       // worker writes it to its own column, and this test guards it.
-      "app/voice/sessions/[id]/page.tsx",
+      "app/(shell)/voice/sessions/[id]/page.tsx",
       "lib/voice/debrief.ts",
       "lib/voice/judge.ts",
       "lib/voice/persist.ts",

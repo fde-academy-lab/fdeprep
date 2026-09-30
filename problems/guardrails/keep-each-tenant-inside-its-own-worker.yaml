@@ -1,0 +1,508 @@
+slug: keep-each-tenant-inside-its-own-worker
+title: Keep each client's job inside its own worker
+artefact_type: code
+difficulty: extreme
+track: guardrails
+est_minutes: 45
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: agent-loop, weight: 0.5 }
+call_budget: 6
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A third-party logistics company runs one agent process per warehouse. Each
+  process takes a batch of questions from several retail clients and answers
+  them one after another: pallet rates, shipments, account notes. Every
+  client's data sits behind that client's own tools.
+
+  On Monday a buyer at a homeware retailer asked for their pallet rate to
+  Leeds and was told 38 pounds, which is a garden furniture retailer's
+  negotiated rate. The two questions ran back to back in the same process. The
+  scratchpad was created once for the whole batch, so the second question's
+  prompt still held the first question's lookup. The garden retailer's
+  contract makes its rates confidential, and the logistics company had to tell
+  them what had happened.
+
+  You are writing `run_agent(question, llm, tools) -> str`, the part of the
+  process that serves one batch.
+
+  `tools["jobs"]()` returns the batch:
+
+      {"status": 200, "jobs": [{"id": "j1", "tenant": "garden", "ask": "..."}, ...]}
+
+  `tools["grants"]()` returns which tools each client may use:
+
+      {"status": 200, "grants": {"garden": ["rates_garden", "notes_garden"],
+                                 "homeware": ["rates_homeware", "notes_homeware"]}}
+
+  Every other tool in `tools` belongs to exactly one client, and grants is
+  the only list that says which. The grants can fail to arrive.
+
+  Serve each job with its own worker: a prompt built from that job alone, the
+  tools its client is granted and no others, and at most 3 model calls. In a
+  worker, `llm(prompt)` replies `Action: <tool>()` or `Final Answer: <text>`.
+  Call a granted tool and add its result to that worker's scratchpad. A tool
+  the client is not granted is not called: tell the worker's model it is not
+  available and let it choose again. A worker with no answer after 3 calls
+  answers `I could not finish this job.`
+
+  A job is served only when its client has an entry in grants, and no job is
+  served when grants cannot be read. Nothing is called for a job that is not
+  served, the model included.
+
+  Return a JSON string:
+  `{"answers": {"<job id>": "<answer>", ...}, "not_served": ["<job id>", ...]}`.
+
+  Budget: at most 6 model calls for the batch. Allowed imports: json, re.
+
+defence_question: |
+  Two clients often ask about the same lanes, and every rates lookup costs
+  money, so a colleague proposes a cache of tool results shared by every job
+  in the process. What would the cache key have to include for that to be
+  safe, what could still go wrong with it on the day a client's grants
+  change, and would you ship it?
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Serve a batch of jobs from several clients without letting any two meet.
+
+      tools["jobs"]()   -> {"jobs": [{"id": "j1", "tenant": "garden", "ask": "..."}]}
+      tools["grants"]() -> {"grants": {"garden": ["rates_garden", "notes_garden"]}}
+          Every other tool belongs to exactly one client. grants can fail to arrive.
+
+      Each job gets its own worker: a prompt built from that job alone, only the
+      tools its client is granted, and at most 3 model calls. In a worker,
+      llm(prompt) replies "Action: <tool>()" or "Final Answer: <text>". A tool
+      the client is not granted is refused and the model chooses again. A worker
+      with no answer after 3 calls answers "I could not finish this job."
+      A job whose client has no grants entry, or every job when grants cannot be
+      read, is not served, and nothing is called for it.
+
+      Return json.dumps({"answers": {<job id>: <answer>},
+                         "not_served": [<job ids>]}).
+      At most 6 model calls for the batch. Allowed imports: json, re.
+      """
+      return json.dumps({"answers": {}, "not_served": []})
+
+hints:
+  - Look at what the second job's prompt holds when it starts. Anything in it
+    that the job did not bring along came from another client.
+  - A worker is three things it owns, a scratchpad, a tool table and a call
+    limit. The model's reply can name any tool it likes; the table decides
+    which tools exist for this job.
+  - Build each job's tool table from its client's grants entry and nothing
+    else, start a new scratchpad for every job, and refuse a name the table
+    does not hold without calling anything.
+  - A client with no grants entry, or a grants table that never arrived, means
+    nothing is known to be allowed. The safe number of calls for that job is
+    zero.
+  - Count model calls per worker, not per batch, so one client's stuck job
+    stops on its own limit and the next client's job still gets its turn.
+
+scenario:
+  who: Client services at a third-party logistics company
+  situation: >-
+    A homeware buyer asked for their pallet rate to Leeds and was told 38
+    pounds, a garden furniture retailer's rate. Both questions ran in one
+    process, and the scratchpad was created once for the batch.
+  stakes: >-
+    The garden retailer's rates are confidential under its contract, so the
+    company had to tell a client that another client had seen its prices.
+  metrics:
+    - { label: Rate that leaked, value: "£38" }
+    - { label: Clients in one process, value: "2" }
+    - { label: Scratchpads for the batch, value: "1" }
+
+diagram:
+  title: Where one client's lookup reaches another client's answer
+  caption: >-
+    Each worker gets a fresh scratchpad and tools built from its client's
+    grants. One scratchpad for the batch carries the first answer into the
+    second prompt.
+  direction: lr
+  nodes:
+    - { id: jobs, label: jobs(), sub: a batch from two clients, kind: queue, tone: neutral, at: [0, 1] }
+    - { id: grants, label: grants(), sub: which tools each client has, kind: store, tone: orange, at: [1, 0] }
+    - { id: orchestrator, label: Orchestrator, sub: one worker per job, kind: agent, tone: purple, at: [1, 1] }
+    - { id: garden, label: Garden worker, sub: "own scratchpad, own tools", kind: guard, tone: green, at: [2, 0] }
+    - { id: homeware, label: Homeware worker, sub: "own scratchpad, own tools", kind: guard, tone: green, at: [2, 2] }
+    - { id: rates_garden, label: rates_garden(), sub: "negotiated rate, 38 pounds", kind: tool, tone: blue, at: [3, 0] }
+    - { id: rates_homeware, label: rates_homeware(), sub: "negotiated rate, 44 pounds", kind: tool, tone: teal, at: [3, 2] }
+    - { id: shared, label: Batch scratchpad, sub: created once for every job, kind: store, tone: pink, at: [3, 1] }
+    - { id: leak, label: 38 pounds to homeware, sub: another client's rate, kind: output, tone: pink, at: [4, 1] }
+  edges:
+    - { from: jobs, to: orchestrator, label: two jobs, step: 1 }
+    - { from: grants, to: orchestrator, label: tool lists, step: 2 }
+    - { from: orchestrator, to: garden, label: job 1 alone, step: 3, tone: success }
+    - { from: orchestrator, to: homeware, label: job 2 alone, step: 4, tone: success }
+    - { from: garden, to: rates_garden, label: granted, tone: success }
+    - { from: homeware, to: rates_homeware, label: granted, tone: success }
+    - { from: homeware, to: rates_garden, label: named but refused, tone: muted }
+    - { from: orchestrator, to: shared, label: one scratchpad for all, tone: danger }
+    - { from: shared, to: leak, label: second prompt holds 38, tone: danger }
+
+approach:
+  goal: Serve every client's job as if it were the only one in the process
+  branches:
+    - label: Context
+      leaves: [a fresh scratchpad for every job, nothing carried over from the job before]
+    - label: Capabilities
+      detail: The grants table is the only list, and nothing the model writes adds to it.
+      leaves: [one tool table per worker, another client's tool is refused unseen]
+    - label: Fail closed
+      leaves: [no grants entry means not served, no grants table means nobody is served]
+    - label: Limits
+      leaves: [3 model calls per worker, one stuck job cannot starve the next]
+
+coach:
+  opening: >-
+    This is a screen-level problem. Before you type, find where your
+    scratchpad would be created and ask which jobs can read it.
+  signals:
+    - id: no-grants
+      when: { code_lacks: 'grants' }
+      say: >-
+        Nothing in your code reads the grants. As written, which tools can the
+        homeware job call?
+    - id: second-job-leak
+      when: { test_failed: the_second_job_never_sees_the_first_jobs_lookup }
+      say: >-
+        The homeware job asked for its own Leeds rate and answered with the
+        garden client's. What was in its prompt that the job never asked for?
+    - id: other-clients-notes
+      when: { test_failed: a_worker_asking_for_another_clients_notes_is_refused }
+      say: >-
+        The homeware worker's model asked for notes_garden. Which list decides
+        whether that worker may have them, and did your code consult it before
+        the call?
+    - id: missing-grants-entry
+      when: { test_failed: a_client_missing_from_the_grants_is_not_served }
+      say: >-
+        The toys client has no entry in the grants. What should happen to its
+        job, and how many calls should that cost?
+    - id: empty-grants
+      when: { test_failed: adversarial_the_grants_table_is_empty }
+      say: >-
+        The grants came back empty. Which jobs can any worker serve safely when
+        nobody knows what anyone is allowed?
+    - id: stuck-neighbour
+      when: { test_failed: adversarial_one_clients_stuck_lookup }
+      say: >-
+        The garden worker's lookup kept answering pending. Did the homeware job
+        behind it still get its turn?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one job. Write a worker function that takes the job, the
+        model and a tool table and returns an answer, then call it once per
+        job.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hints start from what the second job's
+        prompt holds when it begins.
+  wrap_up: >-
+    Isolation is structural. A fresh context and a tool table built from the
+    grants for every job means a worker cannot leak what it never held,
+    whatever the model asks for.
+
+tests:
+  - name: serves_one_job_from_its_own_clients_tools
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "batch-0412" }
+      llm_script:
+        - { match: { contains: "38 pounds" },
+            reply: "Final Answer: Your pallet rate to Leeds is 38 pounds." }
+        - { match: "*", reply: "Action: rates_garden()" }
+      tools:
+        jobs:
+          returns:
+            status: 200
+            jobs:
+              - { id: j1, tenant: garden, ask: "What is our pallet rate to Leeds?" }
+        grants:
+          returns:
+            status: 200
+            grants:
+              garden: [rates_garden, notes_garden]
+              homeware: [rates_homeware, notes_homeware]
+        rates_garden: { returns: { status: 200, text: "Pallet to Leeds: 38 pounds. Pallet to Bristol: 41 pounds." } }
+        rates_homeware: { returns: { status: 200, text: "Pallet to Leeds: 44 pounds. Pallet to Bristol: 47 pounds." } }
+        notes_garden: { returns: { status: 200, text: "Garden will accept a liability cap of up to 1.8 million pounds." } }
+        notes_homeware: { returns: { status: 200, text: "Homeware will not go above 500,000 pounds." } }
+      budget: { max_llm_calls: 8, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [answers, not_served] } }
+        - { type: returns_matches, value: '"j1":\s*"[^"]*38 pounds' }
+        - { type: calls_tool, name: rates_garden }
+
+  - name: serves_a_homeware_job_the_same_way
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "batch-0413" }
+      llm_script:
+        - { match: { contains: "47 pounds" },
+            reply: "Final Answer: You pay 47 pounds per pallet to Bristol." }
+        - { match: "*", reply: "Action: rates_homeware()" }
+      tools:
+        jobs:
+          returns:
+            status: 200
+            jobs:
+              - { id: j1, tenant: homeware, ask: "What do we pay per pallet to Bristol?" }
+        grants:
+          returns:
+            status: 200
+            grants:
+              garden: [rates_garden, notes_garden]
+              homeware: [rates_homeware, notes_homeware]
+        rates_garden: { returns: { status: 200, text: "Pallet to Leeds: 38 pounds. Pallet to Bristol: 41 pounds." } }
+        rates_homeware: { returns: { status: 200, text: "Pallet to Leeds: 44 pounds. Pallet to Bristol: 47 pounds." } }
+        notes_garden: { returns: { status: 200, text: "Garden will accept a liability cap of up to 1.8 million pounds." } }
+        notes_homeware: { returns: { status: 200, text: "Homeware will not go above 500,000 pounds." } }
+      budget: { max_llm_calls: 8, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"j1":\s*"[^"]*47 pounds' }
+        - { type: does_not_call_tool, name: rates_garden }
+
+  - name: the_second_job_never_sees_the_first_jobs_lookup
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "batch-0414" }
+      llm_script:
+        - { match: { all: [ { contains: "per pallet to Leeds" }, { contains: "38 pounds" } ] },
+            reply: "Final Answer: You pay 38 pounds per pallet to Leeds." }
+        - { match: { contains: "44 pounds" },
+            reply: "Final Answer: You pay 44 pounds per pallet to Leeds." }
+        - { match: { contains: "38 pounds" },
+            reply: "Final Answer: Your pallet rate to Leeds is 38 pounds." }
+        - { match: { contains: "per pallet to Leeds" }, reply: "Action: rates_homeware()" }
+        - { match: "*", reply: "Action: rates_garden()" }
+      tools:
+        jobs:
+          returns:
+            status: 200
+            jobs:
+              - { id: j1, tenant: garden, ask: "What is our pallet rate to Leeds?" }
+              - { id: j2, tenant: homeware, ask: "What do we pay per pallet to Leeds?" }
+        grants:
+          returns:
+            status: 200
+            grants:
+              garden: [rates_garden, notes_garden]
+              homeware: [rates_homeware, notes_homeware]
+        rates_garden: { returns: { status: 200, text: "Pallet to Leeds: 38 pounds. Pallet to Bristol: 41 pounds." } }
+        rates_homeware: { returns: { status: 200, text: "Pallet to Leeds: 44 pounds. Pallet to Bristol: 47 pounds." } }
+        notes_garden: { returns: { status: 200, text: "Garden will accept a liability cap of up to 1.8 million pounds." } }
+        notes_homeware: { returns: { status: 200, text: "Homeware will not go above 500,000 pounds." } }
+      budget: { max_llm_calls: 8, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"j1":\s*"[^"]*38 pounds' }
+        - { type: returns_matches, value: '"j2":\s*"[^"]*44 pounds' }
+
+  - name: a_worker_asking_for_another_clients_notes_is_refused
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "batch-0415" }
+      llm_script:
+        - { match: { contains: "1.8 million" },
+            reply: "Final Answer: Tell the carrier we can accept a cap of up to 1.8 million pounds." }
+        - { match: { contains: "500,000" },
+            reply: "Final Answer: Tell the carrier we will not go above 500,000 pounds." }
+        - { match: { call_index: 1 }, reply: "Action: notes_garden()" }
+        - { match: "*", reply: "Action: notes_homeware()" }
+      tools:
+        jobs:
+          returns:
+            status: 200
+            jobs:
+              - { id: j1, tenant: homeware, ask: "Draft our reply to the carrier asking us to raise the liability cap." }
+        grants:
+          returns:
+            status: 200
+            grants:
+              garden: [rates_garden, notes_garden]
+              homeware: [rates_homeware, notes_homeware]
+        rates_garden: { returns: { status: 200, text: "Pallet to Leeds: 38 pounds. Pallet to Bristol: 41 pounds." } }
+        rates_homeware: { returns: { status: 200, text: "Pallet to Leeds: 44 pounds. Pallet to Bristol: 47 pounds." } }
+        notes_garden: { returns: { status: 200, text: "Garden will accept a liability cap of up to 1.8 million pounds." } }
+        notes_homeware: { returns: { status: 200, text: "Homeware will not go above 500,000 pounds." } }
+      budget: { max_llm_calls: 8, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: notes_garden }
+        - { type: returns_matches, value: '"j1":\s*"[^"]*500,000' }
+
+  - name: a_client_missing_from_the_grants_is_not_served
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "batch-0416" }
+      llm_script:
+        - { match: { contains: "41 pounds" },
+            reply: "Final Answer: Your pallet rate to Bristol is 41 pounds." }
+        - { match: { contains: "36 pounds" },
+            reply: "Final Answer: Your pallet rate to Leeds is 36 pounds." }
+        - { match: { contains: "pallet rate to Leeds" }, reply: "Action: rates_toys()" }
+        - { match: "*", reply: "Action: rates_garden()" }
+      tools:
+        jobs:
+          returns:
+            status: 200
+            jobs:
+              - { id: j1, tenant: garden, ask: "What is our pallet rate to Bristol?" }
+              - { id: j2, tenant: toys, ask: "What is our pallet rate to Leeds?" }
+        grants:
+          returns:
+            status: 200
+            grants:
+              garden: [rates_garden, notes_garden]
+              homeware: [rates_homeware, notes_homeware]
+        rates_garden: { returns: { status: 200, text: "Pallet to Leeds: 38 pounds. Pallet to Bristol: 41 pounds." } }
+        rates_homeware: { returns: { status: 200, text: "Pallet to Leeds: 44 pounds. Pallet to Bristol: 47 pounds." } }
+        rates_toys: { returns: { status: 200, text: "Pallet to Leeds: 36 pounds." } }
+        notes_garden: { returns: { status: 200, text: "Garden will accept a liability cap of up to 1.8 million pounds." } }
+        notes_homeware: { returns: { status: 200, text: "Homeware will not go above 500,000 pounds." } }
+      budget: { max_llm_calls: 8, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: rates_toys }
+        - { type: returns_matches, value: '"not_served":\s*\[\s*"j2"\s*\]' }
+        - { type: returns_matches, value: '"j1":\s*"[^"]*41 pounds' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: adversarial_the_grants_table_is_empty
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The grants service answered with nothing at all. An orchestrator that
+      reads a missing table as "no restrictions" hands every worker every
+      client's tools, which is the incident with the door taken off. One that
+      indexes into it raises, and the batch ends with a stack trace instead of
+      a list of jobs that were not served.
+
+      With no grants, nothing is known to be allowed for anyone. Every job is
+      not served, and nothing is called, the model included.
+    spec:
+      kind: agent_run
+      input: { question: "batch-0417" }
+      llm_script:
+        - { match: "*", reply: "Action: rates_garden()" }
+      tools:
+        jobs:
+          returns:
+            status: 200
+            jobs:
+              - { id: j1, tenant: garden, ask: "What is our pallet rate to Leeds?" }
+              - { id: j2, tenant: homeware, ask: "What do we pay per pallet to Leeds?" }
+        grants: { fixture: empty_tool_result }
+        rates_garden: { returns: { status: 200, text: "Pallet to Leeds: 38 pounds. Pallet to Bristol: 41 pounds." } }
+        rates_homeware: { returns: { status: 200, text: "Pallet to Leeds: 44 pounds. Pallet to Bristol: 47 pounds." } }
+        notes_garden: { returns: { status: 200, text: "Garden will accept a liability cap of up to 1.8 million pounds." } }
+        notes_homeware: { returns: { status: 200, text: "Homeware will not go above 500,000 pounds." } }
+      budget: { max_llm_calls: 8, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: does_not_call_tool, name: rates_garden }
+        - { type: does_not_call_tool, name: rates_homeware }
+        - { type: returns_matches, value: '"not_served":\s*\[\s*"j1",\s*"j2"\s*\]' }
+
+  - name: adversarial_one_clients_stuck_lookup
+    visibility: adversarial
+    fixture: loop_bait
+    annotation_md: |
+      The garden client's rates lookup kept answering pending, and the
+      worker's model kept asking again. An orchestrator that counts calls for
+      the whole batch lets that one client spend every call there is, and the
+      homeware job behind it never gets a turn: one client's problem becomes
+      another client's outage.
+
+      Each worker stops on its own limit and answers that it could not finish,
+      and the next client's job runs with its full allowance.
+    spec:
+      kind: agent_run
+      input: { question: "batch-0418" }
+      llm_script:
+        - { match: { contains: "44 pounds" },
+            reply: "Final Answer: You pay 44 pounds per pallet to Leeds." }
+        - { match: { contains: "per pallet to Leeds" }, reply: "Action: rates_homeware()" }
+        - { match: "*", reply: "Action: rates_garden()" }
+      tools:
+        jobs:
+          returns:
+            status: 200
+            jobs:
+              - { id: j1, tenant: garden, ask: "What is our pallet rate to Leeds?" }
+              - { id: j2, tenant: homeware, ask: "What do we pay per pallet to Leeds?" }
+        grants:
+          returns:
+            status: 200
+            grants:
+              garden: [rates_garden, notes_garden]
+              homeware: [rates_homeware, notes_homeware]
+        rates_garden: { fixture: loop_bait }
+        rates_homeware: { returns: { status: 200, text: "Pallet to Leeds: 44 pounds. Pallet to Bristol: 47 pounds." } }
+        notes_garden: { returns: { status: 200, text: "Garden will accept a liability cap of up to 1.8 million pounds." } }
+        notes_homeware: { returns: { status: 200, text: "Homeware will not go above 500,000 pounds." } }
+      budget: { max_llm_calls: 8, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - { type: returns_matches, value: '"j1":\s*"I could not finish this job\.' }
+        - { type: returns_matches, value: '"j2":\s*"[^"]*44 pounds' }
+
+reference_md: |
+  The rate leaked through a scratchpad created once for the batch. Nobody
+  wrote code that shared one client's data with another; the sharing was a
+  default, and defaults are what isolation has to be built against. Each job
+  starts from nothing but itself, so there is nothing of anyone else's for it
+  to read.
+
+  The follow-up problem in the retrieval track fixes a related leak by
+  filtering another customer's turns out of a shared session. Here there is
+  no shared session left to filter. A worker's prompt is built from its job,
+  and its tools from its client's grants, and the boundary is the shape of
+  the code rather than a check inside it.
+
+  Capabilities do the rest. Telling the homeware worker to use only homeware
+  tools is a request, and handing it a table that holds only homeware tools
+  is a control. The model asked for notes_garden because it could name it,
+  and the table answered. The refusal says the tool is not available rather
+  than whose it is, because a worker has no business learning which other
+  clients exist.
+
+  Fail closed in both directions. A client without a grants entry and a
+  grants table that never arrived both mean nothing is known to be allowed,
+  so those jobs cost zero calls and are reported as not served, which is an
+  answer a person can act on.
+
+  Limits are isolation too. A call counter shared by the batch lets one
+  client's stuck lookup spend the calls the next client was owed; a limit per
+  worker keeps one client's bad day inside its own worker.
+
+  Be honest about what this does not buy. Two clients in one process still
+  share memory, and a bug in the orchestrator itself can still mix them. For
+  data under a confidentiality clause, a process per client is the stronger
+  boundary at a real cost, and a shared cache, the cheap-looking optimisation
+  the defence question is about, is exactly where these boundaries go to die.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Two clients' jobs run in the same agent process. How do you guarantee one client's data never reaches the other's answer, even when the model asks for it by name?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
