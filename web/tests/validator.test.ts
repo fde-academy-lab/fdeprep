@@ -177,7 +177,55 @@ steps:
   - { id: s1, text: Call the model., check_id: s1 }
 step_checks:
   - step_id: s1
+    spec: { assertions: [{ type: returns_nonempty }] }
+`;
+    expect(validateProblemYaml(source, "a.yaml").errors).toEqual([]);
+  });
+
+  it("rejects a step check with no assertions, which holds for any code", () => {
+    const source = CODE + `
+steps:
+  - { id: s1, text: Call the model., check_id: s1 }
+step_checks:
+  - step_id: s1
     spec: { kind: agent_run }
+`;
+    const error = validateProblemYaml(source, "a.yaml").errors
+      .find((e) => e.rule === "step_check_without_assertions");
+    expect(error?.message).toContain("s1");
+    expect(error?.line).toBeGreaterThan(1);
+  });
+
+  it("holds a step's own case to the same script rules as a test", () => {
+    // A step check whose spec carries kind runs on that case, on every Run.
+    const source = CODE + `
+steps:
+  - { id: s1, text: Give up in a sentence., check_id: s1 }
+step_checks:
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "where is order 9" }
+      llm_script: [{ match: { call_index: 1 }, reply: "Thinking." }]
+      assertions: [{ type: returns_matches, value: "unknown" }]
+`;
+    const error = validateProblemYaml(source, "a.yaml").errors
+      .find((e) => e.rule === "script_needs_fallback");
+    expect(error?.message).toContain("step s1");
+    expect(error?.line).toBeGreaterThan(1);
+  });
+
+  it("accepts a step's own case that follows the script rules", () => {
+    const source = CODE + `
+steps:
+  - { id: s1, text: Give up in a sentence., check_id: s1 }
+step_checks:
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "where is order 9" }
+      llm_script: [{ match: "*", reply: "Thinking." }]
+      assertions: [{ type: returns_matches, value: "unknown" }]
 `;
     expect(validateProblemYaml(source, "a.yaml").errors).toEqual([]);
   });

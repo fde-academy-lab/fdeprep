@@ -138,3 +138,79 @@ def test_no_case_result_carries_the_step_detail():
     result = run_battery(PROBLEM, ANSWERS_ONLY)
     for case in result["gates"]["public"]["cases"]:
         assert not any(key.startswith("_") or key == "steps" for key in case)
+
+
+# A step whose work shows only when the model never answers. No public case
+# does that, and adding one would change what the public gate teaches, so the
+# step carries its own case: the check runs there, on every Run, and counts
+# toward no gate.
+NEVER_ANSWERS = [{"match": "*", "reply": "Let me think about that."}]
+OWN_CASE = {"step_id": "s4", "spec": {
+    "kind": "agent_run", "input": {"question": "where is order 9"},
+    "llm_script": NEVER_ANSWERS, "tools": {"track": {"returns": {"state": "in_transit"}}},
+    "budget": {"max_llm_calls": 4, "max_tool_calls": 4, "wall_ms": 5000},
+    "assertions": [{"type": "returns_matches", "value": "(?i)unknown"}],
+}}
+OWNED = from_dict({**PROBLEM.raw, "step_checks": [*PROBLEM.raw["step_checks"], OWN_CASE]})
+
+# LOOP, plus a sentence when the model never gives a Final Answer.
+GIVES_UP = """
+def run_agent(question, llm, tools):
+    prompt = question
+    for _ in range(3):
+        reply = llm(prompt)
+        if reply.startswith("Action:"):
+            prompt += "\\n" + str(tools["track"](id=7))
+            continue
+        if "Final Answer:" in reply:
+            return reply.split("Final Answer:", 1)[-1].strip()
+        prompt += "\\n" + reply
+    return "unknown: the model never answered"
+"""
+
+
+def test_a_step_with_its_own_case_turns_green_on_code_that_handles_that_case():
+    assert _steps(run_battery(OWNED, GIVES_UP))["s4"] == "pass"
+
+
+def test_a_step_with_its_own_case_is_red_on_code_that_passes_every_test_without_it():
+    result = run_battery(OWNED, LOOP)
+    assert result["verdict"] == "pass"
+    assert _steps(result) == {"s1": "pass", "s2": "pass", "s3": "pass", "s4": "fail"}
+
+
+def test_a_step_case_counts_toward_no_gate_and_reaches_no_trace():
+    result = run_battery(OWNED, LOOP)
+    names = [case["name"] for gate in ("public", "hidden", "adversarial")
+             for case in result["gates"][gate]["cases"]]
+    assert names == [case["name"] for case in run_battery(PROBLEM, LOOP)["gates"]["public"]["cases"]] + [
+        case["name"] for case in run_battery(PROBLEM, LOOP)["gates"]["hidden"]["cases"]]
+    assert len(result["trace"]["cases"]) == len(PROBLEM.tests)
+
+
+def test_a_step_case_runs_while_the_public_gate_is_still_failing():
+    """Steps are how progress shows before the battery passes."""
+    result = run_battery(OWNED, ANSWERS_ONLY)
+    assert result["gates"]["public"]["status"] == "fail"
+    assert _steps(result)["s4"] == "fail"
+
+
+def test_a_step_case_the_stub_already_handles_reads_unchecked():
+    stubbed = from_dict({**OWNED.raw, "stub_code": GIVES_UP})
+    assert _steps(run_battery(stubbed, GIVES_UP))["s4"] == "unchecked"
+
+
+def test_a_step_case_never_stages_its_assertions():
+    staged = []
+    run_battery(OWNED, GIVES_UP, stage_observer=lambda name, work, payload: staged.append(payload))
+    assert staged and all("assertions" not in payload for payload in staged)
+    assert any(payload["input"] == {"question": "where is order 9"} for payload in staged)
+
+
+def test_a_step_case_script_follows_the_same_rules_as_a_test_script():
+    import pytest
+    from runner.problem import ProblemError
+    broken = {**OWN_CASE, "spec": {**OWN_CASE["spec"], "llm_script": [
+        {"match": {"call_index": 1}, "reply": "Final Answer: unknown"}]}}
+    with pytest.raises(ProblemError, match="fallback"):
+        from_dict({**PROBLEM.raw, "step_checks": [broken]})

@@ -40,7 +40,7 @@ class Problem:
     competencies: tuple[dict[str, Any], ...] = ()
     hints: tuple[str, ...] = ()
     # docs/01 S4: one micro-check per step, each a list of assertions read
-    # against the public cases of a run.
+    # against the public cases of a run, or against the step's own case.
     step_checks: tuple[dict[str, Any], ...] = ()
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
@@ -111,12 +111,26 @@ def from_dict(data: dict[str, Any], source: str = "<dict>") -> Problem:
         competencies=tuple(data.get("competencies") or ()),
         hints=tuple(data.get("hints") or ()),
         step_checks=tuple(
-            {"step_id": str(check["step_id"]),
-             "assertions": list((check.get("spec") or {}).get("assertions") or [])}
-            for check in (data.get("step_checks") or ())
+            _step_check(check, source) for check in (data.get("step_checks") or ())
         ),
         raw=data,
     )
+
+
+def _step_check(check: dict[str, Any], source: str) -> dict[str, Any]:
+    """A check reads the public cases, unless its spec is a case of its own.
+
+    A spec that carries kind is shaped like a test's and the check runs on it
+    alone. That is for a step whose work no public case exercises, usually
+    because exercising it is what the hidden cases are for.
+    """
+    spec = check.get("spec") or {}
+    step_id = str(check["step_id"])
+    case = None
+    if "kind" in spec:
+        _check_script(spec, f"the check for step {step_id}", source)
+        case = spec
+    return {"step_id": step_id, "assertions": list(spec.get("assertions") or []), "case": case}
 
 
 def _check_script(spec: dict[str, Any], case_name: str, source: str) -> None:

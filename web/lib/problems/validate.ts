@@ -21,7 +21,7 @@ import { validateKit, type Kit, type KitRule } from "./kit.ts";
 export type Rule =
   | "yaml_syntax" | "schema" | "script_needs_fallback" | "unknown_competency"
   | "too_few_public_tests" | "too_few_hidden_tests" | "no_adversarial_fixture"
-  | "step_without_check" | "too_few_exemplars"
+  | "step_without_check" | "step_check_without_assertions" | "too_few_exemplars"
   | "no_prompt_rules" | "no_probes" | "unknown_rule_kind" | "unknown_assertion_type"
   | "bad_pattern" | "rule_pattern_absent" | "no_adequate_exemplar"
   | "no_word_range" | "no_rubric" | "rubric_weights" | "no_defence_question"
@@ -254,16 +254,26 @@ export function validateProblemYaml(
   // Rule: a step check naming an assertion the runner does not evaluate. The
   // checks run on every Run, so a typo here fails in front of the learner.
   stepChecks.forEach((check, index) => {
-    const spec = ((check as { spec?: unknown }).spec ?? {}) as { assertions?: unknown };
-    const assertions = Array.isArray(spec.assertions) ? spec.assertions : [];
+    const spec = ((check as { spec?: unknown }).spec ?? {}) as Record<string, unknown>;
+    const assertions = Array.isArray(spec["assertions"]) ? (spec["assertions"] as unknown[]) : [];
+    const label = `the check for step ${String(check.step_id ?? index)}`;
     assertions.forEach((entry, position) => {
       const type = (entry as { type?: unknown } | null)?.type;
       if (typeof type === "string" && CODE_ASSERTIONS.has(type)) return;
       add("unknown_assertion_type",
-          `${String(type)} in the check for step ${String(check.step_id ?? index)} is not an ` +
+          `${String(type)} in ${label} is not an ` +
           `assertion the runner evaluates. Known types: ${[...CODE_ASSERTIONS].join(", ")}`,
           lineOf(["step_checks", index, "spec", "assertions", position]));
     });
+    // Rule: a check with nothing to assert holds for any code, the stub's
+    // included, so its step could never turn green.
+    if (!assertions.length) {
+      add("step_check_without_assertions",
+          `${label} asserts nothing, so it holds for any code and the step can never ` +
+          "turn green. Name what the step's work changes in the answer or the calls.",
+          lineOf(["step_checks", index]));
+    }
+    if ("kind" in spec) validateScript(spec, label, ["step_checks", index, "spec"], lineOf, add);
   });
 
   // Rule: steps present without matching step_check entries.
@@ -362,35 +372,48 @@ function validateTests(
           `evaluates. Known types: ${[...CODE_ASSERTIONS].join(", ")}`,
           lineOf(["tests", index, "spec", "assertions", position]));
     });
+    validateScript(spec, String(test["name"] ?? index), ["tests", index, "spec"], lineOf, add);
+  });
+}
 
-    const script = Array.isArray(spec["llm_script"])
-      ? (spec["llm_script"] as Array<{ match?: unknown }>) : [];
-    if (!script.length) return;
+/**
+ * The rules every scripted case follows, a test's or a step's own. A step
+ * check whose spec carries kind is a whole case, and it runs on every Run.
+ */
+function validateScript(
+  spec: Record<string, unknown>,
+  label: string,
+  at: Array<string | number>,
+  lineOf: (path: Array<string | number>) => number,
+  add: (rule: Rule, message: string, line: number) => void,
+): void {
+  const script = Array.isArray(spec["llm_script"])
+    ? (spec["llm_script"] as Array<{ match?: unknown }>) : [];
+  if (!script.length) return;
 
-    // Rule: no "*" fallback in an llm_script.
-    if (!script.some((entry) => entry?.match === "*")) {
-      add("script_needs_fallback",
-          `llm_script in ${String(test["name"] ?? index)} has no "*" fallback, so the mock ` +
-          "would raise partway through and the learner would see an infrastructure error",
-          lineOf(["tests", index, "spec", "llm_script", 0]));
+  // Rule: no "*" fallback in an llm_script.
+  if (!script.some((entry) => entry?.match === "*")) {
+    add("script_needs_fallback",
+        `llm_script in ${label} has no "*" fallback, so the mock ` +
+        "would raise partway through and the learner would see an infrastructure error",
+        lineOf([...at, "llm_script", 0]));
+  }
+
+  // Rule: a matcher that already matches the case's own input wins on every
+  // call once a scratchpad keeps the input in the prompt.
+  const seeded = Object.values((spec["input"] ?? {}) as Record<string, unknown>)
+    .map(String).join(" ");
+  if (!seeded) return;
+  script.slice(0, -1).forEach((entry, position) => {
+    const offender = matchesSeed(entry?.match, seeded);
+    if (offender !== null) {
+      add("matcher_shadows_input",
+          `llm_script entry ${position + 1} in ${label} matches the ` +
+          `case's own input (${offender}), so it wins on every call and the ` +
+          `${script.length - position - 1} entries below it are unreachable. Use call_index ` +
+          'when the intent is "the first call".',
+          lineOf([...at, "llm_script", position]));
     }
-
-    // Rule: a matcher that already matches the case's own input wins on every
-    // call once a scratchpad keeps the input in the prompt.
-    const seeded = Object.values((spec["input"] ?? {}) as Record<string, unknown>)
-      .map(String).join(" ");
-    if (!seeded) return;
-    script.slice(0, -1).forEach((entry, position) => {
-      const offender = matchesSeed(entry?.match, seeded);
-      if (offender !== null) {
-        add("matcher_shadows_input",
-            `llm_script entry ${position + 1} in ${String(test["name"] ?? index)} matches the ` +
-            `case's own input (${offender}), so it wins on every call and the ` +
-            `${script.length - position - 1} entries below it are unreachable. Use call_index ` +
-            'when the intent is "the first call".',
-            lineOf(["tests", index, "spec", "llm_script", position]));
-      }
-    });
   });
 }
 

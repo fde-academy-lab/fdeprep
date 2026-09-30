@@ -115,7 +115,7 @@ _BASELINES: dict[str, frozenset[str]] = {}
 
 
 def _stub_baseline(problem) -> frozenset[str]:
-    """The steps the stub already satisfies on the public cases.
+    """The steps the stub already satisfies, on the public cases or on a step's own case.
 
     A check the stub satisfies cannot tell a learner's work from no work, so
     such a step is reported as unchecked rather than green. Computed from the
@@ -124,6 +124,7 @@ def _stub_baseline(problem) -> frozenset[str]:
     stub = (problem.raw or {}).get("stub_code")
     if not stub or not problem.step_checks:
         return frozenset()
+    shared = tuple(c for c in problem.step_checks if not c.get("case"))
     key = hashlib.sha256(json.dumps(
         [stub, [c.spec for c in problem.cases("public")], problem.step_checks,
          sorted(problem.allowed_imports)],
@@ -136,13 +137,27 @@ def _stub_baseline(problem) -> frozenset[str]:
                     case.name, case.spec, stub,
                     allowed_imports=problem.allowed_imports,
                     time_limit_s=problem.time_limit_s,
-                    step_checks=problem.step_checks,
+                    step_checks=shared,
                 )
                 held |= {step for step, ok in ran["_steps"].items() if ok}
+            held |= {check["step_id"] for check in problem.step_checks
+                     if check.get("case") and _holds_on_own_case(check, stub, problem)}
         if len(_BASELINES) > 512:
             _BASELINES.clear()
         _BASELINES[key] = frozenset(held)
     return _BASELINES[key]
+
+
+def _holds_on_own_case(check: dict, source: str, problem,
+                       stage_observer: StageObserver | None = None) -> bool:
+    ran = run_single_case(
+        f"step {check['step_id']}", check["case"], source,
+        allowed_imports=problem.allowed_imports,
+        time_limit_s=problem.time_limit_s,
+        stage_observer=stage_observer,
+        step_checks=(check,),
+    )
+    return bool(ran["_steps"].get(check["step_id"]))
 
 
 def _step_status(step_id: str, held: dict[str, bool], baseline: frozenset[str]) -> str:
@@ -327,8 +342,9 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
 
     all_cases: list[dict] = []
     held: dict[str, bool] = {}
-    public_ran = False
-    if static.status == "pass":
+    shared = tuple(c for c in problem.step_checks if not c.get("case"))
+    stepped = static.status == "pass"
+    if stepped:
         previous_passed = True
         for visibility in ("public", "hidden", "adversarial"):
             cases = problem.cases(visibility)
@@ -336,7 +352,7 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
                 continue
             # Steps read public cases only, so a step never reports on a case
             # the learner cannot see.
-            checks = problem.step_checks if visibility == "public" else ()
+            checks = shared if visibility == "public" else ()
             ran = [
                 run_single_case(
                     case.name, case.spec, source,
@@ -350,13 +366,19 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
             for case in ran:
                 for step_id, ok in case.pop("_steps", {}).items():
                     held[step_id] = held.get(step_id, False) or ok
-            public_ran = public_ran or visibility == "public"
             all_cases += ran
             reveal = visibility == "public" or already_passed
             gates[visibility] = contract.gate_from_cases(ran, reveal=reveal)
             previous_passed = gates[visibility]["status"] == "pass"
 
-    baseline = _stub_baseline(problem) if public_ran and held else frozenset()
+        # A step with its own case runs it after the gates, whatever they
+        # said, and the case counts toward none of them.
+        for check in problem.step_checks:
+            if check.get("case"):
+                held[check["step_id"]] = _holds_on_own_case(
+                    check, source, problem, stage_observer)
+
+    baseline = _stub_baseline(problem) if stepped and held else frozenset()
 
     worst_llm = max((c["llm_calls"] for c in all_cases), default=0)
     worst_tool = max((c["tool_calls"] for c in all_cases), default=0)
@@ -370,13 +392,13 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
             hints_revealed=hints_revealed, within_budget=within_budget,
         ),
         "gates": gates,
-        # docs/01 S4: a step is green when any public case satisfied its
-        # micro-check and the untouched stub did not. Empty when the public
-        # cases did not run.
+        # docs/01 S4: a step is green when its micro-check held, on any public
+        # case or on the step's own case, and the untouched stub's did not.
+        # Empty when the gate stopped the code before anything ran.
         "steps": [
             {"id": check["step_id"], "status": _step_status(check["step_id"], held, baseline)}
             for check in problem.step_checks
-        ] if public_ran else [],
+        ] if stepped else [],
         "budget": {
             "llm_calls": worst_llm,
             "tool_calls": worst_tool,
