@@ -284,6 +284,11 @@ coach:
       say: >-
         The amount arrived as text. Did your code send it back to the model,
         or change it into a number on its own?
+    - id: true-amount
+      when: { test_failed: an_amount_sent_as_true_goes_back_to_the_model }
+      say: >-
+        The amount arrived as true, which the contract says is not a whole
+        number. Print what your amount check returns for true.
     - id: repair-trusted
       when: { test_failed: a_repair_that_is_still_invalid_goes_to_a_person }
       say: >-
@@ -399,6 +404,28 @@ tests:
       assertions:
         - { type: returns_matches, value: '"status"\s*:\s*"ok"' }
         - { type: returns_matches, value: '"amount_pence"\s*:\s*3999\b' }
+        - { type: llm_calls_at_most, value: 2 }
+
+  # The amount arrives as true, which json.loads turns into a bool that
+  # Python counts as an int. Any second reply carries the whole number, so
+  # this case reads the amount rule alone.
+  - name: an_amount_sent_as_true_goes_back_to_the_model
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          The e-reader I bought has a line of dead pixels down the middle of
+          the screen. I would like my money back, it was 89.99. Order 5563.
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"decision": "refund", "amount_pence": true, "reason": "The screen has a line of dead pixels."}' }
+        - { match: "*",
+            reply: '{"decision": "refund", "amount_pence": 8999, "reason": "The screen has a line of dead pixels, so we are refunding it."}' }
+      budget: { max_llm_calls: 3, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"status"\s*:\s*"ok"' }
+        - { type: returns_matches, value: '"amount_pence"\s*:\s*8999\b' }
         - { type: llm_calls_at_most, value: 2 }
 
   - name: a_repair_that_is_still_invalid_goes_to_a_person

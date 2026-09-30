@@ -43,7 +43,9 @@ contract_md: |
   Return the ticket as a JSON string with exactly the keys `order_id`, `email`
   and `phone`. Each value is either a string that appears in the email,
   ignoring case, or null. A value the email does not contain is null, no
-  matter how plausible it looks.
+  matter how plausible it looks. So is a value that is not a string with
+  text in it, such as a number, a list or an empty string. A number is null
+  even when its digits are in the email.
 
   Budget: at most 2 model calls, and one is enough. Allowed imports: json, re.
 
@@ -236,6 +238,12 @@ coach:
       say: >-
         The model wrote words where it should have written null. Does your
         check treat a placeholder any differently from a real value?
+    - id: not-text-kept
+      when: { test_failed: a_number_or_an_empty_string_is_not_a_value }
+      say: >-
+        The model sent the phone number as a number and the address as an
+        empty string. What does stated_in say about a value that is not a
+        string with text in it?
     - id: shape-from-the-reply
       when: { test_failed: a_field_the_model_dropped_is_still_on_the_ticket }
       say: >-
@@ -337,6 +345,28 @@ tests:
         - { type: returns_matches, value: '"email"\s*:\s*null' }
         - { type: returns_matches, value: '"phone"\s*:\s*null' }
         - { type: returns_matches, value: '"order_id"\s*:\s*"HW-20702"' }
+
+  # The phone number comes back as a number whose digits the email holds,
+  # and the address as an empty string, which every email contains. Only a
+  # string with text in it can be stated, so both are null.
+  - name: a_number_or_an_empty_string_is_not_a_value
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Hi, the lamp shade from order HW-21408 arrived dented on one side.
+          You can call me on 07700900561 after six. Thanks, Marek
+      llm_script:
+        - { match: "*",
+            reply: '{"order_id": "HW-21408", "email": "", "phone": 7700900561}' }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [order_id, email, phone],
+                      properties: { order_id: { const: "HW-21408" },
+                                    email: { type: "null" },
+                                    phone: { type: "null" } } } }
 
   - name: a_field_the_model_dropped_is_still_on_the_ticket
     visibility: hidden
