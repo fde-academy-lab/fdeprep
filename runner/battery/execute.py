@@ -26,6 +26,7 @@ import jsonschema
 
 from runner.battery import flags as flagging
 from runner.battery import result as contract
+from runner.battery import scratch
 from runner.battery.host import (
     Exchange, SandboxProtocolError, Session, child_env, converse,
 )
@@ -106,6 +107,12 @@ def run_single_case(name: str, spec: dict[str, Any], source: str, *,
         return _judge(name, spec, document, exchange, trace, step_checks)
     finally:
         shutil.rmtree(root, ignore_errors=True)
+        # The process group is dead by now, so nothing writes while this runs.
+        # A failure raises, and the invocation ends in an error verdict rather
+        # than handing the next case whatever this one left.
+        area = scratch.configured()
+        if area:
+            scratch.clear(area)
 
 
 # Steps the untouched stub already satisfies, per problem version. The runner

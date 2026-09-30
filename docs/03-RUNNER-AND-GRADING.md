@@ -20,7 +20,7 @@ Lambda runner (container image, Python 3.12)
   -> write trace to S3, write result to Postgres, delete message
 ```
 
-One Lambda invocation per submission. No shared state between invocations. No warm-instance reuse of learner code, since `/tmp` is wiped by copying a fresh working directory from the read-only image layer on every invocation.
+One Lambda invocation per submission. No shared state between invocations. No warm-instance reuse of learner code: each case runs in a fresh working directory under `/tmp`, and the runner empties `/tmp` before every invocation and after every case. Amended 30 September 2026. Until then only the working directory was fresh, and a file learner code wrote anywhere else in `/tmp` survived into the next invocation on the same instance, where the next learner's code, or the same learner's next Run, could read it. That is how a hidden case's input written down during a submit could be printed back by a later public case. Writing a file needs a way past the static gate first, so this is the layer behind the gate. `runner/battery/scratch.py` empties the directory without recursing and without following links, so a tree nested past the recursion limit or past `PATH_MAX` goes too, and an instance that cannot empty it runs nothing and returns an error verdict. The image sets `RUNNER_SCRATCH_DIR=/tmp`; nothing else does, because a developer's `/tmp` is shared with the rest of the machine.
 
 Why Lambda rather than a cluster: at 200 learners the peak is roughly 30 concurrent submissions, the work is short and bursty, and there is no idle cost or node to patch. A submission that hangs dies with its invocation.
 
@@ -386,7 +386,7 @@ The runner executes untrusted code written by 200 people who are learning, some 
 | Control | Implementation |
 |---|---|
 | Network | Lambda in a VPC with no NAT and no internet route. Nothing in the runner can reach out. Model calls for probes and judging happen in a separate Lambda that never executes learner code. |
-| Filesystem | Working directory under `/tmp`, 512MB, wiped per invocation. Image layers are read-only. |
+| Filesystem | Working directory under `/tmp`, 512MB. The runner empties `/tmp` before each invocation and after each case, and an instance that cannot empty it runs nothing (section 1). Image layers are read-only. |
 | Process | No `subprocess`, blocked at the AST gate and again by an import hook. Since 29 September 2026 the kernel refuses it too: the sandbox runs with `RLIMIT_NPROC` at 0, and the runner kills the sandbox's whole process group before reaping it. |
 | Harness state | The scripted model, the tool fixtures, the budget ceilings and the trace live in the runner, which answers each call over a pipe (section 2.1). The sandbox reports how `run_agent` ended and nothing else; a trace or a count in its result file is ignored. |
 | CPU and memory | Lambda memory 1024MB, per-test wall clock enforced by a watchdog thread that raises, then by the Lambda timeout as a backstop. |
