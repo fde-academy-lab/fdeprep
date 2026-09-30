@@ -396,3 +396,13 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I018.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+traps:
+  - Fanning deletion out to the four named stores, or a register of them, which misses the next derived
+    store nobody listed.
+  - Treating a fine-tuned checkpoint or an exported fixture as editable, with no rule for artefacts that
+    cannot have a fact removed.
+  - Offering a log line that a job ran as proof, with no deletion record per artefact and no search shown
+    to come back empty.
+  - Telling the customer the deletion is done at once, with no stated window for the derived copies to
+    clear.

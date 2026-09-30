@@ -470,3 +470,26 @@ interview_evidence:
     You have keyword results and vector results for the same query. How do you merge them into one ranking, and why not sort by score?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: keyword_search
+    args: query
+    returns: A status and `results` best first, each with an `id`, a keyword `score` from 0 to about 20
+      and its `text`. It can also raise.
+  - name: vector_search
+    args: query
+    returns: A status and `results` best first, each with an `id`, a similarity `score` from 0 to 1 and
+      its `text`. It can also raise.
+example:
+  case: answers_from_a_chunk_both_searches_rank_first
+  expect: Call both searches, fuse the two lists by rank so kb-300, first in both, leads the top three,
+    and return the model's answer that the rear door is open or its sensor cannot see it closed.
+traps:
+  - Merging the two lists by raw score, which keeps keyword search's top three because its scores run
+    to 20 and vector scores stop at 1.
+  - Crediting an id each time it appears in one list, where it counts once, at its first position in that
+    list.
+  - Leaving a tie in fused score to the order the lists were read, where the contract breaks it by id
+    in ascending order.
+  - Letting a retriever's exception escape, so one search timing out loses the answer the other list still
+    holds.

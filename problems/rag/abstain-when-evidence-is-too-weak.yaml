@@ -394,3 +394,19 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I007.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: search
+    args: query
+    returns: A status and a list of `chunks`, each with an `id`, a relevance `score` and its `text`.
+example:
+  case: answers_from_a_strong_match
+  expect: Call `search`, keep only the chunk scoring 0.55 or above, put it in the scratchpad, and return
+    the model's answer that laptops can be returned within 14 days, in at most 3 model calls.
+traps:
+  - Asking the model to write an answer when no chunk reaches 0.55, where the loop should return the abstention
+    sentence itself.
+  - Filtering after the model has read every chunk, so a weak chunk that contradicts a strong one has
+    already reached the prompt.
+  - Using a strict greater-than on the score, which throws away a chunk scoring exactly 0.55 that counts
+    as evidence.

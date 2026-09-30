@@ -388,3 +388,24 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I015.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: account_api
+    args: action, number, ...
+    returns: '`{"status": <code>, ...}`, such as 200 with `used_gb` or 503 when it is down. It returns
+      only what the caller may see, and it may raise.'
+  - name: staff_console
+    args: action, number, ...
+    returns: 'The same `{"status": <code>, ...}` shape, such as 200 with `used_gb`. It reads and changes
+      any account and skips the identity check.'
+example:
+  case: an_outage_on_a_read_falls_back
+  expect: The model asks for usage and `account_api` answers 503, an outage on an allowed action, so try
+    `staff_console` once and return `outcome` done with `via` naming `staff_console`.
+traps:
+  - Falling back whenever `account_api` is down, whatever the action; the console may only do what `FALLBACK_ALLOWED`
+    lists.
+  - Letting an exception from `account_api` escape, when a call that raises counts as an outage.
+  - Listing the statuses that must not fall back, so a status nobody thought of still reaches `staff_console`.
+  - Routing a 401 or a 403 to `staff_console`, which asks a more powerful tool the question the caller
+    was just refused.

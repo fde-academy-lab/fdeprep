@@ -255,3 +255,17 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I002.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+example:
+  message: The vase I sent to my sister arrived in pieces. The order number is 30412. What happens now?
+  expect: Ask for a photograph of the damage or a depot reference before approving, since the claim has
+    an order number and no evidence yet, and keep the reply warm and brief.
+traps:
+  - Replacing every always in the prompt, which breaks the three promises in the worked examples to fix
+    one clause.
+  - Deleting the approval clause with no condition in its place, so a genuine transit damage claim has
+    nowhere to go.
+  - Keeping the ban on asking for photographs, which leaves approval nothing to rest on but the customer's
+    word.
+  - Saying nothing about customer text, so an instruction inside a claim is followed as if the prompt
+    had given it.

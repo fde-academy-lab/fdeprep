@@ -798,3 +798,20 @@ interview_evidence:
     How do you make sure a prompt fits the model's token limit, and what do you cut first when it does not?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: prompt_parts
+    args: ticket
+    returns: A status, the `allowance`, the `answer_tokens` the answer needs and the `blocks`, each with
+      `id`, `kind`, measured `tokens` and `text`, plus `rank` on context.
+example:
+  case: the_offers_sheet_goes_before_anything_useful
+  expect: The blocks cost 414 tokens against a limit of 320, so drop the rank 3 offers sheet, keep the
+    rest in order, and return the moving label whose reason names the coverage check.
+traps:
+  - Fitting the prompt to the whole allowance, which leaves the answer less than the 80 tokens it needs
+    and cuts the label off.
+  - Estimating tokens at four characters each, which undercounts Hindi text, when every block carries
+    the tokenizer's own count.
+  - Dropping context by its place in the list, which can remove the most useful block when the ranks arrive
+    out of order.

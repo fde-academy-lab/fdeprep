@@ -450,3 +450,30 @@ interview_evidence:
     Your EU customer's preferred model is down, and the only healthy fast model is in the US. What does your router do, and who decides?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: routing
+    args: ''
+    returns: A status, the claim's constraints in `request`, the client's `preference` order, and the
+      `candidates` with residency, p95 latency and price.
+  - name: eu-large
+    args: prompt
+    returns: 'Sends the claim to this model: a status and its `text`, another status, or an exception.'
+  - name: eu-small
+    args: prompt
+    returns: 'Sends the claim to this model: a status and its `text`, another status, or an exception.'
+  - name: us-large
+    args: prompt
+    returns: 'Sends the claim to this model: a status and its `text`, another status, or an exception.'
+example:
+  case: the_first_preference_inside_every_ceiling_answers
+  expect: '`eu-large` is too slow and `us-large` is outside the EU, so call only `eu-small`, never `llm`,
+    and return JSON with `model` eu-small and its answer that storm damage to the roof is covered.'
+traps:
+  - Sending a claim outside its region, or to `llm`, once nothing qualifies, when the router should refuse
+    and say what ruled each model out.
+  - Treating a missing latency or price as zero, which passes a candidate on numbers nobody measured.
+  - Comparing the price per 1,000 tokens with the per-claim ceiling, without multiplying by the claim's
+    tokens first.
+  - Walking the whole preference list during a fallback, which reaches a model the constraints ruled out
+    once the allowed ones fail.

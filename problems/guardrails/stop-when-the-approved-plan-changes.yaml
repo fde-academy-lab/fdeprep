@@ -467,3 +467,39 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I020.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: approval
+    args: ''
+    returns: 'The change board''s record: `change`, `approved`, `version` and `steps`, each a tool and
+      its args. It can be declined or fail to arrive.'
+  - name: drain_node
+    args: node
+    returns: A status and `ok` true when the step worked. A step can also raise, or return without `ok`
+      true.
+  - name: patch_kernel
+    args: node
+    returns: A status and `ok` true when the step worked. A step can also raise, or return without `ok`
+      true.
+  - name: restore_node
+    args: node
+    returns: A status and `ok` true when the step worked. A step can also raise, or return without `ok`
+      true.
+  - name: promote_replica
+    args: node
+    returns: A status and `ok` true when the step worked. A step can also raise, or return without `ok`
+      true.
+  - name: request_approval
+    args: version, steps, ran
+    returns: A status, `queued` true and a board `ticket` reference.
+example:
+  case: runs_the_approved_plan_to_the_end
+  expect: Version 3 is approved and the planner says Continue before every step, so drain, patch and restore
+    db-7 in order and return JSON whose `outcome` is completed.
+traps:
+  - Running any step after a Replan, even one identical to the approved plan's, when the plan is now an
+    unapproved version one higher.
+  - Treating a step that raised as done or as never run, where its outcome is unknown and the run halts
+    there.
+  - Reading an approval record that never arrived as permission, where a missing approval runs nothing,
+    as a declined one does.

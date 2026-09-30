@@ -445,3 +445,20 @@ interview_evidence:
     A chat message says the customer has a new bank account, and your memory holds one verified on a call-back. Which one does the agent use, and what happens to the other?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: facts
+    args: ''
+    returns: A status and every record the memory holds, each with a `field`, a `value`, a `source` (`verified`,
+      `agent` or `chat`) and an `at` date.
+example:
+  case: the_newer_record_wins_between_two_agent_notes
+  expect: 'Both phone records come from `agent`, so the newer one speaks for the field, the prompt reads
+    phone: 07700 900456, and the reply is Call 07700 900456, in one model call.'
+traps:
+  - Letting the newest record win every field, so a chat message replaces a value verified on a call-back.
+  - Dropping a newer, different record that lost only on trust, which belongs in the prompt as an unconfirmed
+    line.
+  - Comparing values as raw strings, so the same value retyped in another case or with a stray space shows
+    up as unconfirmed.
+  - Holding back a losing record that is older than the fact that beat it, which should be dropped.

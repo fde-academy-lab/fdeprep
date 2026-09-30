@@ -409,3 +409,19 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I019.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: trace
+    args: ''
+    returns: A status, the case's `expected` and `answer`, the run's own `summary`, its `allowed_tools`
+      and the recorded `events`.
+example:
+  case: a_wrong_answer_fails_the_outcome_only
+  expect: Put Expected and Answer in the prompt, take the model's fail as the outcome, find no call outside
+    `allowed_tools`, and return JSON with `outcome` fail and `behaviour` pass.
+traps:
+  - Letting a correct answer decide the behaviour verdict, which passes a run that called a tool it was
+    not allowed to.
+  - Reading the run's `summary` to learn which tools it called, when the summary is the run's own claim
+    and `events` is the record.
+  - Stopping at the first unauthorised call, which leaves a later one in the same run without a reason.

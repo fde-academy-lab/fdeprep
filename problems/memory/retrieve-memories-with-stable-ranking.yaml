@@ -438,3 +438,24 @@ interview_evidence:
     The same question retrieves different memories on two calls a minute apart. What is going on, and how do you make retrieval repeatable?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: session
+    args: ''
+    returns: A status and the `tenant` this conversation belongs to, which can be unknown.
+  - name: recall
+    args: query
+    returns: A status and candidate `memories` from every shard, in the order the shards answered, each
+      with `id`, `tenant`, `score` and `text`.
+example:
+  case: the_three_best_memories_in_score_order
+  expect: Rank this tenant's memories by score, write the top three as lines under Memories:, best first,
+    and return the reply to deliver after 6pm on a weekday, in one model call.
+traps:
+  - Sorting by score alone, which leaves tied memories in arrival order, and the shards change that order
+    on every call.
+  - Letting one memory saved twice, with different case or punctuation, take two of the three slots.
+  - Filtering by tenant after cutting to three, so another tenant's memory still costs this customer a
+    slot.
+  - Skipping the tenant filter when the session service returns no tenant, which shows the model every
+    retailer's memories.

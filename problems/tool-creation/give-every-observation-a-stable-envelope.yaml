@@ -534,3 +534,44 @@ interview_evidence:
     Your tools return a dict, a string or None, and sometimes raise. What does the model see in each case, and what should it see?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: find_order
+    args: email
+    returns: '`{"status": 200, "order": {"id": ..., "slot": ...}}` with the customer''s order and its
+      delivery slot.'
+  - name: amend_window
+    args: order
+    returns: A plain string saying until when the order can be changed.
+  - name: substitutions
+    args: order
+    returns: A list of the items swapped in the order, or `None` when nothing was swapped.
+  - name: delivery_slot
+    args: order
+    returns: The order's delivery slot. When its database is slow it raises or returns an error body instead.
+  - name: refund_status
+    args: order
+    returns: The refund status of an order. In the check for step 1 it raises a `TimeoutError` and returns
+      nothing.
+  - name: basket_editor
+    args: order
+    returns: 'In the check for step 2 it answers with an error body: `{"status": 503, "error": {"code":
+      ..., "detail": ...}}`.'
+  - name: price_changes
+    args: order
+    returns: A list of price changes on the order since it was placed, empty when nothing changed.
+  - name: add_delivery_note
+    args: order
+    returns: '`{"status": 200, "saved": true}` once the note is saved.'
+example:
+  case: a_found_order_reaches_the_model
+  expect: '`find_order` returns a dict, so wrap it in an ok envelope with the dict as `data`, append it
+    as one line of JSON, and return the model''s answer naming order G-5512, in two model calls at most.'
+traps:
+  - Passing `None` or an empty list to the model as it came, or calling it an error, so a tool with nothing
+    to report reads as broken.
+  - Calling the tool outside a try, so a raise ends the loop, or giving a `TimeoutError` the same code
+    as any other raise.
+  - Copying an exception's message or an error body's detail into the envelope, where the model can repeat
+    it to a customer.
+  - Appending the envelope as a Python repr or as indented JSON, which the model cannot read as one line.

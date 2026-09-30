@@ -520,3 +520,22 @@ interview_evidence:
     Your agent's prompts go to a third-party model provider. How do you keep customers' personal data out of them and still send each customer a reply with their own details in it?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: read_ticket
+    args: ''
+    returns: A status and the ticket's `id`, `body` and `metadata`, which can nest dicts and lists. Any
+      string in it can hold personal data.
+example:
+  case: a_ticket_with_contact_details_gets_a_draft
+  expect: Swap the email address and phone number in the metadata for `[EMAIL_1]` and `[PHONE_1]` before
+    the prompt is built, so the gateway lets it through, and return the draft about a line test tonight.
+traps:
+  - Swapping personal data for a fixed marker, which leaves nothing to restore the customer's own details
+    from when the draft comes back.
+  - Restoring a card placeholder as the full number, where the rule allows only card ending and its last
+    four digits.
+  - Giving two different values of one kind the same placeholder, so the draft cannot say which is which
+    once they are restored.
+  - Redacting the body and the top level of the metadata only, which sends a value nested in a list of
+    call notes to the model.

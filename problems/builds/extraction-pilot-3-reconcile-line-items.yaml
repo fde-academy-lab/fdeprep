@@ -598,3 +598,28 @@ interview_evidence:
     The line items you extracted add up to less than the total the letter claims. Which number do you pay?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: invoice
+    args: ''
+    returns: The scanned invoice as `status` 200 and `text`. Treat any other result as an invoice with
+      no text.
+  - name: submit
+    args: record
+    returns: '`status` 200 and the `claim` id the claims system gives the record.'
+  - name: human_queue
+    args: record, errors
+    returns: '`status` 200 and a `ticket` id once the record is in front of an adjuster.'
+example:
+  case: line_items_that_do_not_add_up_go_to_the_queue
+  expect: 'Read the invoice, keep the three lines it shows, find they sum to less than the £1,935.00 claimed,
+    and queue the record with `amount_claimed: does not match the line items`.'
+traps:
+  - Adding money as floats, so lines that add up exactly can miss the total and send a correct claim to
+    the queue.
+  - Counting a line the model returned without checking that the invoice text shows its amount, so an
+    invented line can balance the total.
+  - Dropping a line whose amount the invoice lacks without adding its error line, so the repair never
+    says which amount is missing.
+  - Crashing on, or trusting the model's lines for, an invoice that never arrived, when no invoice text
+    means no line can pass.

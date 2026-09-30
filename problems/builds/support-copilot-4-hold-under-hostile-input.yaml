@@ -707,3 +707,29 @@ interview_evidence:
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat. Topic from the problem
     catalogue, docs/source-pack/05-problem-catalog.csv G029.
+
+tools:
+  - name: search
+    args: query
+    returns: '`status` 200 and `chunks`, each with an `id` such as P-3, a `score` and the policy `text`.'
+  - name: get_order
+    args: order_id
+    returns: 'The order record: `status` 200 and `data` with `order_id`, `charged_cents` and `refunded_cents`.
+      It may raise, or answer with no order at all.'
+  - name: refund
+    args: order_id, amount_cents
+    returns: 'A receipt: `status` 200 and `data` with `state`, `order_id` and `amount_cents`. It may raise,
+      or send a receipt that leaves fields out.'
+example:
+  case: a_refund_larger_than_the_order_goes_to_a_person
+  expect: The order record leaves 2350 pence to refund and the action asks for 6000, so never call `refund`,
+    and return intent `refund` with `answer` and `refund_cents` null.
+traps:
+  - Bounding the refund by what was charged and forgetting what was already refunded, so a customer who
+    writes in twice is paid twice.
+  - Letting a draft that agrees with itself approve a refund, when only a readable order record bounds
+    the amount and an unreadable one allows none.
+  - Confirming a refund from `state` alone without checking that the receipt's `order_id` and `amount_cents`
+    match what you sent.
+  - Letting a refused model call escape as an exception, instead of returning the routing you have with
+    `answer` and `refund_cents` null.

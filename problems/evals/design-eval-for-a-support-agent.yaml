@@ -327,3 +327,12 @@ interview_evidence:
     A client has forty hand-written conversations and a ninety five percent pass rate, and wants to launch. What would you measure before you agreed?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+traps:
+  - Growing the set with cases written by the team that built the agent, which repeats the blind spots
+    of the first forty.
+  - Writing gates as adjectives or as one overall pass rate, with no number, population and consequence
+    for each.
+  - Folding harm into the pass rate, so an unauthorised refund counts as one more miss in an average.
+  - Answering the date with a delay alone, with no smaller launch that keeps it, such as human approval
+    on refunds.

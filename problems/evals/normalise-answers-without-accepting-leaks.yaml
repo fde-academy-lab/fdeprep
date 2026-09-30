@@ -373,3 +373,19 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I022.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: case
+    args: id
+    returns: A status, the case's `question` and its `expected` answer.
+example:
+  case: formatting_the_eval_team_listed_is_forgiven
+  expect: 'Send the model the question alone, put its reply `Answer: **30 Days.**` and the expected answer
+    through the five rules, where both become 30 days, and return JSON with `verdict` pass.'
+traps:
+  - Passing a reply because the expected answer appears somewhere inside it, which forgives a list of
+    every option and a pasted tool transcript.
+  - Rejecting any reply with a comma to catch a list of options, which fails a right answer that has a
+    comma in it.
+  - Normalising the reply and leaving the expected answer as written, so a capital letter in the key fails
+    a right reply.

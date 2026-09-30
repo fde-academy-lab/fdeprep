@@ -486,3 +486,29 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I004.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: page_text
+    args: invoice
+    returns: '`{"status": 200, "text": "..."}`, the scanned invoice page as text.'
+  - name: approve_payment
+    args: invoice, amount_pence
+    returns: '`{"status": 200, "approved": true}` once it approves paying the invoice that amount.'
+  - name: hold_for_review
+    args: invoice, issues
+    returns: '`{"status": 200, "queued": true}` once the invoice is queued for a person with the issues
+      you pass.'
+example:
+  case: a_table_missing_a_line_is_held
+  expect: 'Line 3 is missing, so the amounts come to 434.50 against a subtotal of 482.50: call `hold_for_review`,
+    never `approve_payment`, and return flagged with `total_pence` null and an issue whose `check` is
+    subtotal.'
+traps:
+  - Checking that the rows add up to the subtotal and never checking that subtotal plus VAT makes the
+    total.
+  - Checking only the sums, so rows whose quantities moved between lines pass; each row must multiply
+    out, and a failing row is named by its line.
+  - Parsing money through `float()`, so a correct invoice full of pennies misses its own subtotal and
+    is held.
+  - Adding up a table before deciding it is readable, so a table with no rows balances at zero and gets
+    paid.

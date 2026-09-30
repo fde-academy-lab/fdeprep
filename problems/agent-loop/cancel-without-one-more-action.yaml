@@ -438,3 +438,28 @@ interview_evidence:
     An operator cancels an agent's run while it is mid-task. How do you make sure it does not take one more action?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: lookup
+    args: account
+    returns: 'The account''s balance and days overdue, stamped with the run state: `{"status": 200, "run":
+      "live", "balance_cents": 8420, ...}`.'
+  - name: send_text
+    args: account
+    returns: '`{"status": 200, "run": "live", "sent": true}`, where `run` is the run state when the response
+      arrived.'
+  - name: apply_late_fee
+    args: account
+    returns: '`{"status": 200, "run": "live", "applied": true}`, stamped with the run state like every
+      response.'
+example:
+  case: a_reply_that_arrives_cancelled_is_not_acted_on
+  expect: 'The model''s reply arrives stamped cancelled, so send nothing and ask the model nothing more:
+    return `outcome` cancelled with the planned `send_text(account=A-2)` first in `held`.'
+traps:
+  - Reading the run state once per reply, so a cancel stamped on the first action's response does not
+    stop the next action in that reply.
+  - Asking the model for another turn, or a summary, after the run stopped being live.
+  - Leaving the stub's last line as it is, so a run whose model calls ran out reports `finished` with
+    an empty note.
+  - Reading a tool response with no `run` in it as live, when only the exact word live lets anything through.

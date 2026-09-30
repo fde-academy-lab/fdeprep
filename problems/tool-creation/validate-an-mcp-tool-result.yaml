@@ -642,3 +642,21 @@ interview_evidence:
     An MCP server you do not own returns a result that breaks the output schema its tool declared. What does your client do, and what does the model see?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: check_stock
+    args: sku, store
+    returns: 'An MCP result: `content` text blocks, and usually `structuredContent` with `sku`, `store`
+      and `on_hand`, plus `isError` and `_meta`.'
+example:
+  case: a_result_that_matches_its_schema_reaches_the_model
+  expect: '`isError` is false and `structuredContent` matches the schema, so append its `sku`, `store`
+    and `on_hand` as JSON and return the answer that Leeds has 3 pairs, in two model calls at most.'
+traps:
+  - Trusting `structuredContent` without checking its types, so a null count, or a boolean one that `isinstance(True,
+    int)` accepts, reaches the model.
+  - Reading a count from a result whose `isError` is true, even when its `structuredContent` matches the
+    schema.
+  - Letting `_meta`, a field the schema does not declare, or the text of a rejected result into the prompt.
+  - Assuming every answer has the MCP shape, so a result from something else raises or reaches the prompt
+    raw.

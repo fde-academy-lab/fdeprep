@@ -465,3 +465,22 @@ interview_evidence:
     Your chat assistant's conversation has outgrown the context window. What do you trim, and what can never be trimmed?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: conversation
+    args: ''
+    returns: A status, the token `window`, the `policy` text and its `tokens`, and the `turns` oldest
+      first, each with `n`, `role`, `text` and `tokens`.
+example:
+  case: the_oldest_turns_leave_first
+  expect: Put the policy first, fit the three newest turns into the 60 tokens it leaves, add the question,
+    and return the reply that the one-year fixed term can be opened online, in one model call.
+traps:
+  - Keeping the policy in the same list that trimming cuts from the front, so the policy is the first
+    block to go.
+  - Budgeting the turns against the whole window, which forgets that the policy's tokens come out of the
+    same window.
+  - Calling the model when the policy alone is over the window, where the answer is the sentence that
+    hands the chat to a person.
+  - Skipping a turn that does not fit and keeping older ones, which hands the model a request without
+    the reply that answered it.

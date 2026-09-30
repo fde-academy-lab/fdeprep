@@ -407,3 +407,13 @@ interview_evidence:
     whose follow-up removes outbound internet from the model service. That bank labels
     every entry "Original interview-style practice; actual employer frequency
     unverified", and this inherits the caveat.
+
+traps:
+  - Keeping the hosted model by allowlisting an endpoint, opening a temporary connection or tunnelling
+    out, all of which the regulation forbids.
+  - Testing the bundle only on servers that can reach the internet, which misses the libraries that fetch
+    a file the first time they run.
+  - Assuming the self-hosted model matches the 88 percent demo, instead of re-running the 220 questions
+    and agreeing a ready score first.
+  - Planning updates with no rehearsed release route and no rollback that avoids waiting three days for
+    another transfer.

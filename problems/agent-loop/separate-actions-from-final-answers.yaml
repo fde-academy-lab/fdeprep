@@ -339,3 +339,19 @@ interview_evidence:
     The model emits something that could be a tool call or could be the answer. How do you tell, and what happens when you are wrong?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: book
+    args: table, time
+    returns: '`{"status": 200, "reference": ...}` with the booking reference once the table is booked.'
+example:
+  case: books_then_answers
+  expect: The first reply is only an Action, so call `book(table=4, time=20:00)` and append the result;
+    the next reply is only a Final Answer, so return its text saying table 4 is booked.
+traps:
+  - Testing for a Final Answer first and returning it, so a reply that also carries an Action is taken
+    as the answer.
+  - Calling the tool from a reply that also carries a Final Answer; a reply with both markers goes back
+    to the model unused.
+  - Sending a reply with neither marker back with the prompt unchanged, so the model gives the same reply
+    until the budget runs out.

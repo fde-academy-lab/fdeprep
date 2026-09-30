@@ -361,3 +361,20 @@ interview_evidence:
     A carrier is failing and you have a deadline to answer in. How many times do you retry, and what do you send when the clock runs out?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: ship
+    args: order
+    returns: '`{"status": 200, "booking": <ref>}` on success, `{"status": 429}` or 503 while it is failing,
+      401 for bad credentials, or it raises.'
+example:
+  case: a_carrier_that_stays_down_still_returns_json
+  expect: The carrier answers 503 every time, so retry on the backoff schedule until the next delay would
+    not fit the deadline, then return valid JSON with `outcome` exhausted.
+traps:
+  - Checking the deadline after waiting, so the largest delay is already spent when the loop notices it
+    is over.
+  - Waiting a shortened delay to use up the time left, which sends a request the policy said not to send.
+  - Retrying a 401, which says the same thing on the second attempt as on the eleventh.
+  - Letting an exception from `ship` escape the loop, when a carrier that stops answering still counts
+    as an attempt.

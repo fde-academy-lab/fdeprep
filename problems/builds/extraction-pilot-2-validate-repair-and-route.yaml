@@ -508,3 +508,22 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I004.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: submit
+    args: record
+    returns: '`status` 200 and the `claim` id the claims system gives the record.'
+  - name: human_queue
+    args: record, errors
+    returns: '`status` 200 and a `ticket` id once the record is in front of an adjuster.'
+example:
+  case: a_record_that_stays_invalid_goes_to_the_human_queue
+  expect: 'The record fails with `policy_number: missing`, and after the one repair it still fails, so
+    send it to `human_queue`, never `submit`, and return `status` queued with that error.'
+traps:
+  - Sending a repair prompt without the previous reply and every error line, so the model gives the same
+    answer again.
+  - Trusting the repaired reply without grounding it again, so a value the model invented to fill a gap
+    gets submitted.
+  - Repairing more than once, when one repair is the limit and a record that still fails goes to `human_queue`
+    with its errors.

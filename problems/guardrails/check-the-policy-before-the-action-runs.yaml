@@ -630,3 +630,37 @@ interview_evidence:
     Your agent can issue refunds. Where does the refund limit live, and what happens when the model proposes a refund above it?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: session
+    args: ''
+    returns: A status and the `role` this chat acts with, such as `tier1` or `supervisor`.
+  - name: policy
+    args: ''
+    returns: 'A status and `roles`: for each role, the actions it may take and, under `max`, the limit
+      on each named argument.'
+  - name: refund
+    args: order, amount
+    returns: A status and `refunded` set to true.
+  - name: skip_delivery
+    args: week
+    returns: A status and `skipped` set to true.
+  - name: close_account
+    args: customer
+    returns: A status and `closed` set to true.
+  - name: pause_subscription
+    args: customer, weeks
+    returns: A status and `paused` set to true.
+example:
+  case: a_refund_inside_the_limit_is_issued
+  expect: The model proposes a 25 pound refund, inside the `tier1` limit of 40, so call `refund`, add
+    its result to the scratchpad, and return the answer that 25 pounds has been refunded.
+traps:
+  - Copying the policy's limits into the code, so a limit the operations team has since changed is not
+    the one your check applies.
+  - Reading a missing or non-numeric amount as 0, which sits under every limit and lets through a refund
+    the check never measured.
+  - Calling an action the role does not list, or refusing without a `Refused:` line that names the action
+    and the limit.
+  - Screening the customer's words for phrases that sound like an attack, which refuses an ordinary request
+    the role allows.

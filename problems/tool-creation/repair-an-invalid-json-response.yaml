@@ -403,3 +403,15 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I005.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+example:
+  case: parses_a_clean_reply
+  expect: 'The reply is clean JSON, so parse it and return it with `json.dumps`: category delivery, priority
+    high and order 8812, with no repair needed.'
+traps:
+  - Parsing a reply wrapped in a fenced code block as it arrived, so the fence makes a correct object
+    fail.
+  - Retrying with the same prompt after a parse failure; the repair has to say the reply did not parse
+    and what was wrong.
+  - Treating a stripped fence as the fix, so broken JSON inside a fence never gets its repair.
+  - Asking again after the repair fails too, or sending anything but the fallback JSON once it has.

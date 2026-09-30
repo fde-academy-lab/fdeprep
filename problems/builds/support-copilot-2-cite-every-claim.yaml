@@ -588,3 +588,19 @@ interview_evidence:
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat. Topic from the problem
     catalogue, docs/source-pack/05-problem-catalog.csv A036.
+
+tools:
+  - name: search
+    args: query
+    returns: '`status` 200 and `chunks`, each with an `id` such as P-3, a `score` and the policy `text`.'
+example:
+  case: a_pause_question_is_answered_with_its_citation
+  expect: Search, show the model only P-3 because P-5 scores under 0.6, send the draft since every sentence
+    cites P-3, and return intent `plan` with P-3 listed once in `citations`.
+traps:
+  - Checking only that the draft contains a citation somewhere, so one uncited sentence between cited
+    ones still reaches the customer.
+  - Accepting any citation shaped like an id, including one that names a chunk you never showed the model.
+  - Asking for a draft when no chunk reaches 0.6, or getting the bar wrong at its edge, where a chunk
+    at 0.6 is evidence and anything below stays out.
+  - Searching and drafting for a ticket that stage 1 routed to `triage`, which overrules the router.

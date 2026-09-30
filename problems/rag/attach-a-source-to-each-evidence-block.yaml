@@ -402,3 +402,20 @@ interview_evidence:
     Your context budget runs out halfway through a retrieved chunk. What do you send the model, and why?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: search
+    args: query
+    returns: A status and `chunks` best first, each with an `id`, a `source` name that most chunks share,
+      and its `text`.
+example:
+  case: two_chunks_from_one_handbook_keep_their_own_ids
+  expect: Write each chunk as its own block starting with its id in square brackets, so the model sees
+    [hb-41] and [hb-43] and returns an answer citing [hb-41] and then [hb-43].
+traps:
+  - Cutting the joined evidence at 400 characters, which sends the model half a sentence under a real
+    id for it to finish.
+  - Putting every chunk search returns into the prompt, with no running total that holds the evidence
+    to 400 characters.
+  - Labelling a block with its `source`, which most chunks share, so the model has no id to cite for the
+    sentence it uses.

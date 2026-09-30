@@ -338,3 +338,25 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I020.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: approve
+    args: digest
+    returns: '`{"status": 200, "approved": true, "token": ..., "digest": ...}` when granted, `{"status":
+      200, "approved": false}` when declined, or something else entirely.'
+  - name: payout
+    args: account, amount_cents
+    returns: '`{"status": 200, "paid": true}` once it has moved the money.'
+  - name: revoked
+    args: token
+    returns: '`{"status": 200, "revoked": true}` when the approval was withdrawn after it was granted,
+      and `"revoked": false` while it stands.'
+example:
+  case: pays_what_was_approved
+  expect: The approver grants the proposal and nothing changes before Execute, so call `payout` with the
+    approved arguments and return JSON with `outcome` paid, `paid_args` and a `reason`.
+traps:
+  - Recording the approval against the tool name, so a plan the model revises after the click still pays.
+  - Trusting an approval granted earlier without asking `revoked` just before `payout` runs.
+  - Treating anything but `approve` answering `approved` true as an approval, or pasting its reply into
+    the next prompt.

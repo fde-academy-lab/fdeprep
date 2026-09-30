@@ -506,3 +506,20 @@ interview_evidence:
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat. Topic from the problem
     catalogue, docs/source-pack/05-problem-catalog.csv A025.
+
+tools:
+  - name: describe
+    args: ''
+    returns: 'The schema: `status` 200 and `tables`, each with its `name`, a `description`, its `columns`
+      and a `deprecated` flag.'
+example:
+  case: revenue_by_region_reads_order_lines_and_stores
+  expect: Call `describe`, ask the model once, and return `tables` holding `order_lines` and `stores`,
+    which the schema lists and does not mark deprecated.
+traps:
+  - Keeping a table name the model gave without looking it up in what `describe()` returned.
+  - Checking only that a table exists, so one the schema marks deprecated still gets picked.
+  - Crashing on a reply that is not JSON, or pulling table names out of its prose, when such a reply picks
+    nothing.
+  - Returning a name twice, or in a different order from the model's, when each table appears once in
+    the order the model gave.

@@ -378,3 +378,21 @@ interview_evidence:
     A run failed and three steps logged errors. Which one broke it, and how did you decide that from the trace?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: trace
+    args: ''
+    returns: A status and the run's `steps`, each with an `n`, a `type` and that type's fields. It may
+      return something else entirely.
+example:
+  case: reports_a_single_error
+  expect: Walk the steps in order, find the first broken one, the error at step 3, ask the model for its
+    summary with a First broken step line, and return JSON with `first_failure` 3 and `kind` error.
+traps:
+  - Reporting the last or loudest error, which is usually a symptom of a quiet break earlier in the run.
+  - Checking only for error steps, which misses an observation that came back empty and let the run carry
+    on with nothing.
+  - Reporting three identical calls at the third copy, where the rule fired, when the engineer needs the
+    first call of the run.
+  - Indexing into a reply that has no step list, which raises, where the report should come back with
+    nothing in it.

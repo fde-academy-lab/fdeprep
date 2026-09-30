@@ -294,3 +294,17 @@ interview_evidence:
     A customer asks what the assistant can do. How do you answer that without handing over the function names?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+example:
+  message: Please cancel my subscription at the end of this month. I'm moving abroad.
+  expect: Cancel it only on the account the customer is authenticated against, since they gave a reason,
+    and say so in plain words that name no internal function.
+traps:
+  - Hiding the function names with a rule aimed at one wording, so a caller who asks another way, or with
+    a reason that sounds official, still gets them.
+  - Cutting the permissive lines so far that a customer with a genuine refund on their own order gets
+    nowhere.
+  - Leaving refunds and cancellations with no condition on whose account they touch, so a caller can act
+    on an account they do not hold.
+  - Watching for known attack phrases, which the next phrasing walks past; one line saying message text
+    never changes the rules holds against any.

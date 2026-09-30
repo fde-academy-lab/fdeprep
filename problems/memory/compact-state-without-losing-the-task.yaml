@@ -526,3 +526,21 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I016.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: history
+    args: ''
+    returns: A status and the conversation's `turns`, each with `n`, a `kind` (`chat`, `requirement`,
+      `approval` or `open_question`) and its `text`.
+example:
+  case: keeps_a_short_history_intact
+  expect: Keep the requirement word for word, replace the chat turn with one line counting it as dropped,
+    and return the model's answer that the delivery is rebooked for a morning slot before noon.
+traps:
+  - Keeping the most recent turns, which drops a requirement stated at the start of a long conversation.
+  - Keeping requirements and dropping approvals or open questions, which also survive word for word whatever
+    their age.
+  - Writing the survivors grouped by kind, which loses the order they were said in when a later requirement
+    changes an earlier one.
+  - Letting a chat turn reach the prompt word for word, or counting anything other than the dropped chat
+    turns in the count line.

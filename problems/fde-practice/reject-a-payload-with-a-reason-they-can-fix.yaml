@@ -421,3 +421,19 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I004.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: create_case
+    args: request_id, priority, unit, summary
+    returns: '`status` 201 and the new `case_id`.'
+example:
+  case: a_request_with_no_description_is_rejected
+  expect: Return `accepted` false with an error whose `field` is `description`, and make no model call
+    and no `create_case` call.
+traps:
+  - Reading inside `tenant` before checking that it is an object, so a tenant sent as null raises instead
+    of a rejection that says null arrived.
+  - Rejecting an unknown priority without naming all three allowed values and the value that actually
+    arrived.
+  - Returning at the first problem found, so a request with several problems names only one, or names
+    a nested field without its full path like `tenant.unit`.

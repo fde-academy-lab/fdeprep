@@ -391,3 +391,19 @@ interview_evidence:
     Your eval case failed, you re-ran it, and it passed. Is it passing?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: case
+    args: id
+    returns: A status, the case's `question`, its `expected` answer and the number of `trials` to run.
+example:
+  case: a_case_that_passes_every_trial
+  expect: Run exactly four trials, grade each reply as passed, and return JSON with 4 passed, a `pass_rate`
+    of [1.0, 1.0] and `verdict` pass, in four model calls.
+traps:
+  - Rounding a case that passes some trials and fails others to pass or fail, where the verdict for that
+    mix is `flaky`.
+  - Counting an empty reply or an `Error:` reply as failed, when it is missing and says nothing about
+    the assistant.
+  - Reporting pass or fail when no trial produced an answer, where the verdict is `no_data` and the rate
+    runs from 0 to 1.

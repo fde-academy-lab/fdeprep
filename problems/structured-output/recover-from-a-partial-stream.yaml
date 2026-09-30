@@ -432,3 +432,15 @@ interview_evidence:
     Your structured output streams to the screen and the connection drops halfway through the object. What does the user see, and what does the service keep?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+example:
+  case: a_finished_stream_becomes_a_quote
+  expect: The stream ends in `[DONE]` and its joined text parses with all four keys, so return `status`
+    complete with that quote, `price_pence` 184500, after one model call.
+traps:
+  - Closing open brackets, or parsing whatever arrived, so a stream cut partway through a value becomes
+    a finished-looking quote.
+  - Treating `[DONE]` alone as proof of a quote, when the object that arrived before it can still be unfinished.
+  - Parsing each event line without a guard, so a line the connection cut partway raises an exception.
+  - Reusing one buffer across requests, so the retried stream is joined onto the broken pieces of the
+    first.

@@ -337,3 +337,18 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I011.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: lookup
+    args: topic
+    returns: '`{"status": 200, "text": "..."}` holding what it found on the topic.'
+example:
+  case: summarises_after_one_lookup
+  expect: Call `lookup` for the topic the model names, append its text, and on the next reply return the
+    Final Answer text saying the weekend surcharge was removed, well inside 5 model calls.
+traps:
+  - Leaving a Final Answer as the loop's only exit, so a model that keeps asking for lookups is stopped
+    by the budget and nothing comes back.
+  - Returning an empty or generic sentence when the calls run out, when it has to say the work is unfinished
+    and carry the lookup text.
+  - Stopping before the fifth model call, which throws away a summary that arrives late.

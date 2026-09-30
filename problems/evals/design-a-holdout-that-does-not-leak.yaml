@@ -374,3 +374,13 @@ interview_evidence:
     Your eval cases and your prompt's examples came from the same tickets. How would you build a holdout you could trust?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+traps:
+  - Blaming overfitting, which aims the fix at training, when nothing was trained and the eval shares
+    its source tickets with the prompt examples.
+  - Splitting the cases at random over rows, which puts copies of one template on both sides and reports
+    the same 94 percent.
+  - Asking the prompt writers not to open the holdout, with no rule on where it lives, who can open it
+    and when it is replaced.
+  - Relying on care to keep the line, with no check before each release for a shared ticket, template
+    or near-identical wording.

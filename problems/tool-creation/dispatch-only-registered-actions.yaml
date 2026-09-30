@@ -358,3 +358,23 @@ interview_evidence:
     The model names a tool you do not have. What happens, and what does the customer see?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: lookup
+    args: account
+    returns: 'The account''s plan, such as `{"status": 200, "plan": "team"}`.'
+  - name: notify
+    args: '...'
+    returns: 'A confirmation, `{"status": 200, "sent": true}`. The problem never shows which arguments
+      it takes.'
+example:
+  case: calls_a_registered_tool
+  expect: The model asks for `lookup(account=118)`, a key of `tools`, so call it, append the result, and
+    return the model's Final Answer text naming the team plan.
+traps:
+  - Calling `tools[name]` before checking the name is a key of `tools`, so an invented tool ends the run
+    with a `KeyError`.
+  - Refusing an unknown tool in a line that never names it, so the model has no reason to choose differently
+    next time.
+  - Letting a model that keeps asking for a missing tool run the loop into the budget, where the loop
+    should return its own answer.

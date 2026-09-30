@@ -553,3 +553,30 @@ interview_evidence:
     You fan an investigation out to six workers. Results come back in whatever order they finish, some of them from another run. How does each result find the worker that produced it?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: dispatch
+    args: job, check, service
+    returns: '`status` 202 with `accepted` true. The check runs on a worker, and its result arrives later
+      through `collect`.'
+  - name: collect
+    args: ''
+    returns: '`status` 200 and `results` in finishing order, each a check result with its `job` id. Other
+      investigations share the queue, and a job may post nothing.'
+  - name: diff
+    args: deploy
+    returns: What one deploy changed, called with the `deploy` id a lead names in `next`. It returns a
+      `verdict`, a one-line `finding` and `next`.
+example:
+  case: every_result_lands_on_its_own_line
+  expect: Dispatch six jobs with their ids, collect once, match each result by its `job` id, and return
+    the model's finding, which sends the payments database cause to the payments team.
+traps:
+  - Pairing results with jobs by position, when workers post in finishing order and only the `job` id
+    says which job a result belongs to.
+  - Matching on the check and the service alone, so a result another investigation left in the shared
+    queue lands on your line.
+  - Walking the results you received instead of the jobs you dispatched, so a worker that never reported
+    gets no line saying so.
+  - Skipping stage 1's follow-up loop after the fan-out, so a lead's next checks never run when nothing
+    was definitive.

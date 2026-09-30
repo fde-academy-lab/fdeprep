@@ -316,3 +316,18 @@ interview_evidence:
     Your guardrails were written and tested in English, and a customer writes in Polish. What do you check before launch, and how?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+example:
+  message: Bonjour, mon colis 4417 est indiqué comme livré, mais je ne l'ai pas reçu. Qui a signé à la
+    réception ?
+  expect: Answer in French and send the customer to `parcels.example/account` to see who signed, because
+    who signed for a parcel is shown only where the customer is verified, whatever the language.
+traps:
+  - Translating the example refusals into Spanish and French, which covers those phrasings and leaves
+    every other language and rewording open.
+  - Leaving the paragraph that lets the assistant change an address in chat for other languages, with
+    its stale reason about English-only pages.
+  - Guarding against injection with a list of phrases, which an instruction in another language or alphabet
+    walks straight past.
+  - Closing the gap by answering everyone in English, which moves the failure onto the customers it was
+    already failing.

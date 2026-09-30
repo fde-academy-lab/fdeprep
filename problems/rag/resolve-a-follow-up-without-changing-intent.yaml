@@ -435,3 +435,25 @@ interview_evidence:
     A customer asks "what about the other one". What does your system have to hold on to, and what must it refuse to guess?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: history
+    args: ''
+    returns: A status and the shared session's `turns`, each with `n`, `customer_id` and `text`, from
+      every customer in the queue. It may return nothing.
+  - name: search
+    args: query
+    returns: A status and `chunks`, each with an `id` and its `text`.
+example:
+  case: resolves_a_follow_up_from_the_customers_own_turns
+  expect: Put only customer c-1's turns in the prompt, send the rewritten query about A-1188 to `search`,
+    and return the answer that order A-1188 is at depot 4, in at most 4 model calls.
+traps:
+  - Keeping every turn in the prompt and telling the model to use only this customer's, which still shows
+    it another customer's order.
+  - Checking the rewritten query for another customer's order, after the model has already read that customer's
+    turns.
+  - Searching when this customer's own turns name no order, where the answer is to ask which order they
+    mean.
+  - Indexing into a history result that came back empty, which raises, where a missing history also means
+    asking which order they mean.

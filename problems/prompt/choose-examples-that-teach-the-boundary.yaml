@@ -308,3 +308,16 @@ interview_evidence:
     Your few-shot classifier is right on the obvious cases and wrong on the close ones. How do you choose its examples?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+example:
+  message: When does my fixed rate end? I emailed twice last month to ask and nobody has replied.
+  expect: 'Reply with the one word COMPLAINT: the customer asks a question and also says the building
+    society let them down, and a problem mentioned on the way still makes a complaint.'
+traps:
+  - Keeping only easy examples, so a question with a complaint mentioned on the way still comes back QUERY.
+  - Letting politeness decide, so a grateful message that still says something went wrong is labelled
+    a query.
+  - Teaching the model that money means complaint, by rule or by example, so a plain question about a
+    charge comes back COMPLAINT.
+  - Dropping the plain queries to make room, so a simple request with no problem in it stops coming back
+    QUERY.

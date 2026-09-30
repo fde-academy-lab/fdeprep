@@ -693,3 +693,45 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I014.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: checkpoint_load
+    args: incident
+    returns: '`status` 200 and `data.state`: the state saved last, or null. Under load the store has answered
+      with another incident''s state.'
+  - name: checkpoint_save
+    args: incident, state
+    returns: '`status` 200 with `saved` true once the state is stored.'
+  - name: dispatch
+    args: job, check, service
+    returns: '`status` 202 with `accepted` true. The check runs on a worker, and its result arrives later
+      through `collect`.'
+  - name: collect
+    args: ''
+    returns: '`status` 200 and `results` in finishing order, each a check result with its `job` id. Other
+      investigations share the queue, and a job may post nothing.'
+  - name: diff
+    args: deploy
+    returns: 'What one deploy changed: a `verdict`, a one-line `finding`, `next`, and on a definitive
+      result the `owner` team to page.'
+  - name: page
+    args: team, key, incident, finding
+    returns: '`status` 200 with `paged` true. It can raise, and then the page may or may not have gone
+      out. A repeated key is dropped only within one minute.'
+  - name: page_status
+    args: key
+    returns: '`status` 200 with `delivered` true or false for that key. A reply without that flag is no
+      answer.'
+example:
+  case: a_finished_investigation_is_not_run_again
+  expect: Resume from this incident's saved state, whose page is marked sent, so dispatch nothing and
+    never call `page`, and return `resumed` true with `page` `already_sent` and the model's finding.
+traps:
+  - On finding `sending` after a restart, paging without asking `page_status`, or never paging when the
+    provider says it was not delivered.
+  - Believing a saved state before checking that its `incident` is this one, so another incident's sent
+    page stops tonight's page.
+  - Calling `page` again after it raises, when the page may already have rung and `page_status` can say
+    whether it did.
+  - Acting on a `page_status` reply with no delivered flag, or passing its text to the model, instead
+    of paging nobody and reporting `unknown`.

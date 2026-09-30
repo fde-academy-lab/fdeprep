@@ -421,3 +421,12 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I035.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+traps:
+  - Naming the gateway as the root cause, which no telemetry observed, and clearing the assistant that
+    confirmed without a booking reference.
+  - Scaling 64 of 106 traced conversations up to all 212, when the reconciliation already counted 131.
+  - Waiting for the root cause before containing, which leaves the assistant free to confirm bookings
+    that have no reference.
+  - Listing next checks with no owner or time, which gives the chief operating officer nothing to hold
+    anyone to.

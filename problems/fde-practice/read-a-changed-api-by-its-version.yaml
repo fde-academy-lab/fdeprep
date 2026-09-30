@@ -369,3 +369,20 @@ interview_evidence:
     whose follow-up is the unit change kept under the old name. That bank labels every
     entry "Original interview-style practice; actual employer frequency unverified",
     and this inherits the caveat.
+
+tools:
+  - name: billing
+    args: account
+    returns: 'The bill: `api_version`, `due`, and the amount in `amount` (v1, pounds) or `amount_due`
+      (v2 pounds, v3 pence), which can be missing or null.'
+example:
+  case: the_renamed_field_is_read_under_its_new_name
+  expect: Read `api_version` "2", take the amount from `amount_due`, write it as £118.50 in the prompt,
+    call the model once, and return its reply, which says £118.50.
+traps:
+  - Choosing the field by which name is present, so a bill that keeps `amount_due` but sends pence reaches
+    the prompt a hundred times too large.
+  - Asking the model about a bill whose version is not in the table, instead of returning a `Handoff:`
+    sentence that names the version and the amount field.
+  - Letting a null amount become zero, or writing a `Handoff:` sentence that leaves out the version or
+    the exact field it could not read.

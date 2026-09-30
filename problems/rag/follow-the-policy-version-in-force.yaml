@@ -488,3 +488,21 @@ interview_evidence:
     Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I008.
     That bank labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: search
+    args: query
+    returns: A status and `chunks` best match first, each with `id`, `doc`, `effective_from`, `score`
+      and `text`. It can also raise or report an error.
+example:
+  case: two_policies_that_do_not_conflict_are_both_followed
+  expect: Both chunks are in force and come from different docs, so both go in the prompt with their labels,
+    and the JSON answer gives the 45 pounds meal allowance with `followed` holding tr-31 then ex-06.
+traps:
+  - Picking the version by search rank or by the newest date, when only the latest `effective_from` on
+    or before the as-of date is in force.
+  - Filling the two prompt places before setting versions aside, so a superseded chunk takes the place
+    its replacement needed.
+  - Keeping one chunk per doc, which drops the second chunk of a version in force that spans two chunks.
+  - Reading an error from search as an empty result and asking the model anyway, which answers from the
+    old policy it was trained on.

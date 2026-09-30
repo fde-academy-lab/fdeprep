@@ -436,3 +436,21 @@ interview_evidence:
     Two runs call the same tools in different orders and both are correct. How does your eval pass both and still catch a broken one?
   source: |
     Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: trace
+    args: run
+    returns: A status and the run's `actions`, `requires` pairs, `golden` path and `steps`. It may return
+      something that is not a record at all.
+example:
+  case: a_refund_before_identity_is_checked_fails
+  expect: The refund call at step 3 has no earlier `verify_identity` call, so return JSON with `verdict`
+    fail and `out_of_order` listing step 3, plus the model's line for the reviewer.
+traps:
+  - Comparing the run's calls with `golden`, which fails a valid run that takes the steps in another allowed
+    order.
+  - Checking tool names and their order alone, which passes a run that acts after a refusal or whose call
+    never gets a result.
+  - Turning a missing step list into an empty one, which keeps every rule and passes a run nobody saw.
+  - Building the reviewer note's prompt from the trace's own text, which hands the model an instruction
+    nobody on the team wrote.
