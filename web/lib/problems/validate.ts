@@ -274,18 +274,19 @@ export function validateProblemYaml(
 
   // Rule: a step check naming an assertion the runner does not evaluate. The
   // checks run on every Run, so a typo here fails in front of the learner.
-  stepChecks.forEach((check, index) => {
-    const spec = ((check as { spec?: unknown }).spec ?? {}) as Record<string, unknown>;
+  // A step check reads the public cases, or owns one case (kind) or several
+  // (cases), and holds only when every case it owns holds.
+  const checkStepSpec = (spec: Record<string, unknown>, label: string,
+                         at: Array<string | number>, isCase: boolean) => {
     const assertions = Array.isArray(spec["assertions"]) ? (spec["assertions"] as unknown[]) : [];
-    const label = `the check for step ${String(check.step_id ?? index)}`;
     assertions.forEach((entry, position) => {
-      checkAssertionParams(entry, label, lineOf(["step_checks", index, "spec", "assertions", position]), add);
+      checkAssertionParams(entry, label, lineOf([...at, "assertions", position]), add);
       const type = (entry as { type?: unknown } | null)?.type;
       if (typeof type === "string" && CODE_ASSERTIONS.has(type)) return;
       add("unknown_assertion_type",
           `${String(type)} in ${label} is not an ` +
           `assertion the runner evaluates. Known types: ${[...CODE_ASSERTIONS].join(", ")}`,
-          lineOf(["step_checks", index, "spec", "assertions", position]));
+          lineOf([...at, "assertions", position]));
     });
     // Rule: a check with nothing to assert holds for any code, the stub's
     // included, so its step could never turn green.
@@ -293,12 +294,32 @@ export function validateProblemYaml(
       add("step_check_without_assertions",
           `${label} asserts nothing, so it holds for any code and the step can never ` +
           "turn green. Name what the step's work changes in the answer or the calls.",
-          lineOf(["step_checks", index]));
+          lineOf(at));
     }
-    if ("kind" in spec) {
-      validateScript(spec, label, ["step_checks", index, "spec"], lineOf, add);
-      validateTools(spec, label, ["step_checks", index, "spec"], lineOf, add);
+    if (isCase) {
+      validateScript(spec, label, at, lineOf, add);
+      validateTools(spec, label, at, lineOf, add);
     }
+  };
+  stepChecks.forEach((check, index) => {
+    const spec = ((check as { spec?: unknown }).spec ?? {}) as Record<string, unknown>;
+    const label = `the check for step ${String(check.step_id ?? index)}`;
+    const at = ["step_checks", index, "spec"];
+    if ("cases" in spec) {
+      const cases = Array.isArray(spec["cases"]) ? (spec["cases"] as unknown[]) : [];
+      if ("kind" in spec || !cases.length) {
+        add("schema",
+            `${label} has cases, which must be a non-empty list of case specs, and then ` +
+            "carries no kind of its own", lineOf(at));
+        return;
+      }
+      cases.forEach((entry, number) => {
+        checkStepSpec((entry ?? {}) as Record<string, unknown>, `case ${number + 1} in ${label}`,
+                      [...at, "cases", number], true);
+      });
+      return;
+    }
+    checkStepSpec(spec, label, at, "kind" in spec);
   });
 
   // Rule: steps present without matching step_check entries.

@@ -280,6 +280,36 @@ step_checks:
     expect(error?.line).toBeGreaterThan(1);
   });
 
+  it("checks every case a step owns, and rejects cases beside a kind", () => {
+    const withCheck = (spec: string) => CODE + `
+steps:
+  - { id: s1, text: Keep what the customer wrote and drop the rest., check_id: s1 }
+step_checks:
+  - step_id: s1
+    spec:
+${spec}
+`;
+    const good = `      cases:
+        - kind: agent_run
+          input: { question: "keep" }
+          llm_script: [{ match: "*", reply: "x" }]
+          assertions: [{ type: returns_matches, value: "x" }]
+        - kind: agent_run
+          input: { question: "drop" }
+          llm_script: [{ match: "*", reply: "y" }]
+          assertions: [{ type: returns_lacks, value: "y" }]`;
+    expect(validateProblemYaml(withCheck(good), "a.yaml").errors).toEqual([]);
+    const noFallback = good.replace('[{ match: "*", reply: "y" }]', '[{ match: { call_index: 1 }, reply: "y" }]');
+    expect(validateProblemYaml(withCheck(noFallback), "a.yaml").errors.map((e) => e.rule))
+      .toContain("script_needs_fallback");
+    const bare = good.replace('          assertions: [{ type: returns_lacks, value: "y" }]', "");
+    expect(validateProblemYaml(withCheck(bare), "a.yaml").errors.map((e) => e.rule))
+      .toContain("step_check_without_assertions");
+    const mixed = "      kind: agent_run\n" + good;
+    expect(validateProblemYaml(withCheck(mixed), "a.yaml").errors.map((e) => e.rule))
+      .toContain("schema");
+  });
+
   it("accepts returns_lacks, the absence check", () => {
     const report = validateProblemYaml(
       CODE.replace("type: returns_nonempty }", "type: returns_lacks, value: 'secret' }"), "a.yaml");

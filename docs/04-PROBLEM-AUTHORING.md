@@ -118,6 +118,11 @@ step_checks:                                # one per step, run on every Run
       input: { ... }
       llm_script: [ ... ]
       assertions: [ ... ]
+  - step_id: s3                             # or several, when a step keeps some
+    spec:                                   # things and drops others; it holds
+      cases:                                # only when every case holds
+        - { kind: agent_run, input: { ... }, llm_script: [ ... ], assertions: [ ... ] }
+        - { kind: agent_run, input: { ... }, llm_script: [ ... ], assertions: [ ... ] }
 
 tests:
   - name: terminates_on_final

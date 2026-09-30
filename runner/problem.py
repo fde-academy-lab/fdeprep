@@ -121,20 +121,35 @@ def from_dict(data: dict[str, Any], source: str = "<dict>") -> Problem:
 
 
 def _step_check(check: dict[str, Any], source: str) -> dict[str, Any]:
-    """A check reads the public cases, unless its spec is a case of its own.
+    """A check reads the public cases, unless it owns cases of its own.
 
-    A spec that carries kind is shaped like a test's and the check runs on it
-    alone. That is for a step whose work no public case exercises, usually
-    because exercising it is what the hidden cases are for.
+    A spec that carries kind is one case, shaped like a test's. A spec that
+    carries cases is several, and the step holds only when every one does,
+    which is how a step that keeps some things and drops others shows both
+    halves. Either way the step's own cases are for steps whose work no public
+    case exercises, usually because exercising it is the hidden cases' job.
     """
     spec = check.get("spec") or {}
     step_id = str(check["step_id"])
-    case = None
+    label = f"the check for step {step_id}"
+    if "cases" in spec:
+        if "kind" in spec or not isinstance(spec["cases"], list) or not spec["cases"]:
+            raise ProblemError(
+                f"{source}: {label} has cases, which must be a non-empty list of case specs, "
+                "and then carries no kind of its own")
+        cases = []
+        for number, case in enumerate(spec["cases"], 1):
+            if not isinstance(case, dict) or "kind" not in case:
+                raise ProblemError(f"{source}: case {number} in {label} is not a case spec with kind")
+            _check_script(case, f"case {number} in {label}", source)
+            _check_tools(case, f"case {number} in {label}", source)
+            cases.append(case)
+        return {"step_id": step_id, "assertions": [], "cases": cases}
     if "kind" in spec:
-        _check_script(spec, f"the check for step {step_id}", source)
-        _check_tools(spec, f"the check for step {step_id}", source)
-        case = spec
-    return {"step_id": step_id, "assertions": list(spec.get("assertions") or []), "case": case}
+        _check_script(spec, label, source)
+        _check_tools(spec, label, source)
+        return {"step_id": step_id, "assertions": list(spec.get("assertions") or []), "cases": [spec]}
+    return {"step_id": step_id, "assertions": list(spec.get("assertions") or []), "cases": []}
 
 
 TOOL_FORMS = ("returns", "fixture", "sequence", "by_arg")

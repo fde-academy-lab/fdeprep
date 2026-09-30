@@ -214,3 +214,57 @@ def test_a_step_case_script_follows_the_same_rules_as_a_test_script():
         {"match": {"call_index": 1}, "reply": "Final Answer: unknown"}]}}
     with pytest.raises(ProblemError, match="fallback"):
         from_dict({**PROBLEM.raw, "step_checks": [broken]})
+
+
+# A step that keeps some things and drops others has two halves, and one case
+# with one answer can show only one of them: on 30 September 2026 two build
+# steps read green on code that never kept an order number or never sent a
+# draft. A step may list several cases, and it holds when every one does.
+KEEP = {"kind": "agent_run", "input": {"question": "keep"},
+        "llm_script": [{"match": "*", "reply": "Final Answer: in transit"}],
+        "tools": {"track": {"returns": {"state": "in_transit"}}},
+        "budget": {"max_llm_calls": 2, "max_tool_calls": 2, "wall_ms": 5000},
+        "assertions": [{"type": "returns_matches", "value": "transit"}]}
+DROP = {**KEEP, "input": {"question": "drop"},
+        "assertions": [{"type": "returns_matches", "value": "^unknown$"}]}
+BOTH = from_dict({**PROBLEM.raw, "step_checks": [
+    *PROBLEM.raw["step_checks"], {"step_id": "s4", "spec": {"cases": [KEEP, DROP]}}]})
+
+KEEPS_ALL = "def run_agent(question, llm, tools):\n    return llm(question).split(':', 1)[1].strip()\n"
+DROPS_ALL = "def run_agent(question, llm, tools):\n    return 'unknown'\n"
+DECIDES = ("def run_agent(question, llm, tools):\n"
+           "    if question == 'drop':\n        return 'unknown'\n"
+           "    return llm(question).split(':', 1)[1].strip()\n")
+
+
+def test_a_step_with_several_cases_holds_only_when_every_case_holds():
+    assert _steps(run_battery(BOTH, DECIDES))["s4"] == "pass"
+    assert _steps(run_battery(BOTH, KEEPS_ALL))["s4"] == "fail"
+    assert _steps(run_battery(BOTH, DROPS_ALL))["s4"] == "fail"
+
+
+def test_a_stub_that_holds_one_half_leaves_the_step_checkable():
+    stubbed = from_dict({**BOTH.raw, "stub_code": DROPS_ALL})
+    assert _steps(run_battery(stubbed, DECIDES))["s4"] == "pass"
+
+
+def test_a_stub_that_holds_every_case_makes_the_step_unchecked():
+    stubbed = from_dict({**BOTH.raw, "stub_code": DECIDES})
+    assert _steps(run_battery(stubbed, DECIDES))["s4"] == "unchecked"
+
+
+def test_every_case_in_a_step_follows_the_script_rules():
+    import pytest
+    from runner.problem import ProblemError
+    broken = {**DROP, "llm_script": [{"match": {"call_index": 1}, "reply": "x"}]}
+    with pytest.raises(ProblemError, match="fallback"):
+        from_dict({**PROBLEM.raw, "step_checks": [{"step_id": "s1", "spec": {"cases": [KEEP, broken]}}]})
+
+
+def test_cases_and_a_single_case_do_not_mix():
+    import pytest
+    from runner.problem import ProblemError
+    with pytest.raises(ProblemError, match="cases"):
+        from_dict({**PROBLEM.raw, "step_checks": [{"step_id": "s1", "spec": {**KEEP, "cases": [DROP]}}]})
+    with pytest.raises(ProblemError, match="cases"):
+        from_dict({**PROBLEM.raw, "step_checks": [{"step_id": "s1", "spec": {"cases": []}}]})

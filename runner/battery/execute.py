@@ -131,7 +131,7 @@ def _stub_baseline(problem) -> frozenset[str]:
     stub = (problem.raw or {}).get("stub_code")
     if not stub or not problem.step_checks:
         return frozenset()
-    shared = tuple(c for c in problem.step_checks if not c.get("case"))
+    shared = tuple(c for c in problem.step_checks if not c.get("cases"))
     key = hashlib.sha256(json.dumps(
         [stub, [c.spec for c in problem.cases("public")], problem.step_checks,
          sorted(problem.allowed_imports)],
@@ -148,7 +148,7 @@ def _stub_baseline(problem) -> frozenset[str]:
                 )
                 held |= {step for step, ok in ran["_steps"].items() if ok}
             held |= {check["step_id"] for check in problem.step_checks
-                     if check.get("case") and _holds_on_own_case(check, stub, problem)}
+                     if check.get("cases") and _holds_on_own_case(check, stub, problem)}
         if len(_BASELINES) > 512:
             _BASELINES.clear()
         _BASELINES[key] = frozenset(held)
@@ -157,14 +157,19 @@ def _stub_baseline(problem) -> frozenset[str]:
 
 def _holds_on_own_case(check: dict, source: str, problem,
                        stage_observer: StageObserver | None = None) -> bool:
-    ran = run_single_case(
-        f"step {check['step_id']}", check["case"], source,
-        allowed_imports=problem.allowed_imports,
-        time_limit_s=problem.time_limit_s,
-        stage_observer=stage_observer,
-        step_checks=(check,),
-    )
-    return bool(ran["_steps"].get(check["step_id"]))
+    """The step holds when every case it owns holds. The runs stop at the
+    first case that does not, since the answer cannot change after it."""
+    for number, case in enumerate(check["cases"], 1):
+        ran = run_single_case(
+            f"step {check['step_id']} case {number}", case, source,
+            allowed_imports=problem.allowed_imports,
+            time_limit_s=problem.time_limit_s,
+            stage_observer=stage_observer,
+            step_checks=({"step_id": check["step_id"], "assertions": list(case.get("assertions") or [])},),
+        )
+        if not ran["_steps"].get(check["step_id"]):
+            return False
+    return True
 
 
 def _step_status(step_id: str, held: dict[str, bool], baseline: frozenset[str]) -> str:
@@ -350,7 +355,7 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
 
     all_cases: list[dict] = []
     held: dict[str, bool] = {}
-    shared = tuple(c for c in problem.step_checks if not c.get("case"))
+    shared = tuple(c for c in problem.step_checks if not c.get("cases"))
     stepped = static.status == "pass"
     if stepped:
         previous_passed = True
@@ -382,7 +387,7 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
         # A step with its own case runs it after the gates, whatever they
         # said, and the case counts toward none of them.
         for check in problem.step_checks:
-            if check.get("case"):
+            if check.get("cases"):
                 held[check["step_id"]] = _holds_on_own_case(
                     check, source, problem, stage_observer)
 
