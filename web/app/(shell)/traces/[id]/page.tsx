@@ -52,6 +52,7 @@ export default async function TracePage({ params }: { params: Promise<{ id: stri
         <h1 className="text-display font-semibold tracking-[-0.02em] text-text">Trace replay</h1>
         <p className="tnum text-text-dim">
           {replay.llmCalls} model calls, {replay.toolCalls} tool calls
+          {replay.refusedCalls ? `, ${replay.refusedCalls} refused` : ""}
           {owner.wall_ms === null ? "" : `, ${(owner.wall_ms / 1000).toFixed(1)} s wall time`}
         </p>
       </div>

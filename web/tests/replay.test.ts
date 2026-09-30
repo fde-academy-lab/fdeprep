@@ -128,6 +128,52 @@ describe("acceptance 5: the repeated identical tool call is flagged", () => {
   });
 });
 
+/**
+ * A loop that asks for one model call past the case's ceiling of six, catches
+ * the refusal and returns. Until 30 September 2026 the refusal left no step,
+ * so this trace read like a loop that stopped in time.
+ */
+const ASKS_ONE_TOO_MANY = `
+def run_agent(question, llm, tools):
+    for _ in range(7):
+        try:
+            llm("Question: " + question)
+        except RuntimeError:
+            return ""
+    return ""
+`.trim();
+
+const RAISES = `
+def run_agent(question, llm, tools):
+    raise ValueError("the parcel id is missing")
+`.trim();
+
+describe("a call the budget refused", () => {
+  it("shows as a flagged step that says what the code asked for", async () => {
+    const submission = await submit("echo-the-question", ASKS_ONE_TOO_MANY);
+    const replay = await replayFor(submission.id);
+    const refused = replay.steps.filter((s) => s.type === "refused");
+
+    expect(refused.length).toBeGreaterThan(0);
+    expect(refused[0]!.summary).toMatch(/^refused model call, prompt \d+ chars$/);
+    expect(refused[0]!.detail["message"]).toBe("the model budget of 6 calls is spent");
+    expect(refused[0]!.flags).toContain("budget_exceeded");
+    expect(refused[0]!.annotation).toMatch(/refused it and it never ran/);
+    expect(replay.flags).toContain("budget_exceeded");
+    // The loop returns on its first refusal, so each case refused one call.
+    expect(replay.refusedCalls).toBe(refused.length);
+  });
+
+  it("names an error step by its type and message", async () => {
+    const submission = await submit("echo-the-question", RAISES);
+    const errors = (await replayFor(submission.id)).steps.filter((s) => s.type === "error");
+
+    expect(errors.length).toBeGreaterThan(0);
+    expect(errors[0]!.summary).toBe("ValueError: the parcel id is missing");
+    expect(errors[0]!.detail["error_type"]).toBe("ValueError");
+  });
+});
+
 describe("the trace is stored out of the result contract", () => {
   it("writes a trace row the viewer reads", async () => {
     const submission = await submit("echo-the-question", REPEATS_AND_FAILS);

@@ -17,7 +17,9 @@ import type { Pool, PoolClient } from "pg";
 import { db } from "../db/pool.ts";
 import { loadTrace } from "./store.ts";
 
-export type StepType = "llm_call" | "tool_call" | "observation" | "final" | "marker";
+/** The runner's step types from docs/03 section 6. A type this list lacks renders as a marker. */
+export type StepType =
+  | "llm_call" | "tool_call" | "observation" | "final" | "refused" | "error" | "marker";
 
 export interface ReplayStep {
   index: number;
@@ -40,6 +42,8 @@ export interface Replay {
   flags: string[];
   llmCalls: number;
   toolCalls: number;
+  /** Calls the budget refused, which never ran and are not in the two counts above. */
+  refusedCalls: number;
   truncated: boolean;
   /** True once the learner has passed or given up, which opens the annotations. */
   attemptClosed: boolean;
@@ -47,7 +51,7 @@ export interface Replay {
 }
 
 const EMPTY: Omit<Replay, "submissionId"> = {
-  steps: [], flags: [], llmCalls: 0, toolCalls: 0,
+  steps: [], flags: [], llmCalls: 0, toolCalls: 0, refusedCalls: 0,
   truncated: false, attemptClosed: false, available: false,
 };
 
@@ -104,6 +108,8 @@ export async function replayFor(
     flags: stored.flags,
     llmCalls: steps.filter((s) => s.type === "llm_call").length,
     toolCalls: steps.filter((s) => s.type === "tool_call").length,
+    refusedCalls: steps.filter((s) => s.type === "refused")
+      .reduce((total, s) => total + 1 + Number(s.detail["repeats"] ?? 0), 0),
     truncated: stored.truncated,
     attemptClosed,
     available: steps.length > 0,
@@ -139,14 +145,25 @@ function summaryText(step: Record<string, unknown>): string {
       return truncateText(JSON.stringify(step["value"] ?? null), 80);
     case "final":
       return truncateText(String(step["value"] ?? ""), 80);
+    case "refused": {
+      // A call past the case's budget. Every later call of the same kind was
+      // refused too, and the runner counts those rather than listing them.
+      const call = step["op"] === "tool"
+        ? `${step["tool"]}(${renderArgs(step["args"])})`
+        : `model call, prompt ${step["prompt_chars"] ?? String(step["prompt"] ?? "").length} chars`;
+      const repeats = Number(step["repeats"] ?? 0);
+      return `refused ${call}${repeats ? `, and ${repeats} more after it` : ""}`;
+    }
+    case "error":
+      return `${step["error_type"] ?? "Error"}: ${truncateText(String(step["message"] ?? ""), 80)}`;
     default:
-      return String(step["note"] ?? step["type"] ?? "");
+      return String(step["note"] ?? step["message"] ?? step["type"] ?? "");
   }
 }
 
 function detailOf(step: Record<string, unknown>): Record<string, unknown> {
   const detail: Record<string, unknown> = {};
-  for (const key of ["prompt", "response", "args", "value", "tool", "ms"]) {
+  for (const key of ["prompt", "response", "args", "value", "tool", "error_type", "message", "repeats", "ms"]) {
     if (step[key] !== undefined) detail[key] = step[key];
   }
   return detail;

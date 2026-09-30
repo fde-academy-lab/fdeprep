@@ -11,8 +11,8 @@
  */
 import { useEffect, useState } from "react";
 import {
-  ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, Cpu, Eye, Flag, MapPin, Wrench,
-  type LucideIcon,
+  Ban, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, CircleAlert, Cpu, Eye, Flag, MapPin,
+  Wrench, type LucideIcon,
 } from "lucide-react";
 import type { Replay as ReplayData, ReplayStep, StepType } from "@/lib/trace/replay";
 import { Kbd } from "@/components/ui/kbd";
@@ -23,6 +23,8 @@ const LOOK: Record<StepType, { icon: LucideIcon; label: string }> = {
   tool_call: { icon: Wrench, label: "Tool call" },
   observation: { icon: Eye, label: "Observation" },
   final: { icon: Flag, label: "Final answer" },
+  refused: { icon: Ban, label: "Refused call" },
+  error: { icon: CircleAlert, label: "Error" },
   marker: { icon: MapPin, label: "Marker" },
 };
 
