@@ -115,11 +115,16 @@ steps:
     check_id: s3
 
 step_checks:
+  # s1 and s3 read a_sentence_with_no_citation_is_not_sent. The stub returns
+  # the draft untouched, which is already right for the other public case, and
+  # never calls supported(), so s1 shows once s3 filters the sentences.
   - step_id: s1
     spec:
       assertions:
-        - { type: calls_tool, name: search }
-        - { type: no_exception }
+        - { type: returns_matches, value: 'online or by phone' }
+        - { type: returns_lacks, value: 'advisers' }
+  # s2 cannot be told apart from the stub on the public cases: every number in
+  # a public sentence appears in the chunk it cites. Its check stays as it was.
   - step_id: s2
     spec:
       assertions:
@@ -127,7 +132,7 @@ step_checks:
   - step_id: s3
     spec:
       assertions:
-        - { type: terminates }
+        - { type: returns_equals, value: 'Yes, you can overpay online or by phone [m-6].' }
 
 hints:
   - The citation in the incident was real. Look at what your check asks about

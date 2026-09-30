@@ -110,10 +110,14 @@ steps:
     check_id: s2
 
 step_checks:
+  # Reads the_newer_record_wins_between_two_agent_notes.
   - step_id: s1
     spec:
       assertions:
-        - { type: returns_nonempty }
+        - { type: returns_matches, value: 'Call 07700 900456' }
+  # s2 cannot be told apart from the stub on the public cases: no public
+  # record loses to a more trusted source while being newer and different, so
+  # nothing is ever held back. Its check stays as it was.
   - step_id: s2
     spec:
       assertions:

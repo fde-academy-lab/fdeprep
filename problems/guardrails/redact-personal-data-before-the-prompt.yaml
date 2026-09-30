@@ -109,22 +109,29 @@ steps:
     check_id: s4
 
 step_checks:
+  # The stub returns a fixed sentence until step 4 returns the draft, so s1
+  # shows only after that. It reads a_ticket_with_contact_details_gets_a_draft,
+  # whose draft comes back only when no raw email or phone reached the prompt.
   - step_id: s1
     spec:
       assertions:
-        - { type: no_exception }
+        - { type: returns_matches, value: '(?i)line test tonight' }
+  # s2 cannot be told apart from the stub on the public cases: neither public
+  # draft carries a placeholder to put back. Its check stays as it was.
   - step_id: s2
     spec:
       assertions:
         - { type: terminates }
+  # The stub already sends the ticket as JSON in one prompt.
   - step_id: s3
     spec:
       assertions:
-        - { type: llm_calls_at_most, value: 2 }
+        - { type: llm_calls_at_most, value: 1 }
+  # Reads an_account_reference_is_left_for_the_model.
   - step_id: s4
     spec:
       assertions:
-        - { type: returns_nonempty }
+        - { type: returns_matches, value: 'credited account BB-44718' }
 
 hints:
   - Look at where the first fix did its scrubbing, and at what the gateway

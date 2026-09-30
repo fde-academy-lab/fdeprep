@@ -92,23 +92,29 @@ steps:
     check_id: s4
 
 step_checks:
+  # Every check reads formatting_the_eval_team_listed_is_forgiven, whose reply
+  # is "Answer: **30 Days.**". The other public reply already meets rules 1 to
+  # 3, and the stub already fails it. Both expected answers are already in
+  # normal form, so no public case shows whether the expected answer went
+  # through the same function; s3 reads the reply's side.
   - step_id: s1
     spec:
       assertions:
-        - { type: no_exception }
+        - { type: returns_matches, value: '"normalised":\s*"(answer: )?30 days\.?"' }
   - step_id: s2
     spec:
       assertions:
-        - { type: returns_nonempty }
+        - { type: returns_matches, value: '"normalised":\s*"30 days"' }
   - step_id: s3
     spec:
       assertions:
-        - { type: calls_tool, name: case }
+        - { type: returns_matches, value: '"normalised":\s*"[^"]*30 days' }
   - step_id: s4
     spec:
       assertions:
         - { type: valid_json_return,
-            schema: { type: object, required: [verdict, normalised] } }
+            schema: { type: object, required: [verdict, normalised],
+                      properties: { verdict: { const: pass } } } }
 
 hints:
   - Two of the replies that should fail have the right answer somewhere inside

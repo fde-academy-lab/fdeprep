@@ -90,21 +90,25 @@ steps:
     check_id: s3
 
 step_checks:
+  # s1 cannot be told apart from the stub on the public cases: every public
+  # trial is answered, so missing stays 0 whatever the loop decides. Its check
+  # stays as it was.
   - step_id: s1
     spec:
       assertions:
         - { type: no_exception }
+  # s2 and s3 read a_case_that_passes_every_trial. On the other public case
+  # the stub's rate of [0.0, 0.0] and its verdict of fail are already right.
   - step_id: s2
     spec:
       assertions:
-        - { type: valid_json_return,
-            schema: { type: object, required: [passed, failed, missing] } }
+        - { type: returns_matches, value: '"passed":\s*4\b' }
+        - { type: returns_matches, value: '"failed":\s*0\b' }
   - step_id: s3
     spec:
       assertions:
-        - { type: valid_json_return,
-            schema: { type: object, required: [pass_rate, verdict],
-                      properties: { verdict: { enum: [pass, fail, flaky, no_data] } } } }
+        - { type: returns_matches, value: '"pass_rate":\s*\[1(\.0)?,\s*1(\.0)?\]' }
+        - { type: returns_matches, value: '"verdict":\s*"pass"' }
 
 hints:
   - Line the four replies up side by side before you count anything. There are

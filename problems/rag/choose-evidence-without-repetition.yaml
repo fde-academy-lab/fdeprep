@@ -108,11 +108,15 @@ steps:
     check_id: s3
 
 step_checks:
+  # Reads keeps_five_distinct_chunks, whose answer needs the first and the
+  # fifth block in the prompt. s2 and s3 cannot be told apart from the stub on
+  # the public cases: every public chunk is distinct, and neither search
+  # returns more than five, so the stub's first five are already the right
+  # five. Their checks stay as they were.
   - step_id: s1
     spec:
       assertions:
-        - { type: calls_tool, name: search }
-        - { type: returns_nonempty }
+        - { type: returns_matches, value: '(?i)poor repair' }
   - step_id: s2
     spec:
       assertions:
