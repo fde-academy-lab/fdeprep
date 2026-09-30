@@ -1006,7 +1006,8 @@ stages:
       - id: S10.1
         title: Keep the backlog as a file that CI checks
         type: Task
-        status: in_progress
+        status: done
+        pr: 41
         points: 5
         area: Delivery management
         finish: 2026-09-30
@@ -1027,10 +1028,11 @@ stages:
       - id: S10.3
         title: Write the project pages for management
         type: Task
-        status: in_progress
+        status: done
+        pr: 41
         points: 5
         area: Delivery management
-        finish: 2026-10-01
+        finish: 2026-09-30
         acceptance:
           - docs/project holds the summary, the delivery history, the roadmap, the estimation method, quality, risks, decisions and setup.
           - Every figure is marked as a fact from git or GitHub, or as an estimate.
