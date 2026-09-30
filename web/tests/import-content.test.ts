@@ -60,6 +60,17 @@ describe("importing everything", WHOLE_CATALOGUE, () => {
     expect(await count("voice_question")).toBe(12);
   });
 
+  it("stores each problem's day, skill line and interview question for the page", async () => {
+    await importAllContent(quiet);
+    const { rows } = await db().query<{ missing: string; asked: string }>(
+      `select count(*) filter (where p.day is null or p.skill is null) as missing,
+              count(*) filter (where v.interview->>'asked_as' <> '') as asked
+         from problem p
+         join problem_version v on v.problem_id = p.id and v.version = p.current_version`);
+    expect(Number(rows[0]!.missing)).toBe(0);
+    expect(Number(rows[0]!.asked)).toBe(await count("problem"));
+  });
+
   it("leaves the fixtures out of both halves", async () => {
     await importAllContent(quiet);
     const { rows } = await db().query<{ slug: string }>(

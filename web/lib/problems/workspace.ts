@@ -30,6 +30,13 @@ export interface WorkspaceProblem {
   id: number;
   slug: string;
   title: string;
+  /** The day of a learner's first 30 as an FDE, or null for a problem published before it. */
+  day: number | null;
+  skill: string | null;
+  /** How the problem comes up in an interview. */
+  interview: { round: string; askedAs: string } | null;
+  /** Wall clock per test case, in seconds. */
+  timeLimitS: number;
   track: string;
   difficulty: Difficulty;
   artefact: "code" | "prompt" | "design";
@@ -77,12 +84,12 @@ export async function loadWorkspaceProblem(
   slug: string, enrolmentId: number,
 ): Promise<WorkspaceProblem | null> {
   const { rows } = await db().query<Record<string, any>>(
-    `select p.id, p.slug, p.title, p.track, p.difficulty::text as difficulty,
+    `select p.id, p.slug, p.title, p.day, p.skill, p.track, p.difficulty::text as difficulty,
             p.artefact_type::text as artefact, p.est_minutes,
             v.brief_md, v.contract_md, v.stub_code, v.steps, v.call_budget,
             v.allowed_imports, v.reference_md, v.original_prompt, v.prompt_rules,
             v.word_range, v.required_headings, v.rubric, v.probe_count,
-            v.defence_question, v.kit,
+            v.defence_question, v.kit, v.interview, v.time_limit_s,
             coalesce((select array_agg(c.slug order by pc.weight desc, c.slug)
                         from problem_competency pc join competency c on c.id = pc.competency_id
                        where pc.problem_id = p.id), '{}') as competencies
@@ -97,6 +104,12 @@ export async function loadWorkspaceProblem(
     id: Number(row["id"]),
     slug: row["slug"],
     title: row["title"],
+    day: row["day"] === null || row["day"] === undefined ? null : Number(row["day"]),
+    skill: row["skill"] ?? null,
+    interview: row["interview"]
+      ? { round: String(row["interview"].round), askedAs: String(row["interview"].asked_as) }
+      : null,
+    timeLimitS: Number(row["time_limit_s"] ?? 10),
     track: row["track"],
     difficulty: row["difficulty"],
     artefact: row["artefact"],

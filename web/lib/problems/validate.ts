@@ -29,6 +29,7 @@ export type Rule =
   | "bad_complexity" | "panel_without_static" | "panel_mismatch"
   | "unknown_heuristic" | "heuristic_wrong_artefact"
   | "no_complexity" | "no_interview_evidence" | "unknown_track" | "exemplar_out_of_range"
+  | "no_storyline"
   | KitRule;
 
 export interface ValidationError {
@@ -67,6 +68,12 @@ export interface Exemplar {
 export interface ParsedProblem {
   slug: string;
   title: string;
+  /** Where the problem sits in a learner's first 30 days as an FDE. */
+  day?: number;
+  /** What the problem practises, in one line under the title. */
+  skill?: string;
+  /** How the problem comes up in an interview, from interview_evidence. */
+  interview?: { round: string; asked_as: string };
   artefact_type: (typeof ARTEFACT_TYPES)[number];
   difficulty: (typeof DIFFICULTIES)[number];
   track: string;
@@ -250,6 +257,7 @@ export function validateProblemYaml(
   validatePanel(raw, artefact, add, lineOf);
   validateHeuristics(raw, artefact, add, lineOf);
   validateInterviewEvidence(raw, add, lineOf);
+  if (options.requireKit === true) validateStoryline(raw, add, lineOf);
 
   const tests = Array.isArray(raw["tests"]) ? (raw["tests"] as Record<string, unknown>[]) : [];
   const competencies = Array.isArray(raw["competencies"])
@@ -735,6 +743,52 @@ function validateInterviewEvidence(
   }
 }
 
+/** The title and day limits are what a catalogue row shows on one line. */
+export const STORYLINE = { days: 30, titleMax: 64, skillMax: 90 } as const;
+
+/**
+ * Rule: every catalogue problem has a day in the storyline, a title that says
+ * what the client sees, and a skill line that says what is practised.
+ * docs/04 section 1, as amended 1 October 2026. Fixtures are exempt.
+ */
+function validateStoryline(
+  raw: Record<string, unknown>,
+  add: (rule: Rule, message: string, line: number) => void,
+  lineOf: (path: Array<string | number>) => number,
+): void {
+  const day = raw["day"];
+  if (!Number.isInteger(day) || (day as number) < 1 || (day as number) > STORYLINE.days) {
+    add("no_storyline",
+        `day is ${String(day)} and has to be a whole number from 1 to ${STORYLINE.days}: ` +
+        "the day of a learner's first 30 days as an FDE this problem belongs to.",
+        lineOf(raw["day"] === undefined ? ["slug"] : ["day"]));
+  }
+  const skill = raw["skill"];
+  if (typeof skill !== "string" || !skill.trim()) {
+    add("no_storyline",
+        "skill is missing. It is one line saying what the problem practises, shown " +
+        "under the title, such as \"Call only the tools the agent actually has\".",
+        lineOf(raw["skill"] === undefined ? ["slug"] : ["skill"]));
+  } else if (skill.trim().length > STORYLINE.skillMax) {
+    add("no_storyline", `skill is ${skill.trim().length} characters and the row shows ` +
+        `${STORYLINE.skillMax}.`, lineOf(["skill"]));
+  }
+  const title = raw["title"];
+  if (typeof title === "string" && title.trim().length > STORYLINE.titleMax) {
+    add("no_storyline", `title is ${title.trim().length} characters and the row shows ` +
+        `${STORYLINE.titleMax}. Say what the client sees in fewer words.`, lineOf(["title"]));
+  }
+}
+
+function interviewOf(value: unknown): ParsedProblem["interview"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const fields = value as Record<string, unknown>;
+  const round = fields["round"];
+  const asked = fields["asked_as"];
+  return typeof round === "string" && typeof asked === "string" && asked.trim()
+    ? { round, asked_as: asked.trim() } : undefined;
+}
+
 export function matchesSeed(rule: unknown, seeded: string): string | null {
   if (!rule || typeof rule !== "object") return null;
   const entries = Object.entries(rule as Record<string, unknown>);
@@ -927,6 +981,9 @@ function toParsed(
     kit,
     slug: String(raw["slug"]),
     title: String(raw["title"] ?? raw["slug"]),
+    day: Number.isInteger(raw["day"]) ? Number(raw["day"]) : undefined,
+    skill: typeof raw["skill"] === "string" ? raw["skill"].trim() : undefined,
+    interview: interviewOf(raw["interview_evidence"]),
     artefact_type: raw["artefact_type"] as ParsedProblem["artefact_type"],
     difficulty: raw["difficulty"] as ParsedProblem["difficulty"],
     track: String(raw["track"]),

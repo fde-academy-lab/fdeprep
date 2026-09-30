@@ -29,9 +29,11 @@ export async function generateMetadata({ params }: {
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
-  const { rows } = await db().query<{ title: string }>(
-    "select title from problem where slug = $1", [slug]);
-  return { title: rows[0]?.title ?? "Problem" };
+  const { rows } = await db().query<{ title: string; day: number | null }>(
+    "select title, day from problem where slug = $1", [slug]);
+  const row = rows[0];
+  if (!row) return { title: "Problem" };
+  return { title: row.day ? `Day ${row.day} · ${row.title}` : row.title };
 }
 
 export default async function WorkspacePage({ params, searchParams }: {

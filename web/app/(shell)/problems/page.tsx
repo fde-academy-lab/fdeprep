@@ -21,6 +21,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { StatusIcon } from "@/components/ui/status";
 import { TrackIcon, TrackLabel, trackName } from "@/components/ui/tracks";
 import { cn } from "@/components/ui/cn";
+import { renderCode } from "@/components/ui/code";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Problems" };
@@ -34,6 +35,7 @@ const TYPE_LABEL: Record<string, string> = {
 };
 const SORT_LABELS: Record<Sort, string> = {
   roadmap: "Path order",
+  storyline: "The 30 days",
   difficulty: "Difficulty",
   recent: "Newest",
   least_attempted: "Least tried by you",
@@ -117,7 +119,7 @@ export default async function ProblemsPage({ searchParams }: { searchParams: Pro
         <form method="get" className="relative min-w-[220px] flex-1" role="search">
           <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-faint" />
           <input type="search" name="q" defaultValue={filters.search}
-                 placeholder="Search titles and tracks" aria-label="Search problems"
+                 placeholder="Search titles, skills and tracks" aria-label="Search problems"
                  className="h-8 w-full rounded-control border border-border-control bg-bg pl-8 pr-3
                             text-text outline-none placeholder:text-text-faint focus:border-accent" />
           {filters.stage !== "all" ? <input type="hidden" name="stage" value={filters.stage} /> : null}
@@ -200,8 +202,13 @@ function Row({ row, line }: { row: CatalogueRow; line: string | undefined }) {
         <StatusIcon kind={status} className="mt-0.5"
                     label={row.state === "solved" ? "Solved" : row.state === "attempted" ? "Attempted" : "Not started"} />
         <div className="min-w-0 grow">
-          <p className="font-semibold text-text group-hover:text-accent">{row.title}</p>
-          {line ? <p className="mt-0.5 line-clamp-1 text-meta text-text-dim">{line}</p> : null}
+          <p className="font-semibold text-text group-hover:text-accent">
+            {row.day ? <span className="tnum mr-2 text-meta font-medium text-text-faint">Day {row.day}</span> : null}
+            {row.title}
+          </p>
+          {row.skill ?? line
+            ? <p className="mt-0.5 line-clamp-1 text-meta text-text-dim">{renderCode((row.skill ?? line)!)}</p>
+            : null}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-meta">
             <DifficultyMeter difficulty={row.difficulty} />
             <TrackLabel track={row.track} />

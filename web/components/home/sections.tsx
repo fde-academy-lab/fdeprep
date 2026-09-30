@@ -15,6 +15,7 @@ import { DifficultyMeter } from "@/components/ui/difficulty";
 import { StatusIcon } from "@/components/ui/status";
 import { TrackIcon, TrackLabel } from "@/components/ui/tracks";
 import { cn } from "@/components/ui/cn";
+import { renderCode } from "@/components/ui/code";
 
 const problemHref = (slug: string) => `/problems/${slug}` as Route;
 
@@ -64,7 +65,7 @@ export function ContinuePanel({ firstName, item, teaser, kind }: {
             </div>
             {teaser ? (
               <p className="max-w-[62ch] text-lead leading-relaxed text-text-dim">
-                <span className="text-text">{teaser.who}.</span> {teaser.situation}
+                <span className="text-text">{renderCode(teaser.who)}.</span> {renderCode(teaser.situation)}
               </p>
             ) : null}
             <div className="mt-auto flex flex-wrap gap-2.5">
@@ -241,7 +242,7 @@ export function UpNext({ items, teasers }: { items: RoadmapItem[]; teasers: Map<
               <span className="min-w-0 grow">
                 <span className="block font-medium text-text">{item.title}</span>
                 {teaser ? (
-                  <span className="mt-0.5 line-clamp-1 block text-meta text-text-dim">{teaser.situation}</span>
+                  <span className="mt-0.5 line-clamp-1 block text-meta text-text-dim">{renderCode(teaser.situation)}</span>
                 ) : null}
                 <span className="mt-1.5 flex flex-wrap items-center gap-x-3 text-meta">
                   <DifficultyMeter difficulty={item.difficulty} />
@@ -272,7 +273,7 @@ export function BuildsPanel({ builds }: { builds: BuildSummary[] }) {
                 <Hammer aria-hidden className="size-4" strokeWidth={1.75} />
               </span>
               <div className="min-w-0 grow">
-                <p className="font-medium text-text">{build.title}</p>
+                <p className="font-medium text-text">{renderCode(build.title)}</p>
                 <p className="text-meta text-text-faint">{solved} of {build.of} stages passed</p>
               </div>
             </div>

@@ -26,6 +26,7 @@ import { DiagramFigure } from "./diagram";
 import { ApproachMap } from "./approach-map";
 import { CoachLog, type CoachLine } from "./coach";
 import { HintLadder, type HintGate } from "./hint-ladder";
+import { renderCode } from "@/components/ui/code";
 
 export type PaneTab = "brief" | "guide" | "attempts";
 
@@ -73,8 +74,21 @@ export function Section({ title, aside, children, className }: {
   );
 }
 
-export function ProblemIntro({ title, track, difficulty, estMinutes, artefactLabel, kit, briefMd, children }: {
+/** How an interview round asks the question, in the words a learner would recognise. */
+const ROUND_WORDS: Readonly<Record<string, string>> = {
+  written: "In a written or coding round",
+  oral: "Out loud, in a conversation round",
+  both: "In a coding round, and again out loud",
+};
+
+export function ProblemIntro({ title, day, skill, interview, track, difficulty, estMinutes,
+                               artefactLabel, kit, briefMd, children }: {
   title: string;
+  /** The day of a learner's first 30 as an FDE. */
+  day?: number | null;
+  /** What the problem practises. */
+  skill?: string | null;
+  interview?: { round: string; askedAs: string } | null;
   track: string;
   difficulty: Difficulty;
   estMinutes: number;
@@ -87,7 +101,15 @@ export function ProblemIntro({ title, track, difficulty, estMinutes, artefactLab
     <div className="space-y-7 px-5 pb-10 pt-5">
       <div>
         {kit.build ? <BuildStepper build={kit.build} /> : null}
+        {day ? (
+          <p className="mb-1 text-meta font-medium text-text-faint">Day {day} as an FDE</p>
+        ) : null}
         <p className="text-title font-semibold leading-tight tracking-[-0.01em] text-text">{title}</p>
+        {skill ? (
+          <p className="mt-1.5 text-text-dim">
+            <span className="text-text-faint">You practise: </span>{renderCode(skill)}
+          </p>
+        ) : null}
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-meta">
           <DifficultyMeter difficulty={difficulty} />
           <TrackLabel track={track} />
@@ -105,6 +127,17 @@ export function ProblemIntro({ title, track, difficulty, estMinutes, artefactLab
         <Markdown source={briefMd} />
       </Section>
 
+      {interview ? (
+        <Section title="In an interview">
+          <figure className="rounded-panel border border-border bg-surface px-4 py-3">
+            <figcaption className="text-meta text-text-faint">
+              {ROUND_WORDS[interview.round] ?? "In an interview"}, it is asked as:
+            </figcaption>
+            <blockquote className="mt-1.5 text-text">{renderCode(interview.askedAs)}</blockquote>
+          </figure>
+        </Section>
+      ) : null}
+
       {children}
     </div>
   );
@@ -118,7 +151,7 @@ function BuildStepper({ build }: { build: NonNullable<WorkspaceKit["build"]> }) 
       <p className="text-meta text-text-faint">
         Capstone build, stage {build.stage} of {build.of}
       </p>
-      <p className="mt-0.5 font-semibold text-text">{build.title}</p>
+      <p className="mt-0.5 font-semibold text-text">{renderCode(build.title)}</p>
       <ol className="mt-3 flex items-center gap-1.5">
         {stages.map((stage, index) => {
           const number = index + 1;

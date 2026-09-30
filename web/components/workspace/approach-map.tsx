@@ -8,6 +8,7 @@
 import { Target } from "lucide-react";
 import type { Approach } from "@/lib/problems/kit";
 import { cn } from "@/components/ui/cn";
+import { renderCode } from "@/components/ui/code";
 
 /** One hue per branch, from the diagram palette, so each branch reads as its own subject. */
 const BRANCH = [
@@ -27,7 +28,7 @@ export function ApproachMap({ approach }: { approach: Approach }) {
                          border-border-control bg-surface-3 text-text">
           <Target aria-hidden className="size-4" strokeWidth={1.9} />
         </span>
-        <p className="font-semibold leading-snug text-text">{approach.goal}</p>
+        <p className="font-semibold leading-snug text-text">{renderCode(approach.goal)}</p>
       </div>
 
       <ol className="relative ml-[15px] mt-1 border-l border-border-strong pt-1">
@@ -42,10 +43,10 @@ export function ApproachMap({ approach }: { approach: Approach }) {
               <div className="pl-4">
                 <p className="font-semibold leading-snug text-text">
                   <span className={cn("mr-1.5 font-mono text-meta", tone.text)}>{index + 1}</span>
-                  {branch.label}
+                  {renderCode(branch.label)}
                 </p>
                 {branch.detail ? (
-                  <p className="mt-1 text-text-dim">{branch.detail}</p>
+                  <p className="mt-1 text-text-dim">{renderCode(branch.detail)}</p>
                 ) : null}
                 {branch.leaves.length ? (
                   <ul className="mt-2 flex flex-wrap gap-1.5">
@@ -53,7 +54,7 @@ export function ApproachMap({ approach }: { approach: Approach }) {
                       <li key={leaf}
                           className="rounded-full border border-border-strong bg-surface px-2.5 py-0.5
                                      text-meta text-text-dim">
-                        {leaf}
+                        {renderCode(leaf)}
                       </li>
                     ))}
                   </ul>

@@ -2,11 +2,12 @@
  * The editor's look, built on the design tokens rather than a stock theme, so
  * the editor reads as part of the workspace instead of a window into another
  * product. Syntax colours are content, like diagram tones: they live inside
- * the editor and nowhere else.
+ * the editor and inside code blocks in a brief, and nowhere else. Both come
+ * from lib/ui/syntax.ts, so Python reads the same in each.
  */
 import { EditorView } from "@codemirror/view";
 import { HighlightStyle, syntaxHighlighting } from "@codemirror/language";
-import { tags as t } from "@lezer/highlight";
+import { SYNTAX } from "@/lib/ui/syntax";
 
 const base = EditorView.theme({
   "&": {
@@ -42,20 +43,9 @@ const base = EditorView.theme({
   "&.cm-focused": { outline: "none" },
 }, { dark: true });
 
-const highlight = HighlightStyle.define([
-  { tag: [t.keyword, t.controlKeyword, t.operatorKeyword, t.definitionKeyword, t.moduleKeyword],
-    color: "#C49BFF" },
-  { tag: [t.string, t.special(t.string)], color: "#8FD49A" },
-  { tag: [t.number, t.bool, t.null, t.atom], color: "#F2B36B" },
-  { tag: [t.comment, t.lineComment, t.blockComment], color: "#6F7885", fontStyle: "italic" },
-  { tag: [t.function(t.variableName), t.function(t.propertyName)], color: "#7FB2FF" },
-  { tag: [t.definition(t.variableName), t.definition(t.function(t.variableName))], color: "#ECEEF2" },
-  { tag: [t.className, t.typeName], color: "#6FD3CC" },
-  { tag: [t.propertyName], color: "#B8C4D6" },
-  { tag: [t.operator, t.punctuation, t.bracket], color: "#A0A7B2" },
-  { tag: [t.self, t.special(t.variableName)], color: "#F28FB8" },
-  { tag: t.invalid, color: "#F26B63" },
-]);
+const highlight = HighlightStyle.define(SYNTAX.map(({ tag, name, italic }) => ({
+  tag, color: `var(--syntax-${name})`, ...(italic ? { fontStyle: "italic" } : {}),
+})));
 
 export const editorTheme = [base, syntaxHighlighting(highlight)];
 

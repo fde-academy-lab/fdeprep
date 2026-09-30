@@ -14,6 +14,7 @@ import { CircleCheck, Lightbulb, X } from "lucide-react";
 import { LogoMark } from "@/components/ui/logo";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { renderCode } from "@/components/ui/code";
 
 export interface CoachLine { id: string; say: string; at: number }
 
@@ -161,7 +162,7 @@ export function CoachBar({ current, wrapUp, opening, enabled, onDismiss, onHint,
         <p key={current?.id ?? (passed ? "wrap" : "quiet")}
            className={cn("mt-0.5 leading-snug", quiet ? "text-text-dim" : "text-text",
                          current && "rise-in")}>
-          {text}
+          {text ? renderCode(text) : text}
         </p>
       </div>
       {current ? (
@@ -193,7 +194,7 @@ export function CoachLog({ log }: { log: CoachLine[] }) {
                                                    bg-surface px-3 py-2">
           <LogoMark className="mt-0.5 size-4 shrink-0" />
           <div className="min-w-0">
-            <p className="text-text">{line.say}</p>
+            <p className="text-text">{renderCode(line.say)}</p>
             <p className="mt-0.5 text-meta text-text-faint">
               <time dateTime={new Date(line.at).toISOString()}>
                 {new Date(line.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}

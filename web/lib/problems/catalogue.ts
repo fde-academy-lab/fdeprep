@@ -8,7 +8,7 @@ import { db } from "../db/pool.ts";
 import { tierFor, type Difficulty } from "../policy/tiers.ts";
 
 export type SolveState = "solved" | "attempted" | "untouched";
-export type Sort = "roadmap" | "difficulty" | "recent" | "least_attempted";
+export type Sort = "roadmap" | "storyline" | "difficulty" | "recent" | "least_attempted";
 
 export interface CatalogueFilters {
   search?: string;
@@ -27,6 +27,9 @@ export interface CatalogueRow {
   id: number;
   slug: string;
   title: string;
+  /** The day of a learner's first 30 as an FDE, or null before the problem is republished. */
+  day: number | null;
+  skill: string | null;
   difficulty: Difficulty;
   track: string;
   artefactType: string;
@@ -54,6 +57,8 @@ const SORTS: Record<Sort, string> = {
   // The learner's own persona roadmap, which lib/policy orders. A problem no
   // roadmap carries yet sorts after all of them rather than disappearing.
   roadmap: `road.ordinal nulls last, ${DIFFICULTY_ORDER}, p.track, p.id`,
+  // The 30-day storyline, the same order for every learner.
+  storyline: "p.day nulls last, p.id",
   difficulty: `${DIFFICULTY_ORDER}, p.title`,
   recent: "p.created_at desc, p.id desc",
   least_attempted: "coalesce(stats.attempts, 0) asc, p.title",
@@ -75,7 +80,7 @@ export async function listProblems(
 
   if (options.search) {
     add("(p.title ilike '%' || $$ || '%' or p.slug ilike '%' || $$ || '%' " +
-        "or p.track ilike '%' || $$ || '%')", options.search);
+        "or p.skill ilike '%' || $$ || '%' or p.track ilike '%' || $$ || '%')", options.search);
   }
   if (options.track && options.track !== "all") add("p.track = $$", options.track);
   if (options.tracks?.length) add("p.track = any($$::text[])", [...options.tracks]);
@@ -101,7 +106,7 @@ export async function listProblems(
              count(*) filter (where a.solved_at is not null)::int as solved
         from attempt a group by a.problem_id
     )
-    select p.id, p.slug, p.title, p.difficulty::text as difficulty, p.track,
+    select p.id, p.slug, p.title, p.day, p.skill, p.difficulty::text as difficulty, p.track,
            p.artefact_type::text as artefact_type, p.est_minutes,
            coalesce(stats.attempts, 0) as attempts,
            coalesce(stats.solved, 0) as solved,
@@ -146,6 +151,8 @@ function toRow(row: Record<string, any>): CatalogueRow {
     id: Number(row["id"]),
     slug: row["slug"],
     title: row["title"],
+    day: row["day"] === null || row["day"] === undefined ? null : Number(row["day"]),
+    skill: row["skill"] ?? null,
     difficulty,
     track: row["track"],
     artefactType: row["artefact_type"],

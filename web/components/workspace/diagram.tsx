@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { Diagram, DiagramEdge, EdgeTone, NodeKind, Tone } from "@/lib/problems/kit";
 import { cn } from "@/components/ui/cn";
+import { renderCode, withoutCodeMarks } from "@/components/ui/code";
 
 const KIND_ICON: Record<NodeKind, LucideIcon> = {
   actor: UserRound, model: Cpu, agent: Bot, tool: Wrench, store: Database, service: Server,
@@ -243,12 +244,12 @@ export function DiagramView({ diagram, className, large = false }: {
                 <span className="min-w-0">
                   <span className="block break-words text-body font-semibold leading-tight
                                    text-text">
-                    {node.label}
+                    {renderCode(node.label)}
                   </span>
                   {node.sub ? (
                     <span className="mt-0.5 block break-words text-meta leading-snug
                                      text-text-dim">
-                      {node.sub}
+                      {renderCode(node.sub)}
                     </span>
                   ) : null}
                 </span>
@@ -299,10 +300,11 @@ export function DiagramView({ diagram, className, large = false }: {
               <span className={cn("font-medium",
                                   edge.tone === "danger" ? "text-fail"
                                     : edge.tone === "success" ? "text-pass" : "text-text")}>
-                {edge.label ?? "then"}
+                {renderCode(edge.label ?? "then")}
               </span>
               <span className="text-text-faint">
-                {" "}{byId.get(edge.from)?.label} to {byId.get(edge.to)?.label}
+                {" "}{renderCode(byId.get(edge.from)?.label ?? "")} to{" "}
+                {renderCode(byId.get(edge.to)?.label ?? "")}
               </span>
             </span>
           </li>
@@ -319,7 +321,7 @@ export function DiagramFigure({ diagram }: { diagram: Diagram }) {
     <figure className="rounded-panel border border-border bg-surface px-4 pb-4 pt-3">
       <div className="mb-4 flex items-start justify-between gap-3">
         <figcaption className="text-lead font-semibold leading-snug text-text">
-          {diagram.title}
+          {renderCode(diagram.title)}
         </figcaption>
         <button type="button" onClick={() => dialog.current?.showModal()}
                 aria-label="Open the diagram full size"
@@ -332,17 +334,17 @@ export function DiagramFigure({ diagram }: { diagram: Diagram }) {
       {diagram.caption ? (
         <p className="mt-4 rounded-control border-l-2 border-text-faint bg-surface-2 px-3 py-2
                       font-medium text-text">
-          {diagram.caption}
+          {renderCode(diagram.caption)}
         </p>
       ) : null}
 
-      <dialog ref={dialog} aria-label={diagram.title}
+      <dialog ref={dialog} aria-label={withoutCodeMarks(diagram.title)}
               onClick={(event) => { if (event.target === dialog.current) dialog.current?.close(); }}
               className="m-auto w-[min(1180px,calc(100vw-2rem))] max-w-none rounded-panel border
                          border-border-strong bg-surface p-0 text-text backdrop:bg-bg/80
                          backdrop:backdrop-blur-[2px] open:rise-in">
         <div className="flex items-center justify-between border-b border-border px-5 py-3">
-          <p className="text-lead font-semibold">{diagram.title}</p>
+          <p className="text-lead font-semibold">{renderCode(diagram.title)}</p>
           <button type="button" onClick={() => dialog.current?.close()} aria-label="Close"
                   className="grid size-8 place-items-center rounded-control text-text-dim
                              hover:bg-surface-2 hover:text-text">
@@ -354,7 +356,7 @@ export function DiagramFigure({ diagram }: { diagram: Diagram }) {
           {diagram.caption ? (
             <p className="mt-5 rounded-control border-l-2 border-text-faint bg-surface-2 px-3 py-2
                           font-medium">
-              {diagram.caption}
+              {renderCode(diagram.caption)}
             </p>
           ) : null}
         </div>

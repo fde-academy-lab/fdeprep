@@ -17,6 +17,7 @@ import {
 import type { Replay as ReplayData, ReplayStep, StepType } from "@/lib/trace/replay";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/components/ui/cn";
+import { renderCode } from "@/components/ui/code";
 
 const LOOK: Record<StepType, { icon: LucideIcon; label: string }> = {
   llm_call: { icon: Cpu, label: "Model call" },
@@ -148,7 +149,7 @@ function Selected({ step, attemptClosed }: { step: ReplayStep; attemptClosed: bo
       {step.fixtureAnnotation ? (
         <div className="mt-4 rounded-panel border border-border bg-surface px-4 py-3">
           <p className="text-meta font-medium text-text-faint">From the problem author</p>
-          <p className="mt-1 text-text">{step.fixtureAnnotation}</p>
+          <p className="mt-1 text-text">{renderCode(step.fixtureAnnotation)}</p>
         </div>
       ) : !attemptClosed ? (
         <p className="mt-4 text-meta text-text-faint">

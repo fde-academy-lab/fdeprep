@@ -8,9 +8,12 @@
  *
  * Supported: paragraphs, headings, bullet and numbered lists, fenced and
  * indented code, block quotes, tables, and inline code, bold, italic and links.
+ * A code block that parses as Python takes the editor's syntax colours.
  */
 import { Fragment, type ReactNode } from "react";
+import { highlightPython } from "@/lib/ui/syntax";
 import { cn } from "./cn";
+import { CODE_CLASS } from "./code";
 
 type Block =
   | { kind: "p"; text: string }
@@ -154,6 +157,23 @@ export function parseBlocks(source: string): Block[] {
   return blocks;
 }
 
+function CodeBlock({ lang, text }: { lang: string; text: string }) {
+  const lines = lang === "" || /^(py|python)$/i.test(lang) ? highlightPython(text) : null;
+  if (!lines) return <code>{text}</code>;
+  return (
+    <code>
+      {lines.map((line, l) => (
+        <Fragment key={l}>
+          {l > 0 && "\n"}
+          {line.map((token, i) => token.className
+            ? <span key={i} className={token.className}>{token.text}</span>
+            : <Fragment key={i}>{token.text}</Fragment>)}
+        </Fragment>
+      ))}
+    </code>
+  );
+}
+
 const INLINE =
   /(`+)([^`]|[^`][\s\S]*?[^`])\1(?!`)|\*\*(?=\S)([\s\S]+?)(?<=\S)\*\*|(?<![\w*])\*(?=\S)([^*]+?)(?<=\S)\*(?![\w*])|(?<![\w])_(?=\S)([^_]+?)(?<=\S)_(?![\w])|\[([^\]]+)\]\(([^)\s]+)\)/g;
 
@@ -174,9 +194,7 @@ export function renderInline(text: string, keyPrefix = "i"): ReactNode[] {
     const key = `${keyPrefix}-${n++}`;
     if (match[1] !== undefined) {
       out.push(
-        <code key={key}
-              className="rounded-key border border-border bg-surface-2 px-1 py-px font-mono
-                         text-[0.92em] text-text">
+        <code key={key} className={CODE_CLASS}>
           {match[2]!.trim() === "" ? match[2] : match[2]!.replace(/^ (.*) $/, "$1")}
         </code>);
     } else if (match[3] !== undefined) {
@@ -232,7 +250,7 @@ export function Markdown({ source, className, compact = false }: {
                    className={cn(gap, "overflow-x-auto rounded-control border border-border",
                                  "bg-surface-2 px-3 py-2.5 font-mono text-meta leading-[1.6]",
                                  "text-text")}>
-                <code>{block.text}</code>
+                <CodeBlock lang={block.lang} text={block.text} />
               </pre>
             );
           case "list": {

@@ -11,6 +11,7 @@ import type { WorkspaceProblem } from "@/lib/problems/workspace";
 import { ButtonLink } from "@/components/ui/button";
 import { LogoMark } from "@/components/ui/logo";
 import { ScenarioCard } from "@/components/workspace/scenario-card";
+import { renderCode } from "@/components/ui/code";
 
 export function LockedStage({ problem, lock }: { problem: WorkspaceProblem; lock: BuildLock }) {
   const build = problem.kit.build;
@@ -24,7 +25,7 @@ export function LockedStage({ problem, lock }: { problem: WorkspaceProblem; lock
         <p className="inline-flex items-center gap-2 rounded-full border border-border-strong px-3 py-1
                       text-meta text-text-dim">
           <Lock aria-hidden className="size-3.5" />
-          {build ? `${build.title}, stage ${build.stage} of ${build.of}` : "Locked stage"}
+          {build ? <>{renderCode(build.title)}, stage {build.stage} of {build.of}</> : "Locked stage"}
         </p>
         <h1 className="mt-4 text-display font-semibold tracking-[-0.015em] text-text">{problem.title}</h1>
         <p className="mt-3 text-lead text-text-dim">{lock.reason}</p>

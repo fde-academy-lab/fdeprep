@@ -127,16 +127,17 @@ async function upsertProblem(
 ): Promise<number> {
   const { rows } = await client.query<{ id: string }>(
     `insert into problem (slug, title, artefact_type, difficulty, track, est_minutes,
-                          is_published, current_version)
-     values ($1, $2, $3::artefact_type, $4::difficulty, $5, $6, $7, $8)
+                          is_published, current_version, day, skill)
+     values ($1, $2, $3::artefact_type, $4::difficulty, $5, $6, $7, $8, $9, $10)
      on conflict (slug) do update set
-       title = excluded.title, artefact_type = excluded.artefact_type,
+       title = excluded.title, day = excluded.day, skill = excluded.skill,
+       artefact_type = excluded.artefact_type,
        difficulty = excluded.difficulty, track = excluded.track,
        est_minutes = excluded.est_minutes, current_version = excluded.current_version,
        is_published = problem.is_published or excluded.is_published
      returning id`,
     [parsed.slug, parsed.title, parsed.artefact_type, parsed.difficulty, parsed.track,
-     parsed.est_minutes, publish, version]);
+     parsed.est_minutes, publish, version, parsed.day ?? null, parsed.skill ?? null]);
   return Number(rows[0]!.id);
 }
 
@@ -150,8 +151,8 @@ async function insertVersion(
                                   time_limit_s, allowed_imports,
                                   original_prompt, prompt_rules, word_range,
                                   required_headings, rubric, probe_count,
-                                  defence_question, defence_criterion, kit)
-     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
+                                  defence_question, defence_criterion, kit, interview)
+     values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22)
      returning id`,
     [problemId, version, sourceYaml, parsed.brief_md, parsed.contract_md ?? null,
      parsed.stub_code ?? null, JSON.stringify(parsed.steps), parsed.reference_md ?? null,
@@ -164,7 +165,8 @@ async function insertVersion(
      JSON.stringify(parsed.required_headings), JSON.stringify(parsed.rubric),
      parsed.probes.length, parsed.defence_question ?? null,
      parsed.defence_criterion ? JSON.stringify(parsed.defence_criterion) : null,
-     Object.keys(parsed.kit).length ? JSON.stringify(parsed.kit) : null]);
+     Object.keys(parsed.kit).length ? JSON.stringify(parsed.kit) : null,
+     parsed.interview ? JSON.stringify(parsed.interview) : null]);
   return Number(rows[0]!.id);
 }
 
