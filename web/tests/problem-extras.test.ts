@@ -35,7 +35,7 @@ day: 1
 skill: Practise one thing
 artefact_type: code
 difficulty: easy
-track: agent-loop
+track: loop
 est_minutes: 20
 call_budget: 6
 competencies: [{ slug: agent-loop, weight: 1.0 }]

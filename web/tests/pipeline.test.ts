@@ -34,8 +34,9 @@ async function problemBySlug(slug: string) {
 }
 
 // Eight code fixtures from Phase 2, the two prompt fixtures and the design
-// fixture Phase 4 needed, and the fixture for the four newest assertion types.
-const FIXTURE_COUNT = 12;
+// fixture Phase 4 needed, the fixture for the four newest assertion types, and
+// the LangGraph fixture tests/test_frameworks.py runs.
+const FIXTURE_COUNT = 13;
 
 describe("acceptance 1: every fixture imports and appears in the catalogue", () => {
   it("imports every fixture and lists them", async () => {

@@ -1,0 +1,489 @@
+slug: stop-when-the-job-says-completed
+title: "Stop the agent once the job reports completed"
+day: 4
+skill: Read the job's own status, and stop the moment it says completed
+artefact_type: code
+difficulty: medium
+track: loop
+concept:
+  topic: "Stopping"
+  question: "How does the loop know the work is done when the model keeps going?"
+est_minutes: 30
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 4
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The flight disruption desk at a travel company the size of MakeMyTrip runs
+  an agent that moves passengers off cancelled flights. It starts a rebooking
+  with `rebook`, polls `check_rebooking` until the airline confirms, and tells
+  the passenger their new ticket.
+
+  During Sunday's fog cancellations it moved 312 passengers. For 41 of them
+  the airline had already confirmed the new ticket, with a status of
+  completed, when the model asked for one more `rebook` to be sure. The loop
+  ran it. Those 41 passengers now hold two tickets each and have paid twice.
+
+  The model decides what to try next. Whether the rebooking happened is
+  something only the airline's answer can say. Write the loop that stops when
+  that answer says completed.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the passenger's request with their booking reference.
+  `llm(prompt)` returns either `Action: <tool>(<key>=<value>, ...)` or
+  `Final Answer: <text>`.
+
+  | Tool | Arguments | Returns |
+  |---|---|---|
+  | `rebook` | `booking`, `flight` | `{"status": "pending", "job": "J-..."}`, or `{"status": "completed", "ticket": "TK-...", "flight": "6E-..."}` when the airline confirms at once |
+  | `check_rebooking` | `job` | `{"status": "pending"}` until the airline confirms, then `{"status": "completed", "ticket": "TK-...", "flight": "6E-..."}` |
+
+  A rebooking is done when a tool result is a dict whose `status` is exactly
+  `completed`, from either tool. When one is:
+
+  - stop at once, with no other tool call and no other model call
+  - return `Rebooked on <flight>, ticket <ticket>.`, taking both from that
+    result
+
+  Anything else means not done yet, including a result whose other fields
+  mention the word and a result that is not a dict. Append it to the
+  scratchpad and ask the model again. When the model gives a Final Answer
+  before any result is completed, return its text.
+
+  Budget: at most 4 model calls. When they run out, return
+  `The rebooking has not completed yet.` Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  MAX_CALLS = 4
+  ACTION = re.compile(r"^Action:\s*(\w+)\((.*)\)\s*$", re.MULTILINE)
+  FINAL = re.compile(r"^Final Answer:\s*(.*)$", re.MULTILINE | re.DOTALL)
+
+
+  def arguments(raw: str) -> dict:
+      """Turn 'booking=BK-1, flight=6E-2' into {'booking': 'BK-1', 'flight': '6E-2'}."""
+      args = {}
+      for pair in raw.split(","):
+          if "=" in pair:
+              key, value = pair.split("=", 1)
+              args[key.strip()] = value.strip()
+      return args
+
+
+  def completed(result) -> bool:
+      """Whether this tool result says the rebooking is done."""
+      # TODO 2: only a dict whose status is exactly "completed" says so. A
+      #         note that mentions the word says nothing, and None has no
+      #         status at all
+      return False
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Request: {question}\n"
+
+      for _ in range(MAX_CALLS):
+          reply = llm(scratchpad)
+
+          final = FINAL.search(reply)
+          if final:
+              return final.group(1).strip()
+
+          action = ACTION.search(reply)
+          if action is None or action.group(1) not in tools:
+              scratchpad += f"{reply}\nThat was not an action you can take.\n"
+              continue
+
+          # TODO 1: call the tool with arguments(action.group(2)) and append
+          #         what it returned to the scratchpad as an observation
+          # TODO 3: when completed(result) holds, stop right here, before the
+          #         next tool call and the next model call
+          # TODO 4: return "Rebooked on <flight>, ticket <ticket>." with both
+          #         taken from the completed result
+
+      return "The rebooking has not completed yet."
+
+steps:
+  - id: s1
+    text: Run the tool the model chose and keep its result in the scratchpad.
+    check_id: s1
+  - id: s2
+    text: Stop the moment a result's status is completed, before any other call.
+    check_id: s2
+  - id: s3
+    text: Return the flight and the ticket from the completed result.
+    check_id: s3
+  - id: s4
+    text: Read the status field itself, so a note that mentions completed does not stop the loop.
+    check_id: s4
+
+step_checks:
+  # s1 and s3 read the public polling case. s2 and s4 teach what the hidden
+  # cases teach, so each carries its own case with its own booking.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: check_rebooking }
+        - { type: prompt_contains, value: '["'']status["'']:\s*["'']pending["'']' }
+  # The model asks for another rebook once it sees the ticket, so a loop that
+  # goes round again after the confirmation spends a third tool call.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Booking BK-7120: flight 6E-401 is cancelled, please move me to 6E-415." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: rebook(booking=BK-7120, flight=6E-415)" }
+        - { match: { contains: "TK-30017" }, reply: "Action: rebook(booking=BK-7120, flight=6E-415)" }
+        - { match: "*", reply: "Action: check_rebooking(job=J-3301)" }
+      tools:
+        rebook: { returns: { status: pending, job: J-3301 } }
+        check_rebooking: { returns: { status: completed, ticket: TK-30017, flight: 6E-415 } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: check_rebooking }
+        - { type: tool_calls_at_most, value: 2 }
+        - { type: llm_calls_at_most, value: 2 }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: returns_equals, value: "Rebooked on 6E-5322, ticket TK-88213." }
+  # The first result is pending and carries a note that uses the word
+  # completed. A loop that searches the whole result stops there, with no
+  # ticket to report.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "Booking BK-8804: my 6E-930 was cancelled, the 6E-944 works for me." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: rebook(booking=BK-8804, flight=6E-944)" }
+        - { match: { contains: "TK-61147" },
+            reply: "Final Answer: You are rebooked on 6E-944, ticket TK-61147." }
+        - { match: "*", reply: "Action: check_rebooking(job=J-4410)" }
+      tools:
+        rebook:
+          returns: { status: pending, job: J-4410, note: "A rebooking on this booking completed last week." }
+        check_rebooking: { returns: { status: completed, ticket: TK-61147, flight: 6E-944 } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: check_rebooking }
+        - { type: returns_matches, value: "TK-61147" }
+
+hints:
+  - Two things in this loop can say the work is finished, the model's reply
+    and the airline's answer. Only one of them knows.
+  - The model asks for another `rebook` because it is not sure. The airline
+    already said, in the status of the result your loop received one line
+    earlier.
+  - "Read the status of every result, from either tool, straight after the call. When it is exactly `completed`, return before the loop goes round again."
+  - "Compare the `status` field itself. A note that mentions completed belongs to a pending result, and a result that is not a dict has no status to read."
+
+scenario:
+  headline: "41 passengers were rebooked twice and paid twice"
+  who: "The flight disruption desk at a travel company the size of MakeMyTrip"
+  situation: >-
+    During Sunday's fog cancellations the rebooking agent moved 312
+    passengers. For 41 of them the airline had already confirmed the new
+    ticket when the model asked to rebook once more, and the loop did as it
+    was asked.
+  stakes: >-
+    Each of the 41 now holds two tickets and paid for both. Refunding the
+    second ticket takes the airline up to 14 days.
+  metrics:
+    - { label: Passengers charged twice, value: "41" }
+    - { label: Passengers moved Sunday, value: "312" }
+    - { label: Model calls allowed, value: "4" }
+
+diagram:
+  title: Where a confirmed rebooking turns into a second ticket
+  caption: >-
+    The airline says completed in the result. A loop that waits for the model
+    to say it runs the model's next idea first.
+  direction: lr
+  nodes:
+    - { id: passenger, label: Passenger, sub: asks to be moved, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: proposes the next action, kind: model, tone: teal, at: [1, 0] }
+    - { id: loop, label: Agent loop, sub: runs what the model asks, kind: agent, tone: purple, at: [1, 1] }
+    - { id: check, label: "`check_rebooking()`", sub: "pending, then completed", kind: tool, tone: orange, at: [2, 1] }
+    - { id: rebook, label: "`rebook()`", sub: buys a ticket every call, kind: tool, tone: orange, at: [2, 0] }
+    - { id: second, label: Second ticket, sub: paid for twice, kind: output, tone: pink, at: [3, 0] }
+    - { id: answer, label: New ticket, sub: flight and ticket from the result, kind: output, tone: green, at: [3, 1] }
+  edges:
+    - { from: passenger, to: loop, label: booking and request, step: 1 }
+    - { from: loop, to: check, label: poll, step: 2 }
+    - { from: check, to: loop, label: status completed, step: 3 }
+    - { from: loop, to: answer, label: stop on the status, tone: success }
+    - { from: loop, to: model, label: asks again anyway, tone: danger }
+    - { from: model, to: rebook, label: one more rebook, tone: danger }
+    - { from: rebook, to: second, label: a new charge, tone: danger }
+
+approach:
+  goal: Stop when the airline says the rebooking is done, whatever the model asks next
+  branches:
+    - label: Find who knows the work is done
+      leaves: [the airline's answer, not the model's reply, either tool can carry it]
+    - label: Read the status, not the words
+      detail: >-
+        Completed is one value of one field. The same word in a note belongs
+        to a result that is still pending.
+      leaves: [status exactly completed, anything else is not done yet]
+    - label: Stop before the next call
+      leaves: [no other tool call, no other model call]
+    - label: Answer from the result
+      leaves: [the flight and the ticket the airline issued]
+
+coach:
+  opening: >-
+    Find the line where your loop learns that the rebooking happened. Then ask
+    whether the model or the airline wrote what that line reads.
+  signals:
+    - id: trusts-the-model
+      when: { code_lacks: '["'']completed["'']' }
+      say: >-
+        Nothing in your loop reads the status the airline sends back. Who
+        decides the rebooking happened, the model or the airline's answer?
+    - id: searches-the-whole-result
+      when: { code_matches: '["'']completed["'']\s+in\s+' }
+      say: >-
+        Your loop looks for the word completed anywhere in the result. What
+        does it do with a pending result whose note mentions an earlier
+        rebooking that completed?
+    - id: only-the-polling-tool
+      when: { code_matches: '==\s*["'']check_rebooking["'']' }
+      say: >-
+        Your loop reads completion only from `check_rebooking`. What does
+        `rebook` return when the airline confirms straight away?
+    - id: hidden-asked-again
+      when: { test_failed: the_model_asks_to_rebook_again_after_the_confirmation }
+      say: >-
+        In that run the airline confirmed, and the model then asked for
+        another `rebook`. Which line of your loop runs after the confirmation
+        arrives?
+    - id: hidden-note
+      when: { test_failed: a_note_that_mentions_completed_is_not_a_completion }
+      say: >-
+        In that run your loop stopped on a result that was still pending.
+        Print the first result and look at which field said completed.
+    - id: hidden-at-once
+      when: { test_failed: a_rebooking_confirmed_at_once_needs_no_poll }
+      say: >-
+        In that run the airline confirmed in its answer to `rebook`. Does your
+        loop read the status of that result, or only of a poll?
+    - id: adversarial-nothing
+      when: { test_failed: adversarial_the_airline_answers_with_nothing }
+      say: >-
+        One poll came back with nothing at all. What does your loop do when it
+        reads a status from something that is not a dict?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and run the public cases. The trace shows each
+        result, and one of them says completed long before the model does.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints open after one failed run on this
+        tier, and the second one says where the answer already is.
+  wrap_up: >-
+    The model proposes and the tool reports. A loop that stops on the tool's
+    own status cannot be talked into a second ticket, whatever the model asks
+    for next.
+
+tests:
+  - name: confirms_after_polling
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Booking BK-2041: my 6E-5310 to Delhi was cancelled. Please put me on the next flight." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: rebook(booking=BK-2041, flight=6E-5322)" }
+        - { match: { contains: "TK-88213" },
+            reply: "Final Answer: You are rebooked on 6E-5322, ticket TK-88213." }
+        - { match: "*", reply: "Action: check_rebooking(job=J-7711)" }
+      tools:
+        rebook: { returns: { status: pending, job: J-7711 } }
+        check_rebooking:
+          sequence:
+            - { status: pending }
+            - { status: completed, ticket: TK-88213, flight: 6E-5322 }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: check_rebooking }
+        - { type: returns_matches, value: "TK-88213" }
+        - { type: returns_matches, value: "6E-5322" }
+        - { type: llm_calls_at_most, value: 4 }
+
+  - name: answers_a_question_without_rebooking
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Booking BK-3307: can I take a guitar on board as cabin baggage?" }
+      llm_script:
+        - { match: "*",
+            reply: "Final Answer: A guitar can travel in the cabin when it fits the overhead locker. Otherwise it goes in the hold." }
+      tools:
+        rebook: { returns: { status: pending, job: J-0001 } }
+        check_rebooking: { returns: { status: pending } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: rebook }
+        - { type: returns_matches, value: "(?i)overhead locker" }
+
+  - name: the_model_asks_to_rebook_again_after_the_confirmation
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Booking BK-4410: flight 6E-2147 is cancelled, rebook me on the evening one." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: rebook(booking=BK-4410, flight=6E-2165)" }
+        - { match: { contains: "TK-90331" }, reply: "Action: rebook(booking=BK-4410, flight=6E-2165)" }
+        - { match: "*", reply: "Action: check_rebooking(job=J-8120)" }
+      tools:
+        rebook:
+          sequence:
+            - { status: pending, job: J-8120 }
+            - { status: pending, job: J-8121 }
+        check_rebooking: { returns: { status: completed, ticket: TK-90331, flight: 6E-2165 } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: tool_calls_at_most, value: 2 }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: returns_matches, value: "TK-90331" }
+
+  - name: a_note_that_mentions_completed_is_not_a_completion
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Booking BK-5150: my 6E-6012 was cancelled, any flight tomorrow morning is fine." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: rebook(booking=BK-5150, flight=6E-6030)" }
+        - { match: { contains: "TK-71590" },
+            reply: "Final Answer: You are rebooked on 6E-6030, ticket TK-71590." }
+        - { match: "*", reply: "Action: check_rebooking(job=J-9055)" }
+      tools:
+        rebook:
+          returns:
+            status: pending
+            job: J-9055
+            note: "An earlier rebooking on BK-5150 completed on 28 September."
+        check_rebooking:
+          sequence:
+            - { status: pending }
+            - { status: completed, ticket: TK-71590, flight: 6E-6030 }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: "TK-71590" }
+        - { type: returns_matches, value: "6E-6030" }
+
+  - name: a_rebooking_confirmed_at_once_needs_no_poll
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Booking BK-6021: cancelled flight, please move me to 6E-711." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: rebook(booking=BK-6021, flight=6E-711)" }
+        - { match: { contains: "TK-55102" }, reply: "Action: check_rebooking(job=J-6021)" }
+        - { match: "*", reply: "Action: rebook(booking=BK-6021, flight=6E-711)" }
+      tools:
+        rebook: { returns: { status: completed, ticket: TK-55102, flight: 6E-711 } }
+        check_rebooking: { returns: { status: completed, ticket: TK-55102, flight: 6E-711 } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: returns_matches, value: "TK-55102" }
+
+  - name: adversarial_the_airline_answers_with_nothing
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The first poll came back with nothing at all: no status, no body. The
+      airline's gateway does this when it times out on its own side.
+
+      A loop that reads `result["status"]`, or calls `.get` on the result,
+      raises on that answer and ends the run with the passenger's rebooking
+      still in flight. Nothing is not completed, so it is one more result
+      that means not done yet: append it, ask again, and the next poll
+      carries the ticket.
+    spec:
+      kind: agent_run
+      input: { question: "Booking BK-9033: 6E-318 was cancelled, I need to reach Pune today." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: rebook(booking=BK-9033, flight=6E-332)" }
+        - { match: { contains: "TK-47720" },
+            reply: "Final Answer: You are rebooked on 6E-332, ticket TK-47720." }
+        - { match: "*", reply: "Action: check_rebooking(job=J-5590)" }
+      tools:
+        rebook: { returns: { status: pending, job: J-5590 } }
+        check_rebooking:
+          sequence:
+            - null
+            - { status: completed, ticket: TK-47720, flight: 6E-332 }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: "TK-47720" }
+
+reference_md: |
+  The model never knew the rebooking had worked. It saw a scratchpad, it was
+  not sure the confirmation applied, and it proposed what a careful person
+  might: do it again to be safe. The loop treated that proposal as a decision.
+  The decision had already been made, by the airline, and it was sitting in
+  the status of the result the loop had just received.
+
+  An agent loop has more than one way to end. The model can end it with a
+  Final Answer, a budget can end it when the calls run out, an operator can
+  end it with a cancel, and the world can end it by reporting that the work is
+  done. The last one is the most reliable, because the tool that did the work
+  is the only party that knows it happened. A loop that waits for the model to
+  notice is trusting a summary over the source.
+
+  Reading the source means reading one field. `status` equal to `completed`
+  is a value the airline sets once; the word inside a note is prose about
+  something else, and a search over the whole result cannot tell the two
+  apart. The check runs on every result from every tool, because a rebooking
+  the airline confirms at once never reaches a poll. A result that is not a
+  dict has no status and is not a completion, so it is appended and the loop
+  carries on.
+
+  Stopping means returning before the next call of any kind. One more model
+  call costs money and, on a day like Sunday, comes back with one more
+  action. The answer is built from the result too. The airline's result holds
+  the ticket it issued, and a model asked to restate it can only copy it,
+  or get it wrong.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    The task is already done, but the model keeps proposing more actions. How does your loop know to stop, and where does that signal come from?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: rebook
+    args: booking, flight
+    returns: '`{"status": "pending", "job": ...}`, or `{"status": "completed", "ticket": ..., "flight": ...}` when the
+      airline confirms at once.'
+  - name: check_rebooking
+    args: job
+    returns: '`{"status": "pending"}` until the airline confirms, then `{"status": "completed", "ticket": ...,
+      "flight": ...}`.'
+example:
+  case: confirms_after_polling
+  expect: '`check_rebooking` answers pending, then completed with ticket TK-88213 on 6E-5322. Stop there without asking
+    the model again, and return `Rebooked on 6E-5322, ticket TK-88213.`'
+traps:
+  - Leaving the decision to the model, so a reply that asks for one more `rebook` after the airline confirmed is run.
+  - Searching the whole result for the word completed, when only the `status` field can say it.
+  - Reading completion only from `check_rebooking`, when `rebook` can come back completed on its own.
+  - Reading `status` from a result that is not a dict, which raises and ends the run.

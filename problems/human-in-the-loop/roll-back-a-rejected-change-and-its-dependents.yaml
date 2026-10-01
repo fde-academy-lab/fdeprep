@@ -1,0 +1,624 @@
+slug: roll-back-a-rejected-change-and-its-dependents
+title: "Roll back a rejected change and its dependents"
+day: 20
+skill: Let reversible changes run before review, and undo exactly what a rejection reaches
+artefact_type: code
+difficulty: hard
+track: human-in-the-loop
+concept:
+  topic: "Async or blocking review"
+  question: "Which changes can go live before review, and what must a rejection undo?"
+est_minutes: 50
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: system-design, weight: 1.0 }
+  - { slug: state-and-memory, weight: 0.5 }
+call_budget: 7
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The merchandising team at a fashion marketplace the size of Myntra runs an
+  agent overnight. It reprices items, builds bundles from them, puts bundles
+  on homepage banners and emails customers about them. Its changes go live at
+  once and a reviewer works through them at 09:00, because holding two
+  hundred reprices for a person would miss the morning sale.
+
+  Last Thursday the reviewer rejected one reprice: a wool jacket at ₹499
+  that should have been ₹4,999. The rollback restored the jacket and nothing
+  else. The bundle priced from the wrong figure, and the banner selling that
+  bundle, stayed live until noon, and 1,140 bundles sold at ₹1,259 against a
+  price of ₹5,309. At 06:00 the agent had also emailed two lakh customers
+  about the bundle, before anyone had looked at the price it was built on.
+
+  On Friday the team tried the opposite fix, undoing everything the agent
+  had done after a rejected change. One rejected banner took 160 correct
+  reprices on other items back to their old prices in the middle of a sale.
+
+  Write the run that lets a change the platform can undo go live at once,
+  keeps anything it cannot undo waiting for a person, and undoes exactly what
+  a rejection reaches.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` names the night's run. `llm(prompt)` is the agent's planner, and
+  each call returns its next action, or `Done` when the plan is finished:
+
+      Action: {"id": "a2", "tool": "create_bundle", "args": {"bundle": "BN-7", "skus": ["JKT-101", "SCF-204"]}, "depends_on": ["a1"]}
+      Done
+
+  `depends_on` lists the earlier actions this one was built on. A reply that
+  is neither an action you can read nor `Done` ends the run.
+
+  The review policy belongs to the platform, whatever a proposal says:
+
+  | Tool | Reversible | Undo it with |
+  |---|---|---|
+  | `set_price` | yes | `restore_price(action_id=...)` |
+  | `create_bundle` | yes | `delete_bundle(action_id=...)` |
+  | `schedule_banner` | yes | `cancel_banner(action_id=...)` |
+  | any other tool | no | nothing |
+
+  During the run:
+
+  - A reversible action runs at once, as `tools[tool](**args)`. A reviewer
+    sees it afterwards.
+  - An irreversible action runs only after `tools["approve"](action_id=...)`
+    answers `{"approved": true}`, and you ask only once everything it was
+    built on, directly or through other actions, has been approved. Until
+    then it is held. Nothing is ever built on an irreversible action.
+
+  When the planner says `Done`, `tools["reviews"](run=question)` returns
+
+      {"status": 200, "decisions": {"a1": "approved", "a2": "rejected"}}
+
+  and an action missing from `decisions` is still unreviewed. Then:
+
+  - Undo every rejected action, and every action built on one, directly or
+    through other actions, whatever its own review said. Undo each once, the
+    most recently run first. Undo nothing else.
+  - An undo worked only when it answers `{"status": 200, "undone": true}`.
+    When it does not, that action stays live, so everything it was built on
+    has to stay live too, and all of them are stuck.
+  - A held action is cancelled when anything it was built on, directly or
+    through other actions, was rejected. When everything it was built on,
+    directly or through other actions, is approved, ask `approve` now: run it
+    on `true`, and it is refused on `false`. Any other answer, or a review
+    still outstanding, keeps it held.
+
+  Return the morning report as a JSON string:
+
+      {"undone": [...], "stuck": [...], "held": [...], "refused": [...], "cancelled": [...]}
+
+  Each list holds action ids. `undone` and `stuck` list the most recently
+  run first, and the other three list actions in the order the planner
+  proposed them.
+
+  Budget: at most 7 model calls. Allowed imports: json, re.
+
+defence_question: |
+  In the run where the banner would not come down, your rollback stopped
+  there and left the jacket on sale at ₹499, because deleting the bundle
+  under a live banner would put a broken offer on the homepage. The trading
+  desk says ten minutes of a broken banner costs less than ₹4,050 lost on
+  every bundle sold. Who should make that call, how quickly, and what would
+  you change in the rollback so the cheaper failure is chosen before a
+  person has to wake up?
+
+stub_code: |
+  import json
+  import re
+
+  # The platform's review policy: each reversible tool, and the tool that
+  # undoes it. Every other tool is irreversible.
+  UNDO = {
+      "set_price": "restore_price",
+      "create_bundle": "delete_bundle",
+      "schedule_banner": "cancel_banner",
+  }
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Run the night's plan, then act on the morning's reviews.
+
+      llm(prompt) replies with the planner's next action, or Done:
+          Action: {"id": ..., "tool": ..., "args": {...}, "depends_on": [...]}
+      A reversible action runs at once. An irreversible one runs only after
+      tools["approve"](action_id=...) answers approved true, asked only once
+      everything it was built on, directly or through other actions, has been
+      approved. Until then it is held.
+
+      After Done, tools["reviews"](run=question) returns
+          {"status": 200, "decisions": {"a1": "approved", "a2": "rejected"}}
+      Undo each rejected action and everything built on it, most recently run
+      first and each once, with tools[UNDO[tool]](action_id=...), and nothing
+      else. An undo that does not answer {"status": 200, "undone": true}
+      leaves that action and everything it was built on stuck. Then settle
+      every held action: cancelled, asked, or still held.
+
+      Return json.dumps({"undone": [...], "stuck": [...], "held": [...],
+                         "refused": [...], "cancelled": [...]}).
+      At most 7 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"undone": [], "stuck": [], "held": [],
+                         "refused": [], "cancelled": []})
+
+hints:
+  - Draw the night's actions as boxes, with an arrow from each one to what it
+    was built on. A rejection travels along those arrows in one direction
+    only, and the order the actions ran in is a different thing.
+  - Reversibility decides who waits. A change the platform can undo can be
+    reviewed after it goes live. An email cannot be unsent, so it waits for a
+    person and for every review beneath it.
+  - Collect the rejected actions and everything downstream of them first.
+    Then undo that set from the most recently run backwards, each action once.
+  - An undo that fails leaves its action live, and an action that is still
+    live keeps everything it was built on in place. Walk the set from the
+    newest action, and carry that forward as you go.
+  - A held email looks at everything beneath it. One unreviewed price two
+    steps down is enough to keep it waiting, and one rejected price anywhere
+    down there cancels it.
+
+scenario:
+  headline: "A rejected ₹499 jacket price came down while its bundle kept selling"
+  who: "The merchandising team at a fashion marketplace the size of Myntra"
+  situation: >-
+    An overnight agent reprices items, builds bundles from them, puts bundles
+    on banners and emails customers. Its changes go live at once and a
+    reviewer checks them at 09:00. A rejected jacket price was rolled back on
+    its own.
+  stakes: >-
+    The bundle priced from that jacket sold 1,140 times at ₹1,259 against
+    ₹5,309 before noon, and two lakh customers had been emailed about it.
+  metrics:
+    - { label: Sold below price, value: "₹46 lakh" }
+    - { label: "Bundles sold at ₹1,259", value: "1,140" }
+    - { label: Customers emailed, value: "2 lakh" }
+
+diagram:
+  title: Where a rejection reaches, and where it should stop
+  caption: >-
+    A rejection travels down the built-on links and nowhere else. An email
+    waits for a person and for every review beneath it.
+  direction: lr
+  nodes:
+    - { id: planner, label: Planner, sub: one action at a time, kind: model, tone: teal, at: [0, 1] }
+    - { id: policy, label: Review policy, sub: "undoable runs, the rest waits", kind: guard, tone: purple, at: [1, 1] }
+    - { id: chain, label: "Price, bundle, banner", sub: each built on the one before, kind: store, tone: blue, at: [2, 0] }
+    - { id: other, label: Other reprices, sub: ran later and built on nothing, kind: store, tone: neutral, at: [2, 2] }
+    - { id: email, label: Campaign email, sub: cannot be unsent, kind: output, tone: orange, at: [3, 1] }
+    - { id: reviewer, label: Reviewer at 09:00, sub: rejects the jacket price, kind: actor, tone: blue, at: [3, 0] }
+    - { id: rollback, label: Rollback, sub: "banner, bundle, then price", kind: guard, tone: green, at: [4, 0] }
+  edges:
+    - { from: planner, to: policy, label: each action, step: 1 }
+    - { from: policy, to: chain, label: live at once, step: 2 }
+    - { from: policy, to: other, label: live at once }
+    - { from: chain, to: email, label: waits for every review, tone: success }
+    - { from: reviewer, to: rollback, label: one rejection, step: 3 }
+    - { from: rollback, to: chain, label: downstream only, tone: success }
+    - { from: rollback, to: other, label: everything after it, tone: danger }
+
+approach:
+  goal: Undo exactly what a rejection reaches, and let nothing permanent outrun its reviews
+  branches:
+    - label: Decide who waits
+      leaves: [a change the platform can undo goes live now, an email waits for a person, a tool the policy does not list waits]
+    - label: Follow the rejection downstream
+      detail: A rejection reaches what was built on it, however indirectly. What it was built on, and what merely ran later, stay.
+      leaves: [the rejected change, everything built on it, nothing else]
+    - label: Undo in a safe order
+      leaves: [most recently run first, each action once, a failed undo pins what lies beneath it]
+    - label: Settle what is waiting
+      leaves: [cancel what rests on a rejection, ask once every review beneath is in, keep waiting otherwise]
+
+coach:
+  opening: >-
+    Before you write code, draw the night's actions as boxes with an arrow
+    from each to what it was built on. Then mark which boxes a rejection of
+    the first price should reach.
+  signals:
+    - id: no-dependencies
+      when: { code_lacks: '\[\s*["'']depends_on["'']\s*\]|get\(\s*["'']depends_on["'']' }
+      say: >-
+        Your code never reads what each action was built on. When a price is
+        rejected, how does your rollback find the bundle priced from it, and
+        leave alone a reprice that simply ran later?
+    - id: undo-answer-ignored
+      when: { code_lacks: '\[\s*["'']undone["'']\s*\]|get\(\s*["'']undone["'']' }
+      say: >-
+        Nothing in your code reads what an undo answered. An undo can fail.
+        What should happen to the actions underneath one that did?
+    - id: reached-too-far
+      when: { test_failed: leaves_alone_what_the_rejection_never_reached }
+      say: >-
+        In that run the rejected action had others after it that were never
+        built on it. Which of them did your rollback take down, and why?
+    - id: email-too-early
+      when: { test_failed: holds_the_email_until_its_bundle_is_reviewed }
+      say: >-
+        That run's email rested on a price the reviewer went on to reject.
+        When did your code ask the approver about the email?
+    - id: one-level-only
+      when: { test_failed: waits_while_any_review_it_rests_on_is_outstanding }
+      say: >-
+        One review beneath that email had not come in, two steps down from
+        it. What does your code look at before it asks the approver?
+    - id: undo-failed
+      when: { test_failed: adversarial_the_banner_will_not_come_down }
+      say: >-
+        An undo in that run answered with an error inside a 200. What did your
+        rollback then do to the bundle and the price beneath it?
+    - id: approver-silent
+      when: { test_failed: adversarial_the_approver_answers_with_nothing }
+      say: >-
+        The approval service answered with nothing at all. Did your email go
+        out, and what did your report call it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the second public case: one rejected price, a bundle built
+        on it and a banner on the bundle. Undo those three in the right order
+        before anything else.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint starts from the arrows
+        between the actions, and narrows where to look.
+  wrap_up: >-
+    Reversibility decides who waits. What the platform can undo goes live and
+    is reviewed afterwards, and what it cannot waits for a person and for
+    every review beneath it. A rejection then reaches exactly what was built
+    on it, undone newest first.
+
+tests:
+  - name: keeps_an_approved_night_live
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "night-2026-09-21" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: 'Action: {"id": "a1", "tool": "set_price", "args": {"sku": "JKT-101", "price": 3999}, "depends_on": []}' }
+        - { match: { call_index: 2 },
+            reply: 'Action: {"id": "a2", "tool": "create_bundle", "args": {"bundle": "BN-7", "skus": ["JKT-101", "SCF-204"]}, "depends_on": ["a1"]}' }
+        - { match: { call_index: 3 },
+            reply: 'Action: {"id": "a3", "tool": "schedule_banner", "args": {"banner": "HB-3", "bundle": "BN-7"}, "depends_on": ["a2"]}' }
+        - { match: { call_index: 4 },
+            reply: 'Action: {"id": "a4", "tool": "send_campaign", "args": {"campaign": "CM-12", "bundle": "BN-7"}, "depends_on": ["a3"]}' }
+        - { match: "*", reply: "Done" }
+      tools:
+        set_price: { returns: { status: 200, ok: true } }
+        create_bundle: { returns: { status: 200, ok: true } }
+        schedule_banner: { returns: { status: 200, ok: true } }
+        send_campaign: { returns: { status: 200, sent: 200000 } }
+        approve: { returns: { status: 200, approved: true } }
+        reviews: { returns: { status: 200, decisions: { a1: approved, a2: approved, a3: approved } } }
+        restore_price: { returns: { status: 200, undone: true } }
+        delete_bundle: { returns: { status: 200, undone: true } }
+        cancel_banner: { returns: { status: 200, undone: true } }
+      budget: { max_llm_calls: 8, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [undone, stuck, held, refused, cancelled],
+                      properties: { undone: { type: array }, stuck: { type: array },
+                                    held: { type: array }, refused: { type: array },
+                                    cancelled: { type: array } } } }
+        - { type: calls_tool_with, name: approve, args: { action_id: "a4" } }
+        - { type: calls_tool, name: send_campaign }
+        - { type: does_not_call_tool, name: restore_price }
+        - { type: does_not_call_tool, name: delete_bundle }
+        - { type: does_not_call_tool, name: cancel_banner }
+        - { type: returns_matches, value: '"undone":\s*\[\]' }
+
+  - name: undoes_a_rejected_price_and_what_was_built_on_it
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "night-2026-09-24" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: 'Action: {"id": "a1", "tool": "set_price", "args": {"sku": "JKT-101", "price": 499}, "depends_on": []}' }
+        - { match: { call_index: 2 },
+            reply: 'Action: {"id": "a2", "tool": "create_bundle", "args": {"bundle": "BN-7", "skus": ["JKT-101", "SCF-204"]}, "depends_on": ["a1"]}' }
+        - { match: { call_index: 3 },
+            reply: 'Action: {"id": "a3", "tool": "schedule_banner", "args": {"banner": "HB-3", "bundle": "BN-7"}, "depends_on": ["a2"]}' }
+        - { match: "*", reply: "Done" }
+      tools:
+        set_price: { returns: { status: 200, ok: true } }
+        create_bundle: { returns: { status: 200, ok: true } }
+        schedule_banner: { returns: { status: 200, ok: true } }
+        send_campaign: { returns: { status: 200, sent: 200000 } }
+        approve: { returns: { status: 200, approved: true } }
+        reviews: { returns: { status: 200, decisions: { a1: rejected, a2: approved, a3: approved } } }
+        restore_price: { returns: { status: 200, undone: true } }
+        delete_bundle: { returns: { status: 200, undone: true } }
+        cancel_banner: { returns: { status: 200, undone: true } }
+      budget: { max_llm_calls: 8, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: cancel_banner, args: { action_id: "a3" } }
+        - { type: calls_tool_with, name: delete_bundle, args: { action_id: "a2" } }
+        - { type: calls_tool_with, name: restore_price, args: { action_id: "a1" } }
+        - { type: returns_matches, value: '"undone":\s*\[\s*"a3",\s*"a2",\s*"a1"\s*\]' }
+        - { type: returns_matches, value: '"stuck":\s*\[\]' }
+
+  - name: leaves_alone_what_the_rejection_never_reached
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "night-2026-09-28" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: 'Action: {"id": "a1", "tool": "set_price", "args": {"sku": "JKT-101", "price": 4499}, "depends_on": []}' }
+        - { match: { call_index: 2 },
+            reply: 'Action: {"id": "a2", "tool": "create_bundle", "args": {"bundle": "BN-9", "skus": ["JKT-101", "BLT-077"]}, "depends_on": ["a1"]}' }
+        - { match: { call_index: 3 },
+            reply: 'Action: {"id": "a3", "tool": "set_price", "args": {"sku": "BTS-310", "price": 2999}, "depends_on": []}' }
+        - { match: { call_index: 4 },
+            reply: 'Action: {"id": "a4", "tool": "schedule_banner", "args": {"banner": "HB-5", "bundle": "BN-9"}, "depends_on": ["a2"]}' }
+        - { match: { call_index: 5 },
+            reply: 'Action: {"id": "a5", "tool": "set_price", "args": {"sku": "SHT-118", "price": 1299}, "depends_on": []}' }
+        - { match: "*", reply: "Done" }
+      tools:
+        set_price: { returns: { status: 200, ok: true } }
+        create_bundle: { returns: { status: 200, ok: true } }
+        schedule_banner: { returns: { status: 200, ok: true } }
+        send_campaign: { returns: { status: 200, sent: 200000 } }
+        approve: { returns: { status: 200, approved: true } }
+        reviews:
+          returns:
+            status: 200
+            decisions: { a1: approved, a2: rejected, a3: approved, a4: approved, a5: approved }
+        restore_price: { returns: { status: 200, undone: true } }
+        delete_bundle: { returns: { status: 200, undone: true } }
+        cancel_banner: { returns: { status: 200, undone: true } }
+      budget: { max_llm_calls: 8, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: cancel_banner, args: { action_id: "a4" } }
+        - { type: calls_tool_with, name: delete_bundle, args: { action_id: "a2" } }
+        - { type: does_not_call_tool, name: restore_price }
+        - { type: returns_matches, value: '"undone":\s*\[\s*"a4",\s*"a2"\s*\]' }
+
+  - name: holds_the_email_until_its_bundle_is_reviewed
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "night-2026-09-29" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: 'Action: {"id": "a1", "tool": "set_price", "args": {"sku": "JKT-101", "price": 499}, "depends_on": []}' }
+        - { match: { call_index: 2 },
+            reply: 'Action: {"id": "a2", "tool": "create_bundle", "args": {"bundle": "BN-7", "skus": ["JKT-101", "SCF-204"]}, "depends_on": ["a1"]}' }
+        - { match: { call_index: 3 },
+            reply: 'Action: {"id": "a3", "tool": "send_campaign", "args": {"campaign": "CM-14", "bundle": "BN-7"}, "depends_on": ["a2"]}' }
+        - { match: "*", reply: "Done" }
+      tools:
+        set_price: { returns: { status: 200, ok: true } }
+        create_bundle: { returns: { status: 200, ok: true } }
+        schedule_banner: { returns: { status: 200, ok: true } }
+        send_campaign: { returns: { status: 200, sent: 200000 } }
+        approve: { returns: { status: 200, approved: true } }
+        reviews: { returns: { status: 200, decisions: { a1: rejected, a2: approved } } }
+        restore_price: { returns: { status: 200, undone: true } }
+        delete_bundle: { returns: { status: 200, undone: true } }
+        cancel_banner: { returns: { status: 200, undone: true } }
+      budget: { max_llm_calls: 8, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: send_campaign }
+        - { type: does_not_call_tool, name: approve }
+        - { type: returns_matches, value: '"cancelled":\s*\[\s*"a3"\s*\]' }
+        - { type: returns_matches, value: '"undone":\s*\[\s*"a2",\s*"a1"\s*\]' }
+
+  - name: waits_while_any_review_it_rests_on_is_outstanding
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "night-2026-09-30" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: 'Action: {"id": "a1", "tool": "set_price", "args": {"sku": "CAP-512", "price": 899}, "depends_on": []}' }
+        - { match: { call_index: 2 },
+            reply: 'Action: {"id": "a2", "tool": "create_bundle", "args": {"bundle": "BN-11", "skus": ["CAP-512", "SCF-204"]}, "depends_on": ["a1"]}' }
+        - { match: { call_index: 3 },
+            reply: 'Action: {"id": "a3", "tool": "send_campaign", "args": {"campaign": "CM-15", "bundle": "BN-11"}, "depends_on": ["a2"]}' }
+        - { match: "*", reply: "Done" }
+      tools:
+        set_price: { returns: { status: 200, ok: true } }
+        create_bundle: { returns: { status: 200, ok: true } }
+        schedule_banner: { returns: { status: 200, ok: true } }
+        send_campaign: { returns: { status: 200, sent: 200000 } }
+        approve: { returns: { status: 200, approved: true } }
+        reviews: { returns: { status: 200, decisions: { a2: approved } } }
+        restore_price: { returns: { status: 200, undone: true } }
+        delete_bundle: { returns: { status: 200, undone: true } }
+        cancel_banner: { returns: { status: 200, undone: true } }
+      budget: { max_llm_calls: 8, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: send_campaign }
+        - { type: does_not_call_tool, name: approve }
+        - { type: returns_matches, value: '"held":\s*\[\s*"a3"\s*\]' }
+        - { type: returns_matches, value: '"undone":\s*\[\]' }
+
+  - name: adversarial_the_banner_will_not_come_down
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      The reviewer rejected the jacket's price, and the first undo, the
+      banner's, answered 200 with an error in the body: the banner was locked
+      while a sale slot was live. The banner stayed up.
+
+      A rollback that reads only the status code carries on, deletes the
+      bundle and restores the price, and the homepage is now selling a bundle
+      that does not exist. A failed undo leaves its action live, and a live
+      action keeps everything it was built on in place. The report says the
+      banner, the bundle and the price are stuck, so a person decides, and
+      the reprice of the boots, which the rejection never reached, is not
+      touched at all.
+    spec:
+      kind: agent_run
+      input: { question: "night-2026-10-01" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: 'Action: {"id": "a1", "tool": "set_price", "args": {"sku": "JKT-101", "price": 499}, "depends_on": []}' }
+        - { match: { call_index: 2 },
+            reply: 'Action: {"id": "a2", "tool": "create_bundle", "args": {"bundle": "BN-7", "skus": ["JKT-101", "SCF-204"]}, "depends_on": ["a1"]}' }
+        - { match: { call_index: 3 },
+            reply: 'Action: {"id": "a3", "tool": "schedule_banner", "args": {"banner": "HB-3", "bundle": "BN-7"}, "depends_on": ["a2"]}' }
+        - { match: { call_index: 4 },
+            reply: 'Action: {"id": "a4", "tool": "set_price", "args": {"sku": "BTS-310", "price": 2999}, "depends_on": []}' }
+        - { match: "*", reply: "Done" }
+      tools:
+        set_price: { returns: { status: 200, ok: true } }
+        create_bundle: { returns: { status: 200, ok: true } }
+        schedule_banner: { returns: { status: 200, ok: true } }
+        send_campaign: { returns: { status: 200, sent: 200000 } }
+        approve: { returns: { status: 200, approved: true } }
+        reviews:
+          returns:
+            status: 200
+            decisions: { a1: rejected, a2: approved, a3: approved, a4: approved }
+        restore_price: { returns: { status: 200, undone: true } }
+        delete_bundle: { returns: { status: 200, undone: true } }
+        cancel_banner:
+          fixture: tool_soft_error
+          params: { status: 200, body: { error: "HB-3 is locked while the 10:00 sale slot is live" } }
+      budget: { max_llm_calls: 8, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: calls_tool_with, name: cancel_banner, args: { action_id: "a3" } }
+        - { type: does_not_call_tool, name: delete_bundle }
+        - { type: does_not_call_tool, name: restore_price }
+        - { type: returns_matches, value: '"stuck":\s*\[\s*"a3",\s*"a2",\s*"a1"\s*\]' }
+        - { type: returns_matches, value: '"undone":\s*\[\]' }
+
+  - name: adversarial_the_approver_answers_with_nothing
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      Every review beneath the email came back approved, so the email was
+      finally ready to go to the approver, and the approval service answered
+      with nothing at all.
+
+      An empty answer approves nothing. Code that indexes into it raises
+      before it can report anything, and code that reads a missing answer as
+      permission emails customers on an approval nobody gave. It refuses
+      nothing either, because nobody decided anything, so the email stays held
+      for the next round and the report says held.
+    spec:
+      kind: agent_run
+      input: { question: "night-2026-10-02" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: 'Action: {"id": "a1", "tool": "set_price", "args": {"sku": "SCF-204", "price": 799}, "depends_on": []}' }
+        - { match: { call_index: 2 },
+            reply: 'Action: {"id": "a2", "tool": "create_bundle", "args": {"bundle": "BN-12", "skus": ["SCF-204", "CAP-512"]}, "depends_on": ["a1"]}' }
+        - { match: { call_index: 3 },
+            reply: 'Action: {"id": "a3", "tool": "send_campaign", "args": {"campaign": "CM-16", "bundle": "BN-12"}, "depends_on": ["a2"]}' }
+        - { match: "*", reply: "Done" }
+      tools:
+        set_price: { returns: { status: 200, ok: true } }
+        create_bundle: { returns: { status: 200, ok: true } }
+        schedule_banner: { returns: { status: 200, ok: true } }
+        send_campaign: { returns: { status: 200, sent: 200000 } }
+        approve: { fixture: empty_tool_result }
+        reviews: { returns: { status: 200, decisions: { a1: approved, a2: approved } } }
+        restore_price: { returns: { status: 200, undone: true } }
+        delete_bundle: { returns: { status: 200, undone: true } }
+        cancel_banner: { returns: { status: 200, undone: true } }
+      budget: { max_llm_calls: 8, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: calls_tool_with, name: approve, args: { action_id: "a3" } }
+        - { type: does_not_call_tool, name: send_campaign }
+        - { type: returns_matches, value: '"held":\s*\[\s*"a3"\s*\]' }
+        - { type: returns_matches, value: '"refused":\s*\[\]' }
+
+reference_md: |
+  Reversibility is what lets a review run late. A price the platform can put
+  back is safe to publish at 02:00 and look at over coffee, because a wrong
+  one costs the hours until somebody notices and nothing after that. An email
+  to two lakh customers has no such ceiling, so it waits for a person. It
+  also waits for every review beneath it, which is the half the incident
+  missed: approving the email says nothing about the price it quotes, and an
+  email about a bundle that is rolled back an hour later is the same
+  irreversible mistake with an approval stamped on it.
+
+  A rejection travels one way along the built-on links. Rejecting the
+  jacket's price reaches the bundle priced from it and the banner selling
+  that bundle, because each of them was made from the rejected figure. It does not reach
+  the boots repriced at 03:00, which merely ran later, and it never reaches
+  upstream: rejecting a bundle says nothing about the price it was built on.
+  Undoing everything after the rejection is the database instinct, and it is
+  wrong here because a night's run is two hundred small transactions, and
+  most of them have nothing to do with each other.
+
+  The dependents come down whatever their own reviews said. The reviewer
+  approved the bundle as a bundle built on the jacket's price, and once that
+  price is gone the bundle is something nobody reviewed.
+
+  Order matters for the same reason the links do. Undoing the newest first
+  removes whatever was built on an action before the action itself, so the
+  homepage never points at a bundle that is gone. When an undo fails, that
+  order is also what tells you where to stop: the banner is still live, so
+  the bundle under it stays, and so does the price under the bundle. That
+  leaves a wrong price on sale, and the report has to say so loudly rather
+  than quietly fixing half of it. Choosing between a broken banner and a
+  wrong price is a business decision, and a rollback that takes it silently
+  has taken it without the person who owns it.
+
+  A silent approval service gets the same treatment. Nobody said yes, so the
+  email does not go, and nobody said no either, so it stays held rather than
+  refused. The words in the report are what the morning shift acts on, and a
+  refusal nobody made sends them to the wrong conversation.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your agent's changes go live before anyone reviews them. An hour later a reviewer rejects one. What exactly do you undo?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: set_price
+    args: sku, price
+    returns: '`{"status": 200, "ok": true}`. Reversible with `restore_price`.'
+  - name: create_bundle
+    args: bundle, skus
+    returns: '`{"status": 200, "ok": true}`. Reversible with `delete_bundle`.'
+  - name: schedule_banner
+    args: banner, bundle
+    returns: '`{"status": 200, "ok": true}`. Reversible with `cancel_banner`.'
+  - name: send_campaign
+    args: campaign, bundle
+    returns: '`{"status": 200, "sent": <customers emailed>}`. Irreversible: an email cannot be unsent.'
+  - name: approve
+    args: action_id
+    returns: '`{"status": 200, "approved": true}` or `false`, from a person, for one irreversible action.'
+  - name: reviews
+    args: run
+    returns: '`{"status": 200, "decisions": {<action id>: "approved" | "rejected"}}`. A missing id is still unreviewed.'
+  - name: restore_price
+    args: action_id
+    returns: '`{"status": 200, "undone": true}` when the price is back. Anything else means it is not.'
+  - name: delete_bundle
+    args: action_id
+    returns: '`{"status": 200, "undone": true}` when the bundle is gone. Anything else means it is not.'
+  - name: cancel_banner
+    args: action_id
+    returns: '`{"status": 200, "undone": true}` when the banner is down. Anything else means it is not.'
+example:
+  case: undoes_a_rejected_price_and_what_was_built_on_it
+  expect: The reviewer rejected the price `a1`, so cancel the banner `a3`, delete the bundle `a2` and
+    restore the price `a1`, in that order, and report `undone` as a3, a2, a1.
+traps:
+  - Undoing everything the run did after a rejected change, which takes down changes the rejection never
+    reached.
+  - Asking the approver about an email while a change beneath it is still unreviewed, so it can go out
+    about something rolled back an hour later.
+  - Looking only at the change an email was built on directly, when one unreviewed price two steps down
+    is enough to keep it waiting.
+  - Reading only the status of an undo, so the actions beneath one that failed are undone anyway.

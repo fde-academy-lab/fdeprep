@@ -1,0 +1,696 @@
+slug: resume-a-paused-run-with-the-persons-edit
+title: "Resume a paused run with the person's edit"
+day: 22
+skill: Resume after an interrupt with the person's decision in force and nothing done twice
+artefact_type: code
+difficulty: hard
+track: human-in-the-loop
+concept:
+  topic: "Interrupts"
+  question: "When a person edits a paused step, how does the resumed run keep their change?"
+est_minutes: 45
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+call_budget: 5
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The recruitment desk at a staffing firm the size of TeamLease runs an offer
+  agent. For each hire it creates the candidate record, requests a background
+  check, issues the offer, emails the candidate and books onboarding, one step
+  at a time, asking its model what comes next. A recruiter can pause a run
+  before any step, approve that step, change it or reject it, and resume.
+
+  On Tuesday a recruiter paused a run before the offer went out and cut the
+  salary from ₹18 lakh to ₹16.5 lakh, because the client's budget for the
+  role had changed. The offer system issued ₹16.5 lakh, as she set it. The
+  email the agent wrote next told the candidate ₹18 lakh, because the record
+  its model read still held the model's own first proposal. The candidate
+  accepted by return, and the client is honouring ₹18 lakh.
+
+  The week before, a resumed run started again from the top and requested a
+  second background check, which reached the candidate as a second consent
+  request.
+
+  Write the resume: carry on from the checkpoint, keep the recruiter's
+  decision in force, and repeat nothing that already happened.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the run id. `tools["checkpoint"](run=question)` returns what
+  was saved when the run paused:
+
+      {"status": 200, "run": "RUN-5531",
+       "request": "Offer Asha Verma the data analyst role",
+       "ran": [{"step": 1, "tool": "create_candidate", "args": {...}},
+               {"step": 2, "tool": "request_background_check", "args": {...}}],
+       "paused": {"step": 3, "tool": "issue_offer",
+                  "args": {"candidate": "C-7731", "salary": 1800000, "start": "2026-11-02"}},
+       "decision": {"step": 3, "type": "edit", "by": "Meera Iyer",
+                    "args": {"candidate": "C-7731", "salary": 1650000, "start": "2026-11-02"}}}
+
+  The decision is the person's, made on the paused step:
+
+  | `type` | What it means |
+  |---|---|
+  | `approve` | Run the paused step as the model proposed it |
+  | `edit` | Run it with the decision's `args` instead |
+  | `reject` | Do not run it. `message` says why |
+
+  Settle the paused step from the decision first. Then ask the model what
+  comes next. `llm(prompt)` replies with one of:
+
+      Step: {"tool": "send_offer_email", "args": {"to": "...", "body": "..."}}
+      Done: <one line for the recruiter>
+
+  The model plans from the lines it reads: the request first, then one line
+  per settled step, oldest first.
+
+      Request: Offer Asha Verma the data analyst role
+      Ran: issue_offer {"candidate": "C-7731", "salary": 1650000, "start": "2026-11-02"}
+      Rejected: issue_offer {"candidate": "C-7731", ...}: <the person's message>
+      Refused: issue_offer: <why you did not run it>
+
+  A `Ran:` line carries the arguments the step actually ran with, as JSON.
+
+  - Nothing in `ran` runs again.
+  - A proposed step whose tool has already run in this run, before the pause
+    or after it, or whose tool the person rejected, does not run. Add a
+    `Refused:` line and ask again.
+  - Run every other proposed step with `tools[tool](**args)`, and add its
+    `Ran:` line.
+  - Run nothing and ask the model nothing when the checkpoint cannot be read,
+    when the decision is not an approve, an edit carrying `args` or a reject,
+    or when it was made for a step other than the paused one. A person looks
+    first.
+
+  Return a JSON string:
+
+      {"outcome": "completed" | "needs_person",
+       "ran": [<tools run in this resume, in order>],
+       "refused": [<tools refused, in order>],
+       "summary": <the Done line's text, or why the resume stopped>}
+
+  `completed` means the model said `Done`. A reply that is neither a step
+  nor `Done`, or no `Done` within the budget, stops the resume with
+  `needs_person`.
+
+  Budget: at most 5 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your resume refuses any step whose tool already ran in the run. A week
+  later a candidate negotiates, and the recruiter wants a revised offer
+  issued in the same run, which your agent now refuses. A reviewer suggests
+  letting a step run again whenever its arguments differ from the first
+  time. What would that reopen, and what would you build instead so that a
+  second offer is possible without the model ever being able to undo a
+  person's change?
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Carry a paused run on from its checkpoint, with the person's decision in force.
+
+      tools["checkpoint"](run=question) returns
+          {"request": ..., "ran": [{"step", "tool", "args"}, ...],
+           "paused": {"step", "tool", "args"},
+           "decision": {"step", "type": "approve" | "edit" | "reject",
+                        "args" (on an edit), "message" (on a reject)}}
+      Settle the paused step from the decision, then ask llm(prompt), which
+      replies Step: {"tool": ..., "args": {...}} or Done: <summary>.
+      The model reads the request and one line per settled step:
+          Ran: <tool> <args it ran with, as JSON>
+          Rejected: <tool> <args as JSON>: <message>
+          Refused: <tool>: <why>
+      Nothing in ran runs again, and neither does a tool that already ran in
+      this run or that the person rejected. Run nothing and ask nothing when
+      the checkpoint cannot be read, the decision has another shape, or it is
+      for another step.
+
+      Return json.dumps({"outcome": "completed" | "needs_person",
+                         "ran": [...], "refused": [...], "summary": ...}).
+      At most 5 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"outcome": "needs_person", "ran": [], "refused": [],
+                         "summary": "not written yet"})
+
+hints:
+  - Look at the lines the model reads after the resume. Which version of the
+    paused step is in them, the one the model proposed or the one that ran?
+  - A person's decision settles the paused step. The model is asked what
+    comes next, never what the paused step should have been, because it would
+    propose its own version again.
+  - Write every settled step into the record as it actually happened. What
+    ran, with the arguments it ran with. What a person rejected, and why.
+    What you refused.
+  - Two checks come before anything runs. Can the checkpoint be read, and was
+    the decision made for the step that is paused? A pause lands at the next
+    step boundary, so a person can be looking at a step that already ran.
+  - Once a tool has run in this run, before the pause or after it, the model
+    proposing it again is a proposal to refuse, whatever arguments it carries.
+
+scenario:
+  headline: "An offer went out at ₹16.5 lakh and its email said ₹18 lakh"
+  who: "The recruitment desk at a staffing firm the size of TeamLease"
+  situation: >-
+    A recruiter paused the offer agent, cut the salary on its offer step from
+    ₹18 lakh to ₹16.5 lakh and resumed. The offer was issued at ₹16.5 lakh,
+    and the email the agent wrote next quoted ₹18 lakh.
+  stakes: >-
+    The candidate accepted ₹18 lakh by return and the client is honouring it,
+    ₹1.5 lakh a year over the budget the recruiter was protecting.
+  metrics:
+    - { label: Salary the recruiter set, value: "₹16.5 lakh" }
+    - { label: Salary the email quoted, value: "₹18 lakh" }
+    - { label: "Over budget, a year", value: "₹1.5 lakh" }
+
+diagram:
+  title: Where the recruiter's change was lost on resume
+  caption: >-
+    The offer ran as edited, and the record the model read still held the
+    model's proposal. Write each step into the record as it actually ran.
+  direction: lr
+  nodes:
+    - { id: recruiter, label: Recruiter, sub: edits the paused offer step, kind: actor, tone: blue, at: [0, 0] }
+    - { id: checkpoint, label: Checkpoint, sub: "steps that ran, the paused step", kind: store, tone: orange, at: [0, 2] }
+    - { id: resume, label: Your resume, sub: settles the paused step first, kind: agent, tone: purple, at: [1, 1] }
+    - { id: offer, label: "`issue_offer`", sub: "runs once, as the recruiter set it", kind: tool, tone: green, at: [2, 0] }
+    - { id: record, label: Record the model reads, sub: every step as it actually ran, kind: doc, tone: neutral, at: [2, 2] }
+    - { id: model, label: Model, sub: plans the next step from the record, kind: model, tone: teal, at: [3, 2] }
+    - { id: email, label: Offer email, sub: quotes what the record says, kind: output, tone: pink, at: [4, 2] }
+  edges:
+    - { from: recruiter, to: checkpoint, label: "approve, edit or reject", step: 1 }
+    - { from: checkpoint, to: resume, label: what ran and what is paused, step: 2 }
+    - { from: resume, to: offer, label: the edited step, step: 3, tone: success }
+    - { from: resume, to: record, label: what actually ran, step: 4, tone: success }
+    - { from: checkpoint, to: record, label: the model's first proposal, tone: danger }
+    - { from: record, to: model, label: read before each step }
+    - { from: model, to: email, label: writes the email }
+
+approach:
+  goal: Carry on from where the run stopped, with the person's decision in force
+  branches:
+    - label: Check before running anything
+      leaves: [a checkpoint you can read, a decision made for the paused step, "an approve, an edit or a reject"]
+    - label: Settle the paused step
+      detail: The person's decision replaces the model's proposal for this step, for the rest of the run.
+      leaves: [approve runs it as proposed, edit runs their version, reject runs nothing]
+    - label: Keep the record true
+      leaves: [each step with the arguments it ran with, what a person rejected and why, what you refused]
+    - label: Never do a step twice
+      leaves: [nothing from the checkpoint runs again, a tool that already ran is refused]
+
+coach:
+  opening: >-
+    Before you write code, decide what the model should read once the run
+    resumes: the offer it proposed, or the offer that went out.
+  signals:
+    - id: no-reject
+      when: { code_lacks: '["'']reject["'']' }
+      say: >-
+        Your code never looks for a decision that rejects the paused step.
+        What runs when a person says no, and what does the model read about it?
+    - id: no-step-check
+      when: { code_lacks: '\[\s*["'']step["'']\s*\]|get\(\s*["'']step["'']' }
+      say: >-
+        Your code never compares the step a decision was made for with the
+        step that is paused. What if the person was looking at an earlier step
+        when they saved?
+    - id: record-holds-the-proposal
+      when: { test_failed: the_email_quotes_the_salary_the_recruiter_set }
+      say: >-
+        In that run the offer went out at the recruiter's salary and the email
+        quoted another. Which salary did the record your model read carry?
+    - id: rejection-ran
+      when: { test_failed: a_rejected_offer_is_never_issued }
+      say: >-
+        The recruiter rejected the offer in that run. What did your code run,
+        and what did it tell the model?
+    - id: stale-edit
+      when: { test_failed: an_edit_for_a_step_that_already_ran_goes_to_a_person }
+      say: >-
+        That edit was saved for a step that had already run. What did your
+        code apply it to?
+    - id: reissued
+      when: { test_failed: adversarial_the_model_tries_to_reissue_the_offer }
+      say: >-
+        After the edited offer went out, the model proposed the offer again at
+        its own salary. What stops one step running twice in a run?
+    - id: empty-checkpoint
+      when: { test_failed: adversarial_the_checkpoint_comes_back_empty }
+      say: >-
+        The checkpoint store answered with nothing at all. Did your resume
+        treat that as a run that had not done anything yet?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the public case where the recruiter approved. Settle the
+        paused step from the decision, then let the model carry on from the
+        steps that ran.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint asks what the model reads
+        after the resume.
+  wrap_up: >-
+    A person's change is new authority for the rest of the run. Settle the
+    paused step from their decision, write it into the record as it ran,
+    refuse anything that would run a step twice, and send whatever you cannot
+    place to a person.
+
+tests:
+  - name: resumes_after_an_approval
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "RUN-5531" }
+      llm_script:
+        - { match: { regex: 'Ran: schedule_onboarding' },
+            reply: "Done: Offer issued to Asha at ₹18,00,000, emailed, and onboarding booked for 2 November." }
+        - { match: { regex: 'Ran: send_offer_email' },
+            reply: 'Step: {"tool": "schedule_onboarding", "args": {"candidate": "C-7731", "start": "2026-11-02"}}' }
+        - { match: { regex: 'Ran: issue_offer' },
+            reply: 'Step: {"tool": "send_offer_email", "args": {"to": "asha.verma@example.com", "body": "Dear Asha, we are delighted to offer you the data analyst role at ₹18,00,000 a year, starting on 2 November 2026."}}' }
+        - { match: { regex: 'Ran: request_background_check' },
+            reply: 'Step: {"tool": "issue_offer", "args": {"candidate": "C-7731", "salary": 1800000, "start": "2026-11-02"}}' }
+        - { match: { regex: 'Ran: create_candidate' },
+            reply: 'Step: {"tool": "request_background_check", "args": {"candidate": "C-7731"}}' }
+        - { match: "*",
+            reply: 'Step: {"tool": "create_candidate", "args": {"name": "Asha Verma", "role": "Data analyst"}}' }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            run: "RUN-5531"
+            request: "Offer Asha Verma the data analyst role"
+            ran:
+              - { step: 1, tool: create_candidate, args: { name: "Asha Verma", role: "Data analyst" } }
+              - { step: 2, tool: request_background_check, args: { candidate: "C-7731" } }
+            paused: { step: 3, tool: issue_offer, args: { candidate: "C-7731", salary: 1800000, start: "2026-11-02" } }
+            decision: { step: 3, type: approve, by: "Meera Iyer" }
+        create_candidate: { returns: { status: 200, candidate: "C-7731" } }
+        request_background_check: { returns: { status: 200, check: "BG-118" } }
+        issue_offer: { returns: { status: 200, offer: "OF-2291" } }
+        send_offer_email: { returns: { status: 200, sent: true } }
+        schedule_onboarding: { returns: { status: 200, booked: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, ran, refused, summary],
+                      properties: { outcome: { enum: [completed, needs_person] },
+                                    ran: { type: array }, refused: { type: array } } } }
+        - { type: calls_tool_with, name: issue_offer,
+            args: { candidate: "C-7731", salary: 1800000, start: "2026-11-02" } }
+        - { type: does_not_call_tool, name: create_candidate }
+        - { type: does_not_call_tool, name: request_background_check }
+        - { type: calls_tool, name: schedule_onboarding }
+        - { type: returns_matches, value: '"outcome":\s*"completed"' }
+
+  - name: runs_the_recruiters_edit_once
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "RUN-5538" }
+      llm_script:
+        - { match: { regex: 'Ran: schedule_onboarding' },
+            reply: "Done: Offer issued to Rohan, emailed, and onboarding booked for 9 November." }
+        - { match: { regex: 'Ran: send_offer_email' },
+            reply: 'Step: {"tool": "schedule_onboarding", "args": {"candidate": "C-7740", "start": "2026-11-09"}}' }
+        - { match: { regex: 'Ran: issue_offer\b[^\n]*580000' },
+            reply: 'Step: {"tool": "send_offer_email", "args": {"to": "rohan.kulkarni@example.com", "body": "Dear Rohan, we are delighted to offer you the payroll associate role at ₹5,80,000 a year, starting on 9 November 2026."}}' }
+        - { match: { regex: 'Ran: issue_offer' },
+            reply: 'Step: {"tool": "send_offer_email", "args": {"to": "rohan.kulkarni@example.com", "body": "Dear Rohan, we are delighted to offer you the payroll associate role at ₹6,20,000 a year, starting on 9 November 2026."}}' }
+        - { match: { regex: 'Ran: request_background_check' },
+            reply: 'Step: {"tool": "issue_offer", "args": {"candidate": "C-7740", "salary": 620000, "start": "2026-11-09"}}' }
+        - { match: { regex: 'Ran: create_candidate' },
+            reply: 'Step: {"tool": "request_background_check", "args": {"candidate": "C-7740"}}' }
+        - { match: "*",
+            reply: 'Step: {"tool": "create_candidate", "args": {"name": "Rohan Kulkarni", "role": "Payroll associate"}}' }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            run: "RUN-5538"
+            request: "Offer Rohan Kulkarni the payroll associate role"
+            ran:
+              - { step: 1, tool: create_candidate, args: { name: "Rohan Kulkarni", role: "Payroll associate" } }
+              - { step: 2, tool: request_background_check, args: { candidate: "C-7740" } }
+            paused: { step: 3, tool: issue_offer, args: { candidate: "C-7740", salary: 620000, start: "2026-11-09" } }
+            decision:
+              step: 3
+              type: edit
+              by: "Meera Iyer"
+              args: { candidate: "C-7740", salary: 580000, start: "2026-11-09" }
+        create_candidate: { returns: { status: 200, candidate: "C-7740" } }
+        request_background_check: { returns: { status: 200, check: "BG-121" } }
+        issue_offer: { returns: { status: 200, offer: "OF-2297" } }
+        send_offer_email: { returns: { status: 200, sent: true } }
+        schedule_onboarding: { returns: { status: 200, booked: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: issue_offer, args: { candidate: "C-7740", salary: 580000 } }
+        - { type: does_not_call_tool, name: create_candidate }
+        - { type: does_not_call_tool, name: request_background_check }
+        - { type: returns_matches,
+            value: '"ran":\s*\[\s*"issue_offer",\s*"send_offer_email",\s*"schedule_onboarding"\s*\]' }
+        - { type: returns_matches, value: '"outcome":\s*"completed"' }
+
+  - name: the_email_quotes_the_salary_the_recruiter_set
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "RUN-5546" }
+      llm_script:
+        - { match: { regex: 'Ran: schedule_onboarding' },
+            reply: "Done: Offer issued to Farah, emailed, and onboarding booked for 16 November." }
+        - { match: { regex: 'Ran: send_offer_email' },
+            reply: 'Step: {"tool": "schedule_onboarding", "args": {"candidate": "C-7752", "start": "2026-11-16"}}' }
+        - { match: { regex: 'Ran: issue_offer\b[^\n]*1320000' },
+            reply: 'Step: {"tool": "send_offer_email", "args": {"to": "farah.siddiqui@example.com", "body": "Dear Farah, we are delighted to offer you the customer success lead role at ₹13,20,000 a year, starting on 16 November 2026."}}' }
+        - { match: { regex: 'Ran: issue_offer' },
+            reply: 'Step: {"tool": "send_offer_email", "args": {"to": "farah.siddiqui@example.com", "body": "Dear Farah, we are delighted to offer you the customer success lead role at ₹14,50,000 a year, starting on 16 November 2026."}}' }
+        - { match: { regex: 'Ran: request_background_check' },
+            reply: 'Step: {"tool": "issue_offer", "args": {"candidate": "C-7752", "salary": 1450000, "start": "2026-11-16"}}' }
+        - { match: { regex: 'Ran: create_candidate' },
+            reply: 'Step: {"tool": "request_background_check", "args": {"candidate": "C-7752"}}' }
+        - { match: "*",
+            reply: 'Step: {"tool": "create_candidate", "args": {"name": "Farah Siddiqui", "role": "Customer success lead"}}' }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            run: "RUN-5546"
+            request: "Offer Farah Siddiqui the customer success lead role"
+            ran:
+              - { step: 1, tool: create_candidate, args: { name: "Farah Siddiqui", role: "Customer success lead" } }
+              - { step: 2, tool: request_background_check, args: { candidate: "C-7752" } }
+            paused: { step: 3, tool: issue_offer, args: { candidate: "C-7752", salary: 1450000, start: "2026-11-16" } }
+            decision:
+              step: 3
+              type: edit
+              by: "Kavya Menon"
+              args: { candidate: "C-7752", salary: 1320000, start: "2026-11-16" }
+        create_candidate: { returns: { status: 200, candidate: "C-7752" } }
+        request_background_check: { returns: { status: 200, check: "BG-130" } }
+        issue_offer: { returns: { status: 200, offer: "OF-2304" } }
+        send_offer_email: { returns: { status: 200, sent: true } }
+        schedule_onboarding: { returns: { status: 200, booked: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: issue_offer, args: { salary: 1320000 } }
+        - { type: calls_tool_with, name: send_offer_email,
+            args: { body: "Dear Farah, we are delighted to offer you the customer success lead role at ₹13,20,000 a year, starting on 16 November 2026." } }
+        - { type: returns_matches, value: '"outcome":\s*"completed"' }
+
+  - name: a_rejected_offer_is_never_issued
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "RUN-5552" }
+      llm_script:
+        - { match: { regex: 'Ran: schedule_onboarding' },
+            reply: "Done: Offer issued to Vikram, emailed, and onboarding booked." }
+        - { match: { regex: '(Rejected|Refused): issue_offer' },
+            reply: "Done: The offer to Vikram is on hold as the recruiter asked, and nothing was sent to him." }
+        - { match: { regex: 'Ran: send_offer_email' },
+            reply: 'Step: {"tool": "schedule_onboarding", "args": {"candidate": "C-7761", "start": "2026-11-09"}}' }
+        - { match: { regex: 'Ran: issue_offer' },
+            reply: 'Step: {"tool": "send_offer_email", "args": {"to": "vikram.rao@example.com", "body": "Dear Vikram, we are delighted to offer you the warehouse supervisor role at ₹5,40,000 a year, starting on 9 November 2026."}}' }
+        - { match: { regex: 'Ran: request_background_check' },
+            reply: 'Step: {"tool": "issue_offer", "args": {"candidate": "C-7761", "salary": 540000, "start": "2026-11-09"}}' }
+        - { match: { regex: 'Ran: create_candidate' },
+            reply: 'Step: {"tool": "request_background_check", "args": {"candidate": "C-7761"}}' }
+        - { match: "*",
+            reply: 'Step: {"tool": "create_candidate", "args": {"name": "Vikram Rao", "role": "Warehouse supervisor"}}' }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            run: "RUN-5552"
+            request: "Offer Vikram Rao the warehouse supervisor role"
+            ran:
+              - { step: 1, tool: create_candidate, args: { name: "Vikram Rao", role: "Warehouse supervisor" } }
+              - { step: 2, tool: request_background_check, args: { candidate: "C-7761" } }
+            paused: { step: 3, tool: issue_offer, args: { candidate: "C-7761", salary: 540000, start: "2026-11-09" } }
+            decision:
+              step: 3
+              type: reject
+              by: "Meera Iyer"
+              message: "Hold the offer: the client has frozen this role until January."
+        create_candidate: { returns: { status: 200, candidate: "C-7761" } }
+        request_background_check: { returns: { status: 200, check: "BG-133" } }
+        issue_offer: { returns: { status: 200, offer: "OF-2310" } }
+        send_offer_email: { returns: { status: 200, sent: true } }
+        schedule_onboarding: { returns: { status: 200, booked: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: issue_offer }
+        - { type: does_not_call_tool, name: send_offer_email }
+        - { type: prompt_contains, value: 'Rejected: issue_offer', in: first }
+        - { type: returns_matches, value: '"ran":\s*\[\]' }
+        - { type: returns_matches, value: '"outcome":\s*"completed"' }
+
+  - name: an_edit_for_a_step_that_already_ran_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "RUN-5559" }
+      llm_script:
+        - { match: { regex: 'Ran: schedule_onboarding' },
+            reply: "Done: Offer issued to Neha, emailed, and onboarding booked for 2 November." }
+        - { match: { regex: 'Ran: send_offer_email' },
+            reply: 'Step: {"tool": "schedule_onboarding", "args": {"candidate": "C-7770", "start": "2026-11-02"}}' }
+        - { match: { regex: 'Ran: issue_offer' },
+            reply: 'Step: {"tool": "send_offer_email", "args": {"to": "neha.joshi@example.com", "body": "Dear Neha, we are delighted to offer you the data analyst role at ₹18,00,000 a year, starting on 2 November 2026."}}' }
+        - { match: { regex: 'Ran: request_background_check' },
+            reply: 'Step: {"tool": "issue_offer", "args": {"candidate": "C-7770", "salary": 1800000, "start": "2026-11-02"}}' }
+        - { match: { regex: 'Ran: create_candidate' },
+            reply: 'Step: {"tool": "request_background_check", "args": {"candidate": "C-7770"}}' }
+        - { match: "*",
+            reply: 'Step: {"tool": "create_candidate", "args": {"name": "Neha Joshi", "role": "Data analyst"}}' }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            run: "RUN-5559"
+            request: "Offer Neha Joshi the data analyst role"
+            ran:
+              - { step: 1, tool: create_candidate, args: { name: "Neha Joshi", role: "Data analyst" } }
+              - { step: 2, tool: request_background_check, args: { candidate: "C-7770" } }
+              - { step: 3, tool: issue_offer, args: { candidate: "C-7770", salary: 1800000, start: "2026-11-02" } }
+            paused:
+              step: 4
+              tool: send_offer_email
+              args:
+                to: "neha.joshi@example.com"
+                body: "Dear Neha, we are delighted to offer you the data analyst role at ₹18,00,000 a year, starting on 2 November 2026."
+            decision:
+              step: 3
+              type: edit
+              by: "Kavya Menon"
+              args: { candidate: "C-7770", salary: 1650000, start: "2026-11-02" }
+        create_candidate: { returns: { status: 200, candidate: "C-7770" } }
+        request_background_check: { returns: { status: 200, check: "BG-136" } }
+        issue_offer: { returns: { status: 200, offer: "OF-2316" } }
+        send_offer_email: { returns: { status: 200, sent: true } }
+        schedule_onboarding: { returns: { status: 200, booked: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: issue_offer }
+        - { type: does_not_call_tool, name: send_offer_email }
+        - { type: does_not_call_tool, name: schedule_onboarding }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: returns_matches, value: '"outcome":\s*"needs_person"' }
+
+  - name: adversarial_the_model_tries_to_reissue_the_offer
+    visibility: adversarial
+    fixture: loop_bait
+    annotation_md: |
+      The recruiter cut the salary and the edited offer went out. On the next
+      call the model proposed the offer again at its own figure, because the
+      run it remembered was the one it had planned, and a model reading its
+      own earlier plan can try to finish it.
+
+      A resume that runs whatever the model proposes issues a second offer
+      at the salary the recruiter removed, and since nothing in the record
+      says the proposal was turned down, the model proposes it again on every
+      call until the budget stops it. The tool already ran in this run, so
+      the proposal is refused, the refusal goes into the record, and the
+      model moves on to the email with the recruiter's figure in front of it.
+    spec:
+      kind: agent_run
+      input: { question: "RUN-5563" }
+      llm_script:
+        - { match: { regex: 'Ran: schedule_onboarding' },
+            reply: "Done: Offer issued to Karan, emailed, and onboarding booked for 23 November." }
+        - { match: { regex: 'Ran: send_offer_email' },
+            reply: 'Step: {"tool": "schedule_onboarding", "args": {"candidate": "C-7784", "start": "2026-11-23"}}' }
+        - { match: { all: [ { regex: 'Refused: issue_offer' }, { regex: 'Ran: issue_offer\b[^\n]*2250000' } ] },
+            reply: 'Step: {"tool": "send_offer_email", "args": {"to": "karan.mehta@example.com", "body": "Dear Karan, we are delighted to offer you the sales manager role at ₹22,50,000 a year, starting on 23 November 2026."}}' }
+        - { match: { regex: 'Refused: issue_offer' },
+            reply: 'Step: {"tool": "send_offer_email", "args": {"to": "karan.mehta@example.com", "body": "Dear Karan, we are delighted to offer you the sales manager role at ₹24,00,000 a year, starting on 23 November 2026."}}' }
+        - { match: { regex: 'Ran: issue_offer' },
+            reply: 'Step: {"tool": "issue_offer", "args": {"candidate": "C-7784", "salary": 2400000, "start": "2026-11-23"}}' }
+        - { match: { regex: 'Ran: request_background_check' },
+            reply: 'Step: {"tool": "issue_offer", "args": {"candidate": "C-7784", "salary": 2400000, "start": "2026-11-23"}}' }
+        - { match: { regex: 'Ran: create_candidate' },
+            reply: 'Step: {"tool": "request_background_check", "args": {"candidate": "C-7784"}}' }
+        - { match: "*",
+            reply: 'Step: {"tool": "create_candidate", "args": {"name": "Karan Mehta", "role": "Sales manager"}}' }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            run: "RUN-5563"
+            request: "Offer Karan Mehta the sales manager role"
+            ran:
+              - { step: 1, tool: create_candidate, args: { name: "Karan Mehta", role: "Sales manager" } }
+              - { step: 2, tool: request_background_check, args: { candidate: "C-7784" } }
+            paused: { step: 3, tool: issue_offer, args: { candidate: "C-7784", salary: 2400000, start: "2026-11-23" } }
+            decision:
+              step: 3
+              type: edit
+              by: "Kavya Menon"
+              args: { candidate: "C-7784", salary: 2250000, start: "2026-11-23" }
+        create_candidate: { returns: { status: 200, candidate: "C-7784" } }
+        request_background_check: { returns: { status: 200, check: "BG-140" } }
+        issue_offer: { returns: { status: 200, offer: "OF-2322" } }
+        send_offer_email: { returns: { status: 200, sent: true } }
+        schedule_onboarding: { returns: { status: 200, booked: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: tool_calls_at_most, value: 4 }
+        - { type: calls_tool_with, name: issue_offer, args: { salary: 2250000 } }
+        - { type: calls_tool_with, name: send_offer_email,
+            args: { body: "Dear Karan, we are delighted to offer you the sales manager role at ₹22,50,000 a year, starting on 23 November 2026." } }
+        - { type: returns_matches, value: '"refused":\s*\[\s*"issue_offer"\s*\]' }
+
+  - name: adversarial_the_checkpoint_comes_back_empty
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The checkpoint store answered with nothing at all. Read loosely, an
+      empty checkpoint looks exactly like a run that has done nothing yet:
+      no steps ran, nothing is paused, so ask the model where to begin. The
+      model begins at the top, creates the candidate a second time and
+      requests a second background check, which is the incident from the
+      week before.
+
+      A checkpoint you cannot read is not a fresh start. The resume runs
+      nothing, asks the model nothing, and hands the run to a person.
+    spec:
+      kind: agent_run
+      input: { question: "RUN-5570" }
+      llm_script:
+        - { match: { regex: 'Ran: request_background_check' },
+            reply: 'Step: {"tool": "issue_offer", "args": {"candidate": "C-7791", "salary": 980000, "start": "2026-11-09"}}' }
+        - { match: { regex: 'Ran: create_candidate' },
+            reply: 'Step: {"tool": "request_background_check", "args": {"candidate": "C-7791"}}' }
+        - { match: "*",
+            reply: 'Step: {"tool": "create_candidate", "args": {"name": "Ishaan Gupta", "role": "Field sales executive"}}' }
+      tools:
+        checkpoint: { fixture: empty_tool_result }
+        create_candidate: { returns: { status: 200, candidate: "C-7791" } }
+        request_background_check: { returns: { status: 200, check: "BG-144" } }
+        issue_offer: { returns: { status: 200, offer: "OF-2329" } }
+        send_offer_email: { returns: { status: 200, sent: true } }
+        schedule_onboarding: { returns: { status: 200, booked: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: does_not_call_tool, name: create_candidate }
+        - { type: does_not_call_tool, name: request_background_check }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: returns_matches, value: '"outcome":\s*"needs_person"' }
+
+reference_md: |
+  Resuming from the checkpoint is the familiar half. The checkpoint says what
+  ran, and nothing in it runs again. The same reasoning is why a checkpoint that cannot
+  be read sends the run to a person: an empty checkpoint looks exactly like a
+  run that has done nothing yet, and treating it as one starts the hire again
+  from the top, which is the second background check from the week before.
+
+  The person's decision settles the paused step, and the model is never
+  asked what that step should have been. It would answer with the version it
+  already chose. After an approve, an edit or a reject, the step belongs to
+  the person for the rest of the run, which is also why a proposal to run
+  that tool again is refused rather than judged. The resume cannot tell a
+  harmless duplicate from the model quietly finishing the plan it remembers,
+  and the second is the model undoing a person's change.
+
+  The incident lived in the record. The model plans from what it reads, and
+  the checkpoint held the offer as the model proposed it. Running the edited
+  offer while leaving the proposal in the record left the action and the
+  account of it disagreeing, and every step the model wrote afterwards
+  followed the account. The fix is to write each step into the record as it
+  actually ran, with a line for what a person rejected and why, so the model
+  writes the email from the salary that went out.
+
+  The same two traps sit in LangGraph's own primitives, which is worth
+  knowing before an interview asks. The docstring of `interrupt()` in langgraph
+  1.2.12 says the graph resumes from the start of the node, re-executing all
+  of its logic, so a side effect placed before the interrupt in that node
+  runs again on every resume. Its `add_messages` reducer appends a message
+  unless one with the same id is already in the state, so an edited tool call
+  added as a new message leaves the model's original call in the history it
+  reads. Replacing the original message by its id is the LangGraph form of
+  writing the step as it ran.
+
+  Two checks come before anything runs. A pause lands at the next step
+  boundary, so a person can be looking at a step that finished while they
+  typed. An edit for a step that already ran cannot be applied by running
+  that step again, which would issue a second offer, and dropping it quietly
+  would send the first offer's email under the recruiter's name. It goes to a
+  person, and so does a decision of any other shape.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A person pauses your agent, edits the next step and resumes. How do you make sure the agent keeps their change and repeats nothing?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: checkpoint
+    args: run
+    returns: 'The saved run: its `request`, the steps that `ran`, the `paused` step and the person''s `decision`
+      on it.'
+  - name: create_candidate
+    args: name, role
+    returns: '`{"status": 200, "candidate": <id>}`.'
+  - name: request_background_check
+    args: candidate
+    returns: '`{"status": 200, "check": <id>}`. Each check costs ₹1,200 and asks the candidate for consent.'
+  - name: issue_offer
+    args: candidate, salary, start
+    returns: '`{"status": 200, "offer": <id>}`. An issued offer binds the client.'
+  - name: send_offer_email
+    args: to, body
+    returns: '`{"status": 200, "sent": true}`. An email cannot be unsent.'
+  - name: schedule_onboarding
+    args: candidate, start
+    returns: '`{"status": 200, "booked": true}`.'
+example:
+  case: resumes_after_an_approval
+  expect: The recruiter approved the offer as proposed, so issue it once with the checkpoint's arguments,
+    let the model carry on with the email and onboarding, and return `outcome` completed.
+traps:
+  - Writing the model's first proposal into the record the model reads, so later steps quote a figure the
+    person changed.
+  - Running the paused step as proposed when the person rejected it, because a rejection has no arguments
+    to swap in.
+  - Applying an edit to whichever step is paused, when the edit was made for a step that had already run.
+  - Running a step again because the model proposed it after the resume, when that tool already ran in
+    the run.

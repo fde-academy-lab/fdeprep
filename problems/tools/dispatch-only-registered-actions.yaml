@@ -1,0 +1,384 @@
+slug: dispatch-only-registered-actions
+title: "Call only the tools the agent has"
+day: 3
+skill: Call only the tools the agent actually has
+artefact_type: code
+difficulty: easy
+track: tools
+concept:
+  topic: "Errors the model can fix"
+  question: "What happens when the model asks for a tool that does not exist?"
+est_minutes: 15
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 4
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  An internal operations agent has two tools. Twice this week it has asked
+  for a third that does not exist, once called `delete_account` and once
+  called `refund_order_v2`, both of which read like tools it used to have in a
+  prompt somebody edited.
+
+  Each time the loop did `tools[name](**args)` and the process died with a
+  `KeyError`. The on-call engineer sees a stack trace; the user sees nothing.
+
+  The model choosing a tool is a suggestion. Write the loop that treats it as
+  one.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns either `Action: <tool>(<key>=<value>, ...)` or
+  `Final Answer: <text>`. The `tools` dict is the complete list of what this
+  agent may call. There is no other list.
+
+  A tool name that is not a key of `tools` is not an error to raise. Put the
+  refusal in the scratchpad, name the tool that was refused, and let the model
+  choose again.
+
+  Budget: at most 4 model calls. Allowed imports: json, re.
+  Return a non-empty string in every case, including when nothing works.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Question: {question}\n"
+
+      for _ in range(8):
+          output = llm(scratchpad)
+
+          # TODO 1: return the text when the reply is a Final Answer
+          # TODO 2: parse the tool name and arguments out of an Action
+          # TODO 3: check the name against the tools dict before calling it
+          # TODO 4: when the name is not there, append a line naming it so the
+          #         next prompt differs, then go round again
+          pass
+
+      return "I could not complete this request."
+
+steps:
+  - id: s1
+    text: Return the text when the reply is a Final Answer.
+    check_id: s1
+  - id: s2
+    text: Parse the tool name and arguments out of an Action.
+    check_id: s2
+  - id: s3
+    text: Check the name against the tools dict before you call anything.
+    check_id: s3
+  - id: s4
+    text: Append the refusal, naming the tool, and go round again.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: calls_tool, name: lookup }
+  # No public case names a tool the dict lacks, so s3 carries its own case:
+  # a registered name that has to be called, then an invented one that must
+  # not crash the loop. The registered name comes first, so the check holds
+  # whatever the loop does after the refusal, which is step 4's work.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Which plan is account 530 on? Pause its billing while you are there." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: lookup(account=530)" }
+        - { match: { call_index: 2 }, reply: "Action: pause_billing(account=530)" }
+        - { match: "*",
+            reply: "Final Answer: Account 530 is on the starter plan. I cannot pause billing from here." }
+      tools:
+        lookup: { returns: { status: 200, plan: "starter" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: lookup }
+        - { type: no_exception }
+  # s4 carries its own case: the model asks for merge_accounts, which the
+  # tools dict lacks, and changes its mind only once a refusal names it. The
+  # pattern skips the name where "(" follows it, which is the Action line the
+  # model wrote and a loop that echoes its output carries anyway, so the name
+  # has to come from the refusal. A loop that refuses in silence keeps
+  # getting merge_accounts until the budget runs out.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "Move the open invoices from account 612 to account 613. They are the same company." }
+      llm_script:
+        - { match: { regex: '\bmerge_accounts\b(?!\()' },
+            reply: "Final Answer: I cannot merge accounts from here. The accounts team can move the invoices from 612 to 613." }
+        - { match: "*", reply: "Action: merge_accounts(source=612, target=613)" }
+      tools:
+        lookup: { returns: { status: 200, plan: "business" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)cannot merge accounts from here" }
+
+hints:
+  - The tools dict already knows every legal name. Ask it before you index it.
+  - A refusal the model cannot see is a refusal that changes nothing about the
+    next reply.
+  - Naming the refused tool is what stops the model asking for it twice.
+  - "The loop has three branches: a Final Answer returns, an Action whose name
+    is not a key of tools appends a refusal and goes round again, and every
+    other Action is called with its result appended."
+  - Count the budget. Every model call spends one of four, and after a refusal
+    you still need a call left for the model's second choice.
+
+scenario:
+  headline: "The account agent crashes asking for tools it lacks"
+  who: The operations team behind an internal account agent
+  situation: >-
+    The agent has two tools. This week it asked twice for one it does not
+    have, `delete_account` and `refund_order_v2`, and the loop crashed both times.
+  stakes: >-
+    The on-call engineer gets a `KeyError` stack trace. The user gets silence:
+    no answer, and no refusal either.
+  metrics:
+    - { label: Crashes this week, value: "2" }
+    - { label: Tools it has, value: "2" }
+    - { label: Tools it asked for, value: "4" }
+
+diagram:
+  title: Where an invented tool name becomes a crash
+  caption: >-
+    The check belongs between the model's suggestion and the call. Without it,
+    a made-up name goes straight to a `KeyError`.
+  direction: lr
+  nodes:
+    - { id: user, label: User, sub: asks for an action, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: suggests a tool name, kind: model, tone: teal, at: [1, 0] }
+    - { id: loop, label: Agent loop, sub: reads the Action line, kind: agent, tone: purple, at: [1, 1] }
+    - { id: registry, label: tools dict, sub: the only legal names, kind: guard, tone: green, at: [2, 1] }
+    - { id: tool, label: lookup, sub: a registered tool, kind: tool, tone: neutral, at: [3, 1] }
+    - { id: crash, label: "`KeyError`", sub: the user hears nothing, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: user, to: loop, label: question, step: 1 }
+    - { from: loop, to: model, label: scratchpad, step: 2 }
+    - { from: model, to: loop, label: "Action: `delete_account`", step: 3 }
+    - { from: loop, to: registry, label: "name in tools?", step: 4 }
+    - { from: registry, to: tool, label: yes, tone: success }
+    - { from: loop, to: crash, label: no check, tone: danger }
+
+approach:
+  goal: Treat the model's tool choice as a suggestion
+  branches:
+    - label: Read the reply
+      leaves: [Final Answer returns the text, Action gives a name and arguments]
+    - label: Check before you call
+      detail: The tools dict is the whole allowlist. There is no other list.
+      leaves: ["name in tools, not a try and except"]
+    - label: Refuse out loud
+      leaves: [append a line naming the tool, the next prompt must differ]
+    - label: Always end
+      leaves: [stay inside four model calls, return a message and never raise]
+
+coach:
+  opening: >-
+    Find the line that calls the tool. Everything this problem is about happens
+    just before it.
+  signals:
+    - id: no-final-answer
+      when: { code_lacks: 'Final Answer' }
+      say: >-
+        Nothing handles a Final Answer yet. Start there, because it is the only
+        way this loop ends well.
+    - id: indexes-without-check
+      when:
+        code_matches: 'tools\[[^\]]+\]\s*\('
+        code_lacks: '\bin\s+tools\b|tools\.get\(|tools\.keys\('
+      say: >-
+        You call `tools[name](...)` with nothing in front of it. What happens on
+        that line when the model names `delete_account`?
+    - id: raises-on-unknown
+      when: { code_matches: '^\s*raise\b' }
+      say: >-
+        Raising ends the loop, and the user still hears nothing. The contract
+        asks for the refusal to go into the scratchpad instead.
+    - id: silent-refusal
+      when:
+        code_matches: '\bnot\s+in\s+tools\b'
+        code_lacks: 'scratchpad\s*\+='
+      say: >-
+        You check the name. Does the model ever find out? If the scratchpad
+        does not change, its next reply will be the same one.
+    - id: hidden-invented-tool
+      when: { test_failed: an_invented_tool_is_refused_not_raised }
+      say: >-
+        That run asked for `delete_account` first. Trace your loop by hand with
+        that reply and follow where it goes.
+    - id: hidden-names-tool
+      when: { test_failed: the_refusal_names_the_tool_it_refused }
+      say: >-
+        The model only changed its mind when the prompt named `refund_order_v2`.
+        Does your refusal line include the name it refused?
+    - id: hidden-never-stops
+      when: { test_failed: a_model_that_never_stops_asking_still_ends_in_an_answer }
+      say: >-
+        In that run the model asked for a missing tool on every call and never
+        gave an answer. Your loop has four model calls to spend. What does it
+        return once they are gone?
+    - id: stuck
+      when: { idle_minutes: 4 }
+      say: >-
+        Write the Final Answer branch first and press Run. One green public
+        test is a foothold.
+  wrap_up: >-
+    In production the tool list changes under the agent: prompts get edited
+    and tools get renamed. An allowlist check at the call site is the cheapest
+    guard you will ever ship.
+
+tests:
+  - name: calls_a_registered_tool
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What plan is account 118 on?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: lookup(account=118)" }
+        - { match: "*", reply: "Final Answer: Account 118 is on the team plan." }
+      tools:
+        lookup: { returns: { status: 200, plan: "team" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: lookup }
+        - { type: returns_matches, value: "(?i)team plan" }
+        - { type: no_exception }
+
+  - name: answers_without_a_tool
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "What time does support close?" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Support closes at six." }
+      tools:
+        lookup: { returns: { status: 200, plan: "team" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)six" }
+        - { type: does_not_call_tool, name: lookup }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: an_invented_tool_is_refused_not_raised
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Close account 77 and tell me when it is done" }
+      llm_script:
+        - { match: { contains: "plan" },
+            reply: "Final Answer: I cannot close accounts. Account 77 is on the team plan." }
+        - { match: { contains: "delete_account" }, reply: "Action: lookup(account=77)" }
+        - { match: "*", reply: "Action: delete_account(id=77)" }
+      tools:
+        lookup: { returns: { status: 200, plan: "team" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)cannot close accounts" }
+        - { type: calls_tool, name: lookup }
+
+  # The name counts only where "(" does not follow it, so the Action line the
+  # model wrote, which a loop that echoes its output carries anyway, is not
+  # enough. The refusal has to name the tool itself.
+  - name: the_refusal_names_the_tool_it_refused
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Refund order 4471 on the new endpoint" }
+      llm_script:
+        - { match: { regex: '\brefund_order_v2\b(?!\()' },
+            reply: "Final Answer: There is no refund tool here. Raise it with billing." }
+        - { match: "*", reply: "Action: refund_order_v2(order=4471)" }
+      tools:
+        lookup: { returns: { status: 200, plan: "team" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)no refund tool" }
+        - { type: llm_calls_at_most, value: 4 }
+
+  # The model asks for the same missing tool on every call, whatever the
+  # refusal says. A loop bounded by the budget returns its own answer after
+  # the fourth call, and a loop bounded by anything larger runs into the
+  # budget instead.
+  - name: a_model_that_never_stops_asking_still_ends_in_an_answer
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Archive account 3021. It has been closed for a year." }
+      llm_script:
+        - { match: "*", reply: "Action: archive_account(id=3021)" }
+      tools:
+        lookup: { returns: { status: 200, plan: "team" } }
+        notify: { returns: { status: 200, sent: true } }
+      budget: { max_llm_calls: 4, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: returns_nonempty }
+
+reference_md: |
+  One membership test carries the whole problem, and the reason it is worth a
+  problem of its own is what sits either side of it.
+
+  On the left, `tools` is the only list. Not a list in the prompt, not a list
+  in a constant at the top of the file, not the list the model believes it
+  has. The prompt that invented `refund_order_v2` was edited by a person who
+  thought they were updating documentation, and the loop that trusted it
+  turned a documentation change into a production crash.
+
+  On the right, the refusal has to reach the model or nothing changes. A loop
+  that catches the `KeyError`, logs it and continues asks the same question
+  again and gets `delete_account` again, three times, until the budget is
+  gone. Naming the refused tool in the scratchpad is what makes the second
+  reply different from the first.
+
+  The user-facing half matters too. "I cannot close accounts" is an answer.
+  A stack trace is not.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    The model names a tool you do not have. What happens, and what does the customer see?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: lookup
+    args: account
+    returns: 'The account''s plan, such as `{"status": 200, "plan": "team"}`.'
+  - name: notify
+    args: '...'
+    returns: 'A confirmation, `{"status": 200, "sent": true}`. The problem never shows which arguments
+      it takes.'
+example:
+  case: calls_a_registered_tool
+  expect: The model asks for `lookup(account=118)`, a key of `tools`, so call it, append the result, and
+    return the model's Final Answer text naming the team plan.
+traps:
+  - Calling `tools[name]` before checking the name is a key of `tools`, so an invented tool ends the run
+    with a `KeyError`.
+  - Refusing an unknown tool in a line that never names it, so the model has no reason to choose differently
+    next time.
+  - Letting a model that keeps asking for a missing tool run the loop into the budget, where the loop
+    should return its own answer.

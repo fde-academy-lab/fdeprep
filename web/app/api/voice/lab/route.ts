@@ -6,16 +6,18 @@
  * fixture, the mode is fixed, and the socket address is configuration.
  */
 import { NextResponse } from "next/server";
+import { signedOut, unexpected } from "@/lib/http/failure";
 import { ConsentRequired } from "@/lib/voice/consent";
 import { labQuestionId } from "@/lib/voice/lab";
 import { startVoiceSession, VoiceNotConfigured } from "@/lib/voice/start";
-import { currentLearner } from "@/lib/session/current";
+import { learnerOrNull } from "@/lib/session/current";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
   try {
-    const learner = await currentLearner();
+    const learner = await learnerOrNull();
+    if (!learner) return signedOut();
     // The transport check is for whoever runs the platform, like its page.
     if (learner.role === "learner") {
       return NextResponse.json(
@@ -35,6 +37,8 @@ export async function POST() {
     if (error instanceof ConsentRequired || error instanceof VoiceNotConfigured) {
       return NextResponse.json({ message: error.message }, { status: error.status });
     }
-    throw error;
+    return unexpected("opening a transport check", error,
+      "The transport check did not open because the server hit an error. The web log has the " +
+        "cause; try again once it is fixed.");
   }
 }

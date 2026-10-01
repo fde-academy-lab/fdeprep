@@ -1,10 +1,13 @@
 slug: extraction-pilot-3-reconcile-line-items
-title: A claim was overpaid by £412.50 against its own invoice
-day: 26
+title: "Check invoice lines add up before paying"
+day: 27
 skill: Check the invoice lines add up before anyone pays the total
 artefact_type: code
 difficulty: hard
 track: builds
+concept:
+  topic: "Extraction pilot"
+  question: "What has to add up before the total is paid?"
 est_minutes: 40
 competencies:
   - { slug: failure-mode-analysis, weight: 1.0 }
@@ -208,6 +211,7 @@ hints:
     no line passes and the claim goes to a person.
 
 scenario:
+  headline: "A claim was overpaid by £412.50 against its own invoice"
   who: The head of claims operations at a regional home insurer
   situation: >-
     Stages 1 and 2 are live. A claim with an itemised invoice goes through

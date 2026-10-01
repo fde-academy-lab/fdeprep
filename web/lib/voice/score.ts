@@ -32,6 +32,19 @@ export const STRUCTURE_WEIGHT = 30;
 export const PACE_WEIGHT = 20;
 
 /**
+ * How many times the scorer asks the judge about one answer before it leaves
+ * the answer unscored and gives its allowance back. An operator can see such
+ * a session in the admin submissions view.
+ *
+ * It lives here, beside the weights, because the debrief and the past answers
+ * list quote it. It used to live in judge.ts, and judge.ts loads the judge's
+ * transport, which works out the repository's path as it loads. Next's server
+ * bundle cannot give it one, so both pages failed before they rendered.
+ * tests/voice-failures.test.ts walks every page's imports to keep it so.
+ */
+export const MAX_JUDGE_ATTEMPTS = 3;
+
+/**
  * Sub-weights inside structure and pace.
  *
  * docs/07 section 6 names the three ingredients of each axis and not their

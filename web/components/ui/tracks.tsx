@@ -1,28 +1,31 @@
 /**
- * How each track and stage is drawn: an icon and a name.
+ * How each chapter and stage is drawn: an icon and a name.
  *
  * The names live in lib/problems/vocabulary.ts with the tracks themselves;
  * this file only adds the icon, so the vocabulary module stays free of React.
  */
 import {
-  Activity, BookOpenText, Braces, FlaskConical, Handshake, Hammer, History, MessageSquareText,
-  Repeat, ShieldCheck, Wrench, type LucideIcon,
+  Activity, BookOpenText, Compass, GitBranch, FlaskConical, Handshake, Hammer, History, LifeBuoy, Network, Repeat,
+  ShieldCheck, UserCheck, Wrench, Braces, type LucideIcon,
 } from "lucide-react";
 import { STAGES, TRACK_NAMES, TRACKS, type Track } from "@/lib/problems/vocabulary";
 import { cn } from "./cn";
 
 export const TRACK_ICONS: Readonly<Record<Track, LucideIcon>> = {
-  "structured-output": Braces,
-  "prompt": MessageSquareText,
-  "agent-loop": Repeat,
-  "tool-creation": Wrench,
-  "rag": BookOpenText,
+  "loop": Repeat,
+  "tools": Wrench,
+  "harness": LifeBuoy,
+  "context": BookOpenText,
   "memory": History,
+  "orchestration": Network,
   "guardrails": ShieldCheck,
+  "human-in-the-loop": UserCheck,
   "evals": FlaskConical,
-  "production": Activity,
-  "fde-practice": Handshake,
+  "observability": Activity,
+  "agentic-pdlc": Compass,
+  "agentic-sdlc": GitBranch,
   "builds": Hammer,
+  "fde-practice": Handshake,
 };
 
 export function isTrack(value: string): value is Track {
@@ -42,11 +45,14 @@ export function TrackIcon({ track, className }: { track: string; className?: str
   return <Icon aria-hidden className={cn("size-4 shrink-0", className)} strokeWidth={1.75} />;
 }
 
-export function TrackLabel({ track, className }: { track: string; className?: string }) {
+export function TrackLabel({ track, topic, className }: {
+  track: string; topic?: string | null; className?: string;
+}) {
   return (
     <span className={cn("inline-flex items-center gap-1.5 text-text-dim", className)}>
       <TrackIcon track={track} className="size-3.5" />
       <span>{trackName(track)}</span>
+      {topic ? <span className="text-text-faint">· {topic}</span> : null}
     </span>
   );
 }

@@ -15,6 +15,11 @@
  * the session and one to close it. A test asserts the count is zero across
  * the answer window.
  *
+ * The third: a failure is said, never swallowed. Opening, saving and storing
+ * the recording go through lib/voice/save.ts, which returns a result with the
+ * learner's sentence in it. An answer that did not save is never shown as
+ * recorded: it stays in this tab with Save again until the server has it.
+ *
  * A typed answer lives in typed-answer.tsx and never here, because a text box
  * is the learner's words on screen and this file exists to keep them off it.
  */
@@ -25,12 +30,18 @@ import { useRouter } from "next/navigation";
 import { encodePcm, startCapture, type Capture } from "@/lib/voice/capture";
 import { runMicCheck } from "@/lib/voice/mic-check.browser";
 import { CHECK_SECONDS, type MicVerdict } from "@/lib/voice/mic-check";
-import type { ServerMessage } from "@/lib/voice/protocol";
+import type { CloseReason, ServerMessage } from "@/lib/voice/protocol";
 import { currentBeat, initialState, territory, type BeatState } from "@/lib/voice/cues";
 import { CockpitRun, type VoiceMode } from "@/lib/voice/run";
 import type { FollowUp, VoiceQuestion } from "@/lib/voice/question";
+import {
+  openSession, saveAnswer, socketLostNote, uploadRecording, type Answer, type Fetcher,
+} from "@/lib/voice/save";
 import { Announcer, BeatTrack, MicLevel, NudgeSlot, PaceBand, Territory } from "./instruments";
 import { clock } from "@/lib/voice/clock";
+
+/** fetch, called as a plain function so it is never invoked on another object. */
+const send: Fetcher = (url, init) => fetch(url, init);
 
 /** docs/07 section 5: a sixty second clock for the interruption. */
 const INTERRUPTION_SECONDS = 60;
@@ -66,6 +77,11 @@ const NUDGE_LIFETIME_MS = 8_000;
  * were last heard.
  */
 const CLOSE_WAIT_MS = 1_500;
+
+/** How long Stop waits for the microphone to hand over its recording. A
+ *  recorder that never reports it stopped would otherwise hold the save, and
+ *  the answer matters more than its playback copy. */
+const STOP_WAIT_MS = 2_000;
 
 /** docs/07 section 7 asks for the check "before the first session and before
  *  any Pressure run". Inside this window a passed check carries over to the
@@ -128,6 +144,12 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
   /** The microphone, the socket or the transcriber failed mid-answer, so the
    *  cockpit offers the typed answer. */
   const [failed, setFailed] = useState(false);
+  /** Start was pressed and the server has not answered yet. A second press
+   *  would open a second session and claim a second unit of the allowance. */
+  const [starting, setStarting] = useState(false);
+  /** Why the answer did not save, while it waits in this tab for Save again. */
+  const [unsaved, setUnsaved] = useState<string | null>(null);
+  const [retrying, setRetrying] = useState(false);
 
   /**
    * Transcript text lives here and only here.
@@ -163,6 +185,14 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
   /** Set when the answer starts. Before that, a failure is the platform's
    *  and the session is closed at once, which hands its allowance back. */
   const answering = useRef(false);
+  /** Set while Start waits on the server, before React has re-rendered the
+   *  button as disabled, so a double click opens one session. */
+  const opening = useRef(false);
+  /** The reason the socket gave in its last "closed" message, so a close
+   *  mid-answer can say what happened rather than only that it did. */
+  const closeReason = useRef<CloseReason | null>(null);
+  /** An answer the server has not taken yet, kept for Save again. */
+  const pending = useRef<{ id: number; answer: Answer; recording: Blob | null } | null>(null);
 
   const guided = mode === "guided" || mode === "pressure";
   const typedHref = {
@@ -197,12 +227,61 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
     return Date.now() - startedAt.current - pausedMs.current - paused;
   }, []);
 
-  const finish = useCallback(async () => {
-    if (finishing.current) return;
+  /**
+   * Save the answer, then its recording. On a failure the answer stays in
+   * this tab for Save again, and the cockpit says why rather than showing it
+   * as recorded. Returns whether the server has it.
+   */
+  const persist = useCallback(async (id: number, answer: Answer, recording: Blob | null) => {
+    const result = await saveAnswer(send, id, answer);
+    if (!result.saved) {
+      pending.current = { id, answer, recording };
+      setUnsaved(result.message);
+      return false;
+    }
+    // Cleared only now. Cleared before the request, the screen read "Answer
+    // recorded" while Save again was still waiting on the server.
+    pending.current = null;
+    setUnsaved(null);
+    setFinishedId(id);
+
+    // docs/07 section 7: the MediaRecorder copy is kept for playback and
+    // written to storage at the end. It is not the PCM the transcriber
+    // heard; the two copies exist for different jobs and only this one is
+    // stored. With no bucket configured the request answers that nothing
+    // was stored, and the debrief replays on its own clock instead.
+    if (recording && recording.size > 0) {
+      const upload = await uploadRecording(send, id, recording);
+      if (upload.message) setNote(upload.message);
+    }
+    return true;
+  }, []);
+
+  const saveAgain = useCallback(async () => {
+    const waiting = pending.current;
+    if (!waiting) return;
+    setRetrying(true);
+    await persist(waiting.id, waiting.answer, waiting.recording);
+    setRetrying(false);
+    router.refresh();
+  }, [persist, router]);
+
+  const finish = useCallback(async (): Promise<boolean> => {
+    if (finishing.current) return false;
     finishing.current = true;
     const cockpit = run.current;
-    // The microphone first, so no frame follows the stop.
-    const recording = await capture.current?.stop();
+    // The microphone first, so no frame follows the stop. A recorder that
+    // never says it stopped, or throws, costs the playback copy and never
+    // the answer.
+    let recording: Blob | null = null;
+    try {
+      recording = await Promise.race([
+        capture.current?.stop() ?? Promise.resolve(null),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), STOP_WAIT_MS)),
+      ]);
+    } catch {
+      recording = null;
+    }
     capture.current = null;
 
     const ws = socket.current;
@@ -224,35 +303,22 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
       transcript.current.partial = "";
     }
 
+    // A note from the answer, such as the socket dropping, told the learner
+    // to press Stop. They have, so it goes; the save writes its own.
+    setNote(null);
+    let saved = true;
     if (cockpit && sessionId.current !== null) {
       const timeline = cockpit.timeline();
-      await fetch(`/api/voice/sessions/${sessionId.current}/finish`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          transcript: spoken(transcript.current.finals),
-          segments: transcript.current.finals,
-          timeline: { ...timeline, interruptions: interruptions.current },
-        }),
-      }).catch(() => setNote("The session ended but the debrief did not save. Tell an admin."));
-
-      // docs/07 section 7: the MediaRecorder copy is kept for playback and
-      // written to storage at the end. It is not the PCM the transcriber
-      // heard; the two copies exist for different jobs and only this one is
-      // stored. With no bucket configured the request answers that nothing
-      // was stored, and the debrief replays on its own clock instead.
-      if (recording && recording.size > 0) {
-        await fetch(`/api/voice/sessions/${sessionId.current}/audio`, {
-          method: "POST",
-          headers: { "content-type": recording.type || "audio/webm" },
-          body: recording,
-        }).catch(() => setNote("Your answer was saved but the recording was not."));
-      }
-      setFinishedId(sessionId.current);
+      saved = await persist(sessionId.current, {
+        transcript: spoken(transcript.current.finals),
+        segments: transcript.current.finals,
+        timeline: { ...timeline, interruptions: interruptions.current },
+      }, recording);
     }
     setPhase("done");
     router.refresh();
-  }, [answerClock, router]);
+    return saved;
+  }, [answerClock, persist, router]);
 
   /** Pressure mode: at a beat boundary, the authored follow-up for the beat
    *  just covered fires, at most twice in a session. */
@@ -357,11 +423,9 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
     socket.current = null;
     if (id === null || finishing.current) return;
     finishing.current = true;
-    void fetch(`/api/voice/sessions/${id}/finish`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ transcript: "", segments: [], timeline: { beats: [], nudges: [] } }),
-    }).catch(() => undefined);
+    // Tried again like any save, since a close that never lands keeps the
+    // allowance it claimed.
+    void saveAnswer(send, id, { transcript: "", segments: [], timeline: { beats: [], nudges: [] } });
   }, []);
 
   const saveByBeacon = useCallback(() => {
@@ -414,28 +478,55 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
   }, [beatState, phase]);
 
   const start = useCallback(async () => {
+    if (opening.current) return;
+    opening.current = true;
+    setStarting(true);
     setNote(null);
-    const response = await fetch("/api/voice/sessions", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mode, question: question.slug }),
-    });
-    if (!response.ok) {
-      const body = (await response.json()) as { message?: string };
-      setNote(body.message ?? "The session could not be opened.");
+    setFailed(false);
+    let opened: Awaited<ReturnType<typeof openSession>>;
+    try {
+      opened = await openSession(send, { mode, question: question.slug });
+    } finally {
+      opening.current = false;
+      setStarting(false);
+    }
+    if (!opened.ok) {
+      setNote(opened.message);
       return;
     }
-    const started = (await response.json()) as {
-      sessionId: number; token: string; socketUrl: string;
-    };
+    const started = opened.started;
+
+    // A fresh attempt. A start whose socket failed earlier on this page left
+    // these set, and a stale finishing flag made the next Stop do nothing.
+    finishing.current = false;
+    answering.current = false;
+    closeReason.current = null;
+    transcript.current.partial = "";
+    transcript.current.finals = [];
+    seq.current = 0;
     sessionId.current = started.sessionId;
     run.current = new CockpitRun(question.beats, question.totalSeconds, guided);
 
-    const ws = new WebSocket(`${started.socketUrl}?token=${encodeURIComponent(started.token)}`);
+    let ws: WebSocket;
+    try {
+      ws = new WebSocket(`${started.socketUrl}?token=${encodeURIComponent(started.token)}`);
+    } catch {
+      setNote("This server's voice socket address is not one a browser can open, so the answer " +
+              "did not start and nothing was counted. Type the answer instead, and tell an admin.");
+      setFailed(true);
+      abandon();
+      return;
+    }
     socket.current = ws;
 
     ws.onmessage = (event) => {
-      const message = JSON.parse(event.data as string) as ServerMessage;
+      let message: ServerMessage;
+      try {
+        message = JSON.parse(event.data as string) as ServerMessage;
+      } catch {
+        // Not the protocol, so there is nothing in it to act on.
+        return;
+      }
       // Both branches write to a ref. Neither reaches state, and nothing on
       // screen can read a ref.
       if (message.t === "partial") transcript.current.partial = message.text;
@@ -445,10 +536,25 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
         });
         transcript.current.partial = "";
       } else if (message.t === "closed") {
+        closeReason.current = message.reason;
         drained.current?.();
       } else if (message.t === "error") {
-        setNote(message.message);
-        if (message.code === "stt_failed") setFailed(true);
+        if (!answering.current) {
+          // Refused or broken before the answer began, such as a token the
+          // socket will not accept or a transcriber that would not open.
+          // That is the platform's failure, so the session closes now and
+          // costs nothing, and the admin gets the socket's own words.
+          setNote("The voice socket could not take this answer, so it did not start and nothing " +
+                  `was counted. Type the answer instead, and tell an admin it said: ${message.message}`);
+          setFailed(true);
+          abandon();
+        } else {
+          // Mid-answer the socket's own words are the accurate ones: behind
+          // API Gateway one failed batch loses its words and the next batch
+          // tries again, and the socket says so.
+          setNote(message.message);
+          if (message.code === "stt_failed") setFailed(true);
+        }
       }
     };
     ws.onerror = () => {
@@ -458,13 +564,26 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
       setFailed(true);
       if (!answering.current) abandon();
     };
-    ws.onclose = () => {
-      if (!answering.current) abandon();
+    ws.onclose = (event) => {
+      if (!answering.current) {
+        abandon();
+        return;
+      }
+      // Closed by the server or the network while the learner was still
+      // answering. Nothing said from here on is heard, so the cockpit says so
+      // at once rather than letting them talk into a closed socket. 1011 is
+      // the socket closing because its transcriber failed.
+      if (!finishing.current) {
+        const reason = closeReason.current ?? (event.code === 1011 ? "failed" : null);
+        setNote(socketLostNote(reason, answerClock()));
+        setFailed(true);
+      }
     };
 
     ws.onopen = async () => {
+      let microphone: Capture;
       try {
-        capture.current = await startCapture({
+        microphone = await startCapture({
           record: true,
           onFrame: ({ pcm, rms: level }) => {
             if (ws.readyState === WebSocket.OPEN) {
@@ -481,12 +600,20 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
         abandon();
         return;
       }
+      // The socket can refuse the session while the microphone opens, and
+      // the session is closed by then. Starting the clock anyway left a live
+      // cockpit with nothing behind it and a Stop that never finished.
+      if (ws.readyState !== WebSocket.OPEN || sessionId.current !== started.sessionId) {
+        void microphone.stop().catch(() => null);
+        return;
+      }
+      capture.current = microphone;
       answering.current = true;
       startedAt.current = Date.now();
       voicedAt.current = Date.now();
       setPhase("live");
     };
-  }, [abandon, guided, mode, question.beats, question.slug, question.totalSeconds]);
+  }, [abandon, answerClock, guided, mode, question.beats, question.slug, question.totalSeconds]);
 
   const remainingMs = question.totalSeconds * 1000 - elapsedMs;
   // Once every beat is covered there is no current beat, and showing the
@@ -495,6 +622,32 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
   // landed, so that is what the band keeps showing.
   const beat = currentBeat(beatState) ?? beatState.beats.at(-1) ?? null;
   const live = phase === "live" || phase === "closing";
+
+  if (phase === "done" && unsaved) {
+    // No lobby and no Next question here: both leave the page, and the answer
+    // exists only in this tab until Save again lands.
+    return (
+      <div className="mt-8 border border-border bg-surface p-6" role="alert">
+        <h2 className="font-medium">Your answer did not save.</h2>
+        <p className="mt-2 text-text-dim">{unsaved}</p>
+        <div className="mt-4 flex flex-wrap gap-2.5">
+          <button
+            type="button"
+            onClick={() => void saveAgain()}
+            disabled={retrying}
+            className="inline-block rounded border border-accent px-3 py-1.5 text-accent
+                       hover:bg-surface-2 disabled:opacity-50"
+          >
+            {retrying ? "Saving" : "Save again"}
+          </button>
+          <Link href={typedHref}
+                className="inline-block rounded border border-border px-3 py-1.5 text-text-dim hover:text-text">
+            Type the answer instead
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   if (phase === "done") {
     return (
@@ -579,11 +732,11 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
         <button
           type="button"
           onClick={() => void start()}
-          disabled={!verdict?.ok && !(carried && !verdict)}
+          disabled={starting || (!verdict?.ok && !(carried && !verdict))}
           className="rounded border border-accent px-4 py-2 text-accent hover:bg-surface
                      disabled:opacity-50"
         >
-          Start the answer
+          {starting ? "Opening" : "Start the answer"}
         </button>
         {!verdict?.ok && !(carried && !verdict) && (
           <p className="text-text-faint">
@@ -660,9 +813,11 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
       )}
 
       {failed && (
-        <div className="mt-8 border border-border bg-surface p-4">
-          <p className="text-text-dim">
-            What you said so far is kept. You can stop here and type the answer instead.
+        // An alert, so a learner who cannot see it still hears that nothing
+        // more is being heard. The announcer stays for beats and nudges.
+        <div className="mt-8 border border-border bg-surface p-4" role="alert">
+          <p className={note ? "text-warn" : "text-text-dim"}>
+            {note ?? "What you said so far is kept. You can stop here and type the answer instead."}
           </p>
           <button
             type="button"
@@ -685,7 +840,10 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
             type="button"
             onClick={() => {
               setPhase("closing");
-              void finish().then(() => router.push(`/voice/session?q=${nextSlug}&mode=${mode}` as Route));
+              // Only once the answer is saved: leaving with it unsaved loses it.
+              void finish().then((saved) => {
+                if (saved) router.push(`/voice/session?q=${nextSlug}&mode=${mode}` as Route);
+              });
             }}
             disabled={phase === "closing"}
             className="rounded border border-border px-3 py-1.5 text-text-dim hover:text-text
@@ -709,7 +867,8 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
       </div>
 
       <Announcer message={announcement} />
-      {note && <p className="mt-4 text-warn">{note}</p>}
+      {/* A failure's note sits in the panel above, beside its button. */}
+      {note && !failed && <p className="mt-4 text-warn" role="alert">{note}</p>}
     </div>
   );
 }

@@ -1,10 +1,13 @@
 slug: check-the-policy-before-the-action-runs
-title: The chat agent refunds £420 when the limit is £40
+title: "Check the policy before the refund runs"
 day: 17
 skill: Let the written policy say no before the refund runs
 artefact_type: code
 difficulty: medium
 track: guardrails
+concept:
+  topic: "Read, write and execute"
+  question: "What checks a refund before it runs?"
 est_minutes: 25
 competencies:
   - { slug: system-design, weight: 1.0 }
@@ -226,6 +229,7 @@ hints:
     next."
 
 scenario:
+  headline: "The chat agent refunds £420 when the limit is £40"
   who: Customer support at a meal-kit subscription company
   situation: >-
     The chat agent refunded 420 pounds on a 62 pound box. Tier 1 may refund up

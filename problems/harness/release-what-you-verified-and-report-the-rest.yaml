@@ -1,0 +1,666 @@
+slug: release-what-you-verified-and-report-the-rest
+title: "Release what you verified and report the rest"
+day: 8
+skill: Release on what the working checks prove, stop calling dead ones, and report every gap
+artefact_type: code
+difficulty: extreme
+track: harness
+concept:
+  topic: "Graceful degradation"
+  question: "What can an agent still promise when two of its four tools are down?"
+est_minutes: 45
+competencies:
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A freight forwarder the size of DSV releases about 1,800 export shipments a
+  night. Before a shipment goes to the port, its release agent runs four
+  checks. Two are required before anything ships: the sanctions screening of
+  the consignee, and the export licence the goods need. Two are advisory: the
+  customer's credit limit, and the delivery address.
+
+  On Thursday 24 September the licence register and the credit service failed
+  an hour into the run. The licence register answered every call with a 200
+  and an error in the body, and the agent read anything that was not a "no"
+  as a yes. Fourteen shipments were released with no licence check. One of
+  them was a pallet of thermal imaging cameras, which need an export licence,
+  and the forwarder has since filed a voluntary disclosure with the export
+  control authority.
+
+  The credit service did not answer at all, and the agent called it twice for
+  every shipment, waiting out a 10 second timeout each time. The run finished
+  after the vessel cut-off and 300 shipments missed the ship. Nothing in the
+  agent's answer said which checks had run.
+
+  The compliance team has specified the release run. Write it.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` names tonight's manifest. Release decisions are rules, so `llm`
+  is not called: a model's opinion of whether a consignee is sanctioned is a
+  guess, however it is worded.
+
+  `tools["manifest"]()` returns
+  `{"status": 200, "shipments": [{"id": "S1", "consignee": ..., "goods": ..., "destination": ...}]}`.
+
+  Four checks, each called as `tools[name](shipment=<id>)`:
+
+  | Check | Kind | What it confirms |
+  |---|---|---|
+  | `sanctions` | required | the consignee is on no sanctions list |
+  | `licence` | required | the goods have the export licence they need, or need none |
+  | `credit` | advisory | the customer is inside its credit limit |
+  | `address` | advisory | the delivery address is valid |
+
+  A check answers with a 200 and a `pass` of true or false:
+
+      {"status": 200, "pass": true}
+      {"status": 200, "pass": false, "why": "..."}
+
+  Anything else is a failed call: another status, a 200 without a boolean
+  `pass`, or a call that raises.
+
+  - Run every check on every shipment, in manifest order.
+  - Try a failed call once more, for the same shipment.
+  - Each check has a breaker. Three failed calls in a row to a check open it,
+    and any answer, true or false, resets the count. Once open it stays open
+    for the rest of the manifest, and that check is not called again.
+
+  Report each check on each shipment as one of:
+
+  | Result | Means |
+  |---|---|
+  | `pass` | it answered true |
+  | `fail` | it answered false |
+  | `down` | it was called and gave no answer |
+  | `breaker_open` | it was not called, because its breaker was open |
+
+  A shipment is `held` when a required check is `fail`, `released` when both
+  required checks are `pass`, and `pending` otherwise. Advisory checks are
+  reported and never change the status.
+
+  Return `json.dumps({"S1": {"status": ..., "sanctions": ..., "licence": ...,
+  "credit": ..., "address": ...}, ...})`, one object per shipment.
+
+  Budget: `llm` is not called. Allowed imports: json, re.
+
+defence_question: |
+  Your breaker stays open for the rest of the manifest once it trips. Last
+  night the licence register came back four minutes after it failed, and
+  1,200 shipments went to the morning desk as pending that could have been
+  checked. The operations lead asks you to remove the breaker and retry every
+  call three times instead. What do you say, and what would you change?
+
+stub_code: |
+  import json
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Run tonight's release checks and release only what they could verify.
+
+      tools["manifest"]() -> {"shipments": [{"id": "S1", "consignee": ..., ...}]}
+      tools[check](shipment=<id>), for sanctions and licence (required) and
+      credit and address (advisory).
+
+      An answer is a 200 whose pass is true or false. Anything else is a failed
+      call: another status, a 200 without a boolean pass, or a raise.
+
+      Every check runs on every shipment. A failed call is tried once more for
+      that shipment. Three failed calls in a row to one check open its breaker
+      for the rest of the manifest, and any answer resets that count.
+
+      Report each check as pass, fail, down (called, no answer) or breaker_open
+      (not called). A shipment is held if a required check is fail, released if
+      both required checks pass, and pending otherwise. Advisory checks never
+      change the status.
+
+      Return json.dumps({shipment id: {"status": ..., "sanctions": ...,
+                                       "licence": ..., "credit": ...,
+                                       "address": ...}}).
+      llm is not called. Allowed imports: json, re.
+      """
+      return json.dumps({})
+
+hints:
+  - Start from what a check can tell you, which is yes, no, or nothing you can
+    read. Decide what each of those does to a shipment before you write a
+    single call.
+  - Only a 200 with a `pass` of exactly true or false is an answer. A refusal
+    is an answer too, so it is the service working, and it never counts toward
+    a breaker.
+  - Give each check its own count of failed calls in a row. A failed call adds
+    one, any answer resets it to zero, and at three the check is not called
+    again tonight.
+  - Retry a failed call once for the same shipment, unless that failure opened
+    the breaker. A check with no answer is `down` when you called it and
+    `breaker_open` when you did not.
+  - The status reads only the required checks. Any fail holds the shipment,
+    any gap leaves it pending, and two passes release it. Advisory results are
+    reported and decide nothing.
+
+scenario:
+  headline: "The release agent cleared shipments the licence check never saw"
+  who: Export compliance at a freight forwarder the size of DSV
+  situation: >-
+    Two of the four release checks failed an hour into the nightly run. The
+    agent read a 200 with an error in the body as a pass, and called the
+    service that did not answer twice for every shipment of the night.
+  stakes: >-
+    Fourteen shipments left with no licence check, one of them thermal imaging
+    cameras that need an export licence. The run ended after the vessel
+    cut-off.
+  metrics:
+    - { label: Released unchecked, value: "14" }
+    - { label: Missed the vessel, value: "300" }
+    - { label: Checks that were down, value: 2 of 4 }
+
+diagram:
+  title: Where a missing answer turned into a release
+  caption: >-
+    A check that gave no answer was read as a pass, and the dead services were
+    called for every shipment until the run missed the vessel.
+  direction: lr
+  nodes:
+    - { id: desk, label: Release desk, sub: "1,800 shipments a night", kind: actor, tone: blue, at: [0, 1] }
+    - { id: run, label: Release run, sub: four checks per shipment, kind: agent, tone: purple, at: [1, 1] }
+    - { id: breakers, label: Circuit breakers, sub: "one per check, three failures in a row", kind: guard, tone: teal, at: [2, 1] }
+    - { id: sanctions, label: "`sanctions()`", sub: "required, answering", kind: tool, tone: green, at: [3, 0] }
+    - { id: licence, label: "`licence()`", sub: "required, a 200 with no answer", kind: tool, tone: orange, at: [3, 1] }
+    - { id: credit, label: "`credit()`", sub: "advisory, not answering", kind: tool, tone: orange, at: [3, 2] }
+    - { id: decision, label: Release decision, sub: required checks only, kind: decision, tone: green, at: [4, 1] }
+    - { id: report, label: Per-check report, sub: "pass, fail, down or breaker open", kind: output, tone: neutral, at: [5, 1] }
+    - { id: unchecked, label: Released unchecked, sub: silence read as a yes, kind: output, tone: pink, at: [1, 2] }
+  edges:
+    - { from: desk, to: run, label: "tonight's manifest", step: 1 }
+    - { from: run, to: breakers, label: every check call, step: 2 }
+    - { from: breakers, to: sanctions, label: closed, tone: success }
+    - { from: breakers, to: licence, label: until three in a row, tone: muted }
+    - { from: breakers, to: credit, label: until three in a row, tone: muted }
+    - { from: run, to: decision, label: answers and gaps, step: 3 }
+    - { from: decision, to: report, label: status with reasons, tone: success }
+    - { from: run, to: unchecked, label: no answer read as pass, tone: danger }
+
+approach:
+  goal: Promise only what the working checks proved, and stop asking the dead ones
+  branches:
+    - label: What counts as an answer
+      leaves: ["a 200 with `pass` true or false", anything else is a failed call, a refusal is an answer]
+    - label: Which gaps stop a shipment
+      detail: Required checks decide the status. Advisory checks are reported and decide nothing.
+      leaves: [held or pending or released]
+    - label: When to stop calling
+      leaves: [one retry per shipment, three failures in a row open the breaker, an answer resets the count]
+    - label: Say what nobody checked
+      leaves: [down when it was called, breaker open when it was not]
+
+coach:
+  opening: >-
+    This is a screen-level problem. Before you type, write down the three
+    things a check can tell you, and what each one does to a shipment's
+    status.
+  signals:
+    - id: reads-a-gap-as-a-pass
+      when: { code_lacks: '\bis\s+True\b|==\s*True\b' }
+      say: >-
+        Your code never asks whether `pass` is exactly true. What does it do
+        with a 200 that carries no `pass` at all, or one written as text?
+    - id: no-breaker-count
+      when: { code_lacks: '(?:[<>]=?|==)\s*(?:3\b|[A-Z_]*(?:BREAK|THRESH|FAIL|TRIP|OPEN|LIMIT|MAX)[A-Z_]*\b)' }
+      say: >-
+        Nothing in your code counts failed calls to a check. After how many
+        failures in a row should a check stop being called tonight, and what
+        resets the count?
+    - id: hidden-two-dead
+      when: { test_failed: two_dead_services_are_reported_and_left_alone }
+      say: >-
+        Two services were dead for the whole run. Count your calls to each
+        one, and read what your answer says about the shipments that came
+        after the third failure.
+    - id: hidden-refusals
+      when: { test_failed: a_refusal_is_an_answer_not_an_outage }
+      say: >-
+        The licence check said no three times in a row in that run, and it was
+        working every time. What did your breaker count?
+    - id: hidden-retry
+      when: { test_failed: one_retry_rescues_a_dropped_call }
+      say: >-
+        One call in that run failed once and would have answered the second
+        time. How many times did your code ask?
+    - id: hidden-silence
+      when: { test_failed: a_success_with_no_answer_is_not_a_pass }
+      say: >-
+        Every licence call in that run came back 200 with no `pass` in it.
+        Which shipments did your code release, and on what evidence?
+    - id: hidden-advisory
+      when: { test_failed: advisory_gaps_never_stop_a_shipment }
+      say: >-
+        Only advisory checks failed in that run. Which statuses did your code
+        give, and which checks decide a status?
+    - id: adversarial-intermittent
+      when: { test_failed: adversarial_a_check_that_fails_every_other_call }
+      say: >-
+        That service dropped one call in two and answered every retry. What
+        happened to your breaker's count each time it answered?
+    - id: adversarial-text
+      when: { test_failed: adversarial_a_refusal_written_as_text }
+      say: >-
+        One answer in that run carried `pass` as the text "false". Which
+        status did that shipment get, and would you sign the release?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one function that makes one call and returns pass, fail or
+        no answer. The loop, the retry and the breakers all sit on top of it.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint starts from the three things
+        a check can tell you.
+  wrap_up: >-
+    Degrading gracefully means promising less. Release on what the checks
+    proved, say plainly what nobody checked, and stop paying a dead service
+    for silence.
+
+tests:
+  - name: releases_a_manifest_when_every_check_answers
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Release run for manifest M-0924-A" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: All four checks passed. Release the manifest." }
+      tools:
+        manifest:
+          returns:
+            status: 200
+            shipments:
+              - { id: S1, consignee: "Nordhavn Marine Supply", goods: "propeller shafts", destination: "Norway" }
+              - { id: S2, consignee: "Lisbon Coffee Roasters", goods: "coffee roasting drums", destination: "Portugal" }
+        sanctions: { returns: { status: 200, pass: true } }
+        licence: { returns: { status: 200, pass: true } }
+        credit: { returns: { status: 200, pass: true } }
+        address: { returns: { status: 200, pass: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 40, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [S1, S2],
+                      additionalProperties: { type: object,
+                                              required: [status, sanctions, licence, credit, address],
+                                              properties: { status: { enum: [released, held, pending] } } } } }
+        - { type: returns_matches, value: '"S1":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S2":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S2":\s*\{[^{}]*"address":\s*"pass"' }
+        - { type: tool_calls_at_most, value: 9 }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: holds_a_shipment_a_required_check_refuses
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Release run for manifest M-0924-B" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: All four checks passed. Release the manifest." }
+      tools:
+        manifest:
+          returns:
+            status: 200
+            shipments:
+              - { id: S1, consignee: "Ostrava Tool Works", goods: "lathe chucks", destination: "Czechia" }
+              - { id: S2, consignee: "Tarn Valley Holdings", goods: "marine diesel engines", destination: "Cyprus" }
+        sanctions:
+          by_arg:
+            arg: shipment
+            values:
+              S2: { status: 200, pass: false, why: "consignee matches an entry on a consolidated sanctions list" }
+            default: { status: 200, pass: true }
+        licence: { returns: { status: 200, pass: true } }
+        credit: { returns: { status: 200, pass: true } }
+        address: { returns: { status: 200, pass: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 40, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [S1, S2] } }
+        - { type: returns_matches, value: '"S1":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S2":\s*\{[^{}]*"status":\s*"held"' }
+        - { type: returns_matches, value: '"S2":\s*\{[^{}]*"sanctions":\s*"fail"' }
+
+  - name: two_dead_services_are_reported_and_left_alone
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Release run for manifest M-0924-C" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: All four checks passed. Release the manifest." }
+      tools:
+        manifest:
+          returns:
+            status: 200
+            shipments:
+              - { id: S1, consignee: "Baltic Grain Exports", goods: "grain moisture meters", destination: "Latvia" }
+              - { id: S2, consignee: "Andes Water Partners", goods: "pump impellers", destination: "Chile" }
+              - { id: S3, consignee: "Kumasi Build Supply", goods: "concrete mixers", destination: "Ghana" }
+              - { id: S4, consignee: "Halifax Cold Chain", goods: "refrigeration compressors", destination: "Canada" }
+              - { id: S5, consignee: "Osaka Print Systems", goods: "offset printing plates", destination: "Japan" }
+        sanctions: { returns: { status: 200, pass: true } }
+        licence: { returns: { status: 503, error: "the licence register is unavailable" } }
+        credit:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the credit service did not answer within 10 seconds" }
+        address: { returns: { status: 200, pass: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 40, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: tool_calls_at_most, value: 17 }
+        - { type: returns_lacks, value: '"status":\s*"released"' }
+        - { type: returns_matches, value: '"S4":\s*\{[^{}]*"status":\s*"pending"' }
+        - { type: returns_matches, value: '"S1":\s*\{[^{}]*"licence":\s*"down"' }
+        - { type: returns_matches, value: '"S2":\s*\{[^{}]*"licence":\s*"down"' }
+        - { type: returns_matches, value: '"S3":\s*\{[^{}]*"licence":\s*"breaker_open"' }
+        - { type: returns_matches, value: '"S2":\s*\{[^{}]*"credit":\s*"down"' }
+        - { type: returns_matches, value: '"S5":\s*\{[^{}]*"credit":\s*"breaker_open"' }
+        - { type: returns_matches, value: '"S5":\s*\{[^{}]*"sanctions":\s*"pass"' }
+
+  - name: a_refusal_is_an_answer_not_an_outage
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Release run for manifest M-0924-D" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: All four checks passed. Release the manifest." }
+      tools:
+        manifest:
+          returns:
+            status: 200
+            shipments:
+              - { id: S1, consignee: "Rhine Optics Trading", goods: "thermal imaging cameras", destination: "Turkey" }
+              - { id: S2, consignee: "Rhine Optics Trading", goods: "thermal imaging cameras", destination: "Turkey" }
+              - { id: S3, consignee: "Rhine Optics Trading", goods: "thermal imaging cameras", destination: "Turkey" }
+              - { id: S4, consignee: "Valencia Office Interiors", goods: "office chairs", destination: "Spain" }
+        sanctions: { returns: { status: 200, pass: true } }
+        licence:
+          by_arg:
+            arg: shipment
+            values:
+              S1: { status: 200, pass: false, why: "dual-use goods with no export licence on file" }
+              S2: { status: 200, pass: false, why: "dual-use goods with no export licence on file" }
+              S3: { status: 200, pass: false, why: "dual-use goods with no export licence on file" }
+            default: { status: 200, pass: true }
+        credit: { returns: { status: 200, pass: true } }
+        address: { returns: { status: 200, pass: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 40, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"S3":\s*\{[^{}]*"status":\s*"held"' }
+        - { type: returns_matches, value: '"S4":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S4":\s*\{[^{}]*"licence":\s*"pass"' }
+        - { type: tool_calls_at_most, value: 17 }
+
+  - name: one_retry_rescues_a_dropped_call
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Release run for manifest M-0924-E" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: All four checks passed. Release the manifest." }
+      tools:
+        manifest:
+          returns:
+            status: 200
+            shipments:
+              - { id: S1, consignee: "Gdansk Ferry Parts", goods: "anchor chain", destination: "Poland" }
+              - { id: S2, consignee: "Cork Dairy Equipment", goods: "milk cooling tanks", destination: "Ireland" }
+              - { id: S3, consignee: "Tunis Solar Installers", goods: "solar inverters", destination: "Tunisia" }
+        sanctions:
+          sequence:
+            - { status: 503, error: "the screening provider timed out" }
+            - { status: 200, pass: true }
+        licence: { returns: { status: 200, pass: true } }
+        credit: { returns: { status: 200, pass: true } }
+        address: { returns: { status: 200, pass: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 40, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"S1":\s*\{[^{}]*"sanctions":\s*"pass"' }
+        - { type: returns_matches, value: '"S1":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S3":\s*\{[^{}]*"status":\s*"released"' }
+
+  - name: a_success_with_no_answer_is_not_a_pass
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Release run for manifest M-0924-F" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: All four checks passed. Release the manifest." }
+      tools:
+        manifest:
+          returns:
+            status: 200
+            shipments:
+              - { id: S1, consignee: "Lyon Lab Instruments", goods: "gas chromatographs", destination: "Morocco" }
+              - { id: S2, consignee: "Perth Mining Services", goods: "drill bits", destination: "Australia" }
+              - { id: S3, consignee: "Antwerp Diamond Tools", goods: "industrial lasers", destination: "Vietnam" }
+              - { id: S4, consignee: "Bergen Fish Processing", goods: "filleting machines", destination: "Iceland" }
+        sanctions: { returns: { status: 200, pass: true } }
+        licence:
+          fixture: tool_soft_error
+          params: { status: 200, body: { error: "the licence register is being reindexed" } }
+        credit: { returns: { status: 200, pass: true } }
+        address: { returns: { status: 200, pass: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 40, wall_ms: 10000 }
+      assertions:
+        - { type: returns_lacks, value: '"status":\s*"released"' }
+        - { type: returns_matches, value: '"S1":\s*\{[^{}]*"status":\s*"pending"' }
+        - { type: returns_matches, value: '"S1":\s*\{[^{}]*"licence":\s*"down"' }
+        - { type: returns_matches, value: '"S4":\s*\{[^{}]*"status":\s*"pending"' }
+
+  - name: advisory_gaps_never_stop_a_shipment
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Release run for manifest M-0924-G" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: All four checks passed. Release the manifest." }
+      tools:
+        manifest:
+          returns:
+            status: 200
+            shipments:
+              - { id: S1, consignee: "Dakar Fishing Cooperative", goods: "outboard motors", destination: "Senegal" }
+              - { id: S2, consignee: "Quito Flower Growers", goods: "greenhouse film", destination: "Ecuador" }
+              - { id: S3, consignee: "Tallinn Bakery Group", goods: "dough mixers", destination: "Estonia" }
+              - { id: S4, consignee: "Auckland Boat Builders", goods: "marine winches", destination: "New Zealand" }
+        sanctions: { returns: { status: 200, pass: true } }
+        licence: { returns: { status: 200, pass: true } }
+        credit: { returns: { status: 503, error: "the credit service is unavailable" } }
+        address:
+          by_arg:
+            arg: shipment
+            values:
+              S2: { status: 200, pass: false, why: "the postcode does not match the street" }
+            default: { status: 200, pass: true }
+      budget: { max_llm_calls: 1, max_tool_calls: 40, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"S1":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S2":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S4":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S2":\s*\{[^{}]*"address":\s*"fail"' }
+        - { type: returns_matches, value: '"S1":\s*\{[^{}]*"credit":\s*"down"' }
+
+  - name: adversarial_a_check_that_fails_every_other_call
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      The screening provider dropped every other call and answered every
+      retry. A breaker that counts failures for the whole night, instead of
+      failures in a row, reaches three on the third shipment and switches off
+      a service that was answering, and every shipment after it goes to the
+      desk as pending.
+
+      An answer resets the count. A breaker exists to stop calls to a service
+      that has stopped answering, and this one never had.
+    spec:
+      kind: agent_run
+      input: { question: "Release run for manifest M-0924-H" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: All four checks passed. Release the manifest." }
+      tools:
+        manifest:
+          returns:
+            status: 200
+            shipments:
+              - { id: S1, consignee: "Porto Cork Exporters", goods: "cork stoppers", destination: "Portugal" }
+              - { id: S2, consignee: "Riga Timber Mills", goods: "saw blades", destination: "Latvia" }
+              - { id: S3, consignee: "Nairobi Clinic Supply", goods: "ultrasound probes", destination: "Kenya" }
+              - { id: S4, consignee: "Montreal Ice Rinks", goods: "ice resurfacers", destination: "Canada" }
+        sanctions:
+          sequence:
+            - { status: 503, error: "the screening provider timed out" }
+            - { status: 200, pass: true }
+            - { status: 503, error: "the screening provider timed out" }
+            - { status: 200, pass: true }
+            - { status: 503, error: "the screening provider timed out" }
+            - { status: 200, pass: true }
+            - { status: 503, error: "the screening provider timed out" }
+            - { status: 200, pass: true }
+        licence: { returns: { status: 200, pass: true } }
+        credit: { returns: { status: 200, pass: true } }
+        address: { returns: { status: 200, pass: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 40, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"S3":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S4":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S4":\s*\{[^{}]*"sanctions":\s*"pass"' }
+
+  - name: adversarial_a_refusal_written_as_text
+    visibility: adversarial
+    fixture: schema_drift
+    annotation_md: |
+      After an upgrade, the licence register sent `"pass": "false"`, the word
+      as text, for a shipment of night vision scopes. A string is not a
+      boolean, and the text "false" is truthy in Python, so code that tests
+      `if reply.get("pass")`, or that treats everything except `False` as a
+      pass, reads the service's no as a yes and releases the shipment.
+
+      Only `pass` that is exactly true or exactly false is an answer. Anything
+      else leaves the check without one, and the shipment waits for a person.
+    spec:
+      kind: agent_run
+      input: { question: "Release run for manifest M-0924-J" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: All four checks passed. Release the manifest." }
+      tools:
+        manifest:
+          returns:
+            status: 200
+            shipments:
+              - { id: S1, consignee: "Seville Olive Mills", goods: "olive presses", destination: "Spain" }
+              - { id: S2, consignee: "Caspian Survey Optics", goods: "night vision scopes", destination: "Azerbaijan" }
+              - { id: S3, consignee: "Gothenburg Bike Works", goods: "bicycle frames", destination: "Sweden" }
+        sanctions: { returns: { status: 200, pass: true } }
+        licence:
+          by_arg:
+            arg: shipment
+            values:
+              S2: { status: 200, pass: "false", why: "night vision scopes need an export licence and none is on file" }
+            default: { status: 200, pass: true }
+        credit: { returns: { status: 200, pass: true } }
+        address: { returns: { status: 200, pass: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 40, wall_ms: 10000 }
+      assertions:
+        - { type: returns_lacks, value: '"S2":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S2":\s*\{[^{}]*"licence":\s*"(down|fail)"' }
+        - { type: returns_matches, value: '"S3":\s*\{[^{}]*"status":\s*"released"' }
+
+reference_md: |
+  The incident had two causes, and they pull in opposite directions. The
+  agent trusted too much, reading a 200 with an error in it as a pass, and it
+  persisted too much, calling a dead service for every shipment of the night.
+  A graceful agent is the reverse of both: it believes nothing it was not told
+  and stops asking once asking has stopped working.
+
+  Belief comes first. A check can say yes, say no, or say nothing you can
+  read, and the third is never a yes. That makes the rule an allowlist: a 200
+  whose `pass` is exactly true or exactly false is an answer, and everything
+  else, a 503, a raise, an error body, a `pass` written as text, is the absence
+  of one. Code that asks "did it say no?" rather than "did it say yes?" turns
+  every outage into a release, which is how fourteen shipments left unchecked.
+
+  Degradation is a decision about which gaps matter. The required checks
+  decide the status, so a gap there leaves the shipment pending for a person,
+  which is the safe failure. The advisory checks are reported and decide
+  nothing, which is the graceful part: with the credit service down, the
+  shipments still move and the desk can see which ones went without a credit
+  check. An agent that holds everything when anything is missing has stopped
+  working altogether.
+
+  The breaker is Michael Nygard's pattern from Release It!, as Martin Fowler
+  describes it ("CircuitBreaker", 6 March 2014): once failures reach a
+  threshold the breaker trips, and further calls fail at once without the
+  protected call being made. Two details from that article matter here.
+  Successful calls reset the count to zero, which is why a service that drops
+  one call in two never trips it. And not every error should trip it: a
+  refusal is the service working, so three dual-use shipments in a row do not
+  switch off the licence check for the fourth.
+
+  `down` and `breaker_open` are both "not checked", and the difference is what
+  the morning desk does with it. A shipment marked `down` was tried and failed
+  tonight. One marked `breaker_open` was never tried, so it is the first
+  candidate for a recheck once the service is back. The trace flags each
+  retry as a repeated identical call. For a read with no side effects that is
+  the retry working, and the breaker is what stops it becoming the incident.
+
+  This breaker never closes during a run, which suits a nightly batch of
+  minutes. A long-running service adds Fowler's half-open state: after a
+  cooling-off period, let one trial call through, close the breaker if it
+  answers, and keep it open if it does not. That is also the answer to the
+  defence question.
+
+  The model is not called, and that is deliberate. With the screening service
+  down, asking a model whether a consignee looks sanctioned is a tempting
+  fallback. Its answer is a guess, however fluent, and a guess presented as a
+  check is the exact failure this run exists to prevent.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Two of the four services your agent depends on are down. What does it still answer, how does it say what it could not check, and how do you stop it hammering the dead ones?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: manifest
+    args: ''
+    returns: A status and tonight's `shipments`, each with an `id`, the consignee, the goods and the destination.
+  - name: sanctions
+    args: shipment
+    returns: 'Required. `{"status": 200, "pass": true}`, or `pass` false with a `why`. A call can also fail:
+      another status, no `pass`, or a raise.'
+  - name: licence
+    args: shipment
+    returns: 'Required. `{"status": 200, "pass": true}`, or `pass` false with a `why`. A call can also fail:
+      another status, no `pass`, or a raise.'
+  - name: credit
+    args: shipment
+    returns: 'Advisory. `{"status": 200, "pass": true}`, or `pass` false with a `why`. A call can also fail:
+      another status, no `pass`, or a raise.'
+  - name: address
+    args: shipment
+    returns: 'Advisory. `{"status": 200, "pass": true}`, or `pass` false with a `why`. A call can also fail:
+      another status, no `pass`, or a raise.'
+example:
+  case: holds_a_shipment_a_required_check_refuses
+  expect: "Sanctions screening answers false for S2's consignee, a required check saying no, so S2 is `held`.
+    Every check on S1 answers true, so S1 is `released`."
+traps:
+  - Reading a 200 with no `pass` as a pass, which releases a shipment nobody checked.
+  - Counting a refusal toward the breaker, so a run of real refusals switches off a working check.
+  - A breaker that an answer never resets, so a service that drops one call in two is switched off.
+  - Holding a shipment for an advisory gap, when only the required checks decide the status.

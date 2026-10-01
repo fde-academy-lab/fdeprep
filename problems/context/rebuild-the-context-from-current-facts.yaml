@@ -1,0 +1,610 @@
+slug: rebuild-the-context-from-current-facts
+title: "Rebuild the context each turn from current facts"
+day: 15
+skill: Rebuild a long session's context so the newest checked fact wins and open tasks stay
+artefact_type: code
+difficulty: extreme
+track: context
+concept:
+  topic: "Context rot"
+  question: "When a session holds old and new answers to one question, which does the model read?"
+est_minutes: 50
+competencies:
+  - { slug: context-assembly, weight: 1.0 }
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re, datetime]
+
+brief_md: |
+  A broadband provider the size of Virgin Media runs a support agent that
+  stays with a customer until a fault is fixed. It keeps one running context
+  for the whole session: every turn and every tool result is appended, and
+  the model reads all of it before each reply.
+
+  On Wednesday 30 September a customer's fibre was down for the morning. In
+  two hours the agent ran the line test twice, checked for an area outage
+  twice, booked an engineer for Tuesday, moved the visit to Thursday when the
+  customer asked, and took a new callback number. At 11:05 the customer asked
+  when the engineer was coming. The context held both visit results, and the
+  model answered Tuesday. It added that there was an outage in the area,
+  which had been fixed at 10:12. The customer took Tuesday morning off work,
+  and nobody came.
+
+  Appending is the fault. Write the step that rebuilds the context from the
+  session log before every model call, so the model reads the open tasks,
+  the newest checked fact on each subject and the recent conversation, and
+  nothing that has since been replaced.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the customer's newest message. `tools["session"]()` returns
+  the session log, in the order events were written to it:
+
+      {"status": 200, "events": [
+        {"id": "e-01", "kind": "turn", "role": "customer", "text": "..."},
+        {"id": "e-02", "kind": "task", "task": "task-1", "state": "open",
+         "observed_at": "2026-09-30T08:59:00Z", "text": "Restore the broadband at 14 Elm Road."},
+        {"id": "e-03", "kind": "result", "key": "visit", "verified": true,
+         "observed_at": "2026-09-30T09:30:00Z", "text": "Engineer visit booked for ..."}]}
+
+  A `result` is what a tool found out about one subject, its `key`.
+  `verified` is true when the result came from a system of record, and false
+  when it records what the customer said. A task's events carry its `state`,
+  `open` or `done`. `observed_at` is when the event was true: an ISO 8601
+  time with its offset, written `Z` by some systems and `+01:00` by others.
+  The log is in the order events were written, and a slow or retried call
+  can write an old result late.
+
+  Rebuild the prompt from the log every time, one line each:
+
+  1. `INSTRUCTIONS`, from the stub.
+  2. `open task <task>: <text>` for every task whose latest event by
+     `observed_at` is `open`, however old it is, sorted by `task`.
+  3. `fact <key>: <text>` for every key, sorted by key, from the verified
+     result observed last. Every other verified result for that key is stale
+     and stays out. A result whose `observed_at` cannot be read as a time
+     with an offset never wins, and of two observed at the same moment the
+     one later in the log wins.
+  4. `<role>: <text>` for the last 6 turns, in log order.
+  5. `customer: <question>`.
+
+  A result that is not verified never goes on a `fact` line, however new it
+  is. Whether it reaches the prompt at all is your decision: leave it out, or
+  give it a line of its own that starts `unverified <key>:`. The defence step
+  asks you to justify the choice.
+
+  Call `llm(prompt)` once and return
+
+      json.dumps({"answer": <the reply, stripped>,
+                  "facts": {<key>: <id of the result on its fact line>},
+                  "open_tasks": [<every task on an open task line, in order>]})
+
+  Budget: at most 2 model calls. Allowed imports: json, re, datetime.
+
+defence_question: |
+  Your rebuild never puts a customer's claim on a fact line. Last week a
+  customer told the agent the engineer had already been, the visit record
+  still said Thursday, and the engineer had in fact come early and nobody
+  updated the record. What did your rebuild show the model, what should the
+  customer have heard, and what would you change outside the prompt so the
+  record catches up with what the customer knows?
+
+stub_code: |
+  import json
+  import re
+
+  INSTRUCTIONS = (
+      "You are the broadband support agent. Answer from the open tasks and the "
+      "facts below. Each fact is the newest checked result on its subject."
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Rebuild the context from the session log, then answer once.
+
+      tools["session"]() -> {"status": 200, "events": [...]}, in the order the
+      events were written. A turn has role and text. A task event has task,
+      state ("open" or "done"), observed_at and text. A result has key,
+      verified, observed_at and text. observed_at is ISO 8601 with an offset,
+      written "Z" by some systems and "+01:00" by others.
+
+      Prompt, one line each:
+          INSTRUCTIONS
+          open task <task>: <text>  each task whose latest event is open, sorted
+          fact <key>: <text>        per key, the verified result observed last
+          <role>: <text>            the last 6 turns, in log order
+          customer: <question>
+      A result that cannot be placed in time never wins; at the same moment,
+      the later in the log wins. A result that is not verified is never on a
+      fact line: leaving it out, or showing it as "unverified <key>: <text>",
+      is your decision.
+
+      Return json.dumps({"answer": <the reply, stripped>,
+                         "facts": {<key>: <result id>},
+                         "open_tasks": [<task ids, in order>]}).
+      At most 2 model calls. Allowed imports: json, re, datetime.
+      """
+      return json.dumps({"answer": "", "facts": {}, "open_tasks": []})
+
+hints:
+  - Look at what decided which visit the model believed in the incident. Then
+    ask what your rebuild uses to decide which of two results on one subject
+    is the newer.
+  - The log's order is the order events were written, and a retried call
+    writes an old answer late. When a result was true is in its
+    `observed_at`, and that is the order that counts.
+  - Two `observed_at` values with different offsets do not sort as text. 10:30
+    at +01:00 is earlier than 10:15 in UTC, so read each one as a moment
+    before you compare.
+  - Keep only the verified results for a key, then take the one observed
+    last. Taking the newest first and checking it afterwards leaves no fact at
+    all whenever the newest entry is a customer's claim.
+  - Tasks and turns follow opposite rules. An open task stays however old it
+    is. A turn stays only while it is one of the last six, because an old turn
+    repeats facts as they were.
+
+scenario:
+  headline: "The agent gave a customer the visit day that had been moved"
+  who: Support at a broadband provider the size of Virgin Media
+  situation: >-
+    One session ran two line tests, two outage checks, a visit booking, a
+    rebooking and a new callback number, all appended to one running context.
+    Asked when the engineer was coming, the model read the first booking and
+    said Tuesday.
+  stakes: >-
+    The customer took a morning off for a visit that had moved to Thursday,
+    and heard about an outage fixed an hour before. Every long session
+    carries the same mix of old and new.
+  metrics:
+    - { label: Visit results in context, value: "2" }
+    - { label: Outage fixed at, value: "10:12" }
+    - { label: Session length, value: 2 hours }
+
+diagram:
+  title: Where an old result sat beside its replacement
+  caption: >-
+    Appending kept every result the session ever saw. Rebuilding keeps the
+    open tasks, the newest checked fact per subject and the last six turns.
+  direction: lr
+  nodes:
+    - { id: log, label: Session log, sub: "every turn and result, as written", kind: store, tone: blue, at: [0, 1] }
+    - { id: appended, label: Appended context, sub: "old and new results together", kind: doc, tone: orange, at: [1, 0] }
+    - { id: rebuild, label: Context rebuild, sub: runs before every model call, kind: agent, tone: purple, at: [1, 2] }
+    - { id: tasks, label: Open tasks, sub: kept however old, kind: doc, tone: green, at: [2, 1] }
+    - { id: facts, label: Current facts, sub: newest checked result per subject, kind: doc, tone: green, at: [2, 2] }
+    - { id: turns, label: Recent turns, sub: the last six, kind: doc, tone: teal, at: [2, 3] }
+    - { id: model, label: Support model, sub: reads what it is given, kind: model, tone: teal, at: [3, 1] }
+    - { id: wrong, label: "Tuesday, and an outage", sub: both replaced an hour earlier, kind: output, tone: pink, at: [4, 0] }
+    - { id: right, label: "Thursday, 13:00 to 18:00", sub: the visit as it stands, kind: output, tone: green, at: [4, 2] }
+  edges:
+    - { from: log, to: appended, label: append everything, tone: danger }
+    - { from: appended, to: model, label: two visit bookings, tone: danger }
+    - { from: model, to: wrong, label: picks one, tone: danger }
+    - { from: log, to: rebuild, label: every event, step: 1 }
+    - { from: rebuild, to: tasks, label: open ones, step: 2 }
+    - { from: rebuild, to: facts, label: one per subject, step: 3 }
+    - { from: rebuild, to: turns, label: last six, step: 4 }
+    - { from: facts, to: model, label: rebuilt context, tone: success }
+    - { from: model, to: right, label: answers from it, tone: success }
+
+approach:
+  goal: Show the model what is true now and what is still open
+  branches:
+    - label: Which result is newer?
+      leaves: [when it was true beats when it was written, offsets differ between systems]
+    - label: Which results count as facts?
+      detail: A customer's claim is worth hearing, and a checked record is what the agent acts on.
+      leaves: [checked results only, "decide, and defend, what happens to claims"]
+    - label: What has to survive?
+      leaves: [every open task however old, a fact that has not changed]
+    - label: What has to go?
+      leaves: [results that were replaced, turns old enough to repeat them]
+
+coach:
+  opening: >-
+    Before you write the rebuild, take one subject with two results in the
+    log and write down which one is current, and what in the event told you.
+  signals:
+    - id: written-order
+      when: { code_lacks: '(?:\.get\(\s*|\[\s*)["'']observed_at["'']' }
+      say: >-
+        Nothing in your rebuild reads when a result was observed, so the
+        result written last wins. Is the result written last always the
+        newest?
+    - id: text-times
+      when:
+        code_matches: '(?:\.get\(\s*|\[\s*)["'']observed_at["'']'
+        code_lacks: 'fromisoformat|import\s+datetime|from\s+datetime|utcoffset|timedelta'
+      say: >-
+        Your rebuild compares `observed_at` values. Read 10:30+01:00 and
+        10:15Z as text and then as times. Do they come out in the same order?
+    - id: hidden-late-result
+      when: { test_failed: a_retried_result_that_lands_late_is_still_old }
+      say: >-
+        In that run an old line test reached the log after a newer one,
+        because its call was retried. Which of the two did your fact line
+        show?
+    - id: hidden-claim
+      when: { test_failed: a_customer_claim_never_replaces_a_checked_result }
+      say: >-
+        The newest visit entry in that run was the customer's claim. What
+        did your prompt say about the visit, and was it a checked result?
+    - id: hidden-tasks
+      when: { test_failed: a_closed_task_goes_and_the_oldest_open_one_stays }
+      say: >-
+        That session closed one task and kept an older one open. Read your
+        open task lines against the latest event of each task.
+    - id: hidden-old-turn
+      when: { test_failed: an_old_turn_that_quotes_a_replaced_fact_stays_out }
+      say: >-
+        Early in that session the agent read the first booking out loud. How
+        many turns does your prompt carry, and does that reply still reach the
+        model?
+    - id: adversarial-offsets
+      when: { test_failed: adversarial_a_time_that_reads_later_than_it_is }
+      say: >-
+        Two systems in that run wrote times with different offsets. Put the
+        two visit results on one clock before you decide which is newer.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the facts. Group the results by key, keep the verified ones
+        and print each group with its `observed_at` values for the first
+        public case.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. On Extreme the hints open after two failed
+        runs and an attempt note, and the first says where to look in the
+        incident.
+  wrap_up: >-
+    A long session rots because replaced results stay beside their
+    replacements, and the model cannot tell which is current. Rebuild from the
+    log: the newest checked fact per subject by when it was true, every open
+    task, and only the turns recent enough to agree with them.
+
+tests:
+  - name: the_moved_visit_replaces_the_first_booking
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "When is the engineer coming?" }
+      llm_script:
+        - { match: { contains: "Tuesday 6 October" },
+            reply: "The engineer is coming on Tuesday 6 October, between 08:00 and 13:00." }
+        - { match: { contains: "fact visit: Engineer visit moved to Thursday 8 October" },
+            reply: "The engineer is coming on Thursday 8 October, between 13:00 and 18:00." }
+        - { match: "*", reply: "I cannot see a visit booked for you." }
+      tools:
+        session:
+          returns:
+            status: 200
+            events:
+              - { id: e-01, kind: turn, role: customer, text: "My broadband has been down since last night." }
+              - { id: e-02, kind: task, task: task-1, state: open, observed_at: "2026-09-30T08:59:00Z",
+                  text: "Restore the broadband at 14 Elm Road." }
+              - { id: e-03, kind: result, key: visit, verified: true, observed_at: "2026-09-30T09:30:00Z",
+                  text: "Engineer visit booked for Tuesday 6 October, 08:00 to 13:00." }
+              - { id: e-04, kind: turn, role: customer, text: "I cannot do Tuesday. Can they come on Thursday afternoon?" }
+              - { id: e-05, kind: turn, role: agent, text: "I will move it for you." }
+              - { id: e-06, kind: result, key: visit, verified: true, observed_at: "2026-09-30T10:15:00Z",
+                  text: "Engineer visit moved to Thursday 8 October, 13:00 to 18:00." }
+              - { id: e-07, kind: turn, role: customer, text: "Thank you." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: session }
+        - { type: returns_matches, value: "Thursday 8 October" }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answer, facts, open_tasks]
+            properties:
+              facts:
+                type: object
+                required: [visit]
+                properties: { visit: { const: e-06 } }
+              open_tasks: { const: [task-1] }
+        - { type: prompt_lacks, value: "Tuesday 6 October" }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: an_old_fact_that_never_changed_stays
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Which number will you call me on?" }
+      llm_script:
+        - { match: { contains: "fact callback: Call back on 07700 900111" },
+            reply: "We will call you on 07700 900111." }
+        - { match: "*", reply: "Which number should we call you on?" }
+      tools:
+        session:
+          returns:
+            status: 200
+            events:
+              - { id: e-01, kind: turn, role: customer, text: "Hello, my internet is down again." }
+              - { id: e-02, kind: task, task: task-1, state: open, observed_at: "2026-09-30T09:00:00Z",
+                  text: "Restore the broadband at 14 Elm Road." }
+              - { id: e-03, kind: result, key: callback, verified: true, observed_at: "2026-09-30T09:02:00Z",
+                  text: "Call back on 07700 900111, confirmed by the customer." }
+              - { id: e-04, kind: result, key: line, verified: true, observed_at: "2026-09-30T09:05:00Z",
+                  text: "Line test: fault between the cabinet and the home." }
+              - { id: e-05, kind: result, key: outage, verified: true, observed_at: "2026-09-30T09:06:00Z",
+                  text: "Area outage: yes, cabinet 14, no fix time yet." }
+              - { id: e-06, kind: turn, role: agent, text: "I can see a fault, and there is an outage near you." }
+              - { id: e-07, kind: turn, role: customer, text: "What happens now?" }
+              - { id: e-08, kind: turn, role: agent, text: "I will run a remote reset once the outage is fixed." }
+              - { id: e-09, kind: result, key: outage, verified: true, observed_at: "2026-09-30T10:20:00Z",
+                  text: "Area outage: resolved at 10:12." }
+              - { id: e-10, kind: result, key: line, verified: true, observed_at: "2026-09-30T10:40:00Z",
+                  text: "Line test: line OK after a remote reset, syncing at 72 Mb." }
+              - { id: e-11, kind: turn, role: agent, text: "The reset worked on our side." }
+              - { id: e-12, kind: turn, role: customer, text: "The router lights are still red." }
+              - { id: e-13, kind: turn, role: agent, text: "Please restart the router." }
+              - { id: e-14, kind: turn, role: customer, text: "Done. Will someone ring me if it drops again?" }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "07700 900111" }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answer, facts, open_tasks]
+            properties:
+              facts:
+                type: object
+                required: [callback, line, outage]
+                properties:
+                  callback: { const: e-03 }
+                  line: { const: e-10 }
+                  outage: { const: e-09 }
+              open_tasks: { const: [task-1] }
+        - { type: prompt_lacks, value: "fault between the cabinet" }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_retried_result_that_lands_late_is_still_old
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Is there still a fault on my line?" }
+      llm_script:
+        - { match: { contains: "fault between the cabinet and the home" },
+            reply: "Yes. There is still a fault between the cabinet and your home, so the engineer visit stays." }
+        - { match: { contains: "line OK after a remote reset" },
+            reply: "No. The line tested OK after the remote reset at 10:40, so the fault is cleared on our side." }
+        - { match: "*", reply: "I need to run a line test first." }
+      tools:
+        session:
+          returns:
+            status: 200
+            events:
+              - { id: e-01, kind: turn, role: customer, text: "My broadband dropped again an hour ago." }
+              - { id: e-02, kind: task, task: task-1, state: open, observed_at: "2026-09-30T09:00:00Z",
+                  text: "Restore the broadband at 14 Elm Road." }
+              - { id: e-03, kind: turn, role: agent, text: "I am running a line test now." }
+              - { id: e-04, kind: result, key: line, verified: true, observed_at: "2026-09-30T10:40:00Z",
+                  text: "Line test: line OK after a remote reset, syncing at 72 Mb." }
+              - { id: e-05, kind: turn, role: agent, text: "The line looks healthy from here." }
+              - { id: e-06, kind: result, key: line, verified: true, observed_at: "2026-09-30T09:05:00Z",
+                  text: "Line test: fault between the cabinet and the home." }
+              - { id: e-07, kind: turn, role: customer, text: "The lights on the router keep changing colour." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)tested OK after the remote reset" }
+        - { type: returns_matches, value: '"line"\s*:\s*"e-04"' }
+        - { type: prompt_lacks, value: "fault between the cabinet" }
+
+  - name: a_customer_claim_never_replaces_a_checked_result
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "So can you cancel Thursday's visit?" }
+      llm_script:
+        - { match: { regex: '(?m)^fact visit: Customer says' },
+            reply: "The engineer has already been, so I have cancelled Thursday's visit." }
+        - { match: { contains: "fact visit: Engineer visit moved to Thursday 8 October" },
+            reply: "Your visit is still booked for Thursday 8 October, 13:00 to 18:00. Our records show no earlier visit, so I am checking with the field team before I cancel anything." }
+        - { match: "*", reply: "I cannot see a visit booked for you." }
+      tools:
+        session:
+          returns:
+            status: 200
+            events:
+              - { id: e-01, kind: turn, role: customer, text: "My broadband is down." }
+              - { id: e-02, kind: task, task: task-1, state: open, observed_at: "2026-09-30T09:00:00Z",
+                  text: "Restore the broadband at 14 Elm Road." }
+              - { id: e-03, kind: result, key: visit, verified: true, observed_at: "2026-09-30T10:15:00Z",
+                  text: "Engineer visit moved to Thursday 8 October, 13:00 to 18:00." }
+              - { id: e-04, kind: turn, role: customer, text: "Actually an engineer came this morning and fixed the box outside." }
+              - { id: e-05, kind: result, key: visit, verified: false, observed_at: "2026-09-30T10:50:00Z",
+                  text: "Customer says an engineer came this morning and fixed the fault." }
+              - { id: e-06, kind: turn, role: agent, text: "Let me check that for you." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)still booked for Thursday 8 October" }
+        - { type: returns_matches, value: '"visit"\s*:\s*"e-03"' }
+        - { type: prompt_lacks, value: '(?m)^fact visit: Customer says' }
+
+  - name: a_closed_task_goes_and_the_oldest_open_one_stays
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "What are you still working on for me?" }
+      llm_script:
+        - { match: { contains: "open task task-2" },
+            reply: "I am still sending you a replacement router, and I am restoring your broadband." }
+        - { match: { contains: "open task task-1: Restore the broadband at 14 Elm Road." },
+            reply: "I am still working on restoring your broadband at 14 Elm Road. The replacement router is done." }
+        - { match: "*", reply: "Nothing is open on your account." }
+      tools:
+        session:
+          returns:
+            status: 200
+            events:
+              - { id: e-01, kind: task, task: task-1, state: open, observed_at: "2026-09-30T08:59:00Z",
+                  text: "Restore the broadband at 14 Elm Road." }
+              - { id: e-02, kind: turn, role: customer, text: "My broadband is down, and the router is making a clicking noise." }
+              - { id: e-03, kind: task, task: task-2, state: open, observed_at: "2026-09-30T09:20:00Z",
+                  text: "Send a replacement router." }
+              - { id: e-04, kind: turn, role: agent, text: "I have ordered you a new router." }
+              - { id: e-05, kind: result, key: router, verified: true, observed_at: "2026-09-30T09:21:00Z",
+                  text: "Replacement router dispatched, tracking RM-4471." }
+              - { id: e-06, kind: turn, role: customer, text: "Thanks." }
+              - { id: e-07, kind: turn, role: agent, text: "Is there anything else?" }
+              - { id: e-08, kind: task, task: task-2, state: done, observed_at: "2026-09-30T10:30:00Z",
+                  text: "Replacement router delivered and connected." }
+              - { id: e-09, kind: turn, role: customer, text: "The new router arrived and it is plugged in." }
+              - { id: e-10, kind: turn, role: agent, text: "I can see it online." }
+              - { id: e-11, kind: turn, role: customer, text: "The internet is still slow, though." }
+              - { id: e-12, kind: turn, role: agent, text: "I will look at the line next." }
+              - { id: e-13, kind: turn, role: customer, text: "OK." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)still working on restoring your broadband" }
+        - { type: returns_matches, value: '"open_tasks"\s*:\s*\[\s*"task-1"\s*\]' }
+        - { type: prompt_lacks, value: "open task task-2" }
+
+  - name: an_old_turn_that_quotes_a_replaced_fact_stays_out
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Remind me, which day is the visit?" }
+      llm_script:
+        - { match: { contains: "Tuesday 6 October" },
+            reply: "Your visit is on Tuesday 6 October, between 08:00 and 13:00." }
+        - { match: { contains: "fact visit: Engineer visit moved to Thursday 8 October" },
+            reply: "Your visit is on Thursday 8 October, between 13:00 and 18:00." }
+        - { match: "*", reply: "I cannot see a visit booked for you." }
+      tools:
+        session:
+          returns:
+            status: 200
+            events:
+              - { id: e-01, kind: task, task: task-1, state: open, observed_at: "2026-09-30T08:59:00Z",
+                  text: "Restore the broadband at 14 Elm Road." }
+              - { id: e-02, kind: turn, role: customer, text: "When can an engineer come out?" }
+              - { id: e-03, kind: result, key: visit, verified: true, observed_at: "2026-09-30T09:30:00Z",
+                  text: "Engineer visit booked for Tuesday 6 October, 08:00 to 13:00." }
+              - { id: e-04, kind: turn, role: agent, text: "An engineer is booked for Tuesday 6 October, between 08:00 and 13:00." }
+              - { id: e-05, kind: turn, role: customer, text: "I cannot do Tuesday. Please move it to Thursday." }
+              - { id: e-06, kind: result, key: visit, verified: true, observed_at: "2026-09-30T10:15:00Z",
+                  text: "Engineer visit moved to Thursday 8 October, 13:00 to 18:00." }
+              - { id: e-07, kind: turn, role: agent, text: "Done, it is Thursday afternoon now." }
+              - { id: e-08, kind: turn, role: customer, text: "Should I keep the old router plugged in until then?" }
+              - { id: e-09, kind: turn, role: agent, text: "Yes, keep it plugged in." }
+              - { id: e-10, kind: turn, role: customer, text: "And the green light should stay on?" }
+              - { id: e-11, kind: turn, role: agent, text: "Yes, green means it has power." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)visit is on Thursday 8 October" }
+        - { type: prompt_lacks, value: "Tuesday 6 October" }
+
+  - name: adversarial_a_time_that_reads_later_than_it_is
+    visibility: adversarial
+    fixture: schema_drift
+    annotation_md: |
+      The field service writes times in UTC, as `10:15:00Z`. The booking
+      system writes local time with its offset, as `10:30:00+01:00`, which is
+      09:30 in UTC. Its record of the first booking reached the log last, when
+      a replica replayed it.
+
+      Read as text, `10:30:00+01:00` sorts after `10:15:00Z`, and the
+      replayed record was also written last, so both shortcuts pick Tuesday.
+      Read as moments, the Tuesday booking is 45 minutes older than the move
+      to Thursday. An old message can look newer by where it sits in the log
+      and by how its time is written. Only the time it describes counts.
+    spec:
+      kind: agent_run
+      input: { question: "Which day did we settle on for the engineer?" }
+      llm_script:
+        - { match: { contains: "Tuesday 6 October" },
+            reply: "We settled on Tuesday 6 October, 08:00 to 13:00." }
+        - { match: { contains: "fact visit: Engineer visit moved to Thursday 8 October" },
+            reply: "We settled on Thursday 8 October, 13:00 to 18:00." }
+        - { match: "*", reply: "I cannot see a visit booked for you." }
+      tools:
+        session:
+          returns:
+            status: 200
+            events:
+              - { id: e-01, kind: turn, role: customer, text: "Can you check my visit? I moved it earlier." }
+              - { id: e-02, kind: task, task: task-1, state: open, observed_at: "2026-09-30T08:59:00Z",
+                  text: "Restore the broadband at 14 Elm Road." }
+              - { id: e-03, kind: result, key: visit, verified: true, observed_at: "2026-09-30T10:15:00Z",
+                  text: "Engineer visit moved to Thursday 8 October, 13:00 to 18:00." }
+              - { id: e-04, kind: turn, role: agent, text: "Let me look." }
+              - { id: e-05, kind: result, key: visit, verified: true, observed_at: "2026-09-30T10:30:00+01:00",
+                  text: "Engineer visit booked for Tuesday 6 October, 08:00 to 13:00." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)Thursday 8 October" }
+        - { type: returns_matches, value: '"visit"\s*:\s*"e-03"' }
+        - { type: prompt_lacks, value: "Tuesday 6 October" }
+
+reference_md: |
+  The model did not misread anything. It was shown two visit bookings with
+  nothing to say which replaced the other, and it chose one. Chroma's report
+  "Context Rot" (July 2025) tested 18 models and found that accuracy falls as
+  the input grows, even on simple tasks, and that a single distractor, a
+  passage that resembles the answer, already costs accuracy. A replaced tool
+  result is the most convincing distractor a session can hold: it was true,
+  it is about the right subject, and it is worded exactly like its
+  replacement.
+
+  Rebuilding from the log takes the distractors away instead of hoping the
+  model sorts them. Each subject gets one line, from the newest checked
+  result, and everything it replaced stays in the log, where a person can
+  still read it. Anthropic's engineering guide to context engineering
+  (September 2025) calls clearing old tool results one of the safest, lightest
+  forms of compaction. This is that, done by subject.
+
+  Newest means when the result was true. The log records when it was
+  written, and the two part company whenever a call is slow or retried, which
+  is how a 09:05 line test lands after the 10:40 one. A time also has to be
+  compared as a moment: one system writes 10:30+01:00, another 10:15Z, and
+  the one that reads later as text is 45 minutes older.
+
+  Verified comes before newest. A customer saying the engineer has been is
+  worth knowing, and the visit record is what the agent acts on. Keep the
+  checked results, then take the newest. The other order finds the claim,
+  rejects it, and leaves the model with no visit at all. What the claim
+  deserves is the open decision in this problem. This reference leaves it
+  out of the prompt and relies on the transcript turns to carry what the
+  customer said, which is a choice the defence asks you to argue either way.
+
+  Two things survive the rebuild for opposite reasons. An open task is the
+  reason the session exists, so it stays however old it is. A turn repeats
+  facts as they were when it was said, so only the last six come along. Age
+  alone never makes a fact stale: the callback number confirmed at 09:02 is
+  still the number.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your agent's session has run for two hours, and its context holds old and new tool results about the same things. How do you get rid of the stale ones without losing the work that is still open?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I017.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: session
+    args: ''
+    returns: The session log in the order it was written. Turns have `role` and `text`; tasks and results
+      also carry `observed_at`, and results a `key` and `verified`.
+example:
+  case: the_moved_visit_replaces_the_first_booking
+  expect: Both visit results are verified, and the Thursday one was observed later, so it is the only
+    visit fact. The open task and all four turns go in, and the reply names Thursday 8 October.
+traps:
+  - Letting the result written last win, when a retried call can write an old answer after a new one.
+  - Comparing `observed_at` as text, which puts a time written with an offset ahead of a later one in UTC.
+  - Taking the newest result and then checking it was verified, which leaves no fact when the newest is
+    a claim.
+  - Keeping every turn, so an old reply repeats a fact that has since changed.

@@ -1,11 +1,14 @@
 slug: support-copilot-1-route-the-ticket
-title: Tickets went nowhere, or carried someone else's order number
+title: "Route every ticket to a queue that exists"
 day: 29
 skill: Route every ticket to a queue that exists
 artefact_type: code
 difficulty: easy
 complexity: C2
 track: builds
+concept:
+  topic: "Support copilot"
+  question: "Which queues can a ticket be routed to?"
 est_minutes: 20
 competencies:
   - { slug: tool-schema-design, weight: 1.0 }
@@ -182,6 +185,7 @@ hints:
     person. That is triage for the intent and null for the order number.
 
 scenario:
+  headline: "Tickets went nowhere, or carried someone else's order number"
   who: Support operations at a meal-kit subscription service
   situation: >-
     The copilot routes about 3,000 tickets a day into four queues. On Monday

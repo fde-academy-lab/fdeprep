@@ -1,0 +1,742 @@
+slug: share-one-budget-across-nested-loops
+title: "Share one call budget across nested loops"
+day: 7
+skill: Bound a planner and its sub-loops with one budget, and report what ran out as partial
+artefact_type: code
+difficulty: extreme
+track: loop
+concept:
+  topic: "Iteration budgets"
+  question: "How does one budget bound a planner and every loop it starts?"
+est_minutes: 50
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 12
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  Customer onboarding at a business software company the size of Freshworks
+  runs an agent that sets up each new client from their signed order form. A
+  planner reads the form and lists the steps: create the workspace, import
+  the users, configure single sign-on, set up billing. Each step goes to an
+  executor, a loop of its own that calls tools until the step is done.
+
+  Every order has a budget of 12 model calls, and only the planner counted
+  against it. Each executor had a cap of 8 of its own, and when an executor
+  reached its cap, the planner recorded the step as done.
+
+  Last Thursday a 2,400-seat client's user file had a bad row, and the import
+  executor went round until its cap. So did the SSO executor, whose identity
+  provider address was wrong. The order made 22 model calls, and the summary
+  told the client's IT lead that all four steps were complete. On Monday 600
+  people had no account, and nobody could sign in with SSO.
+
+  Write the planner and the executor so that one budget bounds both, and
+  every step reports what actually happened to it.
+
+defence_question: |
+  Your share divides what is left evenly between the steps still to run. The
+  client's IT lead says single sign-on matters more than anything else on the
+  form and asks you to give it whatever it needs. What would that change on a
+  night when SSO is the step that never converges, what would you put in
+  place of an even share, and what would you never let any step spend?
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the signed order form. The stub holds the three prompts the
+  model reads: `PLAN_PROMPT`, `STEP_PROMPT` and `SUMMARY_PROMPT`.
+
+  The whole run has one budget of 12 model calls: the plan, every executor
+  call and the summary.
+
+  1. Plan with one call to `PLAN_PROMPT`. The reply is `Plan: [...]`, a JSON
+     list of step names.
+  2. Run the steps in plan order. Before each one, work out its share:
+
+         share = (calls left - 1) // steps not yet run, this one included
+
+     The 1 is the summary's call, which no step may spend. The executor asks
+     the model at most `share` times. Its prompt is `STEP_PROMPT` for that
+     step, then that step's own replies and results, and nothing from any
+     other step. Each reply is `Action: <tool>(<key>=<value>, ...)` or
+     `Done: <what the step achieved>`. Run an action, then append its reply
+     and `Result: <json>`. A tool that raises is a result too:
+     `{"error": "<the exception's type>"}`. A reply that is neither still
+     spends its call.
+  3. Give every step a status and a detail:
+
+     | Status | When | Detail |
+     |---|---|---|
+     | `done` | the executor replied Done within its share | the text after `Done:` |
+     | `partial` | the share ran out first | the step's last tool result, or null when none ran |
+     | `not_started` | its share was 0, so it made no call | null |
+
+  4. Summarise with one call to `SUMMARY_PROMPT`, with one line per step,
+     `<step>: <status>`, in plan order. The reply is `Summary: <text>`.
+
+  Return `json.dumps({"steps": {<step>: <status>}, "details": {<step>: <detail>}, "summary": <the text after Summary:>})`.
+
+  The tools are `create_workspace(name)`, `import_users(file)`,
+  `configure_sso(provider)` and `set_up_billing(plan)`. Each returns a dict.
+
+  Budget: at most 12 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  BUDGET = 12
+
+  PLAN_PROMPT = (
+      "Plan the onboarding for this order form. Reply with Plan: and a JSON list "
+      "of step names, chosen from create_workspace, import_users, configure_sso "
+      "and set_up_billing.\n"
+      "Order form: {order}\n"
+  )
+
+  STEP_PROMPT = (
+      "Step: {step}\n"
+      "Order form: {order}\n"
+      "Reply with Action: <tool>(<key>=<value>, ...) to call a tool, or with "
+      "Done: <what the step achieved> when the step is finished.\n"
+  )
+
+  SUMMARY_PROMPT = (
+      "Summarise the onboarding for the client's IT lead in two sentences. Say "
+      "which steps are done and which are not.\n"
+      "{lines}\n"
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Plan the onboarding, run every step, and summarise, on one budget.
+
+      BUDGET model calls cover the plan, every executor call and the summary.
+
+      Before each step: share = (calls left - 1) // steps not yet run, this
+      one included. The 1 is kept for the summary. The executor asks the
+      model at most share times, with STEP_PROMPT for that step and that
+      step's own replies and results. Done within the share is "done", with
+      the Done text as its detail. A share spent without Done is "partial",
+      with the step's last tool result, or None, as its detail. A share of 0
+      is "not_started". A tool that raises gives {"error": <exception type>}.
+      A reply that is neither an Action nor Done still spends its call.
+
+      Summarise with SUMMARY_PROMPT and one "<step>: <status>" line per step.
+      Return json.dumps({"steps": {...}, "details": {...}, "summary": ...}).
+      At most 12 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"steps": {}, "details": {}, "summary": ""})
+
+hints:
+  - Count every model call in one place, whichever loop makes it. Then ask
+    what the planner still has to do after the last step, and what that
+    costs.
+  - An executor that runs out has not finished. The planner can only report
+    what the executor tells it, so the executor has to say partial instead of
+    returning as if it were done.
+  - Before each step, work out its share from what is left, after keeping
+    back the summary's call, divided by the steps still to run. A step that
+    finishes early leaves its calls to the steps after it.
+  - A reply that is not an action still spends a call, and a tool that raises
+    is a result too. Neither may let an executor run past its share or end
+    the run.
+
+scenario:
+  headline: "The summary said all four steps were done, and two never were"
+  who: "Customer onboarding at a business software company the size of Freshworks"
+  situation: >-
+    The onboarding agent plans each new client's setup and hands every step
+    to an executor loop. Each executor had its own cap of 8 calls, and only
+    the planner's own calls counted against the order's budget of 12.
+  stakes: >-
+    One order made 22 model calls. The client was told all four steps were
+    complete, and on Monday 600 people had no account and SSO did not work.
+  metrics:
+    - { label: Model calls on one order, value: "22" }
+    - { label: Budget per order, value: "12" }
+    - { label: People with no account, value: "600" }
+
+diagram:
+  title: Where a cap per loop stops being a budget
+  caption: >-
+    Each executor counted only its own calls, and a step that stopped was
+    recorded as done. One count, a share per step and an honest status close
+    both gaps.
+  direction: lr
+  nodes:
+    - { id: form, label: Order form, sub: four steps to set up, kind: doc, tone: blue, at: [0, 1] }
+    - { id: planner, label: Planner, sub: plans and summarises, kind: agent, tone: purple, at: [1, 1] }
+    - { id: budget, label: One budget, sub: "12 calls, one kept for the summary", kind: guard, tone: green, at: [1, 0] }
+    - { id: import, label: Import executor, sub: never converges on a bad row, kind: agent, tone: orange, at: [2, 0] }
+    - { id: billing, label: Billing executor, sub: finishes in two calls, kind: agent, tone: teal, at: [2, 2] }
+    - { id: summary, label: Summary, sub: written from each step's status, kind: output, tone: green, at: [3, 1] }
+    - { id: lie, label: All four complete, sub: what the client was told, kind: output, tone: pink, at: [3, 0] }
+  edges:
+    - { from: form, to: planner, label: the plan, step: 1 }
+    - { from: budget, to: planner, label: a share per step, step: 2 }
+    - { from: planner, to: import, label: its share }
+    - { from: planner, to: billing, label: its share }
+    - { from: import, to: planner, label: partial when it runs out, tone: success, step: 3 }
+    - { from: import, to: lie, label: recorded as done, tone: danger }
+    - { from: planner, to: summary, label: one status per step, tone: success, step: 4 }
+
+approach:
+  goal: Bound every loop with one budget, and report how each step ended
+  branches:
+    - label: Count calls in one place
+      leaves: [the plan, every executor call, the summary]
+    - label: Keep back what the planner still needs
+      detail: >-
+        The summary is a model call too. A step that may spend the last call
+        leaves the planner nothing to finish with.
+      leaves: [one call for the summary]
+    - label: Share what is left
+      leaves: [divide by the steps still to run, a quick step leaves calls behind]
+    - label: Say how each step ended
+      leaves: [done only on Done, partial when the share ran out, "`not_started` at a share of 0"]
+    - label: Count every model call
+      leaves: [a reply that is not an action still costs a call, a tool that raises is a result]
+
+coach:
+  opening: >-
+    Before you write a loop, write down every place a model call happens in
+    this run. Then decide which single number all of them come out of.
+  signals:
+    - id: marks-every-step-done
+      when: { code_lacks: '["'']partial["'']' }
+      say: >-
+        Every step your planner runs ends up recorded as done. What does it
+        record for a step whose share ran out before the executor said Done?
+    - id: no-share
+      when: { code_lacks: '(?i)share|left|remaining' }
+      say: >-
+        Each executor keeps a count of its own. What stops one step from
+        spending the calls the steps after it need, or the summary's call?
+    - id: no-except
+      when: { code_lacks: '\bexcept\b' }
+      say: >-
+        Nothing in your executor catches an exception from a tool. What
+        happens to the steps after it when one tool raises instead of
+        answering?
+    - id: hidden-never-finishes
+      when: { test_failed: an_import_that_never_finishes_is_reported_partial }
+      say: >-
+        In that run the import stopped on a bad row and never said Done. What
+        did your planner record for it, and what did the summary then tell
+        the client?
+    - id: hidden-two-stuck
+      when: { test_failed: two_stuck_steps_leave_room_for_billing }
+      say: >-
+        In that run two steps never converged. Did the steps after them get a
+        share, and did the run stay inside 12 model calls?
+    - id: hidden-summary-call
+      when: { test_failed: the_summary_keeps_its_call }
+      say: >-
+        In that run the last step never converged, and the summary needed a
+        call after it. Was there one left when your planner reached the
+        summary?
+    - id: hidden-rollover
+      when: { test_failed: a_quick_step_leaves_its_calls_to_a_slow_one }
+      say: >-
+        In that run the first two steps finished early and the last one was
+        slow. Does your share grow when a step leaves calls unspent?
+    - id: adversarial-never-acts
+      when: { test_failed: adversarial_the_sso_executor_never_acts }
+      say: >-
+        In that run one executor kept replying without an action or a Done.
+        What does your executor count, model calls or actions?
+    - id: adversarial-raises
+      when: { test_failed: adversarial_the_billing_service_never_answers }
+      say: >-
+        In that run a tool raised on every call. Where does your executor
+        catch it, and what does the step record afterwards?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one function that every model call goes through and that
+        counts it. The plan, the shares and the summary all read that count.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. On this tier the hints open after two failed
+        runs and a written note, and the second one is about partial steps.
+  wrap_up: >-
+    Caps per loop multiply, and only a budget counted in one place bounds a
+    run with loops inside loops. Keep back what the planner needs to finish,
+    share the rest, and let a step that ran out say so, because the summary
+    can only repeat what the steps report.
+
+tests:
+  - name: every_step_finishes_inside_its_share
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "OF-2291: Acme Logistics, 300 seats, SSO with Okta, annual billing." }
+      llm_script:
+        - { match: { contains: "Summarise the onboarding" },
+            reply: "Summary: All four steps are complete, and the client's 300 users can sign in with Okta on Monday." }
+        - match: { all: [ { contains: "Step: create_workspace" }, { contains: "WS-2291" } ] }
+          reply: "Done: Workspace WS-2291 created for Acme Logistics."
+        - { match: { contains: "Step: create_workspace" }, reply: "Action: create_workspace(name=Acme Logistics)" }
+        - match: { all: [ { contains: "Step: import_users" }, { contains: '"imported": 300' } ] }
+          reply: "Done: Imported all 300 users."
+        - { match: { contains: "Step: import_users" }, reply: "Action: import_users(file=acme-users.csv)" }
+        - match: { all: [ { contains: "Step: configure_sso" }, { contains: '"sso": "enabled"' } ] }
+          reply: "Done: SSO with Okta is on."
+        - { match: { contains: "Step: configure_sso" }, reply: "Action: configure_sso(provider=okta)" }
+        - match: { all: [ { contains: "Step: set_up_billing" }, { contains: "INV-2291" } ] }
+          reply: "Done: Annual billing is set up, first invoice INV-2291."
+        - { match: { contains: "Step: set_up_billing" }, reply: "Action: set_up_billing(plan=annual)" }
+        - { match: { contains: "Plan the onboarding" },
+            reply: 'Plan: ["create_workspace", "import_users", "configure_sso", "set_up_billing"]' }
+        - { match: "*", reply: "I am not sure which step this is." }
+      tools:
+        create_workspace: { returns: { workspace: WS-2291 } }
+        import_users: { returns: { imported: 300, of: 300, errors: 0 } }
+        configure_sso: { returns: { sso: enabled, provider: okta } }
+        set_up_billing: { returns: { billing: annual, invoice: INV-2291 } }
+      budget: { max_llm_calls: 12, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, details, summary]
+            properties:
+              steps:
+                type: object
+                required: [create_workspace, import_users, configure_sso, set_up_billing]
+                properties:
+                  create_workspace: { const: done }
+                  import_users: { const: done }
+                  configure_sso: { const: done }
+                  set_up_billing: { const: done }
+              summary: { type: string, minLength: 1 }
+        - { type: returns_matches, value: "All four steps are complete" }
+        - { type: llm_calls_at_most, value: 12 }
+
+  - name: a_slow_import_finishes_inside_its_share
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "OF-3307: Brightline Foods, 1,200 seats, SSO with Azure AD." }
+      llm_script:
+        - { match: { contains: "Summarise the onboarding" },
+            reply: "Summary: Both steps are complete. All 1,200 users are imported and SSO with Azure AD is on." }
+        - match: { all: [ { contains: "Step: import_users" }, { contains: '"imported": 1200' } ] }
+          reply: "Done: Imported all 1,200 users."
+        - { match: { contains: "Step: import_users" }, reply: "Action: import_users(file=brightline-users.csv)" }
+        - match: { all: [ { contains: "Step: configure_sso" }, { contains: '"sso": "enabled"' } ] }
+          reply: "Done: SSO with Azure AD is on."
+        - { match: { contains: "Step: configure_sso" }, reply: "Action: configure_sso(provider=azure-ad)" }
+        - { match: { contains: "Plan the onboarding" }, reply: 'Plan: ["import_users", "configure_sso"]' }
+        - { match: "*", reply: "I am not sure which step this is." }
+      tools:
+        create_workspace: { returns: { workspace: WS-3307 } }
+        import_users:
+          sequence:
+            - { imported: 400, of: 1200, errors: 0 }
+            - { imported: 800, of: 1200, errors: 0 }
+            - { imported: 1200, of: 1200, errors: 0 }
+        configure_sso: { returns: { sso: enabled, provider: azure-ad } }
+        set_up_billing: { returns: { billing: annual, invoice: INV-3307 } }
+      budget: { max_llm_calls: 12, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, details, summary]
+            properties:
+              steps:
+                type: object
+                required: [import_users, configure_sso]
+                properties:
+                  import_users: { const: done }
+                  configure_sso: { const: done }
+        - { type: calls_tool, name: configure_sso }
+        - { type: llm_calls_at_most, value: 12 }
+
+  - name: an_import_that_never_finishes_is_reported_partial
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "OF-4410: Northwind Retail, 2,400 seats, SSO with Okta." }
+      llm_script:
+        - match: { all: [ { contains: "Summarise the onboarding" }, { regex: '(?m)^import_users: partial' } ] }
+          reply: "Summary: SSO with Okta is on. The user import stopped at 1,600 of 2,400 users on a bad row, and a person needs to fix the file before anyone else can sign in."
+        - { match: { contains: "Summarise the onboarding" },
+            reply: "Summary: Both steps are complete, and all 2,400 users can sign in with Okta on Monday." }
+        - { match: { contains: "Step: import_users" }, reply: "Action: import_users(file=northwind-users.csv)" }
+        - match: { all: [ { contains: "Step: configure_sso" }, { contains: '"sso": "enabled"' } ] }
+          reply: "Done: SSO with Okta is on."
+        - { match: { contains: "Step: configure_sso" }, reply: "Action: configure_sso(provider=okta)" }
+        - { match: { contains: "Plan the onboarding" }, reply: 'Plan: ["import_users", "configure_sso"]' }
+        - { match: "*", reply: "I am not sure which step this is." }
+      tools:
+        create_workspace: { returns: { workspace: WS-4410 } }
+        import_users:
+          sequence:
+            - { imported: 800, of: 2400, errors: 0 }
+            - { imported: 1600, of: 2400, errors: 0 }
+            - { imported: 1600, of: 2400, error: "row 1601: the email column is missing" }
+        configure_sso: { returns: { sso: enabled, provider: okta } }
+        set_up_billing: { returns: { billing: annual, invoice: INV-4410 } }
+      budget: { max_llm_calls: 12, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, details, summary]
+            properties:
+              steps:
+                type: object
+                required: [import_users, configure_sso]
+                properties:
+                  import_users: { const: partial }
+                  configure_sso: { const: done }
+              details:
+                type: object
+                required: [import_users]
+                properties:
+                  import_users:
+                    type: object
+                    required: [imported, error]
+                    properties: { imported: { const: 1600 } }
+        - { type: returns_lacks, value: "(?i)all 2,400 users can sign in" }
+        - { type: llm_calls_at_most, value: 12 }
+
+  - name: two_stuck_steps_leave_room_for_billing
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "OF-5150: Harbour Health, 900 seats, SSO with Okta, monthly billing." }
+      llm_script:
+        - match:
+            all:
+              - { contains: "Summarise the onboarding" }
+              - { regex: '(?m)^import_users: partial' }
+              - { regex: '(?m)^configure_sso: partial' }
+          reply: "Summary: The workspace and monthly billing are set up. The user import and SSO both stopped on errors and need a person before anyone can sign in."
+        - { match: { contains: "Summarise the onboarding" },
+            reply: "Summary: All four steps are complete, and the client's 900 users can sign in on Monday." }
+        - match: { all: [ { contains: "Step: create_workspace" }, { contains: "WS-5150" } ] }
+          reply: "Done: Workspace WS-5150 created for Harbour Health."
+        - { match: { contains: "Step: create_workspace" }, reply: "Action: create_workspace(name=Harbour Health)" }
+        - { match: { contains: "Step: import_users" }, reply: "Action: import_users(file=harbour-users.csv)" }
+        - { match: { contains: "Step: configure_sso" }, reply: "Action: configure_sso(provider=okta)" }
+        - match: { all: [ { contains: "Step: set_up_billing" }, { contains: "INV-5150" } ] }
+          reply: "Done: Monthly billing is set up, first invoice INV-5150."
+        - { match: { contains: "Step: set_up_billing" }, reply: "Action: set_up_billing(plan=monthly)" }
+        - { match: { contains: "Plan the onboarding" },
+            reply: 'Plan: ["create_workspace", "import_users", "configure_sso", "set_up_billing"]' }
+        - { match: "*", reply: "I am not sure which step this is." }
+      tools:
+        create_workspace: { returns: { workspace: WS-5150 } }
+        import_users: { returns: { imported: 0, of: 900, error: "row 1: the email column is missing" } }
+        configure_sso: { returns: { sso: failed, error: "the metadata URL returned 404" } }
+        set_up_billing: { returns: { billing: monthly, invoice: INV-5150 } }
+      budget: { max_llm_calls: 12, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, details, summary]
+            properties:
+              steps:
+                type: object
+                required: [create_workspace, import_users, configure_sso, set_up_billing]
+                properties:
+                  create_workspace: { const: done }
+                  import_users: { const: partial }
+                  configure_sso: { const: partial }
+                  set_up_billing: { const: done }
+        - { type: returns_lacks, value: "(?i)all four steps are complete" }
+        - { type: llm_calls_at_most, value: 12 }
+
+  - name: the_summary_keeps_its_call
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "OF-6021: Lakeside Studios, 150 seats, SSO with Google, annual billing." }
+      llm_script:
+        - match: { all: [ { contains: "Summarise the onboarding" }, { regex: '(?m)^set_up_billing: partial' } ] }
+          reply: "Summary: The workspace and SSO with Google are ready. Billing is not set up because the card on file was declined, and the client's finance team needs to add a new card."
+        - { match: { contains: "Summarise the onboarding" },
+            reply: "Summary: All three steps are complete, and the client is ready to start." }
+        - match: { all: [ { contains: "Step: create_workspace" }, { contains: "WS-6021" } ] }
+          reply: "Done: Workspace WS-6021 created for Lakeside Studios."
+        - { match: { contains: "Step: create_workspace" }, reply: "Action: create_workspace(name=Lakeside Studios)" }
+        - match: { all: [ { contains: "Step: configure_sso" }, { contains: '"sso": "enabled"' } ] }
+          reply: "Done: SSO with Google is on."
+        - { match: { contains: "Step: configure_sso" }, reply: "Action: configure_sso(provider=google)" }
+        - { match: { contains: "Step: set_up_billing" }, reply: "Action: set_up_billing(plan=annual)" }
+        - { match: { contains: "Plan the onboarding" },
+            reply: 'Plan: ["create_workspace", "configure_sso", "set_up_billing"]' }
+        - { match: "*", reply: "I am not sure which step this is." }
+      tools:
+        create_workspace: { returns: { workspace: WS-6021 } }
+        import_users: { returns: { imported: 150, of: 150, errors: 0 } }
+        configure_sso: { returns: { sso: enabled, provider: google } }
+        set_up_billing: { returns: { billing: none, error: "the card on file was declined" } }
+      budget: { max_llm_calls: 12, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 12 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, details, summary]
+            properties:
+              steps:
+                type: object
+                required: [create_workspace, configure_sso, set_up_billing]
+                properties:
+                  create_workspace: { const: done }
+                  configure_sso: { const: done }
+                  set_up_billing: { const: partial }
+              summary: { type: string, pattern: "finance team" }
+
+  - name: a_quick_step_leaves_its_calls_to_a_slow_one
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "OF-9033: Ridgeway Legal, 1,500 seats, SSO with Okta." }
+      llm_script:
+        - { match: { contains: "Summarise the onboarding" },
+            reply: "Summary: All three steps are complete, and all 1,500 users can sign in with Okta." }
+        - match: { all: [ { contains: "Step: create_workspace" }, { contains: "WS-9033" } ] }
+          reply: "Done: Workspace WS-9033 created for Ridgeway Legal."
+        - { match: { contains: "Step: create_workspace" }, reply: "Action: create_workspace(name=Ridgeway Legal)" }
+        - match: { all: [ { contains: "Step: configure_sso" }, { contains: '"sso": "enabled"' } ] }
+          reply: "Done: SSO with Okta is on."
+        - { match: { contains: "Step: configure_sso" }, reply: "Action: configure_sso(provider=okta)" }
+        - match: { all: [ { contains: "Step: import_users" }, { contains: '"imported": 1500' } ] }
+          reply: "Done: Imported all 1,500 users."
+        - { match: { contains: "Step: import_users" }, reply: "Action: import_users(file=ridgeway-users.csv)" }
+        - { match: { contains: "Plan the onboarding" },
+            reply: 'Plan: ["create_workspace", "configure_sso", "import_users"]' }
+        - { match: "*", reply: "I am not sure which step this is." }
+      tools:
+        create_workspace: { returns: { workspace: WS-9033 } }
+        import_users:
+          sequence:
+            - { imported: 400, of: 1500, errors: 0 }
+            - { imported: 800, of: 1500, errors: 0 }
+            - { imported: 1200, of: 1500, errors: 0 }
+            - { imported: 1500, of: 1500, errors: 0 }
+        configure_sso: { returns: { sso: enabled, provider: okta } }
+        set_up_billing: { returns: { billing: annual, invoice: INV-9033 } }
+      budget: { max_llm_calls: 12, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, details, summary]
+            properties:
+              steps:
+                type: object
+                required: [create_workspace, configure_sso, import_users]
+                properties:
+                  create_workspace: { const: done }
+                  configure_sso: { const: done }
+                  import_users: { const: done }
+              details:
+                type: object
+                required: [import_users]
+                properties:
+                  import_users: { type: string, pattern: "1,500" }
+        - { type: llm_calls_at_most, value: 12 }
+
+  - name: adversarial_the_sso_executor_never_acts
+    visibility: adversarial
+    fixture: loop_bait
+    annotation_md: |
+      The SSO executor's model kept replying with a sentence about checking
+      the identity provider, and never with an action or a Done. Nothing it
+      said could be run, and nothing it said ended the step.
+
+      An executor that counts the actions it runs, rather than the model
+      calls it makes, never reaches its share here, and goes round until the
+      platform refuses the next call. Every reply is a call that was paid for,
+      whatever it says. Counted that way, the step ends partial at its share,
+      with no tool result to show, and billing still gets its turn.
+    spec:
+      kind: agent_run
+      input: { question: "OF-7004: Quarry Analytics, 600 seats, SSO with OneLogin, annual billing." }
+      llm_script:
+        - match: { all: [ { contains: "Summarise the onboarding" }, { regex: '(?m)^configure_sso: partial' } ] }
+          reply: "Summary: The workspace and annual billing are set up. SSO with OneLogin is not configured yet and needs a person."
+        - { match: { contains: "Summarise the onboarding" },
+            reply: "Summary: All three steps are complete, and the client is ready to start." }
+        - match: { all: [ { contains: "Step: create_workspace" }, { contains: "WS-7004" } ] }
+          reply: "Done: Workspace WS-7004 created for Quarry Analytics."
+        - { match: { contains: "Step: create_workspace" }, reply: "Action: create_workspace(name=Quarry Analytics)" }
+        - { match: { contains: "Step: configure_sso" },
+            reply: "I need to look at the identity provider settings before I change anything." }
+        - match: { all: [ { contains: "Step: set_up_billing" }, { contains: "INV-7004" } ] }
+          reply: "Done: Annual billing is set up, first invoice INV-7004."
+        - { match: { contains: "Step: set_up_billing" }, reply: "Action: set_up_billing(plan=annual)" }
+        - { match: { contains: "Plan the onboarding" },
+            reply: 'Plan: ["create_workspace", "configure_sso", "set_up_billing"]' }
+        - { match: "*", reply: "I am not sure which step this is." }
+      tools:
+        create_workspace: { returns: { workspace: WS-7004 } }
+        import_users: { returns: { imported: 600, of: 600, errors: 0 } }
+        configure_sso: { returns: { sso: enabled, provider: onelogin } }
+        set_up_billing: { returns: { billing: annual, invoice: INV-7004 } }
+      budget: { max_llm_calls: 12, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 12 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, details, summary]
+            properties:
+              steps:
+                type: object
+                required: [configure_sso, set_up_billing]
+                properties:
+                  configure_sso: { const: partial }
+                  set_up_billing: { const: done }
+              details:
+                type: object
+                required: [configure_sso]
+                properties:
+                  configure_sso: { type: "null" }
+
+  - name: adversarial_the_billing_service_never_answers
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      Every call to `set_up_billing` raised a `TimeoutError`. An executor
+      written around answers lets the exception travel up through the
+      planner, and the run ends with no summary, taking SSO, which never
+      needed billing, down with it.
+
+      A tool that raises has still answered the step, badly. Caught at the
+      call, the timeout becomes a result, the executor carries on until its
+      share runs out, the step ends partial with the error as its detail, and
+      the planner moves on to SSO.
+    spec:
+      kind: agent_run
+      input: { question: "OF-8150: Fernway Travel, 450 seats, SSO with Okta, monthly billing." }
+      llm_script:
+        - match: { all: [ { contains: "Summarise the onboarding" }, { regex: '(?m)^set_up_billing: partial' } ] }
+          reply: "Summary: The workspace and SSO with Okta are ready. Billing could not be set up because the billing service did not answer, and it needs a person."
+        - { match: { contains: "Summarise the onboarding" },
+            reply: "Summary: All three steps are complete, and the client is ready to start." }
+        - match: { all: [ { contains: "Step: create_workspace" }, { contains: "WS-8150" } ] }
+          reply: "Done: Workspace WS-8150 created for Fernway Travel."
+        - { match: { contains: "Step: create_workspace" }, reply: "Action: create_workspace(name=Fernway Travel)" }
+        - { match: { contains: "Step: set_up_billing" }, reply: "Action: set_up_billing(plan=monthly)" }
+        - match: { all: [ { contains: "Step: configure_sso" }, { contains: '"sso": "enabled"' } ] }
+          reply: "Done: SSO with Okta is on."
+        - { match: { contains: "Step: configure_sso" }, reply: "Action: configure_sso(provider=okta)" }
+        - { match: { contains: "Plan the onboarding" },
+            reply: 'Plan: ["create_workspace", "set_up_billing", "configure_sso"]' }
+        - { match: "*", reply: "I am not sure which step this is." }
+      tools:
+        create_workspace: { returns: { workspace: WS-8150 } }
+        import_users: { returns: { imported: 450, of: 450, errors: 0 } }
+        configure_sso: { returns: { sso: enabled, provider: okta } }
+        set_up_billing:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the billing service did not answer within 5000 ms" }
+      budget: { max_llm_calls: 12, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, details, summary]
+            properties:
+              steps:
+                type: object
+                required: [set_up_billing, configure_sso]
+                properties:
+                  set_up_billing: { const: partial }
+                  configure_sso: { const: done }
+              details:
+                type: object
+                required: [set_up_billing]
+                properties:
+                  set_up_billing:
+                    type: object
+                    required: [error]
+                    properties: { error: { const: TimeoutError } }
+
+reference_md: |
+  The incident had two causes and one shape. Each executor counted its own
+  calls, so the order's budget bounded only the planner, and four loops with
+  a cap of 8 each can spend 32 calls between them before the planner's own
+  are counted. And the planner learned how a step ended only from the fact
+  that its executor had stopped, so a step cut off at its cap read exactly
+  like a step that had finished.
+
+  Frameworks make the first mistake easy. In the OpenAI Agents SDK, version
+  0.22.3, an agent turned into a tool with `as_tool` runs its own
+  `Runner.run` with its own `max_turns`, which is `DEFAULT_MAX_TURNS`, 10,
+  unless you pass one (read in `src/agents/agent.py` and
+  `src/agents/run_config.py` on 1 October 2026). The parent's limit says
+  nothing about what its sub-agents spend: a parent allowed 10 turns that
+  calls a sub-agent on each turn can make 10 calls of its own and up to 10
+  more inside every sub-agent. A budget that bounds the whole run has to be
+  counted where every call is made, in one place.
+
+  One count is not enough on its own. A stuck step can spend the whole of it
+  and leave nothing for the steps after it, or for the summary, which is a
+  model call too. So the planner keeps back the one call it needs to finish,
+  and divides the rest by the steps still to run. Recomputing the share
+  before each step means a step that finishes early leaves its calls to the
+  steps after it, which is how the slow import still completes, and a step
+  that never converges is cut off at its share.
+
+  The status is the other half. Done means the executor said Done within its
+  share. Anything else is partial, with the last thing the step's tools
+  returned, because that is what a person needs to pick the step up. The
+  summary model writes from the status lines it is given; told partial, it
+  says partial, and told done for everything, it said all four steps were
+  complete. The two adversarial cases are the same lesson from the
+  executor's side: a reply that is not an action still costs a call, and a
+  tool that raises has still answered.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your planner agent hands each step to a sub-agent. How do you put one budget on the whole run, and what does the planner report when a sub-agent runs out?
+  source: |
+    Author judgement, with the OpenAI Agents SDK 0.22.3 source, read 1 October 2026, for how a sub-agent's turn limit is set. No employer frequency data stands behind it.
+
+tools:
+  - name: create_workspace
+    args: name
+    returns: '`{"workspace": ...}` once the workspace exists.'
+  - name: import_users
+    args: file
+    returns: '`{"imported": ..., "of": ..., ...}`. A large file takes several calls, and a bad row stops it with an
+      `error`.'
+  - name: configure_sso
+    args: provider
+    returns: '`{"sso": "enabled", "provider": ...}`, or `{"sso": "failed", "error": ...}`.'
+  - name: set_up_billing
+    args: plan
+    returns: '`{"billing": ..., "invoice": ...}`, or an `error`. It can also raise when the billing service does not
+      answer.'
+example:
+  case: every_step_finishes_inside_its_share
+  expect: Plan once, then run each step on its share, which here is an action and a Done each. Summarise with four
+    status lines, and return all four steps as done with the model's summary.
+traps:
+  - Recording a step as done because its executor stopped, when its share ran out before it said Done.
+  - Giving each executor a cap of its own, so the steps together spend more than the order's budget.
+  - Letting one stuck step spend what the steps after it need, or the call the summary needs.
+  - Counting actions instead of model calls, so an executor that never acts never runs out.

@@ -125,7 +125,7 @@ This is a tool, not a landing page.
 | Surface | Rule |
 |---|---|
 | Tables | 36px row height, 12px horizontal padding. Twenty problem rows visible without scrolling at 900px viewport height. |
-| Cards | Only where a thing is a single object a learner acts on: the continue panel, a scenario, a capstone build. Lists stay lists. |
+| Cards | Only where a thing is a single object a learner acts on: the continue panel, a scenario, an end-to-end build. Lists stay lists. |
 | Panels | 16px padding, 1px border, 12px radius, no shadow. Elevation is a step up the surface ramp. Shadows on a near-black background produce mud; the one exception is a floating layer (the command palette, a menu), which needs to read as above the page. |
 | Radius | One scale: panels 12px, controls 8px, keys 4px, chips a full pill. |
 | Empty states | One sentence naming the next action, and a button. A single icon in a small square is the only decoration. |

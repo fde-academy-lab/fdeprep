@@ -18,7 +18,7 @@
 # Every pull request adds or closes the story it delivers. CI checks this file.
 
 version: 1
-as_of: 2026-09-30
+as_of: 2026-10-01
 
 project:
   owner: fde-academy-lab
@@ -1084,7 +1084,7 @@ stages:
         area: Infrastructure
         finish: 2026-10-03
         acceptance:
-          - README route C steps C0 to C10 are done and the site answers on its public address over HTTPS.
+          - DEPLOY.md steps 0 to 6 are done and the site answers on its public address over HTTPS.
           - The first admin signs in through an invite minted on the host.
       - id: S11.2
         title: Prove the Bedrock judge with one live submission
@@ -1132,7 +1132,7 @@ stages:
         area: Infrastructure
         finish: 2026-10-03
         acceptance:
-          - An AWS Budgets alarm on the Bedrock line notifies at 50 and 80 percent of the monthly limit.
+          - An AWS Budgets alert filtered on the AWS Marketplace billing entity, where Claude's charges appear, notifies at 50 and 80 percent of the monthly limit.
       - id: S11.7
         title: Run the 200-submission burst test against staging
         type: Task
@@ -1160,6 +1160,16 @@ stages:
         finish: 2026-10-09
         acceptance:
           - The first invited students have signed in, and their feedback is a story on this board within a week.
+      - id: S11.10
+        title: Write the AWS go-live as one runbook, click by click
+        type: Task
+        status: done
+        pr: 45
+        points: 3
+        area: Docs and process
+        finish: 2026-10-01
+        acceptance:
+          - DEPLOY.md takes one operator from an AWS account to a working beta, with the console path, the CloudShell or server command and the expected output for every step, prices and AWS behaviour checked on the day, and README route C points to it.
 
   - id: S12
     name: Problem pages v2
@@ -1275,6 +1285,61 @@ stages:
         acceptance:
           - Every problem lists two to four mistakes its hidden and adversarial cases exist to catch, in words that do not give the case away, and CI refuses a trap that quotes one.
           - Easy and Medium show the traps from the start; Hard, Extreme and the rehearsal show them once the attempt closes, and the page does not send them before then.
+      - id: S12.10
+        title: Give every problem a plain title a newcomer understands
+        type: Task
+        status: done
+        pr: 45
+        points: 5
+        area: Content
+        finish: 2026-10-01
+        acceptance:
+          - Every problem title starts with a verb, runs to eight words at most, and says what the learner builds; the incident line it replaced is kept as the scenario headline and shown on the card and in the catalogue.
+          - The capstone tier is called End-to-end builds everywhere a learner reads it.
+      - id: S12.11
+        title: "Add a workflows track: one routing task solved with rules, a decision model, one model call and a cascade"
+        type: Feature
+        status: done
+        pr: 45
+        points: 8
+        area: Content
+        finish: 2026-10-01
+        acceptance:
+          - Four Easy problems on days 1 to 4 route the same support ticket four ways, and each reference passes while each naive solution fails a hidden test, through the runner.
+          - The decision model is a scripted tool in the runner like every other fixture, so learner code never reaches a model endpoint.
+      - id: S12.12
+        title: Organise the catalogue as chapters of agent engineering, each problem labelled with the question it answers
+        type: Feature
+        status: done
+        pr: 45
+        points: 8
+        area: Content
+        finish: 2026-10-01
+        acceptance:
+          - Every problem sits in one of twelve chapters, from loop engineering to Agentic SDLC, under a topic from that chapter's closed list, and its page and catalogue row show the question it answers before the learner starts.
+          - The 30-day path walks the four stages in order, a test fails when any problem's day is off it, and searching the problems page by a word, a chapter or a question returns matches.
+      - id: S12.13
+        title: Let a problem use LangGraph and LangChain inside the sandbox
+        type: Feature
+        status: done
+        pr: 45
+        points: 5
+        area: Runner and sandbox
+        finish: 2026-10-01
+        acceptance:
+          - A solution that builds a LangGraph graph, pauses at an interrupt and resumes from its checkpoint, and validates a LangChain tool's arguments passes inside the real sandbox, and a graph that never ends stops at its recursion limit.
+          - A solution that imports no framework runs in exactly the sandbox it ran in before, and the static gate's route walk covers the framework modules.
+      - id: S12.14
+        title: Write the problems the thin chapters were missing, weighted to Hard and Extreme
+        type: Feature
+        status: done
+        pr: 45
+        points: 21
+        area: Content
+        finish: 2026-10-01
+        acceptance:
+          - Human in the loop, observability, orchestration, harness, loop, tools, context, memory, guardrails, evals and Agentic PDLC gain 35 problems between them, 13 of them Hard and 9 Extreme, each validated in full.
+          - Every new code problem's reference passes every gate and its naive solution fails a hidden test through the runner, its stub fails a public test and every step check, and its coach is quiet on the reference and fires on the naive solution.
 
   - id: S13
     name: Voice interviewer v2, step 1
@@ -1376,6 +1441,18 @@ stages:
         acceptance:
           - Each session is recorded against the question on screen, the docs/07 section 10 caps bind, and an answer that ends before it counts, a failed start and a judge that keeps failing all cost the learner nothing.
           - Follow-ups are heard, survive a content re-import, and keep their cached speech past thirty days, and a recording past thirty days is deleted and marked so.
+      - id: S13.9
+        title: Keep the debrief up, and say what failed when an answer does not save
+        type: Bug
+        status: done
+        pr: 45
+        points: 5
+        area: Voice
+        finish: 2026-10-01
+        found_by: Running it
+        acceptance:
+          - The debrief and the past answers list render for every session in development and in a production build, and a test walks every page's imports so a module the server bundle cannot load fails CI instead of a learner's screen.
+          - A failed start, save, recording upload or socket says what happened and what to press, an answer that did not save is never shown as recorded and stays in the tab for Save again, and neither the scorer nor the development socket stops for one session it cannot handle.
 
   - id: S14
     name: Voice interviewer v2, step 2

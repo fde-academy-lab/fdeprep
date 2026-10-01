@@ -1,11 +1,14 @@
 slug: analytics-agent-1-pick-the-tables
-title: Managers restocked from best-seller lists years out of date
-day: 23
+title: "Pick only tables that exist and are current"
+day: 25
 skill: Pick only tables the schema says exist and are still in use
 artefact_type: code
 difficulty: easy
 complexity: C2
 track: builds
+concept:
+  topic: "Analytics agent"
+  question: "Which tables is the agent allowed to pick from?"
 est_minutes: 20
 competencies:
   - { slug: context-assembly, weight: 1.0 }
@@ -192,6 +195,7 @@ hints:
     list.
 
 scenario:
+  headline: "Managers restocked from best-seller lists years out of date"
   who: The data team at a garden-centre chain
   situation: >-
     Managers ask an analytics agent about sales in plain English. For three

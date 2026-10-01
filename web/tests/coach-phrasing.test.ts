@@ -18,7 +18,7 @@ async function fired(problem: string, answer: string): Promise<string[]> {
   return firing(coach, { ...NEUTRAL, code: answer }).map((s) => s.id);
 }
 
-const INCIDENT = "production/explain-an-incident-from-half-the-traces";
+const INCIDENT = "observability/explain-an-incident-from-half-the-traces";
 
 describe("a claimed root cause", () => {
   it("is noticed whichever way round the sentence runs", async () => {

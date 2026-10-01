@@ -1,0 +1,545 @@
+slug: write-errors-the-model-can-fix
+title: "Write tool errors the model can act on"
+day: 8
+skill: Return errors that name the field, the value sent and what is allowed, all at once
+artefact_type: code
+difficulty: hard
+track: tools
+concept:
+  topic: "Errors the model can fix"
+  question: "What must an error say for the model to fix its next call?"
+est_minutes: 40
+competencies:
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  Customer support at a quick-commerce app the size of Zepto runs a refunds
+  agent. The model reads the customer's message and calls `refund` on the
+  payments team's API with an order id, an amount in paise and a reason.
+
+  When the API refuses a call it answers with a code such as `PAY-4001`, and
+  the agent passes the model one line: `{"error": "invalid input"}`. The model
+  cannot tell which field was wrong, what it sent or what would have been
+  accepted, so it sends the same call again, unchanged, until the ticket's
+  three model calls run out.
+
+  On Saturday 3,800 calls were refused that way. Most had one wrong field: a
+  reason of broken where the API takes damaged, or an amount written as
+  "45.00". 1,100 customers who were owed a refund were told a person would
+  pick up their ticket.
+
+  Write the agent that tells the model, in one error, everything it needs to
+  fix its next call, and tells it plainly when no next call will help.
+
+defence_question: |
+  Your errors echo the value the model sent and list every value a field
+  accepts. A security reviewer says an error should never echo input or list
+  allowed values, because both help an attacker probe the API. Which parts of
+  your error would you keep, which would you drop, and what decides it?
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is a customer's refund request. `llm(prompt)` replies with
+  `Action: refund({...})`, the arguments as one JSON object, or with
+  `Final Answer: <text>`. Return the final answer.
+
+  `refund` takes exactly these fields:
+
+  | Field | Allowed |
+  |---|---|
+  | `order_id` | `OD-` followed by digits |
+  | `amount_paise` | a whole number from 1 to 50000. `true` and `"450.00"` are not whole numbers |
+  | `reason` | one of `damaged`, `missing`, `wrong_item`, `late` |
+
+  Check every call against the table before it reaches `refund`. When anything
+  fails, do not call `refund`. Append one line of JSON instead, naming every
+  problem at once:
+
+      {"error": "invalid_arguments", "retryable": true,
+       "problems": [{"field": ..., "received": ..., "allowed": ...}, ...]}
+
+  One problem per field that fails, in the table's order, then one for each
+  field the tool does not take, in the order the model sent them. `received`
+  is the value exactly as the model sent it, or `null` when the field is
+  missing. `allowed` is `OD- followed by digits` for `order_id`,
+  `a whole number from 1 to 50000` for `amount_paise`, the list of four for
+  `reason`, and the list of the three field names for a field the tool does
+  not take.
+
+  When the checks pass, call `refund`. The payments API answers
+  `{"status": 200, "refund_id": ...}`, which goes in the scratchpad as it
+  came, or with one of its own codes:
+
+  | The API answers | It means | Append |
+  |---|---|---|
+  | `{"status": 400, "code": "PAY-4001", "field": ...}` | a field failed the API's own check. It names only the first | that field as a problem, in the same shape |
+  | `{"status": 409, "code": "PAY-4091", "refunded_on": ...}` | the order was refunded in full before | `{"error": "already_refunded", "retryable": false, "refunded_on": ...}` |
+  | `{"status": 422, "code": "PAY-4221", "refundable_paise": ...}` | the amount is more than the order has left | an `amount_paise` problem whose `allowed` is `a whole number from 1 to <refundable_paise>` |
+  | `refund` raises, for example a `TimeoutError` | the payments service did not answer | `{"error": "unavailable", "retryable": false}` |
+
+  The model fixes what an error names, and only that, and it stops trying when
+  an error says `"retryable": false`.
+
+  Budget: at most 3 model calls, which is one call, one corrected call and the
+  answer. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  FIELDS = ("order_id", "amount_paise", "reason")
+  REASONS = ["damaged", "missing", "wrong_item", "late"]
+  MAX_PAISE = 50000
+  ACTION = re.compile(r"^Action:\s*refund\((\{.*\})\)\s*$", re.MULTILINE | re.DOTALL)
+
+
+  def check(args: dict) -> list:
+      """Every problem with these arguments, in the shape the model reads:
+      [{"field": ..., "received": ..., "allowed": ...}, ...], in the table's
+      order, then the fields refund does not take."""
+      return []
+
+
+  def translate(answer, args: dict) -> dict:
+      """What the payments API answered, in the shape the model reads."""
+      return answer
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Refund what the customer is owed, and give the model errors it can fix.
+
+      llm(prompt) replies with Action: refund({...}) or Final Answer: <text>.
+      Check every call before it reaches refund, and when anything fails,
+      append {"error": "invalid_arguments", "retryable": true, "problems": [...]}
+      naming every problem at once. Translate the API's codes: PAY-4001 names
+      one field, PAY-4221 carries a lower limit for this order, and PAY-4091
+      and a refund that raises mean "retryable": false.
+
+      Return the model's final answer. At most 3 model calls. Allowed imports:
+      json, re.
+      """
+      return "I could not process this refund. A person will pick up your ticket."
+
+hints:
+  - Read the error your agent sends as the model reads it, with nothing else to
+    go on. What would you change in the next call?
+  - The model can fix a field only when the error names the field, shows what
+    it sent and says what would have been accepted. With two wrong fields it
+    fixes the ones it hears about, and nothing else.
+  - "Check every field against the table before calling `refund`, collect every problem, and send them in one error. Then translate the API's codes: one names a lower limit, and two mean that no new call will help."
+  - "Mark what no corrected call can fix with `\"retryable\": false`: an order refunded before, and a service that did not answer. A refund that raises is the second, so catch it at the call."
+
+scenario:
+  headline: "3,800 refund calls failed with the same two words"
+  who: "Customer support at a quick-commerce app the size of Zepto"
+  situation: >-
+    The refunds agent calls the payments team's API. When the API refuses a
+    call, the agent tells the model the input was invalid and nothing else,
+    so the model sends the same call again until the ticket's calls run out.
+  stakes: >-
+    On Saturday 3,800 calls were refused that way, and 1,100 customers who
+    were owed a refund were told a person would pick up their ticket.
+  metrics:
+    - { label: Refused calls on Saturday, value: "3,800" }
+    - { label: Tickets sent to a person, value: "1,100" }
+    - { label: Model calls per ticket, value: "3" }
+
+diagram:
+  title: Where a refused call becomes the same call again
+  caption: >-
+    The API's code means nothing to the model. An error that names the field,
+    the value sent and what is allowed is one the model can act on.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: asks for a refund, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: writes the refund call, kind: model, tone: teal, at: [1, 1] }
+    - { id: checks, label: Your checks, sub: every field against the table, kind: guard, tone: purple, at: [2, 1] }
+    - { id: api, label: Payments API, sub: answers with a code, kind: service, tone: orange, at: [3, 1] }
+    - { id: vague, label: "invalid input", sub: the same call comes back, kind: output, tone: pink, at: [2, 2] }
+    - { id: fixable, label: An error it can fix, sub: "field, value sent, allowed", kind: doc, tone: green, at: [2, 0] }
+  edges:
+    - { from: customer, to: model, label: request, step: 1 }
+    - { from: model, to: checks, label: refund call, step: 2 }
+    - { from: checks, to: api, label: only when every field passes }
+    - { from: api, to: checks, label: "PAY-4091, PAY-4221", step: 3 }
+    - { from: checks, to: fixable, label: every problem at once, tone: success }
+    - { from: fixable, to: model, label: one corrected call, tone: success, step: 4 }
+    - { from: checks, to: vague, label: two words, tone: danger }
+    - { from: vague, to: model, label: nothing to change, tone: danger }
+
+approach:
+  goal: Give the model one error that tells it everything it can fix, and when it cannot
+  branches:
+    - label: Say what the model needs to change a call
+      leaves: [the field, the value it sent, what is allowed]
+    - label: Name every problem at once
+      detail: >-
+        There is one correction in the budget, and the model fixes only what
+        it hears about.
+      leaves: [check the whole table before calling, missing and unknown fields too]
+    - label: Translate the API's codes
+      leaves: [a code means nothing to the model, a lower limit is a new allowed range]
+    - label: Say when no call will help
+      leaves: [refunded before, the service did not answer]
+
+coach:
+  opening: >-
+    Take the error your agent sends the model and imagine you had only that
+    line to go on. What would you change in the next call?
+  signals:
+    - id: generic-error
+      when: { code_matches: '(?i)invalid input|["'']error["'']\s*:\s*["'']invalid["'']' }
+      say: >-
+        Your error tells the model its input was invalid. Which field, what did
+        it send, and what would have been accepted? It can only fix what the
+        error names.
+    - id: no-received
+      when: { code_lacks: 'received' }
+      say: >-
+        Your errors never show the model the value it sent. How would it see
+        that it wrote the amount as text, or a reason the API does not take?
+    - id: no-retryable
+      when: { code_lacks: 'retryable' }
+      say: >-
+        Nothing in your errors says whether a new call can help. What should
+        the model do when the order was refunded before?
+    - id: no-except
+      when: { code_lacks: '\bexcept\b' }
+      say: >-
+        Nothing in your agent catches an exception from `refund`. What does the
+        customer get when the payments service does not answer?
+    - id: hidden-reason
+      when: { test_failed: a_reason_the_api_does_not_take_is_named_with_the_ones_it_does }
+      say: >-
+        In that run the model sent a reason the API does not take, and sent it
+        again. Did your error name the field, the reason it sent and the four
+        it could have used?
+    - id: hidden-two-fields
+      when: { test_failed: two_wrong_fields_are_named_in_one_error }
+      say: >-
+        In that run two fields were wrong. How many of them did your first
+        error name, and how many corrections does the budget allow?
+    - id: hidden-refunded-before
+      when: { test_failed: an_order_refunded_before_is_not_tried_again }
+      say: >-
+        In that run the order had been refunded before, and the model kept
+        trying. What in your error tells it that no new call will help?
+    - id: hidden-lower-limit
+      when: { test_failed: an_amount_over_what_is_left_is_named_with_the_limit }
+      say: >-
+        In that run the amount was inside the table's limit and over what the
+        order had left. Where did the API say how much was left, and did your
+        error pass it on?
+    - id: hidden-missing-and-unknown
+      when: { test_failed: a_missing_field_and_an_extra_one_are_both_named }
+      say: >-
+        In that run one field was missing and one was a field `refund` does not
+        take. Does your check look for both, before anything reaches the API?
+    - id: adversarial-timeout
+      when: { test_failed: adversarial_the_payments_service_does_not_answer }
+      say: >-
+        In that run `refund` raised instead of answering. Where does your agent
+        catch it, and what does the model read afterwards?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with `check()`: one problem per failing field, each with the
+        field, the value as sent and what the table allows. The loop is built
+        around it.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints open after one failed run on this
+        tier, and the second one says what the model needs to fix a field.
+  wrap_up: >-
+    An error is the only thing the model reads between a refused call and the
+    next one. Name the field, show what was sent, say what is allowed, name
+    every problem at once, and say plainly when no call will help.
+
+tests:
+  - name: refunds_a_damaged_item
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-1180: the eggs arrived cracked. Please refund the 129 rupees." }
+      llm_script:
+        - { match: { contains: "RF-1180" },
+            reply: "Final Answer: I have refunded 129 rupees for the cracked eggs. Your refund is RF-1180." }
+        - { match: "*", reply: 'Action: refund({"order_id": "OD-1180", "amount_paise": 12900, "reason": "damaged"})' }
+      tools:
+        refund: { returns: { status: 200, refund_id: RF-1180 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { order_id: OD-1180, amount_paise: 12900, reason: damaged } }
+        - { type: returns_matches, value: "RF-1180" }
+
+  - name: refunds_the_largest_amount_allowed
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-2290: the whole basket came an hour late and the ice cream had melted. Refund the 500 rupees." }
+      llm_script:
+        - { match: { contains: "RF-2290" }, reply: "Final Answer: I have refunded 500 rupees. Your refund is RF-2290." }
+        - { match: "*", reply: 'Action: refund({"order_id": "OD-2290", "amount_paise": 50000, "reason": "late"})' }
+      tools:
+        refund: { returns: { status: 200, refund_id: RF-2290 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { amount_paise: 50000, reason: late } }
+        - { type: returns_matches, value: "RF-2290" }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_reason_the_api_does_not_take_is_named_with_the_ones_it_does
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-3301: the milk packet burst in the bag. Refund it please, 32 rupees." }
+      llm_script:
+        - { match: { contains: "RF-3301" },
+            reply: "Final Answer: I have refunded 32 rupees for the burst milk packet. Your refund is RF-3301." }
+        - match:
+            all:
+              - { regex: '"field":\s*"reason"' }
+              - { regex: '"received":\s*"broken"' }
+              - { contains: '"wrong_item"' }
+          reply: 'Action: refund({"order_id": "OD-3301", "amount_paise": 3200, "reason": "damaged"})'
+        - { match: "*", reply: 'Action: refund({"order_id": "OD-3301", "amount_paise": 3200, "reason": "broken"})' }
+      tools:
+        refund:
+          by_arg:
+            arg: reason
+            values:
+              damaged: { status: 200, refund_id: RF-3301 }
+            default: { status: 400, code: PAY-4001, field: reason }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { order_id: OD-3301, reason: damaged } }
+        - { type: returns_matches, value: "RF-3301" }
+
+  - name: two_wrong_fields_are_named_in_one_error
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-4410: the bread was mouldy. Refund 45 rupees." }
+      llm_script:
+        - { match: { contains: "RF-4410" },
+            reply: "Final Answer: I have refunded 45 rupees for the mouldy bread. Your refund is RF-4410." }
+        - match:
+            all:
+              - { regex: '"field":\s*"amount_paise"' }
+              - { regex: '"received":\s*"45\.00"' }
+              - { regex: 'whole number' }
+              - { regex: '"field":\s*"reason"' }
+              - { regex: '"received":\s*"spoiled"' }
+              - { contains: '"wrong_item"' }
+          reply: 'Action: refund({"order_id": "OD-4410", "amount_paise": 4500, "reason": "damaged"})'
+        - match:
+            all:
+              - { regex: '"field":\s*"amount_paise"' }
+              - { regex: '"received":\s*"45\.00"' }
+              - { regex: 'whole number' }
+          reply: 'Action: refund({"order_id": "OD-4410", "amount_paise": 4500, "reason": "spoiled"})'
+        - match:
+            all:
+              - { regex: '"field":\s*"reason"' }
+              - { regex: '"received":\s*"spoiled"' }
+              - { contains: '"wrong_item"' }
+          reply: 'Action: refund({"order_id": "OD-4410", "amount_paise": "45.00", "reason": "damaged"})'
+        - { match: "*", reply: 'Action: refund({"order_id": "OD-4410", "amount_paise": "45.00", "reason": "spoiled"})' }
+      tools:
+        refund:
+          by_arg:
+            arg: reason
+            values:
+              damaged: { status: 200, refund_id: RF-4410 }
+            default: { status: 400, code: PAY-4001, field: reason }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { order_id: OD-4410, amount_paise: 4500, reason: damaged } }
+        - { type: returns_matches, value: "RF-4410" }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: an_order_refunded_before_is_not_tried_again
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-5512: I never got my refund for the spilled curd, 60 rupees." }
+      llm_script:
+        - match:
+            all:
+              - { regex: '"retryable":\s*false' }
+              - { contains: "2026-09-28" }
+          reply: "Final Answer: Order OD-5512 was already refunded in full on 28 September, so there is nothing more to refund. It can take up to 5 working days to reach your bank."
+        - { match: "*", reply: 'Action: refund({"order_id": "OD-5512", "amount_paise": 6000, "reason": "damaged"})' }
+      tools:
+        refund: { returns: { status: 409, code: PAY-4091, refunded_on: "2026-09-28" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: returns_matches, value: "(?i)already refunded" }
+
+  - name: an_amount_over_what_is_left_is_named_with_the_limit
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-6020: two of the four mangoes were rotten. Refund the 240 rupees." }
+      llm_script:
+        - { match: { contains: "RF-6020" },
+            reply: "Final Answer: 180 rupees was what this order had left to refund, and I have refunded it. Your refund is RF-6020." }
+        - match:
+            all:
+              - { regex: '"field":\s*"amount_paise"' }
+              - { regex: '"received":\s*24000\b' }
+              - { contains: "18000" }
+          reply: 'Action: refund({"order_id": "OD-6020", "amount_paise": 18000, "reason": "damaged"})'
+        - { match: "*", reply: 'Action: refund({"order_id": "OD-6020", "amount_paise": 24000, "reason": "damaged"})' }
+      tools:
+        refund:
+          by_arg:
+            arg: amount_paise
+            values:
+              "18000": { status: 200, refund_id: RF-6020 }
+            default: { status: 422, code: PAY-4221, refundable_paise: 18000 }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { order_id: OD-6020, amount_paise: 18000 } }
+        - { type: returns_matches, value: "RF-6020" }
+
+  - name: a_missing_field_and_an_extra_one_are_both_named
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-8150: the paneer was past its date. Refund 90 rupees." }
+      llm_script:
+        - { match: { contains: "RF-8150" },
+            reply: "Final Answer: I have refunded 90 rupees for the paneer. Your refund is RF-8150." }
+        - match:
+            all:
+              - { regex: '"field":\s*"reason"' }
+              - { regex: '"received":\s*null' }
+              - { contains: '"wrong_item"' }
+              - { regex: '"field":\s*"currency"' }
+              - { regex: '"received":\s*"INR"' }
+              - { regex: '\[(?=[^\]]*"order_id")(?=[^\]]*"amount_paise")(?=[^\]]*"reason")' }
+          reply: 'Action: refund({"order_id": "OD-8150", "amount_paise": 9000, "reason": "damaged"})'
+        - match:
+            all:
+              - { regex: '"field":\s*"currency"' }
+              - { regex: '"received":\s*"INR"' }
+              - { regex: '\[(?=[^\]]*"order_id")(?=[^\]]*"amount_paise")(?=[^\]]*"reason")' }
+          reply: 'Action: refund({"order_id": "OD-8150", "amount_paise": 9000})'
+        - match:
+            all:
+              - { regex: '"field":\s*"reason"' }
+              - { regex: '"received":\s*null' }
+              - { contains: '"wrong_item"' }
+          reply: 'Action: refund({"order_id": "OD-8150", "amount_paise": 9000, "currency": "INR", "reason": "damaged"})'
+        - { match: "*", reply: 'Action: refund({"order_id": "OD-8150", "amount_paise": 9000, "currency": "INR"})' }
+      tools:
+        refund:
+          by_arg:
+            arg: reason
+            values:
+              damaged: { status: 200, refund_id: RF-8150 }
+            default: { status: 400, code: PAY-4001, field: reason }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { order_id: OD-8150, amount_paise: 9000, reason: damaged } }
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: returns_matches, value: "RF-8150" }
+
+  - name: adversarial_the_payments_service_does_not_answer
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      The payments service took too long and `refund` raised a `TimeoutError`
+      instead of answering. An agent written around answers has no branch for
+      that, and the exception ends the run with the customer told nothing.
+
+      Caught at the call, the timeout is one more answer to translate, and the
+      honest translation is that a corrected call will not help right now:
+      `"retryable": false`. The model then tells the customer the refund could
+      not go through yet, instead of sending the same call into a service that
+      is not answering.
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-7710: the chips were stale. Refund 20 rupees." }
+      llm_script:
+        - match:
+            all:
+              - { regex: '"retryable":\s*false' }
+              - { regex: '"error":\s*"unavailable"' }
+          reply: "Final Answer: Our payments service is not answering right now, so I could not refund the 20 rupees yet. Your request for order OD-7710 is saved, and you do not need to ask again."
+        - { match: "*", reply: 'Action: refund({"order_id": "OD-7710", "amount_paise": 2000, "reason": "damaged"})' }
+      tools:
+        refund:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the payments service did not answer within 3000 ms" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: returns_matches, value: "(?i)not answering" }
+
+reference_md: |
+  The model was never stubborn. It sent the same call again because nothing
+  it read said what to change. "Invalid input" describes the outcome and none
+  of the three things a correction needs: which field, what was sent, and what
+  would have been accepted.
+
+  Anthropic's tool-use documentation (Handle tool calls, read 1 October 2026)
+  says to "write instructive error messages" that include "what went wrong and
+  what Claude should try next", and notes that Claude retries an invalid call
+  two or three times "with corrections" before apologising. The corrections
+  come from the error. The MCP specification (version 2026-07-28, read the
+  same day) separates protocol errors from tool execution errors, which
+  include input validation and business logic errors, and says the second
+  kind carries "actionable feedback that language models can use to
+  self-correct and retry with adjusted parameters".
+
+  Naming every problem at once matters because of the budget. The model fixes
+  what it hears about, so an error that names only the first wrong field buys
+  a second refusal and spends the correction the budget had room for. The
+  payments API stops at the first bad field, which is one reason to check the
+  whole table before calling it; the other is that a call with a field the API
+  does not take should never reach a payments service at all.
+
+  The value as sent is easy to leave out, and here it is often the whole
+  lesson: `"45.00"` in quotes tells the model it sent text where a number
+  belongs. The API's codes need translating for the same reason. A code
+  means nothing to the model, `PAY-4221` carries a lower limit that is the real
+  allowed range for this order, and two answers mean that no corrected call
+  can help. Saying `"retryable": false` for those is what lets the model stop
+  and tell the customer the truth instead of spending the rest of the budget.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your agent keeps calling a tool with the same bad argument until it gives up. What do you change in the tool's error, rather than in the prompt, so the model fixes the call?
+  source: |
+    Author judgement, with the error guidance in Anthropic's Handle tool calls page and the MCP specification, version 2026-07-28, both read 1 October 2026. No employer frequency data stands behind it.
+
+tools:
+  - name: refund
+    args: order_id, amount_paise, reason
+    returns: '`{"status": 200, "refund_id": ...}`, or a code such as `{"status": 409, "code": "PAY-4091", ...}`. It raises
+      when the service does not answer.'
+example:
+  case: refunds_a_damaged_item
+  expect: Every field passes the table, so call `refund` once, put its answer in the scratchpad as it came, and return
+    the model's answer with refund RF-1180.
+traps:
+  - An error that says only that the input was invalid, so the model sends the same call again.
+  - Naming one problem at a time, so a call with two wrong fields needs two corrections and the calls run out.
+  - Treating every refusal as fixable, so the model keeps retrying an order that cannot be refunded twice.
+  - Checking the amount against the table's limit alone, when the payments API can name a lower one for this order.

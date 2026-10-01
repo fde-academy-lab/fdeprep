@@ -18,6 +18,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Route } from "next";
 import type { VoiceQuestion } from "@/lib/voice/question";
+import { readReply } from "@/lib/http/reply";
 import { Button } from "@/components/ui/button";
 
 export function TypedAnswer({ question, mode, wordLimit }: {
@@ -35,23 +36,29 @@ export function TypedAnswer({ question, mode, wordLimit }: {
   async function send() {
     setSending(true);
     setNote(null);
+    let response: Response;
     try {
-      const response = await fetch("/api/voice/sessions/typed", {
+      response = await fetch("/api/voice/sessions/typed", {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ mode, question: question.slug, text }),
       });
-      const body = (await response.json()) as { sessionId?: number; message?: string };
-      if (!response.ok || !body.sessionId) {
-        setNote(body.message ?? "Your answer was not saved. Try again.");
-        return;
-      }
-      router.push(`/voice/sessions/${body.sessionId}` as Route);
     } catch {
-      setNote("Your answer did not reach the server and was not saved. Check the connection and send it again.");
-    } finally {
+      setNote("Your answer did not reach the server and was not saved. It is still in the box: " +
+              "check the connection and send it again.");
       setSending(false);
+      return;
     }
+    // Read whatever came back without assuming it is JSON, so a server error
+    // says it was the server and keeps its status.
+    const reply = await readReply<{ sessionId?: number }>(response);
+    setSending(false);
+    if (!reply.ok || typeof reply.body?.sessionId !== "number") {
+      setNote(reply.message ?? `Your answer was not saved: the server answered ${reply.status}. ` +
+              "It is still in the box, so send it again in a minute.");
+      return;
+    }
+    router.push(`/voice/sessions/${reply.body.sessionId}` as Route);
   }
 
   return (

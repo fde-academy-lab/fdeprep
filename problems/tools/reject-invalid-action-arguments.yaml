@@ -1,0 +1,462 @@
+slug: reject-invalid-action-arguments
+title: "Validate the model's arguments before acting"
+day: 7
+skill: Validate what the model asked for before you do it
+artefact_type: code
+difficulty: medium
+track: tools
+concept:
+  topic: "Strict input schemas"
+  question: "What do you check before running what the model asked for?"
+est_minutes: 30
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: prompt-hardening, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A refunds agent issues refunds up to 200 pounds without a human. The tool
+  takes an amount in pence and an order id, and the loop passes through
+  whatever the model produced.
+
+  Last month it issued a refund of one penny. The model had emitted
+  `{"amount_cents": true, "order_id": "A-3390"}`, the loop checked
+  `isinstance(amount_cents, int)`, and in Python that is true of `True`, which
+  the tool then spent as 1.
+
+  The same week it sent `{"currency": "GBP", ...}` to a tool that takes no
+  currency, and the call raised in production.
+
+  The model choosing arguments is the model producing a suggestion. Check it.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns either `Final Answer: <text>` or
+
+      Action: refund({"amount_cents": 4500, "order_id": "A-1"})
+
+  where the payload is a JSON object. The `refund` tool accepts exactly these
+  arguments and nothing else:
+
+  | Name | Type | Rule |
+  |---|---|---|
+  | `amount_cents` | integer | 1 to 20000 inclusive, and a boolean is not an integer |
+  | `order_id` | string | non-empty |
+
+  A payload that breaks any of those is not called. Put the reason in the
+  scratchpad, naming the field and the rule it broke, and let the model try
+  again.
+
+  Budget: at most 3 model calls. Allowed imports: json, re. Return a
+  non-empty string in every case, including when the model never sends a
+  payload that passes.
+
+stub_code: |
+  import json
+  import re
+
+  MIN_CENTS = 1
+  MAX_CENTS = 20000
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Request: {question}\n"
+
+      for _ in range(8):
+          output = llm(scratchpad)
+
+          # TODO 1: return the text when the reply is a Final Answer
+          # TODO 2: parse the JSON payload out of the Action
+          # TODO 3: reject unknown keys, missing keys, wrong types and an
+          #         amount outside the range
+          # TODO 4: call refund only when every check passed
+          pass
+
+      return "I could not process this refund."
+
+steps:
+  - id: s1
+    text: Return the text when the reply is a Final Answer.
+    check_id: s1
+  - id: s2
+    text: Parse the JSON payload out of the Action.
+    check_id: s2
+  - id: s3
+    text: Refuse unknown keys, missing keys, wrong types and an amount out of range.
+    check_id: s3
+  - id: s4
+    text: Call refund only when every check passed.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_nonempty }
+  # A parsed payload shows only in the arguments refund receives, and the one
+  # assertion that reads arguments needs two calls, so s2 carries its own
+  # case: two refunds whose arguments differ only if each came from its Action.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Refund fifteen pounds on order D-4 and eight pounds on order D-5" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: 'Action: refund({"amount_cents": 1500, "order_id": "D-4"})' }
+        - { match: { call_index: 2 }, reply: 'Action: refund({"amount_cents": 800, "order_id": "D-5"})' }
+        - { match: "*", reply: "Final Answer: I refunded 1500 pence to order D-4 and 800 pence to order D-5." }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: refund }
+        - { type: no_repeated_identical_tool_call }
+        - { type: returns_matches, value: "(?i)refunded 1500 pence to order D-4 and 800 pence to order D-5" }
+  # A loop that never calls refund also refuses everything, so s3's case
+  # sends a payload with a key the tool does not take, then a clean one. The
+  # step holds when only the clean payload reached refund.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Refund thirty one pounds on order C-58. The parcel arrived damaged." }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: 'Action: refund({"amount_cents": 3100, "order_id": "C-58", "reason": "arrived damaged"})' }
+        - { match: { call_index: 2 }, reply: 'Action: refund({"amount_cents": 3100, "order_id": "C-58"})' }
+        - { match: "*", reply: "Final Answer: I refunded 3100 pence to order C-58." }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: refund }
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: returns_matches, value: "(?i)refunded 3100 pence to order C-58" }
+  # s4 carries its own case: a payload whose keys and types are right and
+  # whose amount is below the range, then a clean one. The step holds when
+  # refund ran once, with the clean payload, so a loop that writes the
+  # refusal and calls refund anyway reads red, and so does one that never
+  # calls refund.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "Refund twenty two pounds fifty on order F-208. The shoes came back unworn." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: 'Action: refund({"amount_cents": -2250, "order_id": "F-208"})' }
+        - { match: { call_index: 2 }, reply: 'Action: refund({"amount_cents": 2250, "order_id": "F-208"})' }
+        - { match: "*", reply: "Final Answer: I refunded 2250 pence to order F-208." }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { amount_cents: 2250, order_id: "F-208" } }
+        - { type: tool_calls_at_most, value: 1 }
+
+hints:
+  - A payload can be wrong in four ways. List them before you write a check,
+    because a first draft usually covers two.
+  - Python says a boolean is an integer. The refunds tool does not.
+  - Two of the four checks are about keys rather than values, and one of those
+    is about keys you did not expect.
+  - A refusal that does not name the field it refused gets the same payload back.
+  - "Collect every problem into a list before deciding anything: keys the tool
+    does not take, keys it needs and did not get, types, then the range. Call
+    refund only when the list is empty, and otherwise append the list and go
+    round again."
+
+scenario:
+  headline: "The refunds agent paid out one penny and reported success"
+  who: The payments team behind a refunds agent
+  situation: >-
+    The agent refunds up to 200 pounds with no person involved. Last month the
+    model sent true as the amount, the loop's isinstance check let it through,
+    and the tool refunded one penny.
+  stakes: >-
+    The refund reported success, so the only trace was a customer who was still
+    angry. The same week a payload with a currency field crashed the call in
+    production.
+  metrics:
+    - { label: Refund actually paid, value: 1p }
+    - { label: Automatic limit, value: "£200" }
+    - { label: Bad payloads that week, value: "2" }
+
+diagram:
+  title: Where a payload that looks valid gets spent
+  caption: >-
+    Every check sits between the parse and the call. `isinstance(True, int)` is
+    true in Python, so a type check that asks Python passes a boolean.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: asks for a refund, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: writes the JSON payload, kind: model, tone: teal, at: [1, 0] }
+    - { id: loop, label: Agent loop, sub: parses the Action, kind: agent, tone: purple, at: [1, 1] }
+    - { id: checks, label: Argument checks, sub: "keys, types, range", kind: guard, tone: green, at: [2, 1] }
+    - { id: refund, label: "`refund()`", sub: moves real money, kind: tool, tone: orange, at: [3, 1] }
+    - { id: penny, label: One penny refunded, sub: true was spent as 1, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: customer, to: loop, label: refund request, step: 1 }
+    - { from: loop, to: model, label: scratchpad, step: 2 }
+    - { from: model, to: loop, label: "`amount_cents`: true", step: 3 }
+    - { from: loop, to: checks, label: payload, step: 4 }
+    - { from: checks, to: refund, label: every check passed, tone: success }
+    - { from: checks, to: loop, label: refusal naming the field, tone: muted }
+    - { from: loop, to: penny, label: "`isinstance(True, int)`", tone: danger }
+
+approach:
+  goal: Treat the model's arguments as a claim to check before money moves
+  branches:
+    - label: Check the keys
+      leaves: [a key the tool does not take, a key the tool needs and did not get]
+    - label: Check each type the way the table means it
+      detail: Python's idea of an integer includes True. The table's idea does not.
+      leaves: [an integer that is not a boolean, a string that is not empty]
+    - label: Check the range where it is enforced
+      leaves: [1 to 20000 pence, the limit lives in the dispatching code]
+    - label: Refuse so the next attempt differs
+      leaves: [name the field, say the rule it broke]
+
+coach:
+  opening: >-
+    Find the line that calls refund. Every check this problem asks for sits
+    between the JSON parse and that call.
+  signals:
+    - id: bool-passes-as-int
+      when:
+        code_matches: 'isinstance\([^,()]+,\s*int\s*\)'
+        code_lacks: '\bbool\b|type\([^()]*\)\s*(is|==|!=|in)\b'
+      say: >-
+        `isinstance(value, int)` is true for True and False, because bool is a
+        subclass of int. What does the refunds tool do with an amount of True?
+    - id: no-unknown-key-check
+      when:
+        code_lacks: '(?i)unknown|unexpected|extra|allowed|set\(|\.keys\(|-\s*\{|\bfor\s+\w+\s+in\s+(payload|args|arguments|params|data)\b|len\(\s*(payload|args|arguments|params|data)\s*\)'
+      say: >-
+        Nothing checks for a key the refund tool does not take. The model has
+        sent a currency field once already. Where would your code notice it?
+    - id: hidden-boolean
+      when: { test_failed: a_boolean_is_not_an_integer }
+      say: >-
+        In that run the model sent true as the amount. Trace your checks with
+        that value: which one should stop it, and what does Python tell it?
+    - id: hidden-unknown-key
+      when: { test_failed: an_argument_the_tool_does_not_take_is_refused }
+      say: >-
+        That payload carried a field the refund tool does not take. Which line
+        of your code looks at a key you did not expect?
+    - id: hidden-ceiling
+      when: { test_failed: an_amount_above_the_ceiling_is_refused }
+      say: >-
+        That amount was above what the agent may refund without a person. Does
+        your refusal tell the model what the limit is?
+    - id: hidden-never-passes
+      when: { test_failed: a_payload_that_never_passes_still_ends_in_an_answer }
+      say: >-
+        In that run the model kept sending a refund with no order id and never
+        gave up. Your loop has three model calls to spend. What does it return
+        once they are gone?
+    - id: hidden-arguments-passed
+      when: { test_failed: a_payload_that_passes_reaches_refund_field_by_field }
+      say: >-
+        The payload in that run passed every check. Which arguments did your
+        refund call pass, and are they the two the contract's table says refund
+        accepts?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the happy path: return a Final Answer, parse the payload and
+        call refund. One green public test is a foothold, and the checks come
+        after it.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint says where to look, and each
+        one after it narrows the search.
+  wrap_up: >-
+    A model's arguments are a suggestion in a typed costume. Check them in the
+    code that moves the money, and name what failed so the next suggestion is
+    better.
+
+tests:
+  - name: refunds_a_valid_request
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Refund order A-1, forty five pounds" }
+      llm_script:
+        - { match: { contains: "refunded" }, reply: "Final Answer: Refunded 4500 to order A-1." }
+        - { match: "*", reply: 'Action: refund({"amount_cents": 4500, "order_id": "A-1"})' }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: refund }
+        - { type: returns_matches, value: "(?i)refunded" }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: refuses_a_payload_with_a_field_missing
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Refund forty five pounds" }
+      llm_script:
+        - { match: { call_index: 2 },
+            reply: "Final Answer: I need the order id before I can refund anything." }
+        - { match: "*", reply: 'Action: refund({"amount_cents": 4500})' }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: refund }
+        - { type: returns_matches, value: "(?i)need the order id" }
+        - { type: no_exception }
+
+  - name: a_boolean_is_not_an_integer
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Refund order A-3390" }
+      llm_script:
+        - { match: { contains: "amount_cents" },
+            reply: "Final Answer: I could not work out the amount, so I have refunded nothing." }
+        - { match: "*", reply: 'Action: refund({"amount_cents": true, "order_id": "A-3390"})' }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: refund }
+        - { type: returns_matches, value: "(?i)refunded nothing" }
+        - { type: no_exception }
+
+  - name: an_argument_the_tool_does_not_take_is_refused
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Refund order A-77 in pounds sterling" }
+      llm_script:
+        - { match: { contains: "currency" },
+            reply: "Final Answer: The refund tool takes no currency, so I stopped." }
+        - { match: "*",
+            reply: 'Action: refund({"amount_cents": 1200, "order_id": "A-77", "currency": "GBP"})' }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: refund }
+        - { type: returns_matches, value: "(?i)takes no currency" }
+        - { type: terminates }
+
+  - name: an_amount_above_the_ceiling_is_refused
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Refund order A-12 the full two thousand five hundred pounds" }
+      llm_script:
+        - { match: { contains: "20000" },
+            reply: "Final Answer: That is above the automatic limit. Send it to a human." }
+        - { match: "*", reply: 'Action: refund({"amount_cents": 250000, "order_id": "A-12"})' }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: refund }
+        - { type: returns_matches, value: "(?i)above the automatic limit" }
+        - { type: no_exception }
+
+  # The model sends a refund with no order id on every call, whatever the
+  # refusal says. Every loop that passes the public tests refuses it, so
+  # what this case reads is the bound: a loop bounded by the budget returns
+  # its own answer after the third call, and a larger one runs into the
+  # budget instead.
+  - name: a_payload_that_never_passes_still_ends_in_an_answer
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Refund eighteen pounds fifty. The jacket came back torn." }
+      llm_script:
+        - { match: "*", reply: 'Action: refund({"amount_cents": 1850})' }
+      tools:
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: refund }
+        - { type: terminates }
+        - { type: returns_nonempty }
+
+  # Every other hidden case refuses its payload, so none of them reads what
+  # refund received. This payload passes every check, and refund has to get
+  # amount_cents and order_id as its own arguments, the two the contract's
+  # table says it accepts. A loop that hands refund the whole payload under
+  # one argument name passes every other case.
+  - name: a_payload_that_passes_reaches_refund_field_by_field
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Refund sixty seven pounds forty on order B-4471. The kettle lid arrived cracked." }
+      llm_script:
+        - { match: { contains: "RF-60218" },
+            reply: "Final Answer: I refunded 6740 pence to order B-4471." }
+        - { match: "*", reply: 'Action: refund({"amount_cents": 6740, "order_id": "B-4471"})' }
+      tools:
+        refund: { returns: { status: 200, refunded: true, refund_id: "RF-60218" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { amount_cents: 6740, order_id: "B-4471" } }
+
+reference_md: |
+  Four checks, and the interesting one is the one Python gets wrong for you.
+
+  `isinstance(True, int)` is true because `bool` subclasses `int`, which is a
+  reasonable language decision and a terrible validation decision. A refunds
+  tool that accepts `True` as an amount spends one penny and returns success,
+  so the only trace of the bug is a customer who is still angry. `type(x) is
+  int` is the check that means what the table means, and it is the kind of
+  line that gets "simplified" back to `isinstance` by a reviewer who has not
+  read this problem.
+
+  Unknown keys are the check people leave out, because rejecting something the
+  tool would have ignored feels pedantic. It is not. `currency` arriving means
+  the model believes it is calling a different tool from the one that exists,
+  and the next payload from that belief will be wrong in a way that does not
+  raise.
+
+  The range check is where the policy lives. Twenty thousand pence is a
+  decision somebody made about how much money an agent may move without a
+  person, and it belongs in the code that dispatches rather than in the prompt
+  that asks, because a prompt is editable by anyone with access to a text box.
+
+  Naming the field in the refusal is what makes the retry different. "Invalid
+  arguments" gets the same payload back. "`amount_cents` must be an integer
+  between 1 and 20000, and true is not one" gets a number.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Why should tool arguments be validated after a model chooses the tool?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I013.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: refund
+    args: amount_cents, order_id
+    returns: '`{"status": 200, "refunded": true}`. It spends whatever amount it is given, so an amount
+      of `True` refunds one penny.'
+example:
+  case: refuses_a_payload_with_a_field_missing
+  expect: 'The payload has no `order_id`, so never call `refund`: append a refusal that names the missing
+    field, and return the model''s next answer, which asks for the order id.'
+traps:
+  - Checking the amount with `isinstance(value, int)`, which lets `True` through because `bool` is a subclass
+    of `int`.
+  - Checking only the keys the tool needs, so a key it does not take still reaches the call.
+  - Refusing an amount above the ceiling in words that never state the limit, so the model cannot tell
+    what it broke.
+  - Letting a model that never sends a valid payload run the loop into the budget, where the loop should
+    return its own answer.

@@ -1,6 +1,6 @@
 # FDE Prep: problem authoring
 
-Problems live as YAML files in a Git repository under `problems/<track>/<slug>.yaml`. An admin imports from a Git path, the validator runs, a diff is shown, and publishing writes a new `problem_version` row. Nothing is authored in a web form, because problem content needs review and history.
+Problems live as YAML files in a Git repository under `problems/<chapter>/<slug>.yaml`, where the folder is the problem's `track` value. An admin imports from a Git path, the validator runs, a diff is shown, and publishing writes a new `problem_version` row. Nothing is authored in a web form, because problem content needs review and history.
 
 ---
 
@@ -22,7 +22,8 @@ The last six rows land with `eval/` and are not enforced today, because no probl
 | A code problem with no `stub_code`, or a stub that does not define `run_agent(...)` | Every tier has starter code since the 29 September 2026 amendment to docs/00 section 3.2, and the runner calls the entry point the contract names |
 | A kit field longer than its box, a diagram with fewer than 2 or more than 10 nodes, an edge to a node that does not exist, or an unknown key anywhere in the kit | The renderer draws fixed boxes. An unknown key is usually an unquoted comma that split a value, which YAML does without complaint. |
 | A coach signal with no condition, a pattern that does not compile, or a `test_failed` naming a test the problem does not have | A signal that can never fire, or always fires, is noise the learner learns to ignore |
-| A `track` outside the vocabulary in `web/lib/problems/vocabulary.ts` | The journey map groups problems by track, and an invented track is a problem nobody can find |
+| A `track` outside the chapters in `web/lib/problems/vocabulary.ts` | The journey map groups problems by chapter, and an invented chapter is a problem nobody can find |
+| A catalogue problem with no `concept`, a `concept.topic` that is not one of its chapter's topics, or a `concept.question` that is not a question of 100 characters or fewer | The page shows the topic and the question before the learner starts, and the chapter page groups by topic. Added 1 October 2026. |
 | Steps present without matching `step_check` entries | The Easy checklist would show items that never turn green |
 | A `step_check` with no assertions | It holds for any code, the stub's included, so its step reads unchecked forever. Added 30 September 2026. |
 | A `must_keep` of text the original prompt lacks, or a `must_add` of text it already has | The first asks for an addition under the wrong name, and the second passes before the learner types anything. Added 30 September 2026. |
@@ -40,7 +41,7 @@ The last six rows land with `eval/` and are not enforced today, because no probl
 | A C1 problem declaring panelist 3 | Spending a model call on an exact-match question is waste that compounds across a cohort |
 | A heuristic named in a problem that is absent from the heuristic registry | An author inventing a heuristic inline writes a rule that fails at run time in front of a learner |
 | No `interview_evidence`, or an empty `asked_as` | Every problem exists to prepare somebody for a technical round, and a North Star CI cannot check is a wish |
-| A catalogue problem with no `day` from 1 to 30, no `skill`, a `title` over 64 characters or a `skill` over 90 | The catalogue is told as a learner's first 30 days as an FDE: the title says what the client sees, the skill line says what is practised, and the row shows both on one line each. Added 30 September 2026, after the first beta tester found the titles hard to follow. Fixtures are exempt. |
+| A catalogue problem with no `day` from 1 to 30, no `skill`, a `title` over 64 characters or a `skill` over 90 | The catalogue is told as a learner's first 30 days as an FDE: the title says what the client sees, the skill line says what is practised, and the row shows both on one line each. Added 30 September 2026, after the first beta tester found the titles hard to follow. Amended 1 October 2026: the title names the task in plain words, starting with a verb, in eight words or fewer, for a learner meeting the topic for the first time, and the incident it used to carry moves to `scenario.headline`, 90 characters at most, which the scenario card and the catalogue row show under the title. A ninth word is refused with a message naming `scenario.headline`. Fixtures are exempt. |
 | A name in code left outside backticks in any field a learner reads | A function, field or exception written as plain prose reads as an ordinary word. A name with an underscore, a call, a dot between two lower-case words, or a name ending in `Error` or `Exception` counts. `tests/test_inline_code.py` checks it and `python -m tools.inline_code --fix` marks them in place. Code blocks, required headings and the original prompt are left alone. Added 30 September 2026. |
 | A catalogue problem whose `tools` differ from the tools its cases script, whose `example` names a hidden case or repeats a probe, with fewer than two or more than four `traps`, or with a trap, tool or example that quotes a hidden case | The page spells out what the brief implies, and hidden means unpublished: a trap that quotes a hidden case publishes it. Section 2.1 has the fields. Added 30 September 2026. |
 
@@ -52,13 +53,16 @@ Run the validator in CI on the problems repository so a bad problem never reache
 
 ```yaml
 slug: recover-from-soft-tool-errors        # unique, url-safe, never reused
-title: The order assistant mistakes failed lookups for answers   # what the client sees, 64 characters at most
+title: Catch a tool failure that looks like success   # the task, a verb first, eight words at most
 day: 6                                     # 1..30, the day of a learner's first 30 as an FDE
 skill: Catch a tool failure that looks like a success, and retry once   # what is practised, 90 characters at most
 artefact_type: code                        # code | prompt | design
 difficulty: medium                         # easy | medium | hard | extreme
 complexity: C3                             # C1..C4, a different axis: see docs/10 section 3
-track: agent-loop
+track: harness                             # the chapter; the folder has the same name
+concept:                                   # shown before the learner starts
+  topic: "Graceful degradation"            # one of the chapter's own topics
+  question: "How do you spot a failure that reports itself as a success?"   # 100 characters
 est_minutes: 25
 
 interview_evidence:                        # the North Star, made checkable
@@ -147,6 +151,19 @@ tests:
 
 Prompt problems replace `stub_code` and `tests` with `original_prompt`, `prompt_rules` and `probes`. A prompt rule is one of five kinds, each checked on every keystroke with no model call: `must_remove` (text in the original prompt that has to go), `must_keep` (text in the original that has to stay), `must_add` (text the original lacks that the learner has to add), `max_words` and `min_words`. `must_add` was added on 30 September 2026. Before it, a `must_keep` of text the original lacked asked for an addition and told a learner who never had the text that it was "no longer in the prompt". Design problems replace them with `word_range`, `required_headings`, `rubric` and `exemplars`.
 
+### 2.0 Chapters and the concept
+
+Amended 1 October 2026. The eleven topic tracks became twelve chapters, each one concept of agent engineering or one stage of delivery, plus the two closing sections. The YAML field and the database column keep the name `track`; a learner reads "chapter".
+
+| Stage | Chapters |
+|---|---|
+| Foundations | `loop` Loop engineering, `tools` Tool design, `harness` Harness engineering |
+| Builder | `context` Context engineering, `memory` Memory architecture, `orchestration` Orchestration patterns |
+| Production | `guardrails` Guardrails and permissions, `human-in-the-loop` Human in the loop, `evals` Evals for agents, `observability` Observability and tracing |
+| Forward deployed | `agentic-pdlc` Agentic PDLC, `agentic-sdlc` Agentic SDLC (AI-DLC), `builds` End-to-end builds, `fde-practice` Client delivery |
+
+Each chapter has a closed list of topics in `CHAPTER_TOPICS`, and every catalogue problem names one in `concept.topic` with the question it answers in `concept.question`. `tools/chapters.py` records where each problem that existed on 1 October 2026 came from. `python -m tools.storyline` lays the catalogue on the 30-day path after any change, and a test fails when a day is off it.
+
 ### 2.1 The kit
 
 Added 29 September 2026. A brief says what is wrong. The kit is what lets a learner picture it and get unstuck on it, and every catalogue problem carries one. The renderer draws each piece in a fixed box, so the limits below are enforced in CI.
@@ -233,7 +250,7 @@ Quote any value that holds a comma, a colon or a question mark. The runner parse
 
 ## 3. Worked seed problem: code, Medium
 
-This copy shows the schema's shape as it was first written. The catalogue file, `problems/agent-loop/recover-from-soft-tool-errors.yaml`, has moved on since, with its kit, its step checks and more hidden cases, and it is the one that runs. Amended 30 September 2026, when a reader found the two had drifted apart.
+This copy shows the schema's shape as it was first written. The catalogue file, `problems/harness/recover-from-soft-tool-errors.yaml`, has moved on since, with its kit, its step checks and more hidden cases, and it is the one that runs. Amended 30 September 2026, when a reader found the two had drifted apart.
 
 ```yaml
 slug: recover-from-soft-tool-errors
@@ -242,7 +259,7 @@ day: 6
 skill: Catch a tool failure that looks like a success, and retry once
 artefact_type: code
 difficulty: medium
-track: agent-loop
+track: harness
 est_minutes: 25
 competencies:
   - { slug: tool-error-handling, weight: 1.0 }
@@ -392,14 +409,14 @@ The adversarial case is worth reading closely. The scripted model is written so 
 
 ## 4. Worked seed problem: prompt surgery, Hard
 
-As in section 3, the catalogue file, `problems/prompt/stop-the-tool-list-leak.yaml`, is the one that runs.
+As in section 3, the catalogue file, `problems/guardrails/stop-the-tool-list-leak.yaml`, is the one that runs.
 
 ```yaml
 slug: stop-the-tool-list-leak
 title: Stop a support agent leaking its tool list
 artefact_type: prompt
 difficulty: hard
-track: prompt
+track: guardrails
 est_minutes: 35
 competencies:
   - { slug: prompt-hardening, weight: 1.0 }

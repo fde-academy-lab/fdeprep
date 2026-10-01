@@ -14,7 +14,7 @@ slug: a-prompt-problem
 title: A prompt problem
 artefact_type: prompt
 difficulty: hard
-track: prompt
+track: context
 est_minutes: 30
 competencies:
   - { slug: prompt-hardening, weight: 1.0 }

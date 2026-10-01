@@ -12,7 +12,7 @@ slug: a-problem
 title: A problem
 artefact_type: code
 difficulty: medium
-track: agent-loop
+track: loop
 est_minutes: 20
 call_budget: 6
 time_limit_s: 10
@@ -365,7 +365,7 @@ slug: p
 title: P
 artefact_type: prompt
 difficulty: hard
-track: prompt
+track: context
 est_minutes: 35
 competencies:
   - { slug: prompt-hardening, weight: 1.0 }

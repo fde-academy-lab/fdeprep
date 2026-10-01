@@ -1,11 +1,14 @@
 slug: quarantine-a-poisoned-document-before-answering
-title: Customers are sent to a number that asks for card details
-day: 20
+title: "Set aside a poisoned document before answering"
+day: 19
 skill: Set a poisoned forum post aside before it writes the answer
 artefact_type: code
-difficulty: hard
+difficulty: medium
 track: guardrails
-est_minutes: 35
+concept:
+  topic: "Input and output filtering"
+  question: "What do you do with a document that tries to give the agent orders?"
+est_minutes: 30
 competencies:
   - { slug: retrieval, weight: 1.0 }
   - { slug: prompt-hardening, weight: 1.0 }
@@ -136,6 +139,7 @@ hints:
     prompt.
 
 scenario:
+  headline: "Customers are sent to a number that asks for card details"
   who: The help assistant at a consumer electronics retailer
   situation: >-
     A forum post told AI assistants to send refund questions to a partner desk.

@@ -8,6 +8,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { validateProblemYaml } from "../lib/problems/validate.ts";
+import { CHAPTER_TOPICS, TRACKS } from "../lib/problems/vocabulary.ts";
 
 const BASE = `
 slug: a-problem
@@ -16,7 +17,7 @@ day: 1
 skill: Practise one thing
 artefact_type: code
 difficulty: medium
-track: agent-loop
+track: loop
 est_minutes: 20
 call_budget: 6
 time_limit_s: 10
@@ -67,6 +68,9 @@ interview_evidence:
 `;
 
 const KIT = `
+concept:
+  topic: "Iteration budgets"
+  question: "Who stops a loop that never ends by itself?"
 hints:
   - Look at what the loop does when nothing ends it.
   - A budget is a number the loop checks, not a hope.
@@ -321,16 +325,45 @@ describe("a stage of a build", () => {
 
 describe("the track", () => {
   it("rejects a track outside the vocabulary, on its line", () => {
-    const source = (BASE + KIT).replace("track: agent-loop", "track: vibes");
+    const source = (BASE + KIT).replace("track: loop", "track: vibes");
     const error = validateProblemYaml(source, "a.yaml", { requireKit: true })
       .errors.find((e) => e.rule === "unknown_track");
     expect(error?.line).toBe(lineOf(source, "track: vibes"));
   });
 
-  it("accepts the tracks added with the catalogue expansion", () => {
-    for (const track of ["structured-output", "guardrails", "production", "fde-practice", "builds"]) {
-      const source = (BASE + KIT).replace("track: agent-loop", `track: ${track}`);
+  it("accepts every chapter, with a topic from that chapter", () => {
+    for (const track of TRACKS) {
+      const source = (BASE + KIT).replace("track: loop", `track: ${track}`)
+        .replace('topic: "Iteration budgets"', `topic: "${CHAPTER_TOPICS[track][0]}"`);
       expect(rules(source, { requireKit: true }), track).toEqual([]);
     }
+  });
+});
+
+describe("the concept", () => {
+  it("rejects a topic from another chapter, naming the chapter's own", () => {
+    const source = (BASE + KIT).replace('topic: "Iteration budgets"', 'topic: "LLM judges"');
+    const error = validateProblemYaml(source, "a.yaml", { requireKit: true })
+      .errors.find((e) => e.rule === "kit_concept");
+    expect(error?.message).toContain("Reason, act, observe");
+  });
+
+  it("wants a question, ending in a question mark", () => {
+    const source = (BASE + KIT)
+      .replace('question: "Who stops a loop that never ends by itself?"', 'question: "Budgets"');
+    expect(rules(source, { requireKit: true })).toContain("kit_concept");
+  });
+
+  it("is required on a catalogue problem", () => {
+    const source = (BASE + KIT).replace(/concept:\n  topic: .*\n  question: .*\n/, "");
+    expect(rules(source, { requireKit: true })).toContain("kit_concept");
+    expect(rules(source, { requireKit: false })).not.toContain("kit_concept");
+  });
+
+  it("travels with the parsed problem", () => {
+    const problem = validateProblemYaml(BASE + KIT, "a.yaml", { requireKit: true }).problem!;
+    expect(problem.kit.concept).toEqual({
+      topic: "Iteration budgets", question: "Who stops a loop that never ends by itself?",
+    });
   });
 });

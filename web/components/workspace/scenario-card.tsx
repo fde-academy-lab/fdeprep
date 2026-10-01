@@ -18,7 +18,12 @@ export function ScenarioCard({ scenario }: { scenario: Scenario }) {
           <Building2 aria-hidden className="size-3.5" strokeWidth={1.9} />
           {renderCode(scenario.who)}
         </p>
-        <p className="mt-2 text-lead leading-[1.45] text-text">{renderCode(scenario.situation)}</p>
+        {scenario.headline ? (
+          <p className="mt-2 text-lead font-semibold leading-snug text-text">{renderCode(scenario.headline)}</p>
+        ) : null}
+        <p className={cn("mt-2 leading-[1.45]", scenario.headline ? "text-text" : "text-lead text-text")}>
+          {renderCode(scenario.situation)}
+        </p>
         <p className="mt-2 text-text-dim">{renderCode(scenario.stakes)}</p>
       </div>
       {metrics.length ? (

@@ -21,7 +21,7 @@ import { publicView } from "../lib/submissions/view.ts";
 import { resetDatabase, seedLearner } from "./helpers.ts";
 
 const PROBLEMS = path.join(import.meta.dirname, "..", "..", "problems");
-const EASY = "tool-creation/dispatch-only-registered-actions";
+const EASY = "tools/dispatch-only-registered-actions";
 
 let learner: Awaited<ReturnType<typeof seedLearner>>;
 let problemId: number;

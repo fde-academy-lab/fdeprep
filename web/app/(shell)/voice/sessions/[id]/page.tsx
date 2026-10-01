@@ -19,8 +19,9 @@ import { clock } from "@/lib/voice/clock";
 import { DebriefNotFound, loadDebrief } from "@/lib/voice/debrief";
 import { deliveryLine } from "@/lib/voice/delivery";
 import { RETENTION_DAYS } from "@/lib/voice/audio";
-import { MAX_JUDGE_ATTEMPTS } from "@/lib/voice/judge";
-import { CONTENT_WEIGHT, PACE_WEIGHT, STRUCTURE_WEIGHT } from "@/lib/voice/score";
+import {
+  CONTENT_WEIGHT, MAX_JUDGE_ATTEMPTS, PACE_WEIGHT, STRUCTURE_WEIGHT,
+} from "@/lib/voice/score";
 import { nextQuestionSlug } from "@/lib/voice/question";
 import { currentLearner } from "@/lib/session/current";
 import { ButtonLink } from "@/components/ui/button";
@@ -39,10 +40,14 @@ const PACE_LABEL: Record<string, string> = {
 export default async function DebriefPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const learner = await currentLearner();
+  // An address with no session number in it names no session. Sent to the
+  // database it was a type error and a 500.
+  const sessionId = Number(id);
+  if (!Number.isSafeInteger(sessionId) || sessionId <= 0) notFound();
 
   let debrief;
   try {
-    debrief = await loadDebrief(Number(id), learner.enrolmentId);
+    debrief = await loadDebrief(sessionId, learner.enrolmentId);
   } catch (error) {
     if (error instanceof DebriefNotFound) notFound();
     throw error;

@@ -1,0 +1,682 @@
+slug: merge-three-memory-stores-for-one-question
+title: "Merge three memory stores for one question"
+day: 15
+skill: Merge three memory stores so each is heard, and name any store that could not answer
+artefact_type: code
+difficulty: extreme
+track: memory
+concept:
+  topic: "Retrieval strategies"
+  question: "How do you answer one question from three memory stores that each score differently?"
+est_minutes: 50
+competencies:
+  - { slug: retrieval, weight: 1.0 }
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: context-assembly, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A wealth manager looking after 90,000 clients gives its advisers an
+  assistant that prepares them for client calls. It reads three stores: the
+  client profile, which holds facts set by formal reviews, such as the risk
+  profile; the adviser's meeting notes, searched by keyword; and an index of
+  the client's emails and chats, searched by meaning.
+
+  The assistant pooled what the stores returned, sorted the pool by score and
+  kept the top four. On Monday 21 September the profile store timed out, the
+  pool was built without it, and nothing in the prompt said so. The notes
+  search found two notes, and the index filled the other two places: the
+  client's email asking about a global technology fund, and a chat line from
+  August, "happy to take more risk now the mortgage is paid off". The
+  assistant told the adviser the client was open to more risk, and the
+  adviser recommended the fund. Her risk assessment, from March, said
+  cautious.
+
+  A note's score counts matching words and runs to 3 or 4, and the index
+  scores similarity between 0 and 1, so on most days the notes take every
+  place. Write the retrieval that asks each store in its own terms, lets each
+  one be heard, and says which store was not.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the adviser's question about one client. Query the notes and
+  the index with the question itself:
+
+      tools["profile"]()           -> {"status": 200, "fields": {"risk_profile": "...", ...}}
+      tools["notes"](query=...)    -> {"status": 200, "hits": [
+                                       {"id": "n-11", "matched": 3, "about": null, "text": "..."}]}
+      tools["index"](query=...)    -> {"status": 200, "results": [
+                                       {"id": "v-207", "similarity": 0.91, "about": null, "text": "..."}]}
+
+  The profile holds the client's facts of record. Notes hits come back in
+  file order, and `matched` is how many words of the query a note contains.
+  The index always returns its five nearest results, however far away they
+  are, and `similarity` runs from 0 to 1. A memory's `about` names the profile
+  field it concerns, or is null.
+
+  Build the context:
+
+  1. Profile: every field, as `<field>: <value>`, sorted by field.
+  2. Memories, at most 4:
+     - A note counts when `matched` is 2 or more, and an index result when
+       `similarity` is 0.75 or more. Each store ranks its own, highest score
+       first, then by `id`.
+     - A memory about a field the profile returned is dropped: the profile is
+       the record for that field. When the profile is unavailable, whether
+       memories about its fields reach the prompt is your decision, and the
+       defence step asks you to justify it.
+     - Merge by taking turns, index first: the best index result, the best
+       note, the second index result, the second note, and so on, and when one
+       store runs out the other carries on. A memory whose text repeats an
+       earlier one in that order, ignoring case, spaces and punctuation, is
+       dropped. Keep the first 4.
+  3. Skipped: a store that contributed nothing is named with a reason:
+     `unavailable` when its call raised, answered with a status other than
+     200, carried an error, or sent no `fields` mapping or no list of
+     `hits` or `results`; `nothing_relevant` when it answered and nothing it
+     returned reached the context.
+
+  The prompt:
+
+      Profile:
+      <field>: <value>
+      Memories:
+      [<id>] <text>
+      Skipped: notes (nothing_relevant), index (unavailable)
+      Question: <question>
+
+  with `- none` under a heading that has nothing, and the Skipped line only
+  when a store is skipped, naming them in the order profile, notes, index.
+
+  Call `llm(prompt)` once and return
+
+      json.dumps({"answer": <the reply, stripped>,
+                  "memories": [<the id of each memory, in prompt order>],
+                  "skipped": {<store>: <reason>}})
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+defence_question: |
+  When the profile store is down, you chose whether memories about profile
+  fields still reach the prompt. The compliance officer says no suitability
+  answer may rest on anything but the profile. The head of advice says an
+  adviser about to call a client needs whatever the firm knows. Which of them
+  does your code side with, and what would you build so that neither has to
+  lose?
+
+stub_code: |
+  import json
+  import re
+
+  NOTE_FLOOR = 2
+  INDEX_FLOOR = 0.75
+  LIMIT = 4
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Answer the adviser from the profile, the notes and the index, merged.
+
+      tools["profile"]()        -> {"status": 200, "fields": {<field>: <value>}}
+      tools["notes"](query=...) -> {"status": 200, "hits": [{"id", "matched",
+                                    "about", "text"}]}, in file order
+      tools["index"](query=...) -> {"status": 200, "results": [{"id",
+                                    "similarity", "about", "text"}]}, always five
+
+      A note counts from matched >= NOTE_FLOOR, an index result from
+      similarity >= INDEX_FLOOR. Each store ranks its own, highest score first,
+      then id. A memory about a field the profile returned is dropped; when the
+      profile is unavailable, what happens to such memories is your decision.
+      Merge by turns, index first, drop a memory whose text repeats an earlier
+      one (ignoring case, spaces and punctuation), and keep the first LIMIT.
+
+      A store that contributed nothing is skipped: "unavailable" when its call
+      raised, answered with a status other than 200, carried an error or sent
+      no fields or list; "nothing_relevant" when it answered.
+
+      Prompt:
+          Profile:
+          <field>: <value>           sorted by field, or "- none"
+          Memories:
+          [<id>] <text>              in merge order, or "- none"
+          Skipped: <store> (<reason>), ...   only when a store is skipped
+          Question: <question>
+
+      Return json.dumps({"answer": <the reply, stripped>,
+                         "memories": [<ids in prompt order>],
+                         "skipped": {<store>: <reason>}}).
+      At most 2 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"answer": "", "memories": [], "skipped": {}})
+
+hints:
+  - Write down the score each search returns and what its largest and
+    smallest values mean. Then ask what sorting the two searches' results
+    together by that number does.
+  - Each store needs a floor of its own, because the index returns five
+    neighbours whether or not any is relevant. Rank inside each store and let
+    the stores take turns, so neither can fill the context alone.
+  - The profile is the record for its fields. A memory about one of them is a
+    second answer to a question the record has already settled, unless the
+    record could not be read.
+  - Make the order total. Break ties by `id`, and count a memory saved in two
+    stores once, at its first place in the merged order, before you keep four.
+  - An empty store and a store that could not answer are different facts.
+    Name each skipped store with its reason, so the model can tell "she never
+    said" from "we could not look".
+
+scenario:
+  headline: "An adviser recommended a fund the client's risk profile ruled out"
+  who: Advisers at a wealth manager looking after 90,000 clients
+  situation: >-
+    Before a client call, the assistant pooled the profile, the meeting notes
+    and an index of emails and chats, sorted by score. The profile store had
+    timed out, nothing said so, and a chat line about taking more risk stood
+    in for the risk assessment.
+  stakes: >-
+    A client assessed as cautious was put into a single-sector technology
+    fund. The firm upheld her complaint, and every answer the assistant gave
+    that week is under review.
+  metrics:
+    - { label: Risk profile on record, value: cautious }
+    - { label: Stores searched, value: "3" }
+    - { label: Stores that answered, value: "2" }
+
+diagram:
+  title: Where one store's silence and another's numbers decided the answer
+  caption: >-
+    Pooled by score, the store with the larger numbers wins and a missing
+    store goes unnoticed. Asked in their own terms, each store is heard or
+    named as missing.
+  direction: lr
+  nodes:
+    - { id: adviser, label: Adviser, sub: preparing for a client call, kind: actor, tone: blue, at: [0, 1] }
+    - { id: profile, label: Client profile, sub: "facts of record, timed out", kind: store, tone: orange, at: [1, 0] }
+    - { id: notes, label: Meeting notes, sub: "keyword hits, scores of 2 to 4", kind: store, tone: teal, at: [1, 1] }
+    - { id: index, label: Email and chat index, sub: "five nearest, similarity under 1", kind: store, tone: teal, at: [1, 2] }
+    - { id: merge, label: Retrieval, sub: "floors, turns, the record first", kind: guard, tone: purple, at: [2, 1] }
+    - { id: model, label: Assistant, sub: reads what it is given, kind: model, tone: teal, at: [3, 1] }
+    - { id: wrong, label: Open to more risk, sub: a chat line read as the record, kind: output, tone: pink, at: [4, 0] }
+    - { id: right, label: "Cautious, profile unread", sub: says what it could not check, kind: output, tone: green, at: [4, 2] }
+  edges:
+    - { from: adviser, to: merge, label: one question, step: 1 }
+    - { from: merge, to: profile, label: fields, step: 2 }
+    - { from: merge, to: notes, label: by keyword, step: 2 }
+    - { from: merge, to: index, label: by meaning, step: 2 }
+    - { from: merge, to: model, label: memories and a Skipped line, tone: success, step: 3 }
+    - { from: model, to: right, label: hedges, tone: success }
+    - { from: index, to: wrong, label: pooled by score, tone: danger }
+
+approach:
+  goal: Hear every store in its own terms, and say which one was missing
+  branches:
+    - label: Each store has its own currency
+      detail: Matching words and similarity are different numbers, so neither can rank the other.
+      leaves: [a floor for each store, rank inside each store, take turns between them]
+    - label: The record outranks a memory
+      leaves: [a memory about a profile field, "and when the profile cannot answer?"]
+    - label: The same question gets the same context
+      leaves: [break ties by id, a memory saved twice counts once]
+    - label: Missing is not the same as empty
+      leaves: [unavailable, nothing relevant, tell the model which]
+
+coach:
+  opening: >-
+    Before you merge anything, write down what a score of 3 means in the notes
+    and what 0.91 means in the index. Your merge has to work without ever
+    comparing the two.
+  signals:
+    - id: about-ignored
+      when: { code_lacks: '(?:\.get\(\s*|\[\s*)["'']about["'']' }
+      say: >-
+        Nothing in your retrieval reads what a memory is `about`. What should
+        happen to a chat line about the risk profile when the profile itself
+        has answered?
+    - id: hidden-turns
+      when: { test_failed: the_index_gets_its_turn_against_a_page_of_notes }
+      say: >-
+        Five notes passed the floor in that run, and one index result did.
+        Which store took your four places, and was the client's own email among
+        them?
+    - id: hidden-record
+      when: { test_failed: the_profile_overrules_a_memory_about_the_same_field }
+      say: >-
+        In that run a chat line about risk disagreed with the risk profile.
+        Was it in your prompt, next to the profile?
+    - id: hidden-order
+      when: { test_failed: ties_break_by_id_and_a_memory_counts_once }
+      say: >-
+        Three index results in that run tied, and one memory was saved in both
+        stores. List your merged order before the cut and check both.
+    - id: adversarial-profile-down
+      when: { test_failed: adversarial_the_profile_store_is_down }
+      say: >-
+        The profile store answered with an error in that run. What did your
+        prompt tell the model about the profile?
+    - id: adversarial-index-down
+      when: { test_failed: adversarial_the_index_times_out }
+      say: >-
+        The index never answered in that run. Did your code carry on with the
+        other two stores, and did it say which one it lost?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with each store on its own: call it, apply its floor and rank it.
+        Print the two ranked lists for the first public case before you merge.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. On Extreme the hints open after two failed
+        runs and an attempt note, and the first says what to write down about
+        each store's score.
+  wrap_up: >-
+    Stores that score in different units cannot share one ranking. Give each
+    its own floor and its own order, let them take turns, let the record
+    overrule a memory about it, and tell the model which store did not answer.
+
+tests:
+  - name: the_profile_and_both_searches_all_answer
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Is the global technology fund suitable for her ISA top-up?" }
+      llm_script:
+        - { match: { contains: "happy to take more risk" },
+            reply: "Yes. She told you in August she is happy to take more risk, so the technology fund suits her." }
+        - match: { all: [ { contains: "risk_profile: cautious" },
+                          { contains: "global technology fund she read about" } ] }
+          reply: "Not as it stands. Her risk profile is cautious, and a single-sector technology fund does not fit it. She asked about this fund in September, so offer to review her risk assessment first."
+        - { match: { contains: "risk_profile: cautious" },
+            reply: "Her risk profile is cautious. I cannot see that she has asked about this fund." }
+        - { match: "*", reply: "I do not have enough on this client to say." }
+      tools:
+        profile:
+          returns:
+            status: 200
+            fields:
+              risk_profile: "cautious, from the risk assessment on 12 March 2026"
+              time_horizon: five years
+              ethical_exclusions: tobacco and weapons
+        notes:
+          returns:
+            status: 200
+            hits:
+              - { id: n-03, matched: 2, about: null,
+                  text: "14 March meeting: keeps 20,000 pounds in cash for her daughter's wedding in 2027." }
+              - { id: n-11, matched: 3, about: null,
+                  text: "2 June call: asked how much of this year's ISA allowance is left." }
+        index:
+          returns:
+            status: 200
+            results:
+              - { id: v-207, similarity: 0.91, about: null,
+                  text: "Email, 2 September: asked whether her ISA could hold the global technology fund she read about." }
+              - { id: v-150, similarity: 0.80, about: null, text: "Email, 9 July: wants every statement by email." }
+              - { id: v-033, similarity: 0.41, about: null, text: "Email, 4 April: thanked the adviser for the birthday card." }
+              - { id: v-090, similarity: 0.38, about: null, text: "Chat, 1 May: asked how to update her address." }
+              - { id: v-061, similarity: 0.35, about: null, text: "Chat, 8 May: asked when the office closes for the bank holiday." }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: index, args: { query: "Is the global technology fund suitable for her ISA top-up?" } }
+        - { type: returns_matches, value: "(?i)risk profile is cautious" }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answer, memories, skipped]
+            properties:
+              memories:
+                type: array
+                maxItems: 4
+                allOf:
+                  - contains: { const: v-207 }
+                  - contains: { const: n-11 }
+                not: { contains: { const: v-033 } }
+              skipped: { type: object, maxProperties: 0 }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_store_with_nothing_relevant_is_named
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Has she said how she wants us to contact her?" }
+      llm_script:
+        - match: { all: [ { contains: "wants every statement by email" },
+                          { contains: "phone her only after 6pm" },
+                          { contains: "Skipped: notes (nothing_relevant)" } ] }
+          reply: "She wants statements by email and calls only after 6pm. Your meeting notes have nothing on contact."
+        - match: { all: [ { contains: "wants every statement by email" },
+                          { contains: "phone her only after 6pm" } ] }
+          reply: "She wants statements by email and calls only after 6pm."
+        - { match: "*", reply: "I cannot find anything on how she likes to be contacted." }
+      tools:
+        profile:
+          returns:
+            status: 200
+            fields:
+              risk_profile: "cautious, from the risk assessment on 12 March 2026"
+              time_horizon: five years
+        notes:
+          returns:
+            status: 200
+            hits:
+              - { id: n-21, matched: 1, about: null, text: "3 February: prefers meetings in the morning." }
+              - { id: n-08, matched: 1, about: null, text: "12 January: asked for a copy of the fee schedule." }
+        index:
+          returns:
+            status: 200
+            results:
+              - { id: v-150, similarity: 0.88, about: null, text: "Email, 9 July: wants every statement by email." }
+              - { id: v-090, similarity: 0.79, about: null, text: "Chat, 1 May: asked us to phone her only after 6pm." }
+              - { id: v-033, similarity: 0.44, about: null, text: "Email, 4 April: thanked the adviser for the birthday card." }
+              - { id: v-061, similarity: 0.40, about: null, text: "Chat, 8 May: asked when the office closes for the bank holiday." }
+              - { id: v-012, similarity: 0.31, about: null, text: "Email, 2 January: wished the team a happy new year." }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)meeting notes have nothing on contact" }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answer, memories, skipped]
+            properties:
+              memories: { const: [v-150, v-090] }
+              skipped: { const: { notes: nothing_relevant } }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: the_index_gets_its_turn_against_a_page_of_notes
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Is the global technology fund suitable for her ISA top-up?" }
+      llm_script:
+        - { match: { contains: "happy to take more risk" },
+            reply: "Yes. She told you in August she is happy to take more risk, so the technology fund suits her." }
+        - match: { all: [ { contains: "risk_profile: cautious" },
+                          { contains: "global technology fund she read about" } ] }
+          reply: "Not as it stands. Her risk profile is cautious, and a single-sector technology fund does not fit it. She asked about this fund in September, so offer to review her risk assessment first."
+        - { match: { contains: "risk_profile: cautious" },
+            reply: "Her risk profile is cautious. I cannot see that she has asked about this fund." }
+        - { match: "*", reply: "I do not have enough on this client to say." }
+      tools:
+        profile:
+          returns:
+            status: 200
+            fields:
+              risk_profile: "cautious, from the risk assessment on 12 March 2026"
+              time_horizon: five years
+        notes:
+          returns:
+            status: 200
+            hits:
+              - { id: n-03, matched: 2, about: null,
+                  text: "14 March meeting: keeps 20,000 pounds in cash for her daughter's wedding in 2027." }
+              - { id: n-11, matched: 3, about: null,
+                  text: "2 June call: asked how much of this year's ISA allowance is left." }
+              - { id: n-12, matched: 2, about: null, text: "2 June call: topped up her ISA by 5,000 pounds from savings." }
+              - { id: n-17, matched: 4, about: null,
+                  text: "Fund review: her ISA holds the global equity fund and the UK bond fund." }
+              - { id: n-19, matched: 2, about: null, text: "16 July: asked whether ISA transfers take long." }
+        index:
+          returns:
+            status: 200
+            results:
+              - { id: v-207, similarity: 0.93, about: null,
+                  text: "Email, 2 September: asked whether her ISA could hold the global technology fund she read about." }
+              - { id: v-033, similarity: 0.41, about: null, text: "Email, 4 April: thanked the adviser for the birthday card." }
+              - { id: v-090, similarity: 0.39, about: null, text: "Chat, 1 May: asked how to update her address." }
+              - { id: v-061, similarity: 0.35, about: null, text: "Chat, 8 May: asked when the office closes for the bank holiday." }
+              - { id: v-012, similarity: 0.31, about: null, text: "Email, 2 January: wished the team a happy new year." }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)asked about this fund in September" }
+        - { type: returns_matches, value: '"memories"\s*:\s*\[\s*"v-207"\s*,\s*"n-17"\s*,\s*"n-11"\s*,\s*"n-03"\s*\]' }
+
+  - name: the_profile_overrules_a_memory_about_the_same_field
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Is the global technology fund suitable for her ISA top-up?" }
+      llm_script:
+        - { match: { contains: "happy to take more risk" },
+            reply: "Yes. She told you in August she is happy to take more risk, so the technology fund suits her." }
+        - match: { all: [ { contains: "risk_profile: cautious" },
+                          { contains: "global technology fund she read about" } ] }
+          reply: "Not as it stands. Her risk profile is cautious, and a single-sector technology fund does not fit it. She asked about this fund in September, so offer to review her risk assessment first."
+        - { match: "*", reply: "I do not have enough on this client to say." }
+      tools:
+        profile:
+          returns:
+            status: 200
+            fields:
+              risk_profile: "cautious, from the risk assessment on 12 March 2026"
+              time_horizon: five years
+        notes:
+          returns:
+            status: 200
+            hits:
+              - { id: n-11, matched: 3, about: null,
+                  text: "2 June call: asked how much of this year's ISA allowance is left." }
+              - { id: n-07, matched: 2, about: risk_profile,
+                  text: "14 March meeting: completed the risk assessment, and she chose cautious." }
+        index:
+          returns:
+            status: 200
+            results:
+              - { id: v-207, similarity: 0.91, about: null,
+                  text: "Email, 2 September: asked whether her ISA could hold the global technology fund she read about." }
+              - { id: v-118, similarity: 0.86, about: risk_profile,
+                  text: "Chat, 20 August: says she is happy to take more risk now the mortgage is paid off." }
+              - { id: v-150, similarity: 0.80, about: null, text: "Email, 9 July: wants every statement by email." }
+              - { id: v-033, similarity: 0.41, about: null, text: "Email, 4 April: thanked the adviser for the birthday card." }
+              - { id: v-090, similarity: 0.39, about: null, text: "Chat, 1 May: asked how to update her address." }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)risk profile is cautious" }
+        - { type: prompt_lacks, value: "happy to take more risk" }
+        - { type: returns_matches, value: '"memories"\s*:\s*\[\s*"v-207"\s*,\s*"n-11"\s*,\s*"v-150"\s*\]' }
+
+  - name: ties_break_by_id_and_a_memory_counts_once
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "When is her daughter's wedding now, and what has she planned for it?" }
+      llm_script:
+        - { match: { contains: "moved from June to September 2027" },
+            reply: "The wedding is now in September 2027. She keeps 20,000 pounds in cash for it, and asked how to give her daughter money without a tax bill." }
+        - { match: { contains: "the wedding is in June 2027" },
+            reply: "The wedding is in June 2027, and she will pay for it from cash." }
+        - { match: "*", reply: "I cannot find anything about the wedding." }
+      tools:
+        profile:
+          returns:
+            status: 200
+            fields:
+              risk_profile: "cautious, from the risk assessment on 12 March 2026"
+              time_horizon: five years
+        notes:
+          returns:
+            status: 200
+            hits:
+              - { id: n-30, matched: 3, about: null,
+                  text: "14 March meeting: the wedding is in June 2027, and she will pay for it from cash." }
+              - { id: n-03, matched: 3, about: null,
+                  text: "14 March meeting: keeps 20,000 pounds in cash for her daughter's wedding in 2027." }
+        index:
+          returns:
+            status: 200
+            results:
+              - { id: v-388, similarity: 0.95, about: null,
+                  text: "14 March meeting - keeps 20,000 pounds in cash for her daughter's wedding in 2027" }
+              - { id: v-300, similarity: 0.90, about: null,
+                  text: "Email, 20 August: asked how to give her daughter money for the wedding without a tax bill." }
+              - { id: v-412, similarity: 0.82, about: null,
+                  text: "Chat, 30 August: the venue wants a 5,000 pound deposit in January." }
+              - { id: v-405, similarity: 0.82, about: null,
+                  text: "Email, 3 September: the wedding has moved from June to September 2027." }
+              - { id: v-033, similarity: 0.41, about: null, text: "Email, 4 April: thanked the adviser for the birthday card." }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)now in September 2027" }
+        - { type: returns_matches, value: '"memories"\s*:\s*\[\s*"v-388"\s*,\s*"v-300"\s*,\s*"n-30"\s*,\s*"v-405"\s*\]' }
+
+  - name: adversarial_the_profile_store_is_down
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      The profile store timed out and answered 200 with an error in the body,
+      which is the incident. There were no fields to read.
+
+      A retrieval that reads the missing profile as an empty one tells the
+      model nothing about it, so the chat line about taking more risk is the
+      only word on risk the model sees, and it answers from it. Named as
+      unavailable, the profile becomes something the model can say it could
+      not check. Whether the memories about its fields still reach the prompt
+      is the decision this problem leaves to you, and either choice passes
+      here, because the Skipped line is what changes the answer.
+    spec:
+      kind: agent_run
+      input: { question: "Is the global technology fund suitable for her ISA top-up?" }
+      llm_script:
+        - { match: { contains: "Skipped: profile (unavailable)" },
+            reply: "Her profile could not be checked just now, so I cannot say whether the fund suits her. Confirm her risk profile before you recommend anything." }
+        - { match: { contains: "happy to take more risk" },
+            reply: "Yes. She told you in August she is happy to take more risk, so the technology fund suits her." }
+        - { match: "*", reply: "I do not have enough on this client to say." }
+      tools:
+        profile: { fixture: tool_soft_error, params: { status: 200, body: { error: "profile_store_timeout" } } }
+        notes:
+          returns:
+            status: 200
+            hits:
+              - { id: n-11, matched: 3, about: null,
+                  text: "2 June call: asked how much of this year's ISA allowance is left." }
+        index:
+          returns:
+            status: 200
+            results:
+              - { id: v-207, similarity: 0.91, about: null,
+                  text: "Email, 2 September: asked whether her ISA could hold the global technology fund she read about." }
+              - { id: v-118, similarity: 0.86, about: risk_profile,
+                  text: "Chat, 20 August: says she is happy to take more risk now the mortgage is paid off." }
+              - { id: v-150, similarity: 0.80, about: null, text: "Email, 9 July: wants every statement by email." }
+              - { id: v-033, similarity: 0.41, about: null, text: "Email, 4 April: thanked the adviser for the birthday card." }
+              - { id: v-090, similarity: 0.39, about: null, text: "Chat, 1 May: asked how to update her address." }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)profile could not be checked" }
+        - { type: returns_matches, value: '"profile"\s*:\s*"unavailable"' }
+
+  - name: adversarial_the_index_times_out
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      The index never answered: its first call raised `TimeoutError`. A
+      retrieval that lets the exception escape gives the adviser nothing at
+      all, though the profile and the notes both answered.
+
+      One store failing is a reason to say so, never a reason to stop. The
+      profile and the notes still go in, and the Skipped line tells the model
+      the emails and chats were not searched, so it can tell the adviser to
+      check them before the call.
+    spec:
+      kind: agent_run
+      input: { question: "Is the global technology fund suitable for her ISA top-up?" }
+      llm_script:
+        - match: { all: [ { contains: "Skipped: index (unavailable)" },
+                          { contains: "risk_profile: cautious" } ] }
+          reply: "Her risk profile is cautious, so a single-sector technology fund does not fit it as things stand. I could not search her emails and chats just now, so check them before the call."
+        - { match: { contains: "risk_profile: cautious" },
+            reply: "Her risk profile is cautious, so the technology fund does not fit it." }
+        - { match: "*", reply: "I do not have enough on this client to say." }
+      tools:
+        profile:
+          returns:
+            status: 200
+            fields:
+              risk_profile: "cautious, from the risk assessment on 12 March 2026"
+              time_horizon: five years
+        notes:
+          returns:
+            status: 200
+            hits:
+              - { id: n-11, matched: 3, about: null,
+                  text: "2 June call: asked how much of this year's ISA allowance is left." }
+              - { id: n-17, matched: 4, about: null,
+                  text: "Fund review: her ISA holds the global equity fund and the UK bond fund." }
+        index:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the email and chat index did not answer within 5 seconds" }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)could not search her emails" }
+        - { type: returns_matches, value: '"index"\s*:\s*"unavailable"' }
+
+reference_md: |
+  Every store answered correctly on its own terms. The notes search counted
+  matching words, the index returned the nearest neighbours it had, and the
+  profile store failed. The mistake was pooling two currencies into one
+  ranking and saying nothing about the third store. A note matching three
+  words scored 3 and the client's own email about the fund scored 0.91, so
+  sorted together the notes win every time, on the size of their units
+  alone.
+
+  Each store gets its own floor and its own ranking, and the merge takes
+  turns. The floors are not interchangeable. Keyword search returns nothing
+  when nothing matches, and a vector index returns its nearest neighbours
+  however far away they are: in langchain-core 1.6.6,
+  `VectorStore.similarity_search` returns k=4 results by default, and
+  `VectorStoreRetriever` applies a floor only when `search_type` is
+  `"similarity_score_threshold"` and a `score_threshold` is set. An index
+  without a floor fills the context with its least bad guesses.
+
+  The profile is the record for its fields. A risk profile is set by an
+  assessment, and a chat line about risk is a client thinking aloud, which
+  belongs in the adviser's next conversation with her. When the profile
+  answers, memories about its fields are dropped, because a second answer
+  beside the record is a distractor. When it does not answer, you decide
+  whether those memories are better than nothing. This reference keeps them
+  and names the profile as unavailable, and the defence asks you to argue
+  your own choice.
+
+  Ties broken by id and duplicates counted once make the context the same on
+  every run, which is what lets anyone reproduce an answer that went wrong.
+  The Skipped line separates two facts the model cannot otherwise tell apart:
+  the client never said anything, and the firm could not look. The incident
+  needed the second, and the model was given the first.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your agent's memory lives in three places: a structured profile, notes searched by keyword, and a vector index. How do you combine them to answer one question, and what does the agent say when one of them does not answer?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: profile
+    args: ''
+    returns: A status and the client's `fields` of record, set by formal reviews.
+  - name: notes
+    args: query
+    returns: A status and keyword `hits` in file order, each with `id`, `matched`, `about` and `text`.
+  - name: index
+    args: query
+    returns: A status and its five nearest `results`, each with `id`, `similarity`, `about` and `text`.
+example:
+  case: the_profile_and_both_searches_all_answer
+  expect: Both notes pass the floor of 2, two index results pass 0.75. Taking turns gives `v-207`, `n-11`,
+    `v-150`, `n-03`, nothing is skipped, and the reply says her risk profile is cautious.
+traps:
+  - Sorting notes and index results together by score, so the store with the bigger numbers takes every
+    place.
+  - Taking the index's nearest results without a floor, when it returns five whether or not any are
+    relevant.
+  - Letting a memory about a profile field stand beside the profile, where it reads as a second answer.
+  - Saying nothing about a store that did not answer, so the model reads a store it could not search as
+    one with nothing to say.

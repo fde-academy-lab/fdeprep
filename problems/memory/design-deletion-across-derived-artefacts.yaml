@@ -1,10 +1,13 @@
 slug: design-deletion-across-derived-artefacts
-title: A customer's deleted address shows up six weeks later
+title: "Delete a fact everywhere it was copied"
 day: 14
 skill: Design deletion that reaches everywhere the fact went
 artefact_type: design
 difficulty: hard
 track: memory
+concept:
+  topic: "What to persist"
+  question: "Once a fact is stored, where does it go, and how do you delete it everywhere?"
 est_minutes: 40
 competencies:
   - { slug: state-and-memory, weight: 1.0 }
@@ -253,6 +256,7 @@ hints:
     each class of artefact is actually clear.
 
 scenario:
+  headline: "A customer's deleted address shows up six weeks later"
   who: The platform team and data protection officer behind a support assistant
   situation: >-
     A customer's deletion request removed their primary record in twenty

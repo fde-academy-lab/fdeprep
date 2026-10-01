@@ -1,11 +1,14 @@
 slug: analytics-agent-4-numbers-from-the-result
-title: The agent invented a 12% rise that went into a board pack
-day: 24
+title: "Report only numbers the query actually returned"
+day: 25
 skill: Report only figures the query returned, within three model calls
 artefact_type: code
 difficulty: extreme
 complexity: C2
 track: builds
+concept:
+  topic: "Analytics agent"
+  question: "Where is each number in the report allowed to come from?"
 est_minutes: 50
 competencies:
   - { slug: failure-mode-analysis, weight: 1.0 }
@@ -273,6 +276,7 @@ hints:
     already in hand, so catch the refusal and answer with the rows alone.
 
 scenario:
+  headline: "The agent invented a 12% rise that went into a board pack"
   who: The operations director at a garden-centre chain
   situation: >-
     The agent answers with a sentence above the figures. Last month the

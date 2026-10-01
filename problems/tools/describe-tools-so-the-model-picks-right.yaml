@@ -1,0 +1,519 @@
+slug: describe-tools-so-the-model-picks-right
+title: "Describe overlapping tools so the model picks right"
+day: 5
+skill: Write tool descriptions that say when each tool is right, and when it is not
+artefact_type: code
+difficulty: medium
+track: tools
+concept:
+  topic: "Names and descriptions"
+  question: "What does a description need to say when several tools look alike?"
+est_minutes: 30
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: prompt-construction, weight: 1.0 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  Customer support at an online marketplace the size of Flipkart runs an
+  agent with three tools that move money. Three teams built them, and each
+  published its tool with one line:
+
+      cancel_order: Cancels an order and gives the customer their money back.
+      start_return: Handles returns and refunds for an order.
+      refund_item: Refunds the customer.
+
+  Every line fits a customer who wants their money back, so the model chose
+  by name. In September it sent 3,100 customers who still had their item, and
+  wanted to send it back, through `refund_item`, which pays at once and
+  collects nothing. It also cancelled 214 orders that had already been
+  dispatched. `cancel_order` refunded each one in full, and the parcels kept
+  travelling.
+
+  The tools work. What the model reads about them does not tell them apart.
+  Rewrite the descriptions.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is a customer's message. It starts with the order and its state
+  as the order system reports it: placed, dispatched or delivered.
+  `llm(prompt)` returns `Action: <tool>(<key>=<value>, ...)` or
+  `Final Answer: <text>`. Return the final answer.
+
+  What each tool does, from the team that built it:
+
+  | Tool | Arguments | What it does | Returns |
+  |---|---|---|---|
+  | `cancel_order` | `order_id` | Cancels the whole order and refunds it in full at once. It does not check the order's state: on a dispatched order it refunds, and the parcel keeps travelling. | `{"cancelled": true, "refund_id": "CX-..."}` |
+  | `start_return` | `order_id`, `item` | Books a courier to collect an item the customer has. The refund is paid when the item reaches the warehouse, 3 to 5 days later. | `{"return_id": "RT-...", "pickup": "<day>"}` |
+  | `refund_item` | `order_id`, `item` | Refunds one item at once and collects nothing. It is for an item that never arrived. | `{"refund_id": "RF-..."}` |
+
+  Rewrite `DESCRIPTIONS` in the stub. The model reads the description of each
+  tool and nothing else about it, so each description answers four questions,
+  on one line:
+
+  1. What does the tool do?
+  2. In which state is it the right tool? Use the order system's words: an
+     order is placed, dispatched or delivered, and an item that never arrived
+     is missing.
+  3. When is it the wrong tool, and which tool is right then? Name that tool
+     exactly as it is published. The model follows a name, not a description
+     of one.
+  4. When does the money move?
+
+  Start every prompt with `Tools:` and one line per tool,
+  `<name>: <description>`, then the customer's message, and keep the tools at
+  the top as the scratchpad grows. The model here is a script that reads each
+  line for those facts, the way a real model leans on them.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  # What the model reads about each tool: one line from each team, and all
+  # three are about money going back to the customer.
+  DESCRIPTIONS = {
+      "cancel_order": "Cancels an order and gives the customer their money back.",
+      "start_return": "Handles returns and refunds for an order.",
+      "refund_item": "Refunds the customer.",
+  }
+  # TODO 1: rewrite the line for cancel_order: the state it is right in, and
+  #         the tool to use instead when it is not, by that tool's exact name
+  # TODO 2: rewrite the line for start_return: the state it is right in, and
+  #         when the refund is paid
+  # TODO 3: rewrite the line for refund_item: the state it is right in, and
+  #         the tool to use instead for an item the customer has
+
+  MAX_CALLS = 3
+  ACTION = re.compile(r"^Action:\s*(\w+)\((.*)\)\s*$", re.MULTILINE)
+
+
+  def arguments(raw: str) -> dict:
+      """Turn 'order_id=OD-1, item=kettle' into {'order_id': 'OD-1', 'item': 'kettle'}."""
+      args = {}
+      for pair in raw.split(","):
+          if "=" in pair:
+              key, value = pair.split("=", 1)
+              args[key.strip()] = value.strip()
+      return args
+
+
+  def tool_lines() -> str:
+      """The tool list as the model reads it: one line per tool, '<name>: <description>'."""
+      # TODO 4: one line per tool, in the order of DESCRIPTIONS
+      return ""
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      # TODO 4: start the prompt with "Tools:" and tool_lines(), so every
+      #         prompt carries them as the scratchpad grows
+      scratchpad = f"Request: {question}\n"
+
+      for _ in range(MAX_CALLS):
+          reply = llm(scratchpad)
+          if "Final Answer:" in reply:
+              return reply.split("Final Answer:", 1)[1].strip()
+
+          action = ACTION.search(reply)
+          if action is None or action.group(1) not in tools:
+              scratchpad += f"{reply}\nThat was not a tool you have.\n"
+              continue
+
+          result = tools[action.group(1)](**arguments(action.group(2)))
+          scratchpad += f"{reply}\nObservation: {json.dumps(result)}\n"
+
+      return "I could not finish this request."
+
+steps:
+  - id: s1
+    text: Give `cancel_order` its boundary, dispatch, and point past it to `start_return`.
+    check_id: s1
+  - id: s2
+    text: Say that `start_return` is for delivered orders, and when its refund is paid.
+    check_id: s2
+  - id: s3
+    text: Keep `refund_item` to missing items, and point an item the customer has to `start_return`.
+    check_id: s3
+  - id: s4
+    text: Put `Tools:` and one line per tool at the top of every prompt, and run the tool the model picks.
+    check_id: s4
+
+step_checks:
+  # The public cases need only the tool list and the word missing, so s1 to
+  # s3 each carry their own cases. In each, the model makes the right choice
+  # only when the line it is about carries that step's facts.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-7004 (dispatched): please cancel it, I found it cheaper elsewhere." }
+      llm_script:
+        - match: { all: [ { regex: '(?im)^cancel_order: .*dispatch' }, { regex: '(?m)^cancel_order: .*\bstart_return\b' } ] }
+          reply: "Final Answer: Order OD-7004 has left our warehouse, so it can no longer be cancelled. Once it arrives I can book a courier to collect it."
+        - { match: { contains: "CX-7004" }, reply: "Final Answer: Order OD-7004 is cancelled and refunded in full." }
+        - { match: { regex: '(?m)^cancel_order: ' }, reply: "Action: cancel_order(order_id=OD-7004)" }
+        - { match: "*", reply: "Final Answer: I cannot cancel orders from here. Please use the app." }
+      tools:
+        cancel_order: { returns: { cancelled: true, refund_id: CX-7004 } }
+        start_return: { returns: { return_id: RT-7004, pickup: "Monday 5 October" } }
+        refund_item: { returns: { refund_id: RF-7004 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: cancel_order }
+        - { type: returns_matches, value: "(?i)no longer be cancelled" }
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-8150 (delivered): the shoes pinch, I want to send them back." }
+      llm_script:
+        - match: { all: [ { contains: "RT-8150" }, { regex: '(?im)^start_return: .*warehouse' } ] }
+          reply: "Final Answer: A courier will collect the shoes on Monday 5 October. Your refund is paid when they reach our warehouse."
+        - { match: { contains: "RT-8150" },
+            reply: "Final Answer: A courier will collect the shoes on Monday 5 October, and your refund is on its way now." }
+        - { match: { contains: "RF-8150" }, reply: "Final Answer: I have refunded the shoes." }
+        - { match: { regex: '(?im)^start_return: .*deliver' }, reply: "Action: start_return(order_id=OD-8150, item=shoes)" }
+        - { match: { regex: '(?m)^refund_item: ' }, reply: "Action: refund_item(order_id=OD-8150, item=shoes)" }
+        - { match: "*", reply: "Final Answer: I cannot book returns from here. Please use the app." }
+      tools:
+        cancel_order: { returns: { cancelled: true, refund_id: CX-8150 } }
+        start_return: { returns: { return_id: RT-8150, pickup: "Monday 5 October" } }
+        refund_item: { returns: { refund_id: RF-8150 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: start_return }
+        - { type: returns_matches, value: "(?i)reach our warehouse" }
+  # Two cases, because the line for refund_item has to pull one request in
+  # and push another away.
+  - step_id: s3
+    spec:
+      cases:
+        - kind: agent_run
+          input: { question: "Order OD-4418 (delivered): the remote control was not in the box." }
+          llm_script:
+            - { match: { contains: "RF-4418" }, reply: "Final Answer: I have refunded the remote control, refund RF-4418." }
+            - { match: { contains: "RT-4418" }, reply: "Final Answer: A courier will collect the remote control on Monday 5 October." }
+            - { match: { regex: '(?im)^refund_item: .*missing' }, reply: "Action: refund_item(order_id=OD-4418, item=remote)" }
+            - { match: { regex: '(?m)^start_return: ' }, reply: "Action: start_return(order_id=OD-4418, item=remote)" }
+            - { match: "*", reply: "Final Answer: I cannot fix this from here. Please raise it in the app." }
+          tools:
+            cancel_order: { returns: { cancelled: true, refund_id: CX-4418 } }
+            start_return: { returns: { return_id: RT-4418, pickup: "Monday 5 October" } }
+            refund_item: { returns: { refund_id: RF-4418 } }
+          budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+          assertions:
+            - { type: calls_tool, name: refund_item }
+            - { type: does_not_call_tool, name: start_return }
+        - kind: agent_run
+          input: { question: "Order OD-4419 (delivered): the blender is too loud. I want my money back." }
+          llm_script:
+            - { match: { contains: "RT-4419" }, reply: "Final Answer: A courier will collect the blender on Monday 5 October." }
+            - { match: { contains: "RF-4419" }, reply: "Final Answer: I have refunded the blender, refund RF-4419." }
+            - { match: { regex: '(?m)^refund_item: .*\bstart_return\b' }, reply: "Action: start_return(order_id=OD-4419, item=blender)" }
+            - { match: { regex: '(?m)^refund_item: ' }, reply: "Action: refund_item(order_id=OD-4419, item=blender)" }
+            - { match: "*", reply: "Final Answer: I cannot fix this from here. Please raise it in the app." }
+          tools:
+            cancel_order: { returns: { cancelled: true, refund_id: CX-4419 } }
+            start_return: { returns: { return_id: RT-4419, pickup: "Monday 5 October" } }
+            refund_item: { returns: { refund_id: RF-4419 } }
+          budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+          assertions:
+            - { type: calls_tool, name: start_return }
+            - { type: does_not_call_tool, name: refund_item }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: cancel_order, args: { order_id: OD-3301 } }
+        - { type: returns_matches, value: "CX-3301" }
+
+hints:
+  - Read your three descriptions the way the model does, next to a customer
+    who wants their money back. Count how many of them fit.
+  - A name tells the model what a tool does. Only the description can say
+    when the tool applies and when it does not, and send the model to the one
+    that does.
+  - "Give each line its boundary in the order system's words, placed, dispatched, delivered or missing, and name the other tool exactly: `start_return`, not the returns tool."
+  - "Say when the money moves. `start_return` books a courier today and pays days later, and a model that is not told so promises the refund today."
+
+scenario:
+  headline: "3,100 refunds went out for items nobody collected"
+  who: "Customer support at an online marketplace the size of Flipkart"
+  situation: >-
+    Three teams published their tools to the support agent with one line
+    each, and all three lines mention money going back. Customers who still
+    had an item and wanted to send it back were refunded through
+    `refund_item`, which pays at once and collects nothing.
+  stakes: >-
+    In September 3,100 items were refunded and never came back, and 214
+    dispatched orders were cancelled and refunded while the parcels kept
+    travelling.
+  metrics:
+    - { label: Refunded and never collected, value: "3,100" }
+    - { label: Dispatched orders cancelled, value: "214" }
+    - { label: Tools that move money, value: "3" }
+
+diagram:
+  title: Where three tools that all give money back look the same
+  caption: >-
+    The model chose by name because every description fit. A boundary in each
+    line, and a pointer to the right tool, decide the choice.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: wants their money back, kind: actor, tone: blue, at: [0, 1] }
+    - { id: lines, label: Tool list, sub: three lines about refunds, kind: doc, tone: neutral, at: [1, 0] }
+    - { id: model, label: Model, sub: picks a tool from the list, kind: model, tone: teal, at: [1, 1] }
+    - { id: cancel, label: "`cancel_order()`", sub: "placed orders only", kind: tool, tone: orange, at: [2, 0] }
+    - { id: back, label: "`start_return()`", sub: "collects first, pays later", kind: tool, tone: green, at: [2, 1] }
+    - { id: refund, label: "`refund_item()`", sub: "pays now, collects nothing", kind: tool, tone: pink, at: [2, 2] }
+    - { id: lost, label: Item never collected, sub: paid for and kept, kind: output, tone: pink, at: [3, 2] }
+  edges:
+    - { from: customer, to: model, label: message and order state, step: 1 }
+    - { from: lines, to: model, label: what each tool is for, step: 2 }
+    - { from: model, to: refund, label: picked by its name, tone: danger }
+    - { from: refund, to: lost, label: refund with no pickup, tone: danger }
+    - { from: model, to: back, label: picked by its boundary, tone: success, step: 3 }
+    - { from: model, to: cancel, label: only before dispatch, tone: muted }
+
+approach:
+  goal: Give the model what it needs to tell three money tools apart
+  branches:
+    - label: Find where the lines overlap
+      leaves: [all three give money back, so the name alone picks the tool]
+    - label: Draw each tool's boundary
+      detail: >-
+        The order's state decides which tool is right. Say it in the words the
+        order system uses, because those are the words in the request.
+      leaves: ["placed, dispatched, delivered", missing for an item that never came]
+    - label: Point to the right tool
+      leaves: [say when this tool is the wrong one, name the right one exactly]
+    - label: Say when the money moves
+      leaves: [at once, or when the item reaches the warehouse]
+
+coach:
+  opening: >-
+    Read your three descriptions next to a customer who says "I want my money
+    back". If more than one line fits, the model is choosing by name.
+  signals:
+    - id: no-pointer
+      when: { code_lacks: '(?i)instead' }
+      say: >-
+        None of your descriptions sends the model from one tool to another.
+        When two tools could both give a customer money back, which line tells
+        the model which one to use?
+    - id: no-dispatch-boundary
+      when: { code_lacks: '(?i)dispatch' }
+      say: >-
+        Nothing in your descriptions mentions dispatch. How would the model
+        know `cancel_order` stops being safe once the parcel has left?
+    - id: no-payout-timing
+      when: { code_lacks: '(?i)warehouse' }
+      say: >-
+        `start_return` books a pickup, and the money moves later. Where does
+        your description say when, so the model does not promise it today?
+    - id: hidden-dispatched
+      when: { test_failed: a_dispatched_order_is_not_cancelled }
+      say: >-
+        In that run the order had already been dispatched, and the model
+        cancelled it. Read your line for `cancel_order` as the model did: what
+        in it says the state matters?
+    - id: hidden-faulty-item
+      when: { test_failed: a_faulty_item_goes_back_before_the_money_does }
+      say: >-
+        In that run the customer had the item and wanted their money back, and
+        the model picked `refund_item`. Which line could have sent it to
+        `start_return`, and by what name?
+    - id: hidden-refund-timing
+      when: { test_failed: the_reply_says_when_the_refund_is_paid }
+      say: >-
+        In that run the model told the customer the refund was paid already. A
+        pickup had only been booked. Which description should have said when
+        the money moves?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 4 so the model can see the tools at all. Then run the
+        public cases and read which tool it picks for each.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints open after one failed run on this
+        tier, and the second one says what only a description can do.
+  wrap_up: >-
+    When several tools could answer the same request, the description is the
+    only place the model can learn which one is right. Give each one its
+    boundary, a pointer to the tool past that boundary, and when its money
+    moves.
+
+tests:
+  - name: cancels_an_order_that_has_not_left
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-3301 (placed): I ordered the wrong phone case, please cancel it." }
+      llm_script:
+        - { match: { contains: "CX-3301" },
+            reply: "Final Answer: Order OD-3301 is cancelled, and refund CX-3301 for the full amount is on its way." }
+        - { match: { regex: '(?m)^cancel_order: ' }, reply: "Action: cancel_order(order_id=OD-3301)" }
+        - { match: "*", reply: "Final Answer: I cannot cancel orders from here. Please use the app." }
+      tools:
+        cancel_order: { returns: { cancelled: true, refund_id: CX-3301 } }
+        start_return: { returns: { return_id: RT-3301, pickup: "Monday 5 October" } }
+        refund_item: { returns: { refund_id: RF-3301 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: cancel_order, args: { order_id: OD-3301 } }
+        - { type: returns_matches, value: "CX-3301" }
+
+  - name: refunds_an_item_that_never_arrived
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-2290 (delivered): the charger was not in the box." }
+      llm_script:
+        - { match: { contains: "RF-2290" }, reply: "Final Answer: I have refunded the charger. Your refund is RF-2290." }
+        - { match: { contains: "RT-2290" }, reply: "Final Answer: A courier will collect the charger on Friday 2 October." }
+        - { match: { regex: '(?im)^refund_item: .*missing' }, reply: "Action: refund_item(order_id=OD-2290, item=charger)" }
+        - { match: { regex: '(?m)^start_return: ' }, reply: "Action: start_return(order_id=OD-2290, item=charger)" }
+        - { match: "*", reply: "Final Answer: I cannot fix this from here. Please raise it in the app." }
+      tools:
+        cancel_order: { returns: { cancelled: true, refund_id: CX-2290 } }
+        start_return: { returns: { return_id: RT-2290, pickup: "Friday 2 October" } }
+        refund_item: { returns: { refund_id: RF-2290 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund_item, args: { order_id: OD-2290, item: charger } }
+        - { type: does_not_call_tool, name: start_return }
+        - { type: returns_matches, value: "RF-2290" }
+
+  - name: a_dispatched_order_is_not_cancelled
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-6020 (dispatched): I ordered the wrong colour, cancel it please." }
+      llm_script:
+        - match: { all: [ { regex: '(?im)^cancel_order: .*dispatch' }, { regex: '(?m)^cancel_order: .*\bstart_return\b' } ] }
+          reply: "Final Answer: Order OD-6020 is already on its way, so it can no longer be cancelled. When it arrives I can book a courier to collect it."
+        - { match: { contains: "CX-6020" }, reply: "Final Answer: Order OD-6020 is cancelled and refunded in full." }
+        - { match: { regex: '(?m)^cancel_order: ' }, reply: "Action: cancel_order(order_id=OD-6020)" }
+        - { match: "*", reply: "Final Answer: I cannot cancel orders from here. Please use the app." }
+      tools:
+        cancel_order: { returns: { cancelled: true, refund_id: CX-6020 } }
+        start_return: { returns: { return_id: RT-6020, pickup: "Saturday 3 October" } }
+        refund_item: { returns: { refund_id: RF-6020 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: cancel_order }
+        - { type: returns_matches, value: "(?i)no longer be cancelled" }
+
+  - name: a_faulty_item_goes_back_before_the_money_does
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-5512 (delivered): the kettle leaks from the base. I want my money back." }
+      llm_script:
+        - { match: { contains: "RT-5512" },
+            reply: "Final Answer: A courier will collect the kettle on Saturday 3 October. Your return is RT-5512." }
+        - { match: { contains: "RF-5512" }, reply: "Final Answer: I have refunded the kettle, refund RF-5512." }
+        - match: { all: [ { regex: '(?im)^start_return: .*deliver' }, { regex: '(?m)^refund_item: .*\bstart_return\b' } ] }
+          reply: "Action: start_return(order_id=OD-5512, item=kettle)"
+        - { match: { regex: '(?m)^refund_item: ' }, reply: "Action: refund_item(order_id=OD-5512, item=kettle)" }
+        - { match: "*", reply: "Final Answer: I cannot fix this from here. Please raise it in the app." }
+      tools:
+        cancel_order: { returns: { cancelled: true, refund_id: CX-5512 } }
+        start_return: { returns: { return_id: RT-5512, pickup: "Saturday 3 October" } }
+        refund_item: { returns: { refund_id: RF-5512 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: start_return, args: { order_id: OD-5512, item: kettle } }
+        - { type: does_not_call_tool, name: refund_item }
+
+  - name: the_reply_says_when_the_refund_is_paid
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-7710 (delivered): the jacket is too small. I'd like to return it." }
+      llm_script:
+        - match: { all: [ { contains: "RT-7710" }, { regex: '(?im)^start_return: .*warehouse' } ] }
+          reply: "Final Answer: A courier will collect the jacket on Friday 2 October. Your refund is paid when it reaches our warehouse, usually 3 to 5 days later."
+        - { match: { contains: "RT-7710" },
+            reply: "Final Answer: A courier will collect the jacket on Friday 2 October, and your refund has been issued." }
+        - { match: { contains: "RF-7710" }, reply: "Final Answer: I have refunded the jacket." }
+        - { match: { regex: '(?m)^start_return: ' }, reply: "Action: start_return(order_id=OD-7710, item=jacket)" }
+        - { match: "*", reply: "Final Answer: I cannot book returns from here. Please use the app." }
+      tools:
+        cancel_order: { returns: { cancelled: true, refund_id: CX-7710 } }
+        start_return: { returns: { return_id: RT-7710, pickup: "Friday 2 October" } }
+        refund_item: { returns: { refund_id: RF-7710 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: start_return }
+        - { type: returns_lacks, value: "(?i)refund has been issued" }
+        - { type: returns_matches, value: "(?i)reaches our warehouse" }
+
+reference_md: |
+  The model never saw the refunds API. It saw three lines, and all three said
+  some version of "the customer gets money back". When every description
+  fits, the only thing left to choose by is the name, and `refund_item` is the
+  name that matches "I want my money back". The model did what the tool list
+  invited.
+
+  Anthropic's tool-use documentation (Define tools, read 1 October 2026)
+  calls detailed descriptions "by far the most important factor in tool
+  performance", and lists what one should cover: what the tool does, when it
+  should be used and when it should not, what each parameter means, and its
+  caveats and limits. The second item is the one these tools were missing.
+  A description that says only what a tool does is accurate and still useless
+  when two tools do similar things, because the choice turns on the
+  situation, not the action.
+
+  So each line now carries its boundary, in the words the order system uses,
+  because those are the words in front of the model: placed, dispatched,
+  delivered, missing. Past the boundary, each line names the tool that is
+  right instead, exactly as it is published. A pointer such as "the returns
+  tool" asks the model to guess, and a name it can call does not.
+
+  The last fact is when the money moves. `start_return` succeeds the moment a
+  pickup is booked, and a model that reads only "handles refunds" turns that
+  success into a promise the warehouse has not kept yet. Saying when the
+  refund is paid keeps the reply true.
+
+  Descriptions lower the odds of a wrong call, and they guard nothing.
+  `cancel_order` still refunds a dispatched order if it is called. The other
+  half of the fix belongs to the team that owns it: refuse to cancel anything
+  that has left the warehouse, whatever the model asks.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    You have three tools that all refund a customer in different ways, and the model keeps picking the wrong one. What do you change in the tool definitions?
+  source: |
+    Author judgement, with the description guidance in Anthropic's Define tools page, read 1 October 2026. No employer frequency data stands behind it.
+
+tools:
+  - name: cancel_order
+    args: order_id
+    returns: '`{"cancelled": true, "refund_id": ...}`. It refunds in full at once, and does not check whether the
+      order has been dispatched.'
+  - name: start_return
+    args: order_id, item
+    returns: '`{"return_id": ..., "pickup": ...}`. A courier collects the item, and the refund is paid when it reaches
+      the warehouse.'
+  - name: refund_item
+    args: order_id, item
+    returns: '`{"refund_id": ...}`. It refunds one item at once and collects nothing.'
+example:
+  case: cancels_an_order_that_has_not_left
+  expect: With the tools at the top of the prompt, the model calls `cancel_order` for OD-3301, a placed order. Run it,
+    append the result, and return the answer that quotes refund CX-3301.
+traps:
+  - Saying what each tool does and never when it is the wrong one, so three lines that all give money back are chosen by name.
+  - Pointing to another tool with a description of it, such as the returns tool, when the model can only follow an exact name.
+  - Leaving out when `start_return` pays, so the model promises the refund the moment a pickup is booked.
+  - Putting the tool list in the first prompt only, so the model answers the customer without it.

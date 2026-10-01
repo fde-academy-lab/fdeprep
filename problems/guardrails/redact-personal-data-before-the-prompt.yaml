@@ -1,10 +1,13 @@
 slug: redact-personal-data-before-the-prompt
-title: Customers' card numbers turn up in the model provider's logs
-day: 17
+title: "Remove personal data before it reaches the model"
+day: 18
 skill: Take personal data out before the prompt and put it back in the reply
 artefact_type: code
 difficulty: medium
 track: guardrails
+concept:
+  topic: "Input and output filtering"
+  question: "How do you keep personal data away from the model?"
 est_minutes: 25
 competencies:
   - { slug: context-assembly, weight: 1.0 }
@@ -202,6 +205,7 @@ hints:
     The field rules say what goes back instead.
 
 scenario:
+  headline: "Customers' card numbers turn up in the model provider's logs"
   who: The support desk at a home broadband provider
   situation: >-
     An audit found 1,900 of the agent's prompts in the model provider's logs

@@ -1,11 +1,14 @@
 slug: support-copilot-4-hold-under-hostile-input
-title: A ticket told the copilot to refund £480 on a £23.50 order
+title: "Keep the copilot safe from hostile input"
 day: 30
 skill: Keep the copilot safe when the ticket, a tool and the budget turn hostile
 artefact_type: code
 difficulty: extreme
 complexity: C2
 track: builds
+concept:
+  topic: "Support copilot"
+  question: "What holds when the ticket, a tool and the budget all turn hostile?"
 est_minutes: 50
 competencies:
   - { slug: failure-mode-analysis, weight: 1.0 }
@@ -280,6 +283,7 @@ hints:
     the refund call is never the thing that gets tried again.
 
 scenario:
+  headline: "A ticket told the copilot to refund £480 on a £23.50 order"
   who: The security lead reviewing a meal-kit service's support copilot
   situation: >-
     Before launch the client ran the copilot through a hostile afternoon: a

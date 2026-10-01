@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { readReply } from "@/lib/http/reply";
 import { Button } from "@/components/ui/button";
 import { StatusBadge } from "@/components/ui/status";
 
@@ -22,8 +23,9 @@ export function ConsentControls({
     try {
       const response = await fetch("/api/voice/consent", { method });
       if (!response.ok) {
-        const body = (await response.json()) as { message?: string };
-        setError(body.message ?? "That did not save. Try again.");
+        const reply = await readReply(response);
+        setError(reply.message ??
+          `That did not save: the server answered ${reply.status}. Try again in a minute.`);
         return;
       }
       router.refresh();

@@ -16,8 +16,8 @@ import { db } from "../db/pool.ts";
 import type { PaceState } from "./cues.ts";
 import { deliveryFor, type Delivery, type Segment } from "./delivery.ts";
 import { depthByBeat, type BeatDepth } from "./depth.ts";
-import { MAX_JUDGE_ATTEMPTS } from "./judge.ts";
 import { loadQuestion, type VoiceQuestion } from "./question.ts";
+import { MAX_JUDGE_ATTEMPTS } from "./score.ts";
 import type { VoiceMode } from "./run.ts";
 
 export class DebriefNotFound extends Error {

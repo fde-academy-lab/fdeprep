@@ -820,7 +820,7 @@ function caseFacts(
 }
 
 /** The title and day limits are what a catalogue row shows on one line. */
-export const STORYLINE = { days: 30, titleMax: 64, skillMax: 90 } as const;
+export const STORYLINE = { days: 30, titleMax: 64, titleWords: 8, skillMax: 90 } as const;
 
 /**
  * Rule: every catalogue problem has a day in the storyline, a title that says
@@ -850,6 +850,15 @@ function validateStoryline(
         `${STORYLINE.skillMax}.`, lineOf(["skill"]));
   }
   const title = raw["title"];
+  // Amended 1 October 2026: the title names the task in plain words for a
+  // learner meeting the topic for the first time. The incident it came from
+  // moves to scenario.headline.
+  const words = typeof title === "string" ? title.trim().split(/\s+/).filter(Boolean).length : 0;
+  if (words > STORYLINE.titleWords) {
+    add("no_storyline", `title is ${words} words. Name the task in ${STORYLINE.titleWords} or ` +
+        "fewer, starting with a verb, and put the incident in scenario.headline.",
+        lineOf(["title"]));
+  }
   if (typeof title === "string" && title.trim().length > STORYLINE.titleMax) {
     add("no_storyline", `title is ${title.trim().length} characters and the row shows ` +
         `${STORYLINE.titleMax}. Say what the client sees in fewer words.`, lineOf(["title"]));

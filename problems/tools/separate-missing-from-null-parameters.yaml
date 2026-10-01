@@ -1,0 +1,445 @@
+slug: separate-missing-from-null-parameters
+title: "Ask only about the field nobody mentioned"
+day: 2
+skill: Ask about the field nobody mentioned, and only that one
+artefact_type: code
+difficulty: easy
+track: tools
+concept:
+  topic: "Strict input schemas"
+  question: "How do you tell a field nobody mentioned from one set to empty?"
+est_minutes: 15
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: agent-loop, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A parcel carrier lets customers rebook a missed delivery by message. An
+  assistant reads the message, pulls out the day, the time window and a safe
+  place to leave the parcel, and books the redelivery.
+
+  In August the assistant kept asking customers where to leave the parcel
+  straight after they had written "please don't leave it anywhere". Somebody
+  changed one line to stop the repeat question, and after the change a safe
+  place nobody had mentioned looked exactly like "don't leave it". For three
+  weeks the assistant asked nobody. Thirty-one parcels went back to the depot
+  because nobody was home and the driver had been told to leave them nowhere.
+
+  The two complaints had one cause. "The customer never mentioned it" and
+  "the customer answered, and the answer is none" are different facts, and the
+  code was reading them as one. Write the step that decides whether to ask or
+  to book.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the customer's message. `llm(prompt)` replies with a JSON
+  object holding the booking fields the message covers:
+
+  | Field | Value | null means |
+  |---|---|---|
+  | `date` | a day, such as `"2026-10-08"` | nothing: null is never allowed here |
+  | `time_window` | `"morning"`, `"afternoon"` or `"evening"` | the customer said any time is fine |
+  | `safe_place` | where to leave it, such as `"side gate"` | the customer said not to leave it anywhere |
+
+  A field the message does not mention is left out of the object altogether.
+
+  `tools["book_redelivery"](date=..., time_window=..., safe_place=...)` needs
+  all three arguments and accepts null for the last two. It returns
+  `{"status": 200, "booking_ref": "<ref>"}`.
+
+  When any field is missing, or holds null where null is not allowed, do not
+  book. Return `{"action": "ask", "ask_about": [...]}` listing exactly those
+  fields, in the table's order. Otherwise book, and return
+  `{"action": "booked", "booking_ref": "<ref>", "details": {...}}` with all
+  three fields in `details`, nulls included.
+
+  Budget: at most 2 model calls, and one is enough. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  # Every field is required. For some of them, null is an answer.
+  FIELDS = (
+      ("date", False),          # (name, may be null)
+      ("time_window", True),
+      ("safe_place", True),
+  )
+
+
+  def build_prompt(message: str) -> str:
+      return (
+          "Read the customer's redelivery request. Reply with a JSON object. "
+          "Include date, time_window and safe_place only when the message "
+          "covers them, and use null where the customer said any time, or said "
+          "not to leave the parcel anywhere.\n\n"
+          f"Message: {message}\n"
+      )
+
+
+  def needs_asking(name: str, nullable: bool, extracted: dict) -> bool:
+      """True when the customer still has to be asked about this field."""
+      # TODO 1: read the table in the contract. Decide what an absent key
+      #         means, then what a key holding None means for this field.
+      return False
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      extracted = json.loads(llm(build_prompt(question)))
+      ask_about = []
+
+      # TODO 2: for each (name, nullable) in FIELDS, add name to ask_about
+      #         when needs_asking says the customer has to be asked
+      # TODO 3: when ask_about holds anything, return the ask without booking
+      # TODO 4: otherwise call tools["book_redelivery"] with all three fields,
+      #         None where the customer said null, and return the booking
+
+      # Until TODO 3 and TODO 4 are written, this shows what TODO 2 collected.
+      return json.dumps({"ask_about": ask_about})
+
+steps:
+  - id: s1
+    text: Decide, for one field, whether the customer still has to be asked.
+    check_id: s1
+  - id: s2
+    text: Collect every field that needs asking, in the order FIELDS gives.
+    check_id: s2
+  - id: s3
+    text: Return the ask, and book nothing, when any field needs asking.
+    check_id: s3
+  - id: s4
+    text: Otherwise book with all three fields, nulls included, and return it.
+    check_id: s4
+
+step_checks:
+  # Reads a_request_with_no_date_asks_for_one: the date is left out and the
+  # safe place is null, so only the date needs asking. needs_asking is called
+  # from s2's loop, so s1 shows once s2 collects the fields. Whether the
+  # answer is an ask is s3's work, so s1 reads the list alone.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [ask_about],
+                      properties: { ask_about: { const: [date] } } } }
+  # s2 carries its own case, because no public message leaves more than one
+  # field to ask about, so no public case shows the order. Here two fields
+  # are left out, and FIELDS puts time_window before safe_place.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Could you try again on Wednesday 14 October?" }
+      llm_script:
+        - { match: "*", reply: '{"date": "2026-10-14"}' }
+      tools:
+        book_redelivery: { returns: { status: 200, booking_ref: "RD-7310" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [ask_about],
+                      properties: { ask_about: { const: [time_window, safe_place] } } } }
+  # Reads a_request_with_no_date_asks_for_one as s1 does. The stub's last
+  # line shows the list with no action, so the ask, with nothing booked,
+  # shows once s3 returns it.
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [action, ask_about],
+                      properties: { action: { const: ask },
+                                    ask_about: { const: [date] } } } }
+        - { type: returns_matches, value: '"ask_about"\s*:\s*\[\s*"date"\s*\]' }
+        - { type: does_not_call_tool, name: book_redelivery }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: calls_tool, name: book_redelivery }
+
+hints:
+  - Look at the parsed reply for a case that fails. Before you read any value,
+    list which keys are there at all.
+  - "`extracted.get(name)` gives None for a key that is absent and for a key that holds null. After that call the two cases look the same, so the difference has to be read before it."
+  - An absent key always needs a question. A key holding null needs one only
+    when null is not allowed for that field, and FIELDS already says which
+    fields allow it.
+  - Ask or book, never both. When anything needs asking, return before the
+    booking call, and when you book, pass the nulls through unchanged.
+
+scenario:
+  headline: "Nobody was asked where to leave parcels, so 31 went back"
+  who: The redelivery desk at a parcel carrier
+  situation: >-
+    Customers rebook missed deliveries by message. A change meant to stop a
+    repeat question made a safe place nobody mentioned read as "do not leave
+    it anywhere".
+  stakes: >-
+    For three weeks nobody was asked where to leave a parcel. When nobody was
+    home, the driver carried it back and the customer waited for a third try.
+  metrics:
+    - { label: Parcels taken back, value: "31" }
+    - { label: Unnoticed for, value: 3 weeks }
+    - { label: Each extra attempt, value: £6 }
+
+diagram:
+  title: Where a field nobody mentioned turns into an answer
+  caption: >-
+    Each field is checked before any value is read: absent means ask, and null
+    means ask only where null is not allowed.
+  direction: lr
+  nodes:
+    - { id: message, label: Customer message, sub: gives a day and any time, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Extraction model, sub: leaves out what was not said, kind: model, tone: teal, at: [1, 0] }
+    - { id: assistant, label: Booking assistant, sub: decides to ask or to book, kind: agent, tone: purple, at: [1, 1] }
+    - { id: check, label: "Absent or null?", sub: one decision per field, kind: decision, tone: green, at: [2, 1] }
+    - { id: ask, label: Ask the customer, sub: only the absent fields, kind: output, tone: blue, at: [3, 0] }
+    - { id: book, label: "`book_redelivery`", sub: nulls passed through as nulls, kind: tool, tone: orange, at: [3, 1] }
+    - { id: depot, label: Back to the depot, sub: nobody was asked, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: message, to: assistant, label: the message, step: 1 }
+    - { from: assistant, to: model, label: prompt, step: 2 }
+    - { from: model, to: assistant, label: "date and `time_window`: null", step: 3 }
+    - { from: assistant, to: check, label: each field, step: 4 }
+    - { from: check, to: ask, label: a key is absent }
+    - { from: check, to: book, label: every field answered, tone: success }
+    - { from: assistant, to: depot, label: absent read as null, tone: danger }
+
+approach:
+  goal: Ask about exactly the fields the customer has not answered
+  branches:
+    - label: Absent and null are two facts
+      leaves: [an absent key was never mentioned, a null value is an answer]
+    - label: Null is allowed per field
+      detail: Every redelivery needs a day, so a null date is still a gap.
+      leaves: ["`time_window` may be null", "`safe_place` may be null", date may not]
+    - label: Ask or book, never both
+      leaves: [anything to ask means no booking, nothing to ask means book]
+    - label: Keep the answer the customer gave
+      leaves: [pass nulls to the tool unchanged, report them in details]
+
+coach:
+  opening: >-
+    Before you write anything, look at the replies in the public tests and
+    note, for each field, whether the key is there at all.
+  signals:
+    - id: get-hides-the-difference
+      when:
+        code_matches: '\.get\('
+        code_lacks: '\bnot\s+in\b|\bif\b[^\n]*\bin\s+\w|\.keys\(\)|\.get\([^),]+,\s*(?!None\b)\w'
+      say: >-
+        .`get()` gives None for a key that is missing and for a key that holds
+        null, so after that call the two look identical. Which of them means
+        the customer never said?
+    - id: needs-asking-unwritten
+      when:
+        code_matches: 'def needs_asking\([^)]*\)[^\n]*\n(?:[ \t]*(?:#[^\n]*|"""[^\n]*""")?\n)*[ \t]*return False[ \t]*$'
+      say: >-
+        `needs_asking` still says no for every field, so nothing is ever asked.
+        Start there: what does an absent key mean for a field?
+    - id: safe-place-never-asked
+      when: { test_failed: a_safe_place_nobody_mentioned_is_asked_about }
+      say: >-
+        The customer gave a day and said any time, and said nothing about a
+        safe place. Which field did your code read as an answer?
+    - id: any-time-treated-as-a-gap
+      when: { test_failed: any_time_is_fine_is_an_answer }
+      say: >-
+        The customer said any time is fine, and the model wrote that as null.
+        Is null a gap for `time_window`, or is it an answer?
+    - id: null-date-booked
+      when: { test_failed: a_null_date_is_still_a_missing_date }
+      say: >-
+        The date key is there and it holds null. Can a redelivery be booked
+        without a day?
+    - id: ask-in-table-order
+      when: { test_failed: the_ask_lists_its_fields_in_the_table_order }
+      say: >-
+        Every field needs asking in that case. The contract lists the ask in
+        the table's order, date first. What order does your list come out in?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write `needs_asking` for one field first. An absent key is the easy
+        case, and the only field the no-date public test asks about is absent.
+    - id: see-the-hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints narrow this down one step at a time,
+        and on Easy they cost nothing.
+  wrap_up: >-
+    Absent and null are different answers in almost every API you will call.
+    Read which one you have before you read the value, and decide per field
+    which of them needs a question.
+
+tests:
+  - name: a_fully_stated_request_is_booked
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Can you bring it back on 8 October in the morning please? If I am
+          out, leave it by the side gate.
+      llm_script:
+        - { match: "*",
+            reply: '{"date": "2026-10-08", "time_window": "morning", "safe_place": "side gate"}' }
+      tools:
+        book_redelivery: { returns: { status: 200, booking_ref: "RD-5521" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: book_redelivery }
+        - { type: returns_matches, value: '"action"\s*:\s*"booked"' }
+        - { type: returns_matches, value: 'RD-5521' }
+
+  - name: a_request_with_no_date_asks_for_one
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Please try again, afternoons are best. Do not leave it outside, I
+          would rather it went back to the depot.
+      llm_script:
+        - { match: "*", reply: '{"time_window": "afternoon", "safe_place": null}' }
+      tools:
+        book_redelivery: { returns: { status: 200, booking_ref: "RD-5522" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: book_redelivery }
+        - { type: returns_matches, value: '"action"\s*:\s*"ask"' }
+        - { type: returns_matches, value: '"ask_about"\s*:\s*\[\s*"date"\s*\]' }
+
+  - name: a_safe_place_nobody_mentioned_is_asked_about
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Redeliver on 9 October please, any time is fine." }
+      llm_script:
+        - { match: "*", reply: '{"date": "2026-10-09", "time_window": null}' }
+      tools:
+        book_redelivery: { returns: { status: 200, booking_ref: "RD-5523" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: book_redelivery }
+        - { type: returns_matches, value: '"action"\s*:\s*"ask"' }
+        - { type: returns_matches, value: '"ask_about"\s*:\s*\[\s*"safe_place"\s*\]' }
+
+  - name: any_time_is_fine_is_an_answer
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Saturday 10 October works, any time at all. The porch is fine if
+          nobody answers.
+      llm_script:
+        - { match: "*",
+            reply: '{"date": "2026-10-10", "time_window": null, "safe_place": "porch"}' }
+      tools:
+        book_redelivery: { returns: { status: 200, booking_ref: "RD-5524" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: book_redelivery }
+        - { type: returns_matches, value: 'RD-5524' }
+        - { type: returns_matches, value: '"time_window"\s*:\s*null' }
+
+  - name: a_null_date_is_still_a_missing_date
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Evenings suit me best, whenever you can manage it. Please do not
+          leave it anywhere.
+      llm_script:
+        - { match: "*",
+            reply: '{"date": null, "time_window": "evening", "safe_place": null}' }
+      tools:
+        book_redelivery: { returns: { status: 200, booking_ref: "RD-5525" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: book_redelivery }
+        - { type: returns_matches, value: '"ask_about"\s*:\s*\[\s*"date"\s*\]' }
+        - { type: no_exception }
+
+  # All three fields need asking, one of them because its null is not
+  # allowed, so any order other than the table's shows.
+  - name: the_ask_lists_its_fields_in_the_table_order
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          Sorry I missed the driver this morning. Please bring the parcel
+          round again as soon as you can.
+      llm_script:
+        - { match: "*", reply: '{"date": null}' }
+      tools:
+        book_redelivery: { returns: { status: 200, booking_ref: "RD-5526" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: book_redelivery }
+        - { type: valid_json_return,
+            schema: { type: object, required: [action, ask_about],
+                      properties: { action: { const: ask },
+                                    ask_about: { const: [date, time_window, safe_place] } } } }
+
+reference_md: |
+  Two changes that each fixed a real complaint produced one bug from opposite
+  ends, because the code read two different facts through one call.
+  `extracted.get("safe_place")` returns None when the customer wrote "don't
+  leave it anywhere" and when the customer wrote nothing about it at all.
+  Every line after that call works from the merged value, and no amount of
+  care further down can pull the two apart again.
+
+  Membership is the test that keeps them apart. `name not in extracted` is
+  true only when the model left the key out, which is the model reporting that
+  the message did not cover it. A key that is present and null is the
+  customer's answer, and the booking tool accepts it as one.
+
+  Whether null is allowed belongs to the field. A redelivery needs a day, so a
+  null date is a gap whatever the reply looks like. Writing that rule down as
+  data next to the field names means the next field somebody adds arrives
+  with its own rule rather than a new if statement.
+
+  The booking passes the nulls through. A time window of null tells the depot
+  "any time", and replacing it with a default would book something the
+  customer did not ask for.
+
+  The distinction turns up wherever structured data crosses a boundary: a
+  PATCH request where an absent field means leave it alone and null means
+  clear it, a tool parameter that is optional with no default against one
+  that defaults to None, a form where an unanswered question differs from an
+  answer of none.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    The model's arguments leave a field out in one call and set it to null in the next. Is that the same request?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: book_redelivery
+    args: date, time_window, safe_place
+    returns: '`{"status": 200, "booking_ref": "<ref>"}` once it books. It needs all three arguments and
+      accepts null for the last two.'
+example:
+  case: a_request_with_no_date_asks_for_one
+  expect: The reply leaves the date out and sets `safe_place` to null, which is an answer, so book nothing
+    and return `action` ask with `ask_about` set to `["date"]`.
+traps:
+  - Reading an absent key and a key holding null the same way, as `extracted.get(name)` does, so a field
+    nobody mentioned passes as an answer.
+  - Treating null as a gap on every field, so a customer who said any time is fine gets asked again.
+  - Booking because the date key is present, even though it holds null and a redelivery always needs a
+    day.
+  - Listing the fields to ask about in the order the reply gave them, where the contract wants the table's
+    order.

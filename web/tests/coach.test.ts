@@ -18,8 +18,10 @@ import { validateProblemYaml } from "../lib/problems/validate.ts";
 import { resetDatabase, seedLearner } from "./helpers.ts";
 
 const PROBLEMS = path.join(import.meta.dirname, "..", "..", "problems");
-const EASY = "tool-creation/dispatch-only-registered-actions";
-const EXTREME = "agent-loop/bind-approval-to-an-exact-action";
+const EASY = "tools/dispatch-only-registered-actions";
+// Re-tiered on 1 October 2026: bind-approval is Hard now, and this build stage
+// is one of the Extreme code problems that kept its tier.
+const EXTREME = "builds/incident-investigator-4-resume-without-paging-twice";
 
 let learner: Awaited<ReturnType<typeof seedLearner>>;
 
@@ -157,9 +159,9 @@ describe("on an Extreme problem", () => {
   it("still speaks about a failed test before the code nudges open", async () => {
     const id = await publish(EXTREME);
     await gradedRun(id, "fail", [
-      { gate: "hidden", name: "the_destination_changes_after_the_approval" }]);
+      { gate: "hidden", name: "a_page_that_went_out_before_the_crash_is_not_sent_again" }]);
     const reply = await ask(id, await solution(EXTREME, "naive"));
-    expect(reply.nudge?.id).toBe("plan-changed");
+    expect(reply.nudge?.id).toBe("paged-twice");
   });
 });
 

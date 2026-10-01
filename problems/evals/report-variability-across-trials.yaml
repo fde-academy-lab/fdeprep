@@ -1,10 +1,13 @@
 slug: report-variability-across-trials
-title: Customers told they can change a ticket's name are refused
-day: 18
+title: "Report every trial so failures cannot hide"
+day: 19
 skill: Report every trial of a case, so one pass cannot hide a failure
 artefact_type: code
 difficulty: medium
 track: evals
+concept:
+  topic: "Regression testing"
+  question: "Why run a case more than once before calling it fixed?"
 est_minutes: 25
 competencies:
   - { slug: evaluation-design, weight: 1.0 }
@@ -142,6 +145,7 @@ hints:
     or none answered at all.
 
 scenario:
+  headline: "Customers told they can change a ticket's name are refused"
   who: The release owner for a travel company's booking assistant
   situation: >-
     The eval case for changing the name on a non-refundable ticket failed in

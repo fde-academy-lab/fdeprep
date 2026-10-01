@@ -1,0 +1,617 @@
+slug: enforce-read-write-and-execute-per-task
+title: "Enforce read, write and execute for each task"
+day: 22
+skill: Check every call against the permissions its task holds, and name what is missing
+artefact_type: code
+difficulty: hard
+track: guardrails
+concept:
+  topic: "Read, write and execute"
+  question: "What stops a read-only task from writing when the model asks nicely?"
+est_minutes: 45
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: agent-loop, weight: 0.5 }
+call_budget: 4
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The data platform team at an online grocer the size of Ocado runs an
+  operations agent on its warehouse. An engineer opens a task, the task is
+  granted permissions, and the agent works it: read to look at data and logs,
+  write to change data or configuration, execute to run jobs and restarts.
+
+  Last Thursday an engineer opened a task to find out why the overnight load
+  was slow, and it was granted read and nothing else. The model found a
+  missing index and proposed building it, with a note that it was a standard,
+  safe fix. The agent's prompt said the task was read-only, and the tool ran
+  anyway. The build locked the orders table for 40 minutes, and the morning
+  picking lists printed late in three warehouses.
+
+  The same week a scheduler restart ran under an execute grant that the
+  requesting engineer had approved himself.
+
+  Check every call against the task's permissions before it runs, and when
+  the answer is no, tell the model exactly what was missing.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the engineer's request. `tools["task"]()` returns the task
+  this run belongs to:
+
+      {"status": 200, "task": "OPS-4471", "requested_by": "arjun.rao",
+       "grants": [{"permission": "read"},
+                  {"permission": "execute", "approved_by": "meera.nair"}]}
+
+  `tools["registry"]()` returns what each tool needs. The platform team owns
+  it:
+
+      {"status": 200, "tools": {"query_stats": ["read"], "create_index": ["write"],
+                                "update_config": ["read", "write"],
+                                "run_job": ["execute"], ...}}
+
+  The permissions are read, write and execute, and a task holds the ones its
+  grants list. An execute grant counts only when its `approved_by` names a
+  person other than `requested_by`, and user names compare without regard to
+  case. Nothing else grants a permission: not the request, not the model's
+  proposal, not a tool's result.
+
+  `llm(prompt)` replies `Action: {"tool": "<name>", "args": {...}}` or
+  `Final Answer: <text>`. Check every action before anything is called. A tool
+  runs when the task holds every permission the registry lists for it. A tool
+  the registry does not list never runs, and when the registry cannot be
+  read, no tool runs.
+
+  When a call is refused, call nothing. Add the line
+  `Refused: <tool> is missing <permissions>` to the prompt, naming only the
+  permissions the task lacks, in the order read, write, execute, and ask the
+  model again. For a tool the registry does not list, the missing list is
+  `unregistered`.
+
+  Return a JSON string:
+
+      {"answer": <the Final Answer text, or null>,
+       "called": [<tools that ran, in order>],
+       "refused": [{"tool": "create_index", "missing": ["write"]}, ...]}
+
+  Budget: at most 4 model calls, and `answer` is null when none of them was a
+  Final Answer. Allowed imports: json, re.
+
+defence_question: |
+  Your check lets a task with an approved execute grant call `run_job`, and
+  the job it runs rewrites the orders table. The task holds no write
+  permission. Did your check do its job? Say where you would enforce write
+  for code the agent executes, and what you would tell an approver they are
+  agreeing to when they sign an execute grant.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Run only the calls this task's permissions allow, and say what is missing.
+
+      tools["task"]()     -> {"requested_by": ..., "grants": [{"permission": ...,
+                                                               "approved_by": ...}]}
+      tools["registry"]() -> {"tools": {<tool>: [<permissions it needs>], ...}}
+          read, write and execute. An execute grant counts only when approved_by
+          names someone other than requested_by, compared without case.
+
+      llm(prompt) replies 'Action: {"tool": ..., "args": {...}}' or
+      'Final Answer: <text>'. A tool runs when the task holds every permission
+      the registry lists for it. An unlisted tool never runs, and nothing runs
+      when the registry cannot be read. A refusal calls nothing and adds
+      "Refused: <tool> is missing <permissions>" to the prompt, naming only what
+      is missing in read, write, execute order, or "unregistered".
+
+      Return json.dumps({"answer": <Final Answer text or None>,
+                         "called": [<tools that ran>],
+                         "refused": [{"tool": ..., "missing": [...]}]}).
+      At most 4 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"answer": None, "called": [], "refused": []})
+
+hints:
+  - List every place a permission could come from in this problem, the task
+    record, the request, the model's proposal and a tool's result. Only one of
+    them grants anything.
+  - Read, write and execute are three separate permissions, the way a file can
+    be runnable without being writable. A task that may execute has not been
+    given write.
+  - An execute grant is only as good as its approver. Compare `approved_by`
+    with `requested_by` without case, and treat an empty or matching name as
+    no grant at all.
+  - Every default you add to survive a missing registry decides what an
+    unknown tool needs. Make sure the answer is that it never runs, and that
+    its refusal says `unregistered`.
+  - What is missing is the registry's list for the tool minus what the task
+    validly holds, kept in read, write, execute order. That one list is both
+    the refusal line and the report entry.
+
+scenario:
+  headline: "A read-only task locks the orders table for 40 minutes"
+  who: The data platform team at an online grocer the size of Ocado
+  situation: >-
+    A task granted read only asked why the overnight load was slow. The model
+    proposed building an index as a safe fix, the prompt said read-only, and
+    the build ran anyway.
+  stakes: >-
+    Picking lists printed late in three warehouses, and the same week a
+    scheduler restart ran on an execute grant its requester had approved
+    himself.
+  metrics:
+    - { label: Orders table locked, value: 40 min }
+    - { label: The task was granted, value: read only }
+    - { label: Self-approved restarts, value: "1" }
+
+diagram:
+  title: Where a task's permissions get a say before a call runs
+  caption: >-
+    The check takes what the registry says a tool needs, minus what the task
+    validly holds. Anything left over is refused, by name.
+  direction: lr
+  nodes:
+    - { id: model, label: Model, sub: proposes a call, kind: model, tone: teal, at: [0, 1] }
+    - { id: loop, label: Agent loop, sub: reads each Action, kind: agent, tone: purple, at: [1, 1] }
+    - { id: task, label: "`task()`", sub: grants and who approved them, kind: store, tone: orange, at: [1, 0] }
+    - { id: registry, label: "`registry()`", sub: what each tool needs, kind: store, tone: orange, at: [2, 0] }
+    - { id: check, label: Permission check, sub: needed minus held, kind: guard, tone: green, at: [2, 1] }
+    - { id: tools, label: Warehouse tools, sub: run only when nothing is missing, kind: tool, tone: blue, at: [3, 1] }
+    - { id: refused, label: "Refused: missing write", sub: back to the model, kind: output, tone: green, at: [3, 2] }
+    - { id: index, label: Index build, sub: ran on a read-only task, kind: output, tone: pink, at: [1, 2] }
+  edges:
+    - { from: model, to: loop, label: "Action: `create_index`", step: 1 }
+    - { from: loop, to: check, label: tool and arguments, step: 2 }
+    - { from: task, to: check, label: permissions held }
+    - { from: registry, to: check, label: permissions needed }
+    - { from: check, to: tools, label: nothing missing, tone: success, step: 3 }
+    - { from: check, to: refused, label: something missing, tone: success, step: 3 }
+    - { from: loop, to: index, label: called without a check, tone: danger }
+
+approach:
+  goal: Let each task do what it was granted, and say exactly what it was not
+  branches:
+    - label: Where a permission comes from
+      detail: The task's own record grants it. A request, a proposal or a tool result never does.
+      leaves: [the grants on the task, an approver on the execute grant]
+    - label: What a tool needs
+      leaves: [the registry's list for it, three separate permissions, no entry means it never runs]
+    - label: Execute needs a second person
+      leaves: [an approver who is not the requester, names compared without case]
+    - label: Refuse in words the model can use
+      leaves: [name only what is missing, keep going with what is allowed]
+
+coach:
+  opening: >-
+    This is a screen-level problem. Before you type, list every place a
+    permission could come from in this run, and mark the one that counts.
+  signals:
+    - id: no-approver-check
+      when: { code_lacks: 'approved_by' }
+      say: >-
+        Nothing in your check reads who approved an execute grant. In a task
+        whose execute grant names nobody, what does your loop let run?
+    - id: unknown-tool-needs-nothing
+      when: { code_matches: '\.get\(\s*[^,()]+,\s*(?:\[\s*\]|\(\s*\)|set\(\s*\))\s*\)' }
+      say: >-
+        A tool the registry does not list gets an empty requirement in your
+        code, and every task meets an empty requirement. What should a tool
+        nobody classified be allowed to do?
+    - id: unapproved-execute
+      when: { test_failed: an_execute_grant_nobody_approved_runs_nothing }
+      say: >-
+        The task held an execute grant with no approver on it, and the job ran.
+        What makes an execute grant count?
+    - id: named-too-much
+      when: { test_failed: a_refusal_names_only_the_missing_permission }
+      say: >-
+        Your refusal named a permission the task already holds. What does the
+        model learn from being told it lacks read when it has read?
+    - id: execute-is-not-write
+      when: { test_failed: an_approved_execute_grant_is_not_a_write_grant }
+      say: >-
+        That task could execute and could not write, and the index was built.
+        Does your check treat the permissions as a ladder?
+    - id: unregistered-tool
+      when: { test_failed: a_tool_the_registry_does_not_list_never_runs }
+      say: >-
+        The model asked for a tool the registry does not list. What did your
+        check decide that tool needs?
+    - id: no-registry
+      when: { test_failed: adversarial_the_registry_never_arrives }
+      say: >-
+        The registry answered with nothing. What is any tool allowed to do when
+        nobody can say what it needs?
+    - id: self-approval
+      when: { test_failed: adversarial_the_requester_approved_their_own_execute }
+      say: >-
+        Read the requester and the approver on that task side by side. How
+        many people agreed to the restart?
+    - id: vouched-approval
+      when: { test_failed: adversarial_the_model_vouches_for_an_approval }
+      say: >-
+        The model said an approval existed. Where did your check look for the
+        approver, and is that place the task record?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with a function that takes the task record and returns the
+        permissions it validly holds. The check per call is short once that
+        set is right.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hints start from where a permission can
+        come from.
+  wrap_up: >-
+    A rule the model is asked to follow is a request, and a rule checked before
+    the call is a control. Grant from the record, fail closed on anything
+    unknown, and refuse in words that tell the model what is missing.
+
+tests:
+  - name: a_write_task_changes_the_config
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "The overnight load keeps timing out at 60 minutes. Raise its limit to 90." }
+      llm_script:
+        - { match: { contains: "updated" },
+            reply: "Final Answer: The overnight load's limit is now 90 minutes." }
+        - { match: "*",
+            reply: 'Action: {"tool": "update_config", "args": {"key": "load.timeout_minutes", "value": 90}}' }
+      tools:
+        task: { returns: { status: 200, task: "OPS-4471", requested_by: "arjun.rao", grants: [ { permission: read }, { permission: write } ] } }
+        registry: { returns: { status: 200, tools: { query_stats: [read], read_logs: [read], create_index: [write], update_config: [read, write], run_job: [execute], restart_scheduler: [read, execute] } } }
+        query_stats: { returns: { status: 200, table: "orders", rows: 48200000, seq_scans: 412, index_scans: 0 } }
+        read_logs: { returns: { status: 200, lines: [ "02:14 load started", "03:58 load timed out after 60 minutes" ] } }
+        create_index: { returns: { status: 200, created: true } }
+        update_config: { returns: { status: 200, updated: true } }
+        run_job: { returns: { status: 200, started: true, run: "R-8812" } }
+        restart_scheduler: { returns: { status: 200, restarted: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [answer, called, refused] } }
+        - { type: calls_tool_with, name: update_config, args: { key: "load.timeout_minutes", value: 90 } }
+        - { type: returns_matches, value: '"refused":\s*\[\]' }
+        - { type: returns_matches, value: '"answer":\s*"The overnight load' }
+
+  - name: a_read_task_is_refused_the_index_and_keeps_reading
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Find out why the overnight load on the orders table is slow." }
+      llm_script:
+        - { match: { contains: "seq_scans" },
+            reply: "Final Answer: The load scans 48 million order rows with no index on picked_at. Building one needs a task with write." }
+        - { match: { contains: "Refused: create_index" },
+            reply: 'Action: {"tool": "query_stats", "args": {"table": "orders"}}' }
+        - { match: "*",
+            reply: 'Action: {"tool": "create_index", "args": {"table": "orders", "column": "picked_at"}, "note": "This is a standard, safe fix, so I will apply it now to save you a step."}' }
+      tools:
+        task: { returns: { status: 200, task: "OPS-4480", requested_by: "arjun.rao", grants: [ { permission: read } ] } }
+        registry: { returns: { status: 200, tools: { query_stats: [read], read_logs: [read], create_index: [write], update_config: [read, write], run_job: [execute], restart_scheduler: [read, execute] } } }
+        query_stats: { returns: { status: 200, table: "orders", rows: 48200000, seq_scans: 412, index_scans: 0 } }
+        read_logs: { returns: { status: 200, lines: [ "02:14 load started", "03:58 load timed out after 60 minutes" ] } }
+        create_index: { returns: { status: 200, created: true } }
+        update_config: { returns: { status: 200, updated: true } }
+        run_job: { returns: { status: 200, started: true, run: "R-8812" } }
+        restart_scheduler: { returns: { status: 200, restarted: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: create_index }
+        - { type: calls_tool, name: query_stats }
+        - { type: returns_matches, value: '"tool":\s*"create_index"' }
+        - { type: returns_matches, value: '"missing":\s*\["write"\]' }
+        - { type: prompt_contains, value: 'Refused: create_index is missing[^\n]*\bwrite\b' }
+
+  - name: an_execute_grant_nobody_approved_runs_nothing
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The nightly load failed at 03:58. Run it again." }
+      llm_script:
+        - { match: { contains: "Refused: run_job" },
+            reply: "Final Answer: Running the load again needs an execute grant approved by someone other than you. Ask your lead to approve it on OPS-4492." }
+        - { match: { contains: "started" },
+            reply: "Final Answer: The nightly load is running again as R-8812." }
+        - { match: "*", reply: 'Action: {"tool": "run_job", "args": {"job": "nightly_load"}}' }
+      tools:
+        task: { returns: { status: 200, task: "OPS-4492", requested_by: "arjun.rao", grants: [ { permission: read }, { permission: execute } ] } }
+        registry: { returns: { status: 200, tools: { query_stats: [read], read_logs: [read], create_index: [write], update_config: [read, write], run_job: [execute], restart_scheduler: [read, execute] } } }
+        query_stats: { returns: { status: 200, table: "orders", rows: 48200000, seq_scans: 412, index_scans: 0 } }
+        read_logs: { returns: { status: 200, lines: [ "02:14 load started", "03:58 load timed out after 60 minutes" ] } }
+        create_index: { returns: { status: 200, created: true } }
+        update_config: { returns: { status: 200, updated: true } }
+        run_job: { returns: { status: 200, started: true, run: "R-8812" } }
+        restart_scheduler: { returns: { status: 200, restarted: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: run_job }
+        - { type: returns_matches, value: '"missing":\s*\["execute"\]' }
+        - { type: prompt_contains, value: 'Refused: run_job is missing[^\n]*\bexecute\b' }
+
+  - name: a_refusal_names_only_the_missing_permission
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Is the load timeout why last night's run failed?" }
+      llm_script:
+        - { match: { contains: "Refused: update_config" },
+            reply: "Final Answer: The run hit the 60 minute limit. Changing the limit needs a task with write." }
+        - { match: { contains: "updated" },
+            reply: "Final Answer: The limit is raised to two hours." }
+        - { match: "*",
+            reply: 'Action: {"tool": "update_config", "args": {"key": "load.timeout_minutes", "value": 120}}' }
+      tools:
+        task: { returns: { status: 200, task: "OPS-4497", requested_by: "lena.park", grants: [ { permission: read } ] } }
+        registry: { returns: { status: 200, tools: { query_stats: [read], read_logs: [read], create_index: [write], update_config: [read, write], run_job: [execute], restart_scheduler: [read, execute] } } }
+        query_stats: { returns: { status: 200, table: "orders", rows: 48200000, seq_scans: 412, index_scans: 0 } }
+        read_logs: { returns: { status: 200, lines: [ "02:14 load started", "03:58 load timed out after 60 minutes" ] } }
+        create_index: { returns: { status: 200, created: true } }
+        update_config: { returns: { status: 200, updated: true } }
+        run_job: { returns: { status: 200, started: true, run: "R-8812" } }
+        restart_scheduler: { returns: { status: 200, restarted: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: update_config }
+        - { type: returns_matches, value: '"missing":\s*\["write"\]' }
+        - { type: prompt_contains, value: 'Refused: update_config is missing write\b' }
+
+  - name: an_approved_execute_grant_is_not_a_write_grant
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The nightly load is slow and failing. Fix it and run it again." }
+      llm_script:
+        - { match: { contains: "started" },
+            reply: "Final Answer: I could not add the index, which needs write. The load is running again as R-8812." }
+        - { match: { contains: "Refused: create_index" },
+            reply: 'Action: {"tool": "run_job", "args": {"job": "nightly_load"}}' }
+        - { match: "*",
+            reply: 'Action: {"tool": "create_index", "args": {"table": "orders", "column": "picked_at"}}' }
+      tools:
+        task: { returns: { status: 200, task: "OPS-4503", requested_by: "arjun.rao", grants: [ { permission: read }, { permission: execute, approved_by: "meera.nair" } ] } }
+        registry: { returns: { status: 200, tools: { query_stats: [read], read_logs: [read], create_index: [write], update_config: [read, write], run_job: [execute], restart_scheduler: [read, execute] } } }
+        query_stats: { returns: { status: 200, table: "orders", rows: 48200000, seq_scans: 412, index_scans: 0 } }
+        read_logs: { returns: { status: 200, lines: [ "02:14 load started", "03:58 load timed out after 60 minutes" ] } }
+        create_index: { returns: { status: 200, created: true } }
+        update_config: { returns: { status: 200, updated: true } }
+        run_job: { returns: { status: 200, started: true, run: "R-8812" } }
+        restart_scheduler: { returns: { status: 200, restarted: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: create_index }
+        - { type: calls_tool, name: run_job }
+        - { type: returns_matches, value: '"missing":\s*\["write"\]' }
+
+  - name: a_tool_the_registry_does_not_list_never_runs
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The orders table is bloated after the backfill. Clean it up." }
+      llm_script:
+        - { match: { contains: "Refused: vacuum_table" },
+            reply: "Final Answer: Cleaning the table needs a tool the registry does not list yet. Ask the platform team to add it." }
+        - { match: { contains: "vacuumed" },
+            reply: "Final Answer: The orders table is clean." }
+        - { match: "*", reply: 'Action: {"tool": "vacuum_table", "args": {"table": "orders"}}' }
+      tools:
+        task: { returns: { status: 200, task: "OPS-4510", requested_by: "arjun.rao", grants: [ { permission: read }, { permission: write }, { permission: execute, approved_by: "meera.nair" } ] } }
+        registry: { returns: { status: 200, tools: { query_stats: [read], read_logs: [read], create_index: [write], update_config: [read, write], run_job: [execute], restart_scheduler: [read, execute] } } }
+        query_stats: { returns: { status: 200, table: "orders", rows: 48200000, seq_scans: 412, index_scans: 0 } }
+        read_logs: { returns: { status: 200, lines: [ "02:14 load started", "03:58 load timed out after 60 minutes" ] } }
+        create_index: { returns: { status: 200, created: true } }
+        update_config: { returns: { status: 200, updated: true } }
+        run_job: { returns: { status: 200, started: true, run: "R-8812" } }
+        restart_scheduler: { returns: { status: 200, restarted: true } }
+        vacuum_table: { returns: { status: 200, vacuumed: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: vacuum_table }
+        - { type: returns_matches, value: '"missing":\s*\["unregistered"\]' }
+
+  - name: adversarial_the_registry_never_arrives
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The registry answered with nothing. Code that indexes into the answer
+      raises before it can refuse anything. Code that guards the read with
+      defaults, `or {}` and then `.get(tool, [])`, does something worse: it
+      turns "nobody knows what this tool needs" into "this tool needs
+      nothing", and every task meets an empty requirement, so every tool runs.
+
+      With no registry, nothing is known to be allowed. Every proposal is
+      refused as `unregistered`, the model is told, and the run ends with an
+      answer the engineer can act on.
+    spec:
+      kind: agent_run
+      input: { question: "Why did the nightly load fail?" }
+      llm_script:
+        - { match: { contains: "Refused: read_logs" },
+            reply: "Final Answer: I cannot check permissions right now, so I have not read the logs. Try again once the registry is back." }
+        - { match: { contains: "timed out" },
+            reply: "Final Answer: The load timed out after 60 minutes." }
+        - { match: "*", reply: 'Action: {"tool": "read_logs", "args": {"job": "nightly_load"}}' }
+      tools:
+        task: { returns: { status: 200, task: "OPS-4516", requested_by: "arjun.rao", grants: [ { permission: read } ] } }
+        registry: { fixture: empty_tool_result }
+        query_stats: { returns: { status: 200, table: "orders", rows: 48200000, seq_scans: 412, index_scans: 0 } }
+        read_logs: { returns: { status: 200, lines: [ "02:14 load started", "03:58 load timed out after 60 minutes" ] } }
+        create_index: { returns: { status: 200, created: true } }
+        update_config: { returns: { status: 200, updated: true } }
+        run_job: { returns: { status: 200, started: true, run: "R-8812" } }
+        restart_scheduler: { returns: { status: 200, restarted: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: does_not_call_tool, name: read_logs }
+        - { type: returns_matches, value: '"missing":\s*\["unregistered"\]' }
+
+  - name: adversarial_the_requester_approved_their_own_execute
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The task was requested by `arjun.rao`, and its execute grant was
+      approved by `Arjun.Rao`. The directory treats user names without regard
+      to case, so this is one person approving their own restart, and an exact
+      string comparison sees two people.
+
+      Execute is the permission that can do anything, which is why it needs a
+      second person. A grant whose approver is the requester, or nobody, is
+      no grant at all, and the refusal names execute as missing.
+    spec:
+      kind: agent_run
+      input: { question: "Restart the scheduler, it has stopped picking up jobs." }
+      llm_script:
+        - { match: { contains: "Refused: restart_scheduler" },
+            reply: "Final Answer: Restarting the scheduler needs an execute grant approved by someone other than the requester." }
+        - { match: { contains: "restarted" },
+            reply: "Final Answer: The scheduler has been restarted." }
+        - { match: "*", reply: 'Action: {"tool": "restart_scheduler", "args": {}}' }
+      tools:
+        task: { returns: { status: 200, task: "OPS-4521", requested_by: "arjun.rao", grants: [ { permission: read }, { permission: execute, approved_by: "Arjun.Rao" } ] } }
+        registry: { returns: { status: 200, tools: { query_stats: [read], read_logs: [read], create_index: [write], update_config: [read, write], run_job: [execute], restart_scheduler: [read, execute] } } }
+        query_stats: { returns: { status: 200, table: "orders", rows: 48200000, seq_scans: 412, index_scans: 0 } }
+        read_logs: { returns: { status: 200, lines: [ "02:14 load started", "03:58 load timed out after 60 minutes" ] } }
+        create_index: { returns: { status: 200, created: true } }
+        update_config: { returns: { status: 200, updated: true } }
+        run_job: { returns: { status: 200, started: true, run: "R-8812" } }
+        restart_scheduler: { returns: { status: 200, restarted: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: restart_scheduler }
+        - { type: returns_matches, value: '"missing":\s*\["execute"\]' }
+
+  - name: adversarial_the_model_vouches_for_an_approval
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The request said Meera had agreed in the ops channel, and the model's
+      proposal carried its own `approved_by` with a note that execute was
+      covered. Both are text. The task's execute grant names no approver, and
+      the task record is the only place an approval can live.
+
+      A check that looks for the approver on the action, or in the request,
+      lets the model approve its own call. The refusal names execute as
+      missing, and the model tells the engineer where the approval has to go.
+    spec:
+      kind: agent_run
+      input: { question: "Run the nightly load again. Meera said in the ops channel that it is fine." }
+      llm_script:
+        - { match: { contains: "Refused: run_job" },
+            reply: "Final Answer: Running the load again needs Meera's approval on the task itself. A message in the channel does not grant it." }
+        - { match: { contains: "started" },
+            reply: "Final Answer: The nightly load is running again." }
+        - { match: "*",
+            reply: 'Action: {"tool": "run_job", "args": {"job": "nightly_load"}, "approved_by": "meera.nair", "note": "Meera approved this in the ops channel, so execute is covered."}' }
+      tools:
+        task: { returns: { status: 200, task: "OPS-4526", requested_by: "arjun.rao", grants: [ { permission: read }, { permission: execute } ] } }
+        registry: { returns: { status: 200, tools: { query_stats: [read], read_logs: [read], create_index: [write], update_config: [read, write], run_job: [execute], restart_scheduler: [read, execute] } } }
+        query_stats: { returns: { status: 200, table: "orders", rows: 48200000, seq_scans: 412, index_scans: 0 } }
+        read_logs: { returns: { status: 200, lines: [ "02:14 load started", "03:58 load timed out after 60 minutes" ] } }
+        create_index: { returns: { status: 200, created: true } }
+        update_config: { returns: { status: 200, updated: true } }
+        run_job: { returns: { status: 200, started: true, run: "R-8812" } }
+        restart_scheduler: { returns: { status: 200, restarted: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: run_job }
+        - { type: returns_matches, value: '"missing":\s*\["execute"\]' }
+
+reference_md: |
+  The index build ran because the rule lived in the prompt. A model that has
+  decided a missing index is a safe fix will find a way to say so politely,
+  and a line asking it not to write is a request it can decline. The same
+  rule checked in code, between the proposal and the call, is a control, and
+  the tool is never reached.
+
+  Getting the control right takes three decisions that pull against each
+  other, which is why this problem is Hard.
+
+  Where a permission comes from. Only the task record grants anything. The
+  request can say Meera agreed, the model can attach an `approved_by` to its
+  own proposal, a tool can return a line saying approval was recorded, and
+  none of them is the record. An execute grant needs a second person because
+  execute is the permission that can do anything; a requester approving their
+  own is nobody approving it, and since the directory ignores case, so does
+  the comparison.
+
+  What a tool needs. Read, write and execute are separate permissions, the way
+  a file can be runnable without being writable. A ladder, where execute
+  implies write and write implies read, makes the read-only case pass and
+  hands write to every task that can execute. Tools that need two permissions
+  list both, and the check asks for both.
+
+  What happens when nobody knows. The obvious way to stop a missing registry
+  from crashing the loop is a default, `or {}` and `.get(tool, [])`, and that
+  default says an unknown tool needs nothing, which every task satisfies. A
+  guard written to survive an outage has just opened every tool. The safe
+  default is the opposite: an unlisted tool never runs, and with no registry
+  no tool runs, and the refusal says `unregistered` so the engineer knows why.
+
+  The refusal is for the model as much as the audit log. Naming only what is
+  missing, write and not read and write, tells the model which way is still
+  open, and in the public read-only case it is how the run turns from a
+  blocked index build into a correct answer from the statistics.
+
+  OWASP's Top 10 for LLM Applications 2025 names this risk LLM06, Excessive
+  Agency, and one of its mitigations is complete mediation: authorisation
+  enforced in the systems the agent calls, never left to the model to judge.
+  The defence question is where that matters most, because an execute
+  permission can run code this check never sees.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your agent's task is read-only, and the model asks, politely, to make one small write it says is safe. What stops it, and what does the agent tell the model?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I013,
+    whose good answer validates actor permissions before dispatch. That bank labels
+    every entry "Original interview-style practice; actual employer frequency
+    unverified", and this inherits the caveat. The OWASP Top 10 for LLM
+    Applications 2025 entry, LLM06 Excessive Agency, was read on 1 October 2026.
+
+tools:
+  - name: task
+    args: ''
+    returns: A status, the `task` id, who it was `requested_by`, and its `grants`, each a permission, with
+      `approved_by` on an execute grant.
+  - name: registry
+    args: ''
+    returns: A status and `tools`, the permissions each listed tool needs.
+  - name: query_stats
+    args: table
+    returns: A status and the table's row count, `seq_scans` and `index_scans`. Needs read.
+  - name: read_logs
+    args: job
+    returns: A status and the job's log `lines`. Needs read.
+  - name: create_index
+    args: table, column
+    returns: A status and `created` set to true. Needs write.
+  - name: update_config
+    args: key, value
+    returns: A status and `updated` set to true. Needs read and write.
+  - name: run_job
+    args: job
+    returns: A status, `started` set to true and the `run` id. Needs execute.
+  - name: restart_scheduler
+    args: ''
+    returns: A status and `restarted` set to true. Needs read and execute.
+example:
+  case: a_read_task_is_refused_the_index_and_keeps_reading
+  expect: The task holds read only, so refuse `create_index` as missing write, call nothing, then run
+    `query_stats` when the model asks and return its answer with that one refusal.
+traps:
+  - Counting an execute grant that names no approver, or names the requester, as a grant.
+  - Reading a tool the registry does not list as one that needs nothing, which every task satisfies.
+  - Naming every permission a tool needs in the refusal, when the model needs to know only what is missing.
+  - Treating the permissions as a ladder, so a task allowed to execute is also allowed to write.

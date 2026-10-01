@@ -206,6 +206,14 @@ def test_a_public_route_to_an_interpreter_module_is_rejected(what, source, needl
     assert any(needle in reason for reason in outcome.reasons), outcome.reasons
 
 
+FRAMEWORK_SUBMODULES = (
+    "langgraph", "langgraph.graph", "langgraph.types", "langgraph.checkpoint.memory",
+    "langgraph.prebuilt", "langchain_core", "langchain_core.tools", "langchain_core.messages",
+    "langchain_core.runnables", "langchain_core.prompts", "langchain_core.output_parsers",
+    "pydantic",
+)
+
+
 def _modules_problems_declare():
     import pathlib
 
@@ -252,7 +260,10 @@ def test_every_public_route_to_an_interpreter_module_is_on_the_list():
                 found.setdefault(name, f"{path}.{name}")
             walk(value, f"{path}.{name}", depth + 1)
 
-    for name in sorted(set(ALWAYS_ALLOWED_IMPORTS) | _modules_problems_declare()):
+    # A framework is imported by its submodules, which its top-level package
+    # does not load, so the walk starts from the ones a solution names.
+    for name in sorted(set(ALWAYS_ALLOWED_IMPORTS) | _modules_problems_declare()
+                       | set(FRAMEWORK_SUBMODULES)):
         walk(importlib.import_module(name), name, 0)
     assert not found, f"unnamed routes: {found}"
 

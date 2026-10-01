@@ -1,2 +1,10 @@
 PyYAML==6.0.2
 jsonschema==4.23.0
+# Agent frameworks a problem may allow, so a learner builds the loop, the
+# graph or the tool the way production code does. Versions read from PyPI on
+# 1 October 2026. They run inside the sandbox with the scripted model and
+# fixtures; learner code still never reaches a model endpoint, because the
+# only model a graph node can call is the llm proxy. Together they add about
+# 86 MB to the runner image and about 0.7 seconds to a case that imports them.
+langchain-core==1.6.6
+langgraph==1.2.12
