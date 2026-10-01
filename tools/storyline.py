@@ -87,12 +87,28 @@ def plan() -> dict[Path, int]:
             group.sort(key=lambda r: (TIERS.index(r["difficulty"]), r["day"],
                                       tracks.index(r["track"]), r["slug"]))
         base, extra = divmod(len(group), span)
-        at = 0
-        for offset in range(span):
-            take = base + (1 if offset < extra else 0)
-            for r in group[at:at + take]:
-                out[r["path"]] = first + offset
-            at += take
+        if stage in KEEP_ORDER:
+            at = 0
+            for offset in range(span):
+                take = base + (1 if offset < extra else 0)
+                for r in group[at:at + take]:
+                    out[r["path"]] = first + offset
+                at += take
+        else:
+            # One problem per chapter a day where the stage allows it, each
+            # chapter in its own order, so a ladder inside a chapter lands on
+            # consecutive days rather than two rungs on one day in slug order.
+            rank = {id(r): i for i, r in enumerate(group)}
+            queues = {t: [r for r in group if r["track"] == t] for t in tracks}
+            for offset in range(span):
+                take = base + (1 if offset < extra else 0)
+                used: set[str] = set()
+                for _ in range(take):
+                    open_ = [t for t in tracks if queues[t]]
+                    fresh = [t for t in open_ if t not in used] or open_
+                    pick = min(fresh, key=lambda t: rank[id(queues[t][0])])
+                    out[queues[pick].pop(0)["path"]] = first + offset
+                    used.add(pick)
         first += span
     return out
 

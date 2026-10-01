@@ -198,7 +198,7 @@ export function JourneyMap({ journey, currentStage }: { journey: Journey; curren
             <ul className="flex-1 divide-y divide-border">
               {stage.tracks.map((track) => (
                 <li key={track.track}>
-                  <Link href={{ pathname: "/problems" as Route, query: { track: track.track } }}
+                  <Link href={`/chapters/${track.track}` as Route}
                         className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface-2">
                     <TrackIcon track={track.track} className="text-text-dim" />
                     <span className="min-w-0 grow leading-snug text-text">{track.name}</span>

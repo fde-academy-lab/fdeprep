@@ -37,7 +37,7 @@ contract_md: |
       def run_agent(question: str, llm, tools: dict) -> str
 
   `question` is the ticket text. Call `tools["jev"](ticket=question)` once.
-  As on day 2 it is a scripted stand-in for Jev, and it replies
+  As in the decision-model router, it is a scripted stand-in for Jev, and it replies
   `{"choice": <label>, "confidence": <0 to 1>}` or `{"error": <reason>}`.
 
   Jev's choice is the route when it is one of the three queues and its
@@ -51,7 +51,7 @@ contract_md: |
 
   In every other case, a low score, a label that is not a queue, or an
   error, make one call to `llm(prompt)` with a prompt that holds the ticket
-  and names all four queues, and read the reply as on day 3: exactly one
+  and names all four queues, and read the reply as the one-call router does: exactly one
   queue name as a whole word, in any case, is the route, and anything else
   is `human`.
 
@@ -76,7 +76,7 @@ stub_code: |
 
 
   def route_with_model(question: str, llm) -> str:
-      """One model call, read the way the day 3 router reads it."""
+      """One model call, read the way the one-call router reads it."""
       # TODO 3: one prompt naming the four queues and holding the ticket,
       #         then exactly one name in the reply, or HUMAN
       return HUMAN
@@ -158,8 +158,8 @@ hints:
     that it depends on which queue Jev chose.
   - One bar for every queue lets a 0.72 refund through. The bar is a property
     of the queue, which is why `BARS` is a dictionary.
-  - "`confident_choice` is the day 2 router with the bar looked up per
-    choice, returning None instead of `HUMAN`. `route_with_model` is the day 3
+  - "`confident_choice` is the decision-model router with the bar looked up per
+    choice, returning None instead of `HUMAN`. `route_with_model` is the one-call
     router. `run_agent` calls the first and falls back to the second."
   - An error from Jev is a reason to ask the model, not a crash. Check for it
     before reading the choice.
@@ -257,7 +257,7 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with TODO 1 and TODO 2. They are the day 2 router with the bar
+        Start with TODO 1 and TODO 2. They are the decision-model router with the bar
         looked up from `BARS` for the choice Jev made.
     - id: hints
       when: { failed_runs_at_least: 3 }
@@ -359,7 +359,7 @@ reference_md: |
   Two stages also mean two ways to fail. Jev can return an error, and the
   model can return a reply that names no queue or two. The first is a reason
   to ask the model, because a timeout says nothing about the ticket. The
-  second goes to a person, for the reason the day 3 router gave: a ticket
+  second goes to a person, for the reason the one-call router gave: a ticket
   that confused the model once is the one most likely to confuse it again.
 
 complexity: C2

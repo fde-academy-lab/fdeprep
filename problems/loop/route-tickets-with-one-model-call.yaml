@@ -131,7 +131,7 @@ hints:
     name none. Only the first of those is a route.
   - "Search the reply for each of the four names with a word boundary and
     `re.IGNORECASE`, collect what you find into a list, and decide from its
-    length, the way the day 1 router decided from phrases."
+    length, the way the phrase-table router decided from phrases."
   - Asking again when the reply is unusable doubles the cost of exactly the
     tickets that were already unclear. The `human` queue exists for them.
 
@@ -292,7 +292,7 @@ reference_md: |
   with a label, a sentence, two candidates or a question back to the
   customer.
 
-  So the router treats the reply the way the day 1 router treated the ticket:
+  So the router treats the reply the way the phrase-table router treated the ticket:
   as text to search. Each of the four names is looked for as a whole word, in
   any case, and the count of names found is the decision. One name is a
   route. None or several means the model did not give a usable answer, and a
