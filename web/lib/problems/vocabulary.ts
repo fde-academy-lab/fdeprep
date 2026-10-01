@@ -13,6 +13,9 @@ export const TRACKS = [
   // Added 29 September 2026 with the catalogue expansion. Each maps onto
   // existing competencies; the competency vocabulary did not grow.
   "structured-output", "guardrails", "production", "fde-practice", "builds",
+  // Added 1 October 2026: one task solved with rules, a decision model, one
+  // LLM call and a cascade, so a learner sees when no agent is needed.
+  "workflows",
 ] as const;
 
 export type Track = (typeof TRACKS)[number];
@@ -26,7 +29,7 @@ export type Track = (typeof TRACKS)[number];
 export const STAGES = [
   { id: "foundations", name: "Foundations",
     blurb: "Talk to a model, parse what it says, and run a loop that ends.",
-    tracks: ["structured-output", "prompt", "agent-loop", "tool-creation"] },
+    tracks: ["workflows", "structured-output", "prompt", "agent-loop", "tool-creation"] },
   { id: "builder", name: "Builder",
     blurb: "Ground answers in documents and keep state across a conversation.",
     tracks: ["rag", "memory"] },
@@ -51,6 +54,7 @@ export const TRACK_NAMES: Readonly<Record<Track, string>> = {
   "production": "Production operations",
   "fde-practice": "Client delivery",
   "builds": "End-to-end builds",
+  "workflows": "Workflows and routing",
 };
 
 export const DIFFICULTIES = ["easy", "medium", "hard", "extreme"] as const;

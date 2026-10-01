@@ -37,6 +37,7 @@ describe("the storyline across the catalogue", () => {
   it("walks the four stages in order, so day 1 is never a production problem", async () => {
     const order = ["foundations", "builder", "production", "fde"];
     const stageOf: Record<string, string> = {
+      "workflows": "foundations",
       "structured-output": "foundations", "prompt": "foundations", "agent-loop": "foundations",
       "tool-creation": "foundations", "rag": "builder", "memory": "builder",
       "guardrails": "production", "evals": "production", "production": "production",

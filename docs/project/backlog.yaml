@@ -1285,6 +1285,29 @@ stages:
         acceptance:
           - Every problem lists two to four mistakes its hidden and adversarial cases exist to catch, in words that do not give the case away, and CI refuses a trap that quotes one.
           - Easy and Medium show the traps from the start; Hard, Extreme and the rehearsal show them once the attempt closes, and the page does not send them before then.
+      - id: S12.10
+        title: Give every problem a plain title a newcomer understands
+        type: Task
+        status: done
+        pr: 45
+        points: 5
+        area: Content
+        finish: 2026-10-01
+        found_by: Beta feedback
+        acceptance:
+          - Every problem title starts with a verb, runs to eight words at most, and says what the learner builds; the incident line it replaced is kept as the scenario headline and shown on the card and in the catalogue.
+          - The capstone tier is called End-to-end builds everywhere a learner reads it.
+      - id: S12.11
+        title: "Add a workflows track: one routing task solved with rules, a decision model, one model call and a cascade"
+        type: Feature
+        status: done
+        pr: 45
+        points: 8
+        area: Content
+        finish: 2026-10-01
+        acceptance:
+          - Four Easy problems on days 1 to 4 route the same support ticket four ways, and each reference passes while each naive solution fails a hidden test, through the runner.
+          - The decision model is a scripted tool in the runner like every other fixture, so learner code never reaches a model endpoint.
 
   - id: S13
     name: Voice interviewer v2, step 1

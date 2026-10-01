@@ -6,12 +6,13 @@
  */
 import {
   Activity, BookOpenText, Braces, FlaskConical, Handshake, Hammer, History, MessageSquareText,
-  Repeat, ShieldCheck, Wrench, type LucideIcon,
+  Repeat, ShieldCheck, Workflow, Wrench, type LucideIcon,
 } from "lucide-react";
 import { STAGES, TRACK_NAMES, TRACKS, type Track } from "@/lib/problems/vocabulary";
 import { cn } from "./cn";
 
 export const TRACK_ICONS: Readonly<Record<Track, LucideIcon>> = {
+  "workflows": Workflow,
   "structured-output": Braces,
   "prompt": MessageSquareText,
   "agent-loop": Repeat,

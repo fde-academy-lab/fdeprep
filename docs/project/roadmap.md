@@ -21,7 +21,7 @@ The order you will see built is the one the product owner set on 30 September: t
 | Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
 |---|---|---|---|---|---|---|
 | S13 Voice interviewer v2, step 1 | The first beta tester found the voice practice shallow and brittle: no way to move on, no fallback, and questions that did not connect. | 57 | 17 (11 to 23) | 339 | 30 Sep to 7 Oct 2026 | Medium |
-| S12 Problem pages v2 | The first beta tester found the problem names hard to follow and the function names lost in the prose around them. | 52 | 15 (9 to 20) | 194 | 30 Sep to 3 Oct 2026 | Medium |
+| S12 Problem pages v2 | The first beta tester found the problem names hard to follow and the function names lost in the prose around them. | 65 | 15 (9 to 20) | 194 | 30 Sep to 3 Oct 2026 | Medium |
 | S14 Voice interviewer v2, step 2 | Real interviewers dig into what you just said and into what your resume claims, and practice that cannot do either leaves the hardest part untested. | 37 | 20 (11 to 28) | 185 | 7 to 12 Oct 2026 | High |
 
 ### Later
@@ -74,6 +74,8 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S12.7 | Say how each problem comes up in an interview | Feature | 2 | Done | The interview question each problem declares appears on its page. |
 | S12.8 | Add a worked example to every problem | Task | 13 | Done | Every code problem shows one input and the behaviour expected from it, copied from a public case, never a hidden one.<br>Every prompt problem shows one ordinary message that repeats no probe; a design problem shows its rubric instead. |
 | S12.9 | Name the common traps on every problem | Task | 8 | Done | Every problem lists two to four mistakes its hidden and adversarial cases exist to catch, in words that do not give the case away, and CI refuses a trap that quotes one.<br>Easy and Medium show the traps from the start; Hard, Extreme and the rehearsal show them once the attempt closes, and the page does not send them before then. |
+| S12.10 | Give every problem a plain title a newcomer understands | Task | 5 | Done | Every problem title starts with a verb, runs to eight words at most, and says what the learner builds; the incident line it replaced is kept as the scenario headline and shown on the card and in the catalogue.<br>The capstone tier is called End-to-end builds everywhere a learner reads it. |
+| S12.11 | Add a workflows track: one routing task solved with rules, a decision model, one model call and a cascade | Feature | 8 | Done | Four Easy problems on days 1 to 4 route the same support ticket four ways, and each reference passes while each naive solution fails a hidden test, through the runner.<br>The decision model is a scripted tool in the runner like every other fixture, so learner code never reaches a model endpoint. |
 | S13.1 | Move to the next question when an answer ends early | Feature | 2 | Done | A Next question control ends the current answer, scores it on what was said, and starts the next question. |
 | S13.2 | Type the answer when the microphone or transcription fails | Feature | 5 | Done | When the microphone or the transcription fails, the session offers a text box, and a typed answer is scored on content and structure but not pace. |
 | S13.3 | Pick a question instead of taking the first one | Feature | 3 | Done | The voice screen lists every published question by track, and a learner can start any of them in any mode it supports. |

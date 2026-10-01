@@ -117,7 +117,8 @@ def test_every_slug_is_unique():
 
 
 LAUNCH_TRACKS = {"agent-loop", "tool-creation", "memory", "rag", "evals", "prompt"}
-EXPANSION_TRACKS = {"structured-output", "guardrails", "production", "fde-practice", "builds"}
+EXPANSION_TRACKS = {"structured-output", "guardrails", "production", "fde-practice", "builds",
+                    "workflows"}
 
 
 def test_every_launch_track_is_represented_and_no_other_track_is_invented():
