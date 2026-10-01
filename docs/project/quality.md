@@ -56,7 +56,7 @@ The column counts come from the stories in [backlog.yaml](backlog.yaml), and the
 | S9.7 | Bring undo back in both editors | Testing | S9 Beta on AWS | #40 | P0 Critical |
 | S9.8 | Stop re-rendering the whole workspace on every key | Beta tester | S9 Beta on AWS | #40 | P1 High |
 | S13.8 | Fix the eight defects that made the voice screen unreliable | Reading | S13 Voice interviewer v2, step 1 | #44 | P1 High |
-| S13.9 | Keep the debrief up, and say what failed when an answer does not save | Running it | S13 Voice interviewer v2, step 1 | planned | P1 High |
+| S13.9 | Keep the debrief up, and say what failed when an answer does not save | Running it | S13 Voice interviewer v2, step 1 | #45 | P1 High |
 <!-- /generated:bugs -->
 
 ## What the pattern says
