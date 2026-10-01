@@ -3,12 +3,12 @@ title: "Stop when the approved plan changes"
 day: 15
 skill: Stop the run when the plan moves past the version that was approved
 artefact_type: code
-difficulty: hard
+difficulty: medium
 track: human-in-the-loop
 concept:
   topic: "Approval gates"
   question: "What happens when the plan changes after someone approved it?"
-est_minutes: 35
+est_minutes: 30
 competencies:
   - { slug: agent-loop, weight: 1.0 }
   - { slug: failure-mode-analysis, weight: 1.0 }

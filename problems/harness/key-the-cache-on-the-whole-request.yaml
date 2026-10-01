@@ -1,14 +1,14 @@
 slug: key-the-cache-on-the-whole-request
 title: "Build a cache key that cannot mix users"
-day: 4
+day: 2
 skill: Key the cache on everything that shapes the answer
 artefact_type: code
-difficulty: medium
+difficulty: easy
 track: harness
 concept:
   topic: "Rate limits and cost caps"
   question: "What must a cache key hold so users never see each other's answers?"
-est_minutes: 25
+est_minutes: 20
 competencies:
   - { slug: cost-and-latency, weight: 1.0 }
   - { slug: system-design, weight: 1.0 }

@@ -1,14 +1,14 @@
 slug: retry-within-a-deadline
 title: "Retry a failing service within a deadline"
-day: 7
+day: 6
 skill: Retry a carrier that is failing, without blowing the deadline
 artefact_type: code
-difficulty: hard
+difficulty: medium
 track: harness
 concept:
   topic: "Retries and fallbacks"
   question: "How many retries fit inside a deadline?"
-est_minutes: 35
+est_minutes: 30
 competencies:
   - { slug: tool-error-handling, weight: 1.0 }
   - { slug: cost-and-latency, weight: 1.0 }

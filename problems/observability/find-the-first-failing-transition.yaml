@@ -3,12 +3,12 @@ title: "Find the first broken step in a run"
 day: 17
 skill: Find the first broken step in a failed run's trace
 artefact_type: code
-difficulty: hard
+difficulty: medium
 track: observability
 concept:
   topic: "Traces for debugging"
   question: "Where in this trace did the run first go wrong?"
-est_minutes: 35
+est_minutes: 30
 competencies:
   - { slug: failure-mode-analysis, weight: 1.0 }
   - { slug: evaluation-design, weight: 0.5 }

@@ -1,14 +1,14 @@
 slug: validate-extracted-table-evidence
 title: "Check a scanned invoice adds up before paying"
-day: 22
+day: 21
 skill: Pay a scanned invoice only when everything printed on it adds up
 artefact_type: code
-difficulty: extreme
+difficulty: medium
 track: guardrails
 concept:
   topic: "Input and output filtering"
   question: "What must add up before a scanned invoice is paid?"
-est_minutes: 50
+est_minutes: 30
 competencies:
   - { slug: failure-mode-analysis, weight: 1.0 }
   - { slug: tool-schema-design, weight: 1.0 }

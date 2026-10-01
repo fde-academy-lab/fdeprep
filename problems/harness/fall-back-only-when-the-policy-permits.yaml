@@ -3,12 +3,12 @@ title: "Use the fallback tool only when policy allows"
 day: 5
 skill: Fall back to the stronger tool only when the policy says so
 artefact_type: code
-difficulty: hard
+difficulty: medium
 track: harness
 concept:
   topic: "Retries and fallbacks"
   question: "When is a fallback allowed to take over?"
-est_minutes: 35
+est_minutes: 30
 competencies:
   - { slug: tool-error-handling, weight: 1.0 }
   - { slug: failure-mode-analysis, weight: 1.0 }

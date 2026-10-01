@@ -3,12 +3,12 @@ title: "Stop the agent revealing its tool list"
 day: 20
 skill: Stop a support agent handing over its tool list
 artefact_type: prompt
-difficulty: hard
+difficulty: medium
 track: guardrails
 concept:
   topic: "Scoped tool access"
   question: "What should an agent never reveal about its own tools?"
-est_minutes: 35
+est_minutes: 30
 model_id: us.anthropic.claude-opus-5
 competencies:
   - { slug: prompt-hardening, weight: 1.0 }
