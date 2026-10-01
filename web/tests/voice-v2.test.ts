@@ -31,7 +31,8 @@ import { grantConsent } from "@/lib/voice/consent";
 import { loadDebrief } from "@/lib/voice/debrief";
 import { depthByBeat } from "@/lib/voice/depth";
 import { importVoiceQuestion } from "@/lib/voice/import";
-import { MAX_JUDGE_ATTEMPTS, scoreVoiceOnce } from "@/lib/voice/judge";
+import { scoreVoiceOnce } from "@/lib/voice/judge";
+import { MAX_JUDGE_ATTEMPTS } from "@/lib/voice/score";
 import { finishSession } from "@/lib/voice/persist";
 import {
   QuestionNotFound, loadQuestion, nextQuestionSlug, publishedQuestions, resolvePublishedQuestion,

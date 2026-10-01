@@ -17,14 +17,11 @@ import { release, voiceScope } from "../policy/caps.ts";
 import { invoke, type JudgeOptions } from "../queue/judge-worker.ts";
 import { deliveryFor, type Segment } from "./delivery.ts";
 import { loadQuestion } from "./question.ts";
-import { scoreTypedAnswer, scoreVoiceSession, type BeatOutcome } from "./score.ts";
+import {
+  MAX_JUDGE_ATTEMPTS, scoreTypedAnswer, scoreVoiceSession, type BeatOutcome,
+} from "./score.ts";
 import type { PaceState } from "./cues.ts";
 import type { VoiceMode } from "./start.ts";
-
-/** A session the judge failed on this many times is left alone rather than
- *  retried forever. An operator can see it in the admin submissions view and
- *  the learner keeps the deterministic half of their score. */
-export const MAX_JUDGE_ATTEMPTS = 3;
 
 export type ScoreOptions = JudgeOptions & { limit?: number };
 
