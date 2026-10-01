@@ -1,10 +1,13 @@
 slug: design-deletion-across-derived-artefacts
 title: "Delete a fact everywhere it was copied"
-day: 14
+day: 13
 skill: Design deletion that reaches everywhere the fact went
 artefact_type: design
 difficulty: hard
 track: memory
+concept:
+  topic: "What to persist"
+  question: "Once a fact is stored, where does it go, and how do you delete it everywhere?"
 est_minutes: 40
 competencies:
   - { slug: state-and-memory, weight: 1.0 }

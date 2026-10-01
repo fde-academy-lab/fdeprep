@@ -1,0 +1,118 @@
+"""Lay the catalogue out on the 30-day path.
+
+Run from the repository root after adding, moving or re-tiering problems:
+
+    python -m tools.storyline          # rewrite each problem's day: line
+    python -m tools.storyline --check  # exit 1 when a day would change
+
+The path walks the four stages in order (web/lib/problems/vocabulary.ts).
+Each stage gets a run of days in proportion to how many problems it holds,
+every day gets at least MIN_PER_DAY and at most MAX_PER_DAY, and inside a
+stage the problems run Easy to Extreme. Two problems at the same tier keep
+the order their old days gave them, so an author's sequence survives a
+re-run. The forward deployed stage keeps its old order outright, because each
+build runs its four stages on consecutive days.
+
+The storyline test in web/tests/storyline.test.ts holds the same limits.
+"""
+
+from __future__ import annotations
+
+import re
+import sys
+from pathlib import Path
+
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+PROBLEMS = ROOT / "problems"
+DAYS = 30
+MIN_PER_DAY = 3
+MAX_PER_DAY = 5
+
+# Mirrors STAGES in web/lib/problems/vocabulary.ts, which a test compares.
+STAGES: list[tuple[str, list[str]]] = [
+    ("foundations", ["loop", "tools", "harness"]),
+    ("builder", ["context", "memory", "orchestration"]),
+    ("production", ["guardrails", "human-in-the-loop", "evals", "observability"]),
+    ("fde", ["agentic-pdlc", "agentic-sdlc", "builds", "fde-practice"]),
+]
+KEEP_ORDER = {"fde"}
+TIERS = ["easy", "medium", "hard", "extreme"]
+
+
+def catalogue() -> list[dict]:
+    rows = []
+    for path in sorted(PROBLEMS.glob("*/*.yaml")):
+        if path.parent.name == "_fixtures":
+            continue
+        raw = yaml.safe_load(path.read_text())
+        rows.append({"path": path, "slug": raw["slug"], "track": raw["track"],
+                     "difficulty": raw["difficulty"], "day": int(raw.get("day") or 0)})
+    return rows
+
+
+def split_days(counts: list[int]) -> list[int]:
+    """Days per stage: proportional to its problems, inside the per-day limits."""
+    total = sum(counts)
+    days = [max(1, round(DAYS * c / total)) for c in counts]
+    while sum(days) > DAYS:
+        i = max(range(len(days)), key=lambda k: days[k] * MIN_PER_DAY - counts[k])
+        days[i] -= 1
+    while sum(days) < DAYS:
+        i = max(range(len(days)), key=lambda k: counts[k] / days[k])
+        days[i] += 1
+    for count, n in zip(counts, days):
+        if not MIN_PER_DAY * n <= count <= MAX_PER_DAY * n:
+            raise SystemExit(f"{count} problems cannot fill {n} days at {MIN_PER_DAY} to "
+                             f"{MAX_PER_DAY} a day; change the catalogue or the limits")
+    return days
+
+
+def plan() -> dict[Path, int]:
+    rows = catalogue()
+    stage_of = {track: stage for stage, tracks in STAGES for track in tracks}
+    unknown = sorted({r["track"] for r in rows} - set(stage_of))
+    if unknown:
+        raise SystemExit(f"no stage for chapters {unknown}")
+    grouped = [[r for r in rows if stage_of[r["track"]] == stage] for stage, _ in STAGES]
+    spans = split_days([len(g) for g in grouped])
+
+    out: dict[Path, int] = {}
+    first = 1
+    for (stage, tracks), group, span in zip(STAGES, grouped, spans):
+        if stage in KEEP_ORDER:
+            group.sort(key=lambda r: (r["day"], r["slug"]))
+        else:
+            group.sort(key=lambda r: (TIERS.index(r["difficulty"]), r["day"],
+                                      tracks.index(r["track"]), r["slug"]))
+        base, extra = divmod(len(group), span)
+        at = 0
+        for offset in range(span):
+            take = base + (1 if offset < extra else 0)
+            for r in group[at:at + take]:
+                out[r["path"]] = first + offset
+            at += take
+        first += span
+    return out
+
+
+def main(argv: list[str]) -> int:
+    check = "--check" in argv
+    changed = 0
+    for path, day in plan().items():
+        text = path.read_text()
+        new = re.sub(r"^day: .*$", f"day: {day}", text, count=1, flags=re.M)
+        if new != text:
+            changed += 1
+            if not check:
+                path.write_text(new)
+    if check and changed:
+        print(f"{changed} problems are off the path; run python -m tools.storyline")
+        return 1
+    print(f"{changed} days {'would change' if check else 'rewritten'}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

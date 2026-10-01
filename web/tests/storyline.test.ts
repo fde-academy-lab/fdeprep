@@ -23,7 +23,7 @@ async function catalogue(): Promise<Array<{ file: string; source: string; proble
 }
 
 describe("the storyline across the catalogue", () => {
-  it("uses every one of the 30 days, with three or four problems on each", async () => {
+  it("uses every one of the 30 days, with three to five problems on each", async () => {
     const perDay = new Map<number, number>();
     for (const { problem } of await catalogue()) {
       perDay.set(problem.day!, (perDay.get(problem.day!) ?? 0) + 1);
@@ -31,17 +31,17 @@ describe("the storyline across the catalogue", () => {
     expect([...perDay.keys()].sort((a, b) => a - b))
       .toEqual(Array.from({ length: STORYLINE.days }, (_, i) => i + 1));
     for (const count of perDay.values()) expect(count).toBeGreaterThanOrEqual(3);
-    for (const count of perDay.values()) expect(count).toBeLessThanOrEqual(4);
+    for (const count of perDay.values()) expect(count).toBeLessThanOrEqual(5);
   });
 
   it("walks the four stages in order, so day 1 is never a production problem", async () => {
     const order = ["foundations", "builder", "production", "fde"];
     const stageOf: Record<string, string> = {
-      "workflows": "foundations",
-      "structured-output": "foundations", "prompt": "foundations", "agent-loop": "foundations",
-      "tool-creation": "foundations", "rag": "builder", "memory": "builder",
-      "guardrails": "production", "evals": "production", "production": "production",
-      "fde-practice": "fde", "builds": "fde",
+      "loop": "foundations", "tools": "foundations", "harness": "foundations",
+      "context": "builder", "memory": "builder", "orchestration": "builder",
+      "guardrails": "production", "human-in-the-loop": "production", "evals": "production",
+      "observability": "production", "agentic-pdlc": "fde", "agentic-sdlc": "fde",
+      "builds": "fde", "fde-practice": "fde",
     };
     const rows = (await catalogue()).map(({ problem }) => problem)
       .sort((a, b) => a.day! - b.day!);

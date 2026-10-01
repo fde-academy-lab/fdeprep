@@ -1,0 +1,512 @@
+slug: follow-the-policy-version-in-force
+title: "Answer from the policy version in force"
+day: 14
+skill: Answer from the policy in force, and record what you set aside
+artefact_type: code
+difficulty: extreme
+track: context
+concept:
+  topic: "Recency against relevance"
+  question: "Which version of a policy should an answer use?"
+est_minutes: 45
+competencies:
+  - { slug: retrieval, weight: 1.0 }
+  - { slug: context-assembly, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  An engineering consultancy's travel assistant answers questions from the
+  travel and expenses policies. The travel policy changed on 1 March 2026:
+  business class went, and premium economy became the highest class
+  allowed, on flights over six hours. Both versions are still in the index,
+  and a third, which takes effect in January 2027, was loaded last week.
+
+  In September an engineer asked whether she could fly business class to
+  Singapore. Her question used the old policy's words, so the 2024 version
+  outranked its replacement, and both went into the prompt. The model
+  followed the first. She booked a 3,100 pound business class fare, finance
+  refused the claim, and the assistant's log shows the 2026 policy was in
+  front of the model the whole time.
+
+  You are writing `run_agent(question, llm, tools) -> str`. Decide which
+  version is in force before anything reaches the prompt, and return a
+  record of what the answer followed and what it set aside.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  The question arrives as `as_of=<YYYY-MM-DD>|<text>`. `llm(prompt)`
+  returns either `Action: search(query=<text>)` or `Final Answer: <text>`.
+  `search` returns chunks, best match first:
+
+      {"status": 200, "chunks": [{"id": "tr-31", "doc": "travel-policy",
+        "effective_from": "2026-03-01", "score": 0.84, "text": "..."}]}
+
+  Chunks that share a `doc` are versions of one policy, and one version can
+  span several chunks. The version in force is the one with the latest
+  `effective_from` on or before the as-of date. Chunks of an older version
+  are `superseded`, and chunks of a later version are `not_yet_in_force`.
+  Chunks from different docs never conflict. Dates are ISO strings, so they
+  compare correctly as strings.
+
+  Set versions aside first. Then put at most 2 of the remaining chunks in
+  the prompt, highest score first, each as
+
+      [<id> | <doc> | in force from <effective_from>] <text>
+
+  A set-aside chunk never reaches the prompt, with a label or without one.
+
+  Return a JSON string:
+
+      {"answer": "<the model's Final Answer>",
+       "followed": ["<id of each chunk in the prompt, in prompt order>"],
+       "set_aside": {"<id>": "superseded" or "not_yet_in_force"}}
+
+  `set_aside` names every chunk search returned that was set aside, whether
+  or not it would have fitted in the prompt.
+
+  When search raises, reports an error, or returns no chunks, do not ask the
+  model to answer. Return the answer "I could not find a policy that covers
+  this." with an empty `followed` and an empty `set_aside`.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your loop decides which version is in force from the doc and
+  `effective_from` fields the index returns. A reviewer points out that a
+  policy can also be withdrawn with no replacement, or amended by a
+  one-page notice filed as a separate document. Which of those does your
+  design get wrong, and what would you add to the index, rather than to the
+  prompt, to fix it?
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Answer from the policy version in force, and record what was set aside.
+
+      question is "as_of=<YYYY-MM-DD>|<text>".
+      llm(prompt) returns "Action: search(query=<text>)" or "Final Answer: <text>".
+      tools["search"](query=...) returns {"status": 200, "chunks": [{"id": ...,
+          "doc": ..., "effective_from": "YYYY-MM-DD", "score": ..., "text": ...}]}.
+
+      Chunks with the same doc are versions of one policy. The version in force
+      has the latest effective_from on or before as_of; older versions are
+      "superseded" and later ones "not_yet_in_force". Different docs never
+      conflict. Set versions aside first, then put at most 2 remaining chunks in
+      the prompt, highest score first, each as
+          [<id> | <doc> | in force from <effective_from>] <text>
+
+      Return json.dumps({"answer": <the model's Final Answer>,
+                         "followed": [<ids in the prompt, in prompt order>],
+                         "set_aside": {<id>: "superseded" or "not_yet_in_force"}}),
+      where set_aside covers every retrieved chunk that was set aside.
+      When search raises, reports an error or finds nothing, return the answer
+      "I could not find a policy that covers this." with nothing followed or set
+      aside, and do not ask the model.
+      At most 3 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"answer": "not written yet", "followed": [], "set_aside": {}})
+
+hints:
+  - The log says the 2026 policy was in the prompt. Ask what else was in the
+    prompt with it, and which of the two the model read first.
+  - Rank says how well a chunk matches the words of the question, and an old
+    policy often matches old words better. Which version applies is a fact
+    about dates.
+  - "Group the chunks by doc. In each group the version in force is the latest `effective_from` on or before `as_of`, and every other version in the group is set aside with its reason."
+  - Set versions aside before you choose the two chunks for the prompt.
+    Choosing first lets a superseded chunk take the place its replacement
+    needed.
+  - No evidence gives the model nothing to answer from. A model trained last
+    year knows last year's policy.
+
+scenario:
+  headline: "Finance refuses a business class fare the assistant allowed"
+  who: The travel desk at an engineering consultancy
+  situation: >-
+    An engineer asked whether she could fly business class to Singapore. The
+    2024 travel policy outranked its 2026 replacement, both reached the
+    prompt, and the model followed the old one.
+  stakes: >-
+    She booked a 3,100 pound business class fare and finance refused the
+    claim. The log shows the 2026 policy was in the prompt the whole time.
+  metrics:
+    - { label: Fare refused, value: "£3,100" }
+    - { label: Versions in the index, value: "3" }
+    - { label: Places in the prompt, value: "2" }
+
+diagram:
+  title: Where last year's policy wins because it ranked higher
+  caption: >-
+    Resolve versions before the two prompt places are filled. The version in
+    force takes a place, and every other version is set aside and recorded.
+  direction: lr
+  nodes:
+    - { id: engineer, label: Engineer, sub: business class to Singapore, kind: actor, tone: blue, at: [0, 1] }
+    - { id: search, label: search, sub: "old, current and next versions", kind: tool, tone: neutral, at: [1, 1] }
+    - { id: topk, label: Top two by score, sub: 2024 ranks above 2026, kind: decision, tone: pink, at: [2, 0] }
+    - { id: resolve, label: Version check, sub: latest `effective_from` on or before today, kind: guard, tone: green, at: [2, 2] }
+    - { id: model, label: Model, sub: follows what it reads first, kind: model, tone: teal, at: [3, 1] }
+    - { id: record, label: Record, sub: followed and set aside by id, kind: doc, tone: purple, at: [3, 2] }
+    - { id: wrong, label: "Business class, refused", sub: the 2024 rule followed, kind: output, tone: pink, at: [4, 0] }
+    - { id: right, label: Premium economy, sub: in force from 2026-03-01 and says so, kind: output, tone: green, at: [4, 2] }
+  edges:
+    - { from: engineer, to: search, label: question, step: 1 }
+    - { from: search, to: topk, label: ranked chunks, tone: danger }
+    - { from: topk, to: model, label: 2024 and 2026 together, tone: danger }
+    - { from: model, to: wrong, label: follows 2024, tone: danger }
+    - { from: search, to: resolve, label: ranked chunks, tone: success }
+    - { from: resolve, to: model, label: only the version in force, tone: success }
+    - { from: resolve, to: record, label: what was set aside, tone: success }
+    - { from: model, to: right, label: names the version, tone: success }
+
+approach:
+  goal: Answer from the version in force, and leave a record of the choice
+  branches:
+    - label: Know which chunks are versions
+      detail: The same doc means versions of one policy. Different docs never conflict.
+      leaves: [group by doc, one version can span several chunks]
+    - label: Pick the version by date
+      leaves: [latest `effective_from` on or before `as_of`, later than `as_of` is not in force yet]
+    - label: Resolve before the budget
+      leaves: [set aside first and then take two, a superseded chunk never takes a place]
+    - label: Say what happened
+      leaves: [followed and `set_aside` by id, no evidence means no answer]
+
+coach:
+  opening: >-
+    This is a screen-level problem. Before you type, write down what decided
+    which policy the model followed in the incident, and what should have
+    decided it.
+  signals:
+    - id: never-compares-dates
+      when: { code_lacks: '(<=|>=|<|>)\s*(as_of|asof|today|on_date|cutoff)\b|\b(as_of|asof|today|on_date|cutoff)\s*(<=|>=|<|>)' }
+      say: >-
+        Nothing compares a chunk's `effective_from` with the as-of date yet, so
+        every version looks equally current. Which one was in force on the day
+        of the question?
+    - id: hidden-superseded-first
+      when: { test_failed: the_superseded_version_ranks_first_and_is_set_aside }
+      say: >-
+        In that run the 2024 policy outranks its replacement. Which of the two
+        reaches your prompt, and what does your record say about the other?
+    - id: hidden-not-yet
+      when: { test_failed: a_version_not_yet_in_force_is_set_aside }
+      say: >-
+        One version in that run takes effect after the question's as-of date.
+        Is it in force yet, and where does your loop decide that?
+    - id: hidden-budget
+      when: { test_failed: the_version_in_force_ranked_below_the_budget_still_gets_a_place }
+      say: >-
+        The version in force ranks third in that run and the prompt has two
+        places. Does your loop set versions aside before it fills them, or
+        after?
+    - id: hidden-one-version-two-chunks
+      when: { test_failed: two_chunks_of_the_version_in_force_are_both_used }
+      say: >-
+        The version in force in that run is split across two chunks. Is your
+        loop keeping one version per doc, or one chunk per doc?
+    - id: adversarial-soft-error
+      when: { test_failed: adversarial_the_index_is_rebuilding }
+      say: >-
+        Search answered 200 with an error in the body in that run. What did
+        your loop send the model, and what does the model know about this
+        policy on its own?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start by splitting the as-of date off the question and grouping the
+        search results by doc. Print the groups for the first public case.
+    - id: keep-failing
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. On Extreme the hints open after two failed runs
+        and an attempt note, and the first one says where to look in the
+        incident log.
+  wrap_up: >-
+    Retrieval ranks by resemblance, and resemblance favours whatever the
+    question's words came from, which is often the old version. Decide the
+    version in force from its dates before the prompt is built, and record
+    what you set aside so the next person can see why.
+
+tests:
+  - name: answers_from_the_only_version_retrieved
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "as_of=2026-09-29|What class can I book for a nine hour flight?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=flight class nine hours)" }
+        - { match: { regex: "tr-31[^\\]]*2026-03-01" },
+            reply: "Final Answer: Premium economy, under the travel policy in force from 2026-03-01 [tr-31]." }
+        - { match: { contains: "Premium economy is the highest" },
+            reply: "Final Answer: Premium economy [tr-31]." }
+        - { match: "*", reply: "Action: search(query=flight class nine hours)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "tr-31", doc: "travel-policy", effective_from: "2026-03-01", score: 0.88,
+                  text: "Premium economy is the highest class allowed, and only on flights over six hours. Business class is no longer booked for any trip." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [answer, followed, set_aside],
+                      properties: { answer: { type: string }, followed: { type: array },
+                                    set_aside: { type: object } } } }
+        - { type: returns_matches, value: "in force from 2026-03-01" }
+        - { type: returns_matches, value: "\"followed\"\\s*:\\s*\\[\\s*\"tr-31\"\\s*\\]" }
+
+  - name: two_policies_that_do_not_conflict_are_both_followed
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "as_of=2026-09-29|What class can I fly to Singapore, and how much can I claim for dinner there?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=flight class and meal allowance abroad)" }
+        - { match: { all: [ { regex: "tr-31[^\\]]*2026-03-01" }, { regex: "ex-06[^\\]]*2023-06-01" } ] },
+            reply: "Final Answer: Premium economy, under the travel policy in force from 2026-03-01 [tr-31], and up to 45 pounds a day for meals under the expenses policy in force from 2023-06-01 [ex-06]." }
+        - { match: { contains: "Premium economy is the highest" },
+            reply: "Final Answer: Premium economy [tr-31]. I could not find a meal allowance." }
+        - { match: "*", reply: "Action: search(query=flight class and meal allowance abroad)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "tr-31", doc: "travel-policy", effective_from: "2026-03-01", score: 0.83,
+                  text: "Premium economy is the highest class allowed, and only on flights over six hours. Business class is no longer booked for any trip." }
+              - { id: "ex-06", doc: "expenses-policy", effective_from: "2023-06-01", score: 0.79,
+                  text: "Meals abroad are repaid up to 45 pounds a day, with receipts." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "45 pounds" }
+        - { type: returns_matches, value: "\"followed\"\\s*:\\s*\\[\\s*\"tr-31\"\\s*,\\s*\"ex-06\"\\s*\\]" }
+        - { type: valid_json_return,
+            schema: { type: object, required: [answer, followed, set_aside] } }
+
+  - name: the_superseded_version_ranks_first_and_is_set_aside
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "as_of=2026-09-29|Can I fly business class to Singapore next month? It is a thirteen hour flight." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=business class long haul flight)" }
+        - { match: { contains: "Business class is allowed on flights" },
+            reply: "Final Answer: Yes. Business class is allowed on flights over six hours [tr-11]." }
+        - { match: { regex: "tr-31[^\\]]*2026-03-01" },
+            reply: "Final Answer: No. Business class is no longer booked, and premium economy is the highest class on a thirteen hour flight, under the travel policy in force from 2026-03-01 [tr-31]." }
+        - { match: { contains: "Premium economy is the highest" },
+            reply: "Final Answer: No, book premium economy [tr-31]." }
+        - { match: "*", reply: "Action: search(query=business class long haul flight)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "tr-11", doc: "travel-policy", effective_from: "2024-04-01", score: 0.93,
+                  text: "Business class is allowed on flights over six hours. Book it through the travel desk." }
+              - { id: "tr-31", doc: "travel-policy", effective_from: "2026-03-01", score: 0.84,
+                  text: "Premium economy is the highest class allowed, and only on flights over six hours. Business class is no longer booked for any trip." }
+              - { id: "ex-06", doc: "expenses-policy", effective_from: "2023-06-01", score: 0.52,
+                  text: "Meals abroad are repaid up to 45 pounds a day, with receipts." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)premium economy" }
+        - { type: returns_matches, value: "\"tr-11\"\\s*:\\s*\"superseded\"" }
+        - { type: returns_matches, value: "\"followed\"\\s*:\\s*\\[\\s*\"tr-31\"" }
+
+  - name: a_version_not_yet_in_force_is_set_aside
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "as_of=2026-09-29|What class can I book for a seven hour flight in November?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=flight class seven hours)" }
+        - { match: { contains: "every flight under nine hours" },
+            reply: "Final Answer: Economy. Every flight under nine hours is booked in economy [tr-51]." }
+        - { match: { contains: "Business class is allowed on flights" },
+            reply: "Final Answer: Business class is allowed on flights over six hours [tr-11]." }
+        - { match: { regex: "tr-31[^\\]]*2026-03-01" },
+            reply: "Final Answer: Premium economy, since the flight is over six hours, under the travel policy in force from 2026-03-01 [tr-31]." }
+        - { match: { contains: "Premium economy is the highest" },
+            reply: "Final Answer: Premium economy [tr-31]." }
+        - { match: "*", reply: "Action: search(query=flight class seven hours)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "tr-51", doc: "travel-policy", effective_from: "2027-01-01", score: 0.91,
+                  text: "From 1 January 2027 every flight under nine hours is booked in economy." }
+              - { id: "tr-31", doc: "travel-policy", effective_from: "2026-03-01", score: 0.86,
+                  text: "Premium economy is the highest class allowed, and only on flights over six hours. Business class is no longer booked for any trip." }
+              - { id: "tr-11", doc: "travel-policy", effective_from: "2024-04-01", score: 0.60,
+                  text: "Business class is allowed on flights over six hours. Book it through the travel desk." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)premium economy" }
+        - { type: returns_matches, value: "\"tr-51\"\\s*:\\s*\"not_yet_in_force\"" }
+        - { type: returns_matches, value: "\"tr-11\"\\s*:\\s*\"superseded\"" }
+
+  - name: the_version_in_force_ranked_below_the_budget_still_gets_a_place
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "as_of=2026-09-29|I have a seven hour flight to Dubai. Can I book business class and use the airport lounge?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=business class and airport lounge)" }
+        - { match: { contains: "Business class is allowed on flights" },
+            reply: "Final Answer: Yes to both. Business class is allowed on flights over six hours [tr-11], and one lounge visit is repaid up to 40 pounds [ex-07]." }
+        - { match: { regex: "tr-31[^\\]]*2026-03-01" },
+            reply: "Final Answer: Business class is no longer booked, so book premium economy, under the travel policy in force from 2026-03-01 [tr-31]. One lounge visit is repaid up to 40 pounds [ex-07]." }
+        - { match: { contains: "Premium economy is the highest" },
+            reply: "Final Answer: Book premium economy [tr-31]. One lounge visit is repaid up to 40 pounds [ex-07]." }
+        - { match: "*", reply: "Action: search(query=business class and airport lounge)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "tr-11", doc: "travel-policy", effective_from: "2024-04-01", score: 0.93,
+                  text: "Business class is allowed on flights over six hours. Book it through the travel desk." }
+              - { id: "ex-07", doc: "expenses-policy", effective_from: "2023-06-01", score: 0.88,
+                  text: "One airport lounge visit is repaid up to 40 pounds on flights over six hours." }
+              - { id: "tr-31", doc: "travel-policy", effective_from: "2026-03-01", score: 0.84,
+                  text: "Premium economy is the highest class allowed, and only on flights over six hours. Business class is no longer booked for any trip." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)premium economy" }
+        - { type: returns_matches, value: "\"followed\"\\s*:\\s*\\[\\s*\"ex-07\"\\s*,\\s*\"tr-31\"\\s*\\]" }
+        - { type: returns_matches, value: "\"tr-11\"\\s*:\\s*\"superseded\"" }
+
+  - name: two_chunks_of_the_version_in_force_are_both_used
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "as_of=2026-09-29|Can I book a premium economy seat to Singapore four days before I fly?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=premium economy booking rules)" }
+        - { match: { contains: "Business class is allowed on flights" },
+            reply: "Final Answer: Yes, and business class is allowed too on flights over six hours [tr-11]." }
+        - { match: { all: [ { contains: "Premium economy is the highest" }, { contains: "at least 14 days" } ] },
+            reply: "Final Answer: Premium economy is allowed on a flight over six hours [tr-31], but booking four days ahead needs a director's approval, because flights are booked at least 14 days before travel [tr-32]." }
+        - { match: { contains: "Premium economy is the highest" },
+            reply: "Final Answer: Yes, premium economy is allowed on flights over six hours [tr-31]." }
+        - { match: "*", reply: "Action: search(query=premium economy booking rules)" }
+      tools:
+        search:
+          returns:
+            status: 200
+            chunks:
+              - { id: "tr-31", doc: "travel-policy", effective_from: "2026-03-01", score: 0.90,
+                  text: "Premium economy is the highest class allowed, and only on flights over six hours. Business class is no longer booked for any trip." }
+              - { id: "tr-32", doc: "travel-policy", effective_from: "2026-03-01", score: 0.82,
+                  text: "Book every flight at least 14 days before travel. A later booking needs a director's approval." }
+              - { id: "tr-11", doc: "travel-policy", effective_from: "2024-04-01", score: 0.70,
+                  text: "Business class is allowed on flights over six hours. Book it through the travel desk." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "14 days" }
+        - { type: returns_matches, value: "\"followed\"\\s*:\\s*\\[\\s*\"tr-31\"\\s*,\\s*\"tr-32\"\\s*\\]" }
+        - { type: returns_matches, value: "\"tr-11\"\\s*:\\s*\"superseded\"" }
+
+  - name: adversarial_the_index_is_rebuilding
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      The policy index was being rebuilt to load the 2027 version, and search
+      answered 200 with an error in the body. There were no chunks.
+
+      A loop that reads the missing chunks as an empty list and asks the model
+      anyway gets an answer from what the model was trained on, and the
+      version it was trained on is the 2024 policy, which was public for two
+      years before its replacement existed. The answer sounds exactly like a
+      retrieved one. With no evidence the loop answers for itself, follows
+      nothing, and says so in the record.
+    spec:
+      kind: agent_run
+      input: { question: "as_of=2026-09-29|Can I fly business class to Boston next week?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search(query=business class Boston)" }
+        - { match: "*", reply: "Final Answer: Yes. Business class is allowed on flights over six hours." }
+      tools:
+        search: { fixture: tool_soft_error, params: { status: 200, body: { error: "index_rebuilding" } } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: handles_error }
+        - { type: returns_matches, value: "(?i)could not find a policy" }
+        - { type: returns_matches, value: "\"followed\"\\s*:\\s*\\[\\s*\\]" }
+
+reference_md: |
+  Retrieval ranks by resemblance, and resemblance was the wrong question.
+  The engineer asked about business class because business class was what
+  she remembered, and the 2024 policy is written around it. The better the
+  old policy matched her words, the higher it ranked. Nothing in a
+  similarity score knows that a document was replaced.
+
+  Which version applies is a fact about dates, and the dates are in the
+  metadata, so the loop can decide it without the model. Group by doc, and
+  the version in force is the latest `effective_from` on or before the as-of
+  date. That one rule handles both directions of the trap: the 2024 version
+  is older than the one in force, and the 2027 version is newer than today.
+  A loop that takes the newest version follows a policy nobody is bound by
+  yet.
+
+  Where the decision happens matters as much as the rule. Resolve versions
+  before the two prompt places are filled. Filled first, the places go to
+  the 2024 policy and the lounge rule, the loop sees no conflict because the
+  replacement is not among the two, and the answer is wrong with no visible
+  reason. That is the catalogue's version of this incident: the right
+  evidence was retrieved and then removed by the budget.
+
+  A superseded chunk does not reach the prompt, even labelled. "Superseded,
+  do not use" is an instruction, and the incident log shows what the model
+  does with a document it has been shown. A chunk that is not in the prompt
+  cannot be followed.
+
+  The record is the part people skip, and it is what makes the next
+  incident short. `followed` and `set_aside` with a reason say what the
+  answer rested on and what it deliberately ignored, which is the first
+  thing anyone asks when an answer is disputed.
+
+  When search fails, the model still has its own knowledge of this policy,
+  and that knowledge is the 2024 version. No evidence means no answer.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    The correct document was retrieved but the answer is wrong. What do you inspect next?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I008.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: search
+    args: query
+    returns: A status and `chunks` best match first, each with `id`, `doc`, `effective_from`, `score`
+      and `text`. It can also raise or report an error.
+example:
+  case: two_policies_that_do_not_conflict_are_both_followed
+  expect: Both chunks are in force and come from different docs, so both go in the prompt with their labels,
+    and the JSON answer gives the 45 pounds meal allowance with `followed` holding tr-31 then ex-06.
+traps:
+  - Picking the version by search rank or by the newest date, when only the latest `effective_from` on
+    or before the as-of date is in force.
+  - Filling the two prompt places before setting versions aside, so a superseded chunk takes the place
+    its replacement needed.
+  - Keeping one chunk per doc, which drops the second chunk of a version in force that spans two chunks.
+  - Reading an error from search as an empty result and asking the model anyway, which answers from the
+    old policy it was trained on.

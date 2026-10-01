@@ -1,10 +1,13 @@
 slug: score-outcome-and-behaviour-separately
 title: "Score what the agent said and did"
-day: 18
+day: 17
 skill: Score what the agent said and what the agent did
 artefact_type: code
 difficulty: medium
 track: evals
+concept:
+  topic: "Trajectory and outcome"
+  question: "Why score what the agent did apart from what it said?"
 est_minutes: 30
 competencies:
   - { slug: evaluation-design, weight: 1.0 }

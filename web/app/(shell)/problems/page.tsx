@@ -119,14 +119,14 @@ export default async function ProblemsPage({ searchParams }: { searchParams: Pro
         <form method="get" className="relative min-w-[220px] flex-1" role="search">
           <Search aria-hidden className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-text-faint" />
           <input type="search" name="q" defaultValue={filters.search}
-                 placeholder="Search titles, skills and tracks" aria-label="Search problems"
+                 placeholder="Search titles, skills and chapters" aria-label="Search problems"
                  className="h-8 w-full rounded-control border border-border-control bg-bg pl-8 pr-3
                             text-text outline-none placeholder:text-text-faint focus:border-accent" />
           {filters.stage !== "all" ? <input type="hidden" name="stage" value={filters.stage} /> : null}
           {filters.track !== "all" ? <input type="hidden" name="track" value={filters.track} /> : null}
           {filters.sort !== "roadmap" ? <input type="hidden" name="sort" value={filters.sort} /> : null}
         </form>
-        <Menu label={filters.track === "all" ? "Track" : trackName(filters.track)} active={filters.track !== "all"}
+        <Menu label={filters.track === "all" ? "Chapter" : trackName(filters.track)} active={filters.track !== "all"}
               options={[{ label: "Any track", href: link({ track: "all", page: "1" }), on: filters.track === "all" },
                         ...visibleTracks.map((t) => ({
                           label: trackName(t), href: link({ track: t, page: "1" }), on: filters.track === t,
@@ -206,14 +206,14 @@ function Row({ row, line }: { row: CatalogueRow; line: string | undefined }) {
             {row.day ? <span className="tnum mr-2 text-meta font-medium text-text-faint">Day {row.day}</span> : null}
             {row.title}
           </p>
-          {/* The title names the task, so the line under it tells the story the
-              task starts from rather than saying the task a second time. */}
-          {row.headline ?? row.skill ?? line
-            ? <p className="mt-0.5 line-clamp-1 text-meta text-text-dim">{renderCode((row.headline ?? row.skill ?? line)!)}</p>
+          {/* The title names the task, so the line under it asks the question
+              the task answers, which says what it teaches before it starts. */}
+          {row.question ?? row.headline ?? row.skill ?? line
+            ? <p className="mt-0.5 line-clamp-1 text-meta text-text-dim">{renderCode((row.question ?? row.headline ?? row.skill ?? line)!)}</p>
             : null}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-meta">
             <DifficultyMeter difficulty={row.difficulty} />
-            <TrackLabel track={row.track} />
+            <TrackLabel track={row.track} topic={row.topic} />
             <span className="text-text-faint">{TYPE_LABEL[row.artefactType] ?? row.artefactType}</span>
             <span className="text-text-faint">About {row.estMinutes} min</span>
           </div>

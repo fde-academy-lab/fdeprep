@@ -412,7 +412,7 @@ slug: a-problem
 title: A problem
 artefact_type: code
 difficulty: medium
-track: agent-loop
+track: loop
 est_minutes: 20
 call_budget: 6
 time_limit_s: 10

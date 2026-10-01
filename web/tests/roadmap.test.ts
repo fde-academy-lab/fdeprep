@@ -57,11 +57,12 @@ describe("acceptance 1: three personas, three different Next Up sets", () => {
     expect(["hard", "extreme"]).toContain(first.difficulty);
   });
 
-  it("weights the navigator towards tool creation, memory and retrieval", async () => {
+  it("weights the navigator towards loops, tools, memory and context", async () => {
     const roadmap = await roadmapFor(learners["navigator"]!.enrolmentId);
     const required = roadmap.items.filter((item) => !item.isOptional).slice(0, 4);
-    expect(required.map((item) => item.track))
-      .toEqual(expect.arrayContaining(["tool-creation", "memory"]));
+    const tracks = required.map((item) => item.track);
+    expect(tracks).toEqual(expect.arrayContaining(["tools"]));
+    for (const track of tracks) expect(["loop", "tools", "memory", "context"]).toContain(track);
   });
 
   it("puts Extreme and design work at the front for the accelerator", async () => {
@@ -81,15 +82,15 @@ describe("the order inside a tier follows the journey", () => {
   it("puts the foundations tracks before an end-to-end build in the same tier", () => {
     const order = orderFor("builder", [
       row("an-end-to-end-stage-one", "builds"),
-      row("z-structured-output", "structured-output"),
+      row("z-tools", "tools"),
       row("m-guardrail", "guardrails"),
     ]).map((item) => item.track);
-    expect(order).toEqual(["structured-output", "guardrails", "builds"]);
+    expect(order).toEqual(["tools", "guardrails", "builds"]);
   });
 
   it("still lets the tier decide first", () => {
     const order = orderFor("builder", [
-      row("medium-structured", "structured-output", "medium"),
+      row("medium-structured", "tools", "medium"),
       row("easy-end-to-end", "builds", "easy"),
     ]).map((item) => item.slug);
     expect(order).toEqual(["easy-end-to-end", "medium-structured"]);
@@ -97,10 +98,10 @@ describe("the order inside a tier follows the journey", () => {
 
   it("still lets the persona's emphasis beat the journey", () => {
     const order = orderFor("navigator", [
-      row("s-structured", "structured-output", "medium"),
-      row("r-retrieval", "rag", "medium"),
+      row("h-harness", "harness", "medium"),
+      row("r-retrieval", "context", "medium"),
     ]).map((item) => item.track);
-    expect(order).toEqual(["rag", "structured-output"]);
+    expect(order).toEqual(["context", "harness"]);
   });
 });
 
@@ -110,6 +111,20 @@ describe("the problems page", () => {
     const page = await listProblems({ enrolmentId: builder, perPage: 100, sort: "roadmap" });
     const roadmap = await roadmapFor(builder);
     expect(page.rows.map((r) => r.slug)).toEqual(roadmap.items.map((i) => i.slug));
+  });
+
+  // Found 1 October 2026: the search clause names its value four times and
+  // only the first placeholder was numbered, so Postgres read the rest as a
+  // dollar-quoted string and every search failed.
+  it("finds a problem by a word from its title, and by its chapter", async () => {
+    const builder = learners["builder"]!.enrolmentId;
+    const { rows } = await db().query<{ slug: string; title: string; track: string }>(
+      "select slug, title, track from problem order by slug limit 1");
+    const word = rows[0]!.title.split(" ").find((w) => w.length > 4)!;
+    const byTitle = await listProblems({ enrolmentId: builder, perPage: 100, search: word });
+    expect(byTitle.rows.map((r) => r.slug)).toContain(rows[0]!.slug);
+    const byChapter = await listProblems({ enrolmentId: builder, perPage: 100, search: rows[0]!.track });
+    expect(byChapter.rows.map((r) => r.slug)).toContain(rows[0]!.slug);
   });
 });
 

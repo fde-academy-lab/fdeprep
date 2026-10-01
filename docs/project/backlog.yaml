@@ -1307,6 +1307,17 @@ stages:
         acceptance:
           - Four Easy problems on days 1 to 4 route the same support ticket four ways, and each reference passes while each naive solution fails a hidden test, through the runner.
           - The decision model is a scripted tool in the runner like every other fixture, so learner code never reaches a model endpoint.
+      - id: S12.12
+        title: Organise the catalogue as chapters of agent engineering, each problem labelled with the question it answers
+        type: Feature
+        status: done
+        pr: 45
+        points: 8
+        area: Content
+        finish: 2026-10-01
+        acceptance:
+          - Every problem sits in one of twelve chapters, from loop engineering to Agentic SDLC, under a topic from that chapter's closed list, and its page and catalogue row show the question it answers before the learner starts.
+          - The 30-day path walks the four stages in order, a test fails when any problem's day is off it, and searching the problems page by a word, a chapter or a question returns matches.
 
   - id: S13
     name: Voice interviewer v2, step 1

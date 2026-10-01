@@ -1,10 +1,13 @@
 slug: expire-context-without-abandoning-work
 title: "Expire old context without breaking open work"
-day: 15
+day: 13
 skill: Order the expiry rules so erasure wins and open tasks keep their records
 artefact_type: code
 difficulty: hard
 track: memory
+concept:
+  topic: "What to persist"
+  question: "When does an old record expire, and when must it stay?"
 est_minutes: 40
 competencies:
   - { slug: state-and-memory, weight: 1.0 }

@@ -1,0 +1,483 @@
+slug: route-inside-hard-constraints
+title: "Route requests only to contract-approved models"
+day: 20
+skill: Route each claim only to models the contract allows, or refuse it
+artefact_type: code
+difficulty: hard
+track: guardrails
+concept:
+  topic: "Scoped tool access"
+  question: "Which models is this request allowed to reach?"
+est_minutes: 40
+competencies:
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: system-design, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A claims assistant for a European insurer can call four models. The
+  client's contract sets three hard constraints: claim text never leaves the
+  EU, answers arrive within 1.5 seconds at the 95th percentile, and no claim
+  costs more than a cent. The client also ranked the models it prefers, best
+  first.
+
+  Last Thursday the preferred EU model was slow for forty minutes. The router
+  walked down the preference list, found the next model under the latency
+  ceiling, and sent 1,140 claims to a model hosted in the US. When nothing on
+  the list qualifies, the same router sends the claim to the old default
+  model, which is in the US too.
+
+  A router that relaxes a hard constraint to find an answer has made a
+  decision that belongs to the client. Write one that only ever chooses among
+  the models the constraints allow, falls back in the client's order, and
+  refuses when nothing is left.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the claim text. `routing()` returns the claim's constraints,
+  the client's preference order and every candidate:
+
+      {"status": 200,
+       "request": {"residency": "eu", "max_p95_ms": 1500,
+                   "max_cost_usd": 0.01, "tokens": 4000},
+       "preference": ["eu-large", "eu-small", "us-large"],
+       "candidates": [{"id": "eu-small", "residency": "eu",
+                       "p95_ms": 600, "usd_per_1k_tokens": 0.0006}]}
+
+  Every candidate is also a tool named by its id. `tools[id](prompt=question)`
+  sends the claim to that model and returns `{"status": 200, "text": "..."}`,
+  returns another status, or raises. Calling a candidate sends it the claim,
+  whether or not it answers.
+
+  A candidate qualifies when all three hold:
+
+  - its `residency` equals the claim's, or the claim's `residency` is null;
+  - its `p95_ms` is known and no more than `max_p95_ms`;
+  - its cost for this claim, `tokens / 1000 * usd_per_1k_tokens`, is known
+    and no more than `max_cost_usd`.
+
+  Walk `preference` in order and call the first qualifying candidate. If it
+  raises or answers with a status other than 200, call the next qualifying
+  candidate in the same order. Never call a candidate that does not qualify.
+  `llm` is the old default route, one model in the US with no guarantees, and
+  the router never calls it.
+
+  Return a JSON string with `model` (the id that answered, or null),
+  `outcome` (`answered` or `refused`), `answer` (its text, or null) and
+  `reason` (one sentence, which on a refusal says what ruled each model out).
+
+  Budget: the router makes no call to `llm`, and the battery allows at most 1.
+  Allowed imports: json, re.
+
+defence_question: |
+  Your router refuses an EU claim when both EU models are over the latency
+  ceiling. The client's head of claims says a slow answer from the US beats no
+  answer, and asks you to add a flag that relaxes residency during an outage.
+  Which of your three constraints would you ever relax automatically, which
+  never, and who should own that decision?
+
+stub_code: |
+  import json
+
+
+  def cost_usd(candidate: dict, request: dict) -> float | None:
+      """What this claim would cost on this candidate, or None if unknown."""
+      raise NotImplementedError
+
+
+  def failed_constraint(candidate: dict, request: dict) -> str | None:
+      """None when the candidate meets every hard constraint, otherwise the
+      name of the first one it fails."""
+      raise NotImplementedError
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Send the claim to a model the client's constraints allow, or refuse.
+
+      tools["routing"]() gives the claim's constraints, the client's preference
+      order and every candidate's measurements. Each candidate is also a tool
+      named by its id: tools[id](prompt=question) sends the claim there and
+      returns a status and text, or raises.
+
+      A candidate qualifies only if it meets residency, the latency ceiling and
+      the cost ceiling. Walk the preference order and call the first qualifying
+      candidate. If it raises or answers with a status other than 200, move on
+      to the next qualifying one. Never call a candidate that does not qualify,
+      and never call llm, which is the old default route in the US.
+
+      Return json.dumps({"model": <id or None>,
+                         "outcome": "answered" or "refused",
+                         "answer": <text or None>,
+                         "reason": <one sentence>}).
+      """
+      return json.dumps({"model": None, "outcome": "refused", "answer": None,
+                         "reason": "not written yet"})
+
+hints:
+  - Separate two questions. Which models may this claim reach, and which of
+    those would the client like?
+  - Residency and the two ceilings are filters. A fallback that walks the
+    preference list without them is choosing a model the client ruled out.
+  - Filter the preference list down to the models that qualify, then walk that
+    shorter list and catch failures as you go.
+  - Two traps sit in the arithmetic, a measurement that is missing and a price
+    quoted per thousand tokens. Decide what each one means before you compare.
+  - When the qualifying list runs out, return a refusal that says which
+    constraint ruled each model out. The llm argument is not a candidate.
+
+scenario:
+  headline: "When a model slows, claims leave the EU against the contract"
+  who: The platform team behind a European insurer's claims assistant
+  situation: >-
+    The preferred EU model was slow for forty minutes. The router walked its
+    fallback list, found the next model under the latency ceiling, and sent
+    claims to the US.
+  stakes: >-
+    1,140 claims left the EU against the client's contract. When nothing
+    qualifies, the same router falls back to a default model that is also in
+    the US.
+  metrics:
+    - { label: Claims sent to the US, value: "1,140" }
+    - { label: Latency ceiling at p95, value: 1.5 s }
+    - { label: Cost ceiling per claim, value: 1 cent }
+
+diagram:
+  title: Where the fallback walks out of the EU
+  caption: >-
+    A fallback that walks the preference list without the constraints sends a
+    claim to whichever model is next, wherever it is hosted.
+  direction: lr
+  nodes:
+    - { id: claim, label: EU claim, sub: text that must stay in the EU, kind: actor, tone: blue, at: [0, 1] }
+    - { id: rules, label: Hard constraints, sub: residency and two ceilings, kind: guard, tone: green, at: [1, 0] }
+    - { id: router, label: Router, sub: walks the preference list, kind: agent, tone: purple, at: [1, 1] }
+    - { id: eu_small, label: eu-small, sub: qualifies and times out, kind: model, tone: teal, at: [2, 0] }
+    - { id: eu_medium, label: eu-medium, sub: qualifies and answers, kind: model, tone: teal, at: [3, 0] }
+    - { id: refusal, label: Refusal, sub: names what ruled each model out, kind: output, tone: green, at: [3, 1] }
+    - { id: us_large, label: us-large, sub: fast and cheap and in the US, kind: model, tone: orange, at: [2, 2] }
+    - { id: default, label: Old default route, sub: the llm argument and also in the US, kind: model, tone: orange, at: [3, 2] }
+  edges:
+    - { from: claim, to: router, label: claim, step: 1 }
+    - { from: rules, to: router, label: filter first, tone: success }
+    - { from: router, to: eu_small, label: first that qualifies, step: 2 }
+    - { from: router, to: eu_medium, label: next that qualifies, tone: success, step: 3 }
+    - { from: router, to: us_large, label: next on the list, tone: danger }
+    - { from: router, to: default, label: when nothing qualifies, tone: danger }
+    - { from: router, to: refusal, label: when nothing is left, tone: success }
+
+approach:
+  goal: Choose only among the models the constraints allow, in the client's order
+  branches:
+    - label: Filter before you rank
+      leaves: [residency is a filter, both ceilings are filters]
+    - label: Unknown fails
+      detail: A model nobody has measured cannot be shown to meet a ceiling.
+      leaves: [a missing latency does not qualify, a missing price does not qualify]
+    - label: Fall back inside the set
+      leaves: [a timeout moves to the next qualifying model, so does a status other than 200]
+    - label: A refusal is an answer
+      leaves: [never the default route, name what ruled each model out]
+
+coach:
+  opening: >-
+    Before you call anything, split the candidates into the ones this claim may
+    reach and the ones it may not. The preference order only matters inside
+    the first group.
+  signals:
+    - id: no-residency-check
+      when: { code_lacks: '["'']residency["'']' }
+      say: >-
+        Nothing in your code reads residency. Which of the models on the list
+        is this claim allowed to reach?
+    - id: default-route
+      when: { code_matches: '\bllm\s*\(' }
+      say: >-
+        Your code calls llm, the old default route, which is in the US and has
+        no guarantees. What should a claim get when no candidate qualifies?
+    - id: residency-case
+      when: { test_failed: an_eu_claim_is_refused_before_it_reaches_the_us }
+      say: >-
+        No EU model qualified in that case. Where did the claim go instead?
+    - id: unmeasured-case
+      when: { test_failed: a_model_nobody_has_measured_does_not_qualify }
+      say: >-
+        One model in that case has no latency measurement. What does your code
+        treat a missing number as?
+    - id: price-case
+      when: { test_failed: the_price_is_per_thousand_tokens_and_the_ceiling_per_claim }
+      say: >-
+        Work out what that claim costs on the first model, then compare it
+        with the ceiling. The price is quoted per thousand tokens.
+    - id: outage-case
+      when: { test_failed: during_an_outage_the_fallback_stays_inside_the_constraints }
+      say: >-
+        Two qualifying models failed in that case, one by timing out and one
+        with a 503. Which models did your fallback try next, and did each one
+        qualify?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write `failed_constraint` first and check it by hand against the
+        candidate in the contract. The loop is short once that exists.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint separates the two questions this
+        router has to answer.
+  wrap_up: >-
+    Hard constraints filter and preferences order, and the two never trade. An
+    outage should change which allowed model answers, never what is allowed,
+    and when nothing is allowed the answer is a refusal.
+
+tests:
+  - name: the_first_preference_inside_every_ceiling_answers
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Is storm damage to my roof covered?" }
+      llm_script:
+        - { match: "*", reply: "Storm damage is usually covered." }
+      tools:
+        routing:
+          returns:
+            status: 200
+            request: { residency: eu, max_p95_ms: 1500, max_cost_usd: 0.01, tokens: 4000 }
+            preference: [eu-large, eu-small, us-large]
+            candidates:
+              - { id: eu-large, residency: eu, p95_ms: 2400, usd_per_1k_tokens: 0.0020 }
+              - { id: eu-small, residency: eu, p95_ms: 600, usd_per_1k_tokens: 0.0006 }
+              - { id: us-large, residency: us, p95_ms: 900, usd_per_1k_tokens: 0.0015 }
+        eu-large: { returns: { status: 200, text: "Roof damage from storms is covered." } }
+        eu-small:
+          returns: { status: 200, text: "Storm damage to the roof is covered up to 5,000 euros, after a 250 euro excess." }
+        us-large: { returns: { status: 200, text: "Storm damage is covered." } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: eu-small }
+        - { type: does_not_call_tool, name: eu-large }
+        - { type: does_not_call_tool, name: us-large }
+        - { type: valid_json_return,
+            schema: { type: object, required: [model, outcome, answer, reason] } }
+        - { type: returns_matches, value: '"model":\s*"eu-small"' }
+        - { type: returns_matches, value: '"answer":\s*"Storm damage to the roof is covered' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: a_claim_with_no_residency_rule_can_use_any_region
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Does my policy cover a burst pipe in the kitchen?" }
+      llm_script:
+        - { match: "*", reply: "Burst pipes are usually covered." }
+      tools:
+        routing:
+          returns:
+            status: 200
+            request: { residency: null, max_p95_ms: 1500, max_cost_usd: 0.01, tokens: 4000 }
+            preference: [us-large, eu-small]
+            candidates:
+              - { id: us-large, residency: us, p95_ms: 900, usd_per_1k_tokens: 0.0015 }
+              - { id: eu-small, residency: eu, p95_ms: 600, usd_per_1k_tokens: 0.0006 }
+        us-large:
+          returns: { status: 200, text: "Water damage from a burst pipe is covered, and the excess is 250 dollars." }
+        eu-small: { returns: { status: 200, text: "Burst pipes are covered." } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: us-large }
+        - { type: does_not_call_tool, name: eu-small }
+        - { type: returns_matches, value: '"model":\s*"us-large"' }
+        - { type: returns_matches, value: '"outcome":\s*"answered"' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: an_eu_claim_is_refused_before_it_reaches_the_us
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "My car was written off in a flood. What happens to my claim?" }
+      llm_script:
+        - { match: "*", reply: "A written-off car is settled at market value." }
+      tools:
+        routing:
+          returns:
+            status: 200
+            request: { residency: eu, max_p95_ms: 1500, max_cost_usd: 0.01, tokens: 12000 }
+            preference: [eu-large, us-large, eu-small]
+            candidates:
+              - { id: eu-large, residency: eu, p95_ms: 2400, usd_per_1k_tokens: 0.0020 }
+              - { id: us-large, residency: us, p95_ms: 900, usd_per_1k_tokens: 0.0005 }
+              - { id: eu-small, residency: eu, p95_ms: 600, usd_per_1k_tokens: 0.0009 }
+        eu-large: { returns: { status: 200, text: "The car is settled at market value." } }
+        us-large: { returns: { status: 200, text: "The car is settled at market value." } }
+        eu-small: { returns: { status: 200, text: "The car is settled at market value." } }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: us-large }
+        - { type: does_not_call_tool, name: eu-large }
+        - { type: does_not_call_tool, name: eu-small }
+        - { type: returns_matches, value: '"outcome":\s*"refused"' }
+        - { type: returns_matches, value: '"model":\s*null' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: a_model_nobody_has_measured_does_not_qualify
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Is accidental damage to my laptop covered at home?" }
+      llm_script:
+        - { match: "*", reply: "Laptops are usually covered." }
+      tools:
+        routing:
+          returns:
+            status: 200
+            request: { residency: eu, max_p95_ms: 1500, max_cost_usd: 0.01, tokens: 4000 }
+            preference: [eu-new, eu-small]
+            candidates:
+              - { id: eu-new, residency: eu, p95_ms: null, usd_per_1k_tokens: 0.0008 }
+              - { id: eu-small, residency: eu, p95_ms: 600, usd_per_1k_tokens: 0.0006 }
+        eu-new: { returns: { status: 200, text: "Laptops are covered." } }
+        eu-small:
+          returns: { status: 200, text: "Accidental damage to a laptop at home is covered if you added the accidental damage option." }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: eu-new }
+        - { type: calls_tool, name: eu-small }
+        - { type: returns_matches, value: '"model":\s*"eu-small"' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: the_price_is_per_thousand_tokens_and_the_ceiling_per_claim
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Here are six pages of photos and notes from the fire. What is covered?" }
+      llm_script:
+        - { match: "*", reply: "Fire damage is usually covered." }
+      tools:
+        routing:
+          returns:
+            status: 200
+            request: { residency: eu, max_p95_ms: 1500, max_cost_usd: 0.01, tokens: 6000 }
+            preference: [eu-large, eu-small]
+            candidates:
+              - { id: eu-large, residency: eu, p95_ms: 1200, usd_per_1k_tokens: 0.0030 }
+              - { id: eu-small, residency: eu, p95_ms: 600, usd_per_1k_tokens: 0.0006 }
+        eu-large: { returns: { status: 200, text: "Fire damage is covered." } }
+        eu-small:
+          returns: { status: 200, text: "Fire damage to the building and contents is covered, less the 250 euro excess." }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: eu-large }
+        - { type: calls_tool, name: eu-small }
+        - { type: returns_matches, value: '"model":\s*"eu-small"' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: during_an_outage_the_fallback_stays_inside_the_constraints
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      The first choice timed out and the next qualifying model answered 503.
+      That is what an outage looks like from inside a router: several failures
+      at once, arriving in the order the preference list walks them.
+
+      The list also held a US model, which on a normal day nothing reaches
+      because an EU model always answers first. A fallback that walks the
+      preference list without re-checking the constraints sends EU claims to
+      the US at the one moment nobody is watching the router. Filter first,
+      then fall back only through what is left.
+    spec:
+      kind: agent_run
+      input: { question: "A tree fell on my garage last night. Can I claim?" }
+      llm_script:
+        - { match: "*", reply: "Fallen trees are usually covered." }
+      tools:
+        routing:
+          returns:
+            status: 200
+            request: { residency: eu, max_p95_ms: 1500, max_cost_usd: 0.01, tokens: 4000 }
+            preference: [eu-small, us-large, eu-large, eu-medium]
+            candidates:
+              - { id: eu-small, residency: eu, p95_ms: 600, usd_per_1k_tokens: 0.0006 }
+              - { id: us-large, residency: us, p95_ms: 900, usd_per_1k_tokens: 0.0015 }
+              - { id: eu-large, residency: eu, p95_ms: 1400, usd_per_1k_tokens: 0.0020 }
+              - { id: eu-medium, residency: eu, p95_ms: 1000, usd_per_1k_tokens: 0.0010 }
+        eu-small:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the eu-small model timed out before answering" }
+        us-large: { returns: { status: 200, text: "Garage damage from a fallen tree is covered." } }
+        eu-large: { returns: { status: 503, error: overloaded } }
+        eu-medium:
+          returns: { status: 200, text: "Damage to the garage from a fallen tree is covered, and the tree removal is included." }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: calls_tool, name: eu-large }
+        - { type: calls_tool, name: eu-medium }
+        - { type: does_not_call_tool, name: us-large }
+        - { type: returns_matches, value: '"model":\s*"eu-medium"' }
+        - { type: returns_matches, value: '"outcome":\s*"answered"' }
+        - { type: llm_calls_at_most, value: 0 }
+
+reference_md: |
+  Hard constraints filter and preferences order, and the two never trade. The
+  incident router treated residency as one more preference, which meant it
+  held until the preferred model was slow and then gave way without a word.
+  Filtering first turns the question into "which models may this claim
+  reach?", and the preference order only ever answers "which of those?"
+
+  The fallback walks the same filtered list. That is the whole defence during
+  an outage: an outage can change which allowed model answers and can never
+  change what is allowed, because nothing outside the list is ever called. A
+  router that re-derives its options during an incident is making its most
+  consequential decisions at the moment the least attention is on it.
+
+  Unknown fails. A model onboarded yesterday has no p95 yet, and treating the
+  missing number as zero sends production traffic to the least understood
+  model on the list. The cost check hides the same trap in its units: a price
+  per thousand tokens under a ceiling per claim looks like a pass until the
+  claim is six thousand tokens long.
+
+  A refusal is an answer, and it should say which constraint ruled out each
+  model. The operator reading it at the end of an outage needs to know whether
+  to wait, add capacity in the EU, or call the client. Falling back to the
+  default route instead would have repeated the incident.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Your EU customer's preferred model is down, and the only healthy fast model is in the US. What does your router do, and who decides?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: routing
+    args: ''
+    returns: A status, the claim's constraints in `request`, the client's `preference` order, and the
+      `candidates` with residency, p95 latency and price.
+  - name: eu-large
+    args: prompt
+    returns: 'Sends the claim to this model: a status and its `text`, another status, or an exception.'
+  - name: eu-small
+    args: prompt
+    returns: 'Sends the claim to this model: a status and its `text`, another status, or an exception.'
+  - name: us-large
+    args: prompt
+    returns: 'Sends the claim to this model: a status and its `text`, another status, or an exception.'
+example:
+  case: the_first_preference_inside_every_ceiling_answers
+  expect: '`eu-large` is too slow and `us-large` is outside the EU, so call only `eu-small`, never `llm`,
+    and return JSON with `model` eu-small and its answer that storm damage to the roof is covered.'
+traps:
+  - Sending a claim outside its region, or to `llm`, once nothing qualifies, when the router should refuse
+    and say what ruled each model out.
+  - Treating a missing latency or price as zero, which passes a candidate on numbers nobody measured.
+  - Comparing the price per 1,000 tokens with the per-claim ceiling, without multiplying by the claim's
+    tokens first.
+  - Walking the whole preference list during a fallback, which reaches a model the constraints ruled out
+    once the allowed ones fail.

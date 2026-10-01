@@ -23,7 +23,7 @@ export const PERSONAS: readonly Persona[] = ["builder", "navigator", "accelerato
  * slugs it is. The agent loop is the thing every other track builds on, so it
  * is the one read as fundamentals here.
  */
-export const FUNDAMENTALS = "agent-loop";
+export const FUNDAMENTALS = "loop";
 
 interface PersonaShape {
   name: string;
@@ -55,7 +55,7 @@ export const SHAPES: Readonly<Record<Persona, PersonaShape>> = {
   navigator: {
     name: "Agentic AI for FDEs",
     ladder: ["medium", "hard", "extreme"],
-    emphasis: [FUNDAMENTALS, "tool-creation", "memory", "rag"],
+    emphasis: [FUNDAMENTALS, "tools", "memory", "context"],
     unlockOptionalAt: 1,
   },
   // "Starts at Hard, roadmap is mostly Extreme and design-argument problems,
@@ -63,7 +63,7 @@ export const SHAPES: Readonly<Record<Persona, PersonaShape>> = {
   accelerator: {
     name: "Screen-ready for FDEs",
     ladder: ["hard", "extreme"],
-    emphasis: ["evals", "prompt", FUNDAMENTALS],
+    emphasis: ["evals", "context", FUNDAMENTALS],
     unlockOptionalAt: 1,
   },
 };

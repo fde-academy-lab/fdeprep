@@ -45,13 +45,13 @@ Each stage has an optimistic, a likely and a pessimistic figure in person-days. 
 | S9 Beta on AWS | 35 | 6 | 10 | 18 | 10.7 | 2.0 |
 | S10 Delivery board | 21 | 2 | 3 | 5 | 3.2 | 0.5 |
 | S11 Beta launch | 29 | 3 | 5 | 10 | 5.5 | 1.2 |
-| S12 Problem pages v2 | 65 | 8 | 14 | 25 | 14.8 | 2.8 |
+| S12 Problem pages v2 | 73 | 8 | 14 | 25 | 14.8 | 2.8 |
 | S13 Voice interviewer v2, step 1 | 57 | 10 | 16 | 28 | 17.0 | 3.0 |
 | S14 Voice interviewer v2, step 2 | 37 | 10 | 18 | 35 | 19.5 | 4.2 |
 | S15 First cohort | 73 | 25 | 40 | 70 | 42.5 | 7.5 |
 | S16 Second version | 50 | 30 | 55 | 100 | 58.3 | 11.7 |
 | All built stages | 360 |  |  |  | 203.3 | 14.4 |
-| All planned stages | 332 |  |  |  | 160.8 | 15.1 |
+| All planned stages | 340 |  |  |  | 160.8 | 15.1 |
 <!-- /generated:estimates -->
 
 ## How fast the build moved
@@ -84,7 +84,7 @@ Two readings for each planned epic. The first assumes the build's own pace holds
 |---|---|---|---|
 | S10 Delivery board | 21 | 0.5 | 3 |
 | S11 Beta launch | 29 | 0.7 | 6 |
-| S12 Problem pages v2 | 65 | 1.6 | 15 |
+| S12 Problem pages v2 | 73 | 1.8 | 15 |
 | S13 Voice interviewer v2, step 1 | 57 | 1.4 | 17 |
 | S14 Voice interviewer v2, step 2 | 37 | 0.9 | 20 |
 | S15 First cohort | 73 | 1.8 | 42 |

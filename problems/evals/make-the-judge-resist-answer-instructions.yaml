@@ -1,10 +1,13 @@
 slug: make-the-judge-resist-answer-instructions
 title: "Stop answers from instructing the AI grader"
-day: 18
+day: 16
 skill: Rewrite a marking prompt so notes aimed at the marker are flagged and ignored
 artefact_type: prompt
 difficulty: medium
 track: evals
+concept:
+  topic: "LLM judges"
+  question: "What stops an answer from telling the grader what score to give?"
 est_minutes: 30
 model_id: us.anthropic.claude-opus-5
 competencies:

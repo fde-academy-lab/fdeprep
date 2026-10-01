@@ -1,0 +1,550 @@
+slug: compact-state-without-losing-the-task
+title: "Shorten a long chat without losing the task"
+day: 11
+skill: Compact a long chat and keep every requirement, approval and open question
+artefact_type: code
+difficulty: medium
+track: context
+concept:
+  topic: "Compression and summaries"
+  question: "What must a summary of a long chat keep, word for word?"
+est_minutes: 30
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: context-assembly, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A support conversation ran to nine turns. In turn one the customer said the
+  delivery has to reach a ground-floor entrance because they use a wheelchair.
+  In turn eight they asked to rebook.
+
+  The agent compacts the history when it gets long, keeping the most recent
+  turns and summarising the rest into a sentence. Turn one was the oldest
+  thing in the conversation, so it went into the summary, and the summary said
+  "customer discussed delivery options".
+
+  The redelivery was booked to a third-floor flat.
+
+  Compaction has to lose something. It does not have to lose that.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns either `Action: history()` or `Final Answer: <text>`.
+  The `history` tool returns
+
+      {"status": 200, "turns": [{"n": 1, "kind": "requirement", "text": "..."}]}
+
+  `kind` is one of `chat`, `requirement`, `approval` or `open_question`.
+
+  Build the compacted history you put in the prompt under these rules:
+
+  - Every turn whose kind is `requirement`, `approval` or `open_question`
+    survives verbatim, whatever its age.
+  - Turns whose kind is `chat` are replaced by one line saying how many were
+    dropped, such as `(6 chat turns dropped)`.
+  - Keep the surviving turns in their original order.
+
+  Budget: at most 3 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  KEEP = ("requirement", "approval", "open_question")
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Question: {question}\n"
+
+      for _ in range(8):
+          output = llm(scratchpad)
+
+          if "Final Answer:" in output:
+              return output.split("Final Answer:", 1)[1].strip()
+
+          if "Action:" in output and "history" in tools:
+              turns = (tools["history"]() or {}).get("turns") or []
+              scratchpad += f"{output}\n<history>\n{compact(turns)}\n</history>\n"
+              continue
+
+          scratchpad += f"{output}\nThat was not a valid reply.\n"
+
+      return "I could not rebook this."
+
+
+  def compact(turns: list) -> str:
+      """The history the model reads: short, and complete where it matters."""
+      lines = []
+      # TODO 1: decide, one turn at a time, whether the turn survives verbatim
+      # TODO 2: write each survivor in the order it was said, with its text
+      # TODO 3: add one line saying how many chat turns were dropped
+      return "\n".join(lines)
+
+steps:
+  - id: s1
+    text: Decide, one turn at a time, whether a turn survives compaction verbatim.
+    check_id: s1
+  - id: s2
+    text: Write the survivors in the order they were said, with their text.
+    check_id: s2
+  - id: s3
+    text: Add one line that counts the chat turns you dropped.
+    check_id: s3
+
+step_checks:
+  # s1 carries its own case, because a public answer turned green on TODO 3's
+  # count line alone. The requirement is the oldest turn and a chat turn
+  # further down suggests something else, so the model follows the
+  # requirement only when it reaches the prompt word for word and the chat
+  # turn does not. Writing every turn keeps the chat turn in, so s1 needs the
+  # decision itself.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "Arrange the second delivery attempt." }
+      llm_script:
+        - { match: { contains: "hold the button down" },
+            reply: "Final Answer: The driver will buzz flat 2B on the intercom." }
+        - { match: { contains: "Ring the bell for flat 2B" },
+            reply: "Final Answer: The driver will ring the bell for flat 2B, because the intercom is broken." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: requirement, text: "Ring the bell for flat 2B, because the intercom is broken." }
+              - { n: 2, kind: chat, text: "Hello, are you still there?" }
+              - { n: 3, kind: chat, text: "The intercom sometimes works if you hold the button down." }
+              - { n: 4, kind: chat, text: "Sorry, the line keeps cutting out." }
+              - { n: 5, kind: chat, text: "Thanks for your patience." }
+              - { n: 6, kind: chat, text: "Speak soon." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)ring the bell for flat 2B" }
+  # s2 carries its own cases, because no public history holds two survivors
+  # and so none shows their order. The model acts on both survivors only when
+  # their text reaches it in the order they were said. The first case says
+  # the requirement first and the second says the approval first, so code
+  # that writes survivors grouped by kind, in either order of kinds, fails
+  # one of them. In the second the requirement changes what was approved, so
+  # the order carries the meaning.
+  - step_id: s2
+    spec:
+      cases:
+        - kind: agent_run
+          input: { question: "Book the collection for this customer." }
+          llm_script:
+            - { match: { regex: 'side door on Ferry Road[\s\S]*waived the collection fee' },
+                reply: "Final Answer: I booked a free collection from the side door on Ferry Road." }
+            - { match: { contains: "waived the collection fee" },
+                reply: "Final Answer: I booked a free collection from the front door." }
+            - { match: "*", reply: "Action: history()" }
+          tools:
+            history:
+              returns:
+                status: 200
+                turns:
+                  - { n: 1, kind: requirement, text: "Collect the parcel from the side door on Ferry Road." }
+                  - { n: 2, kind: chat, text: "Thanks for sorting this out." }
+                  - { n: 3, kind: approval, text: "The team lead waived the collection fee." }
+                  - { n: 4, kind: chat, text: "I will look out for the driver." }
+          budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+          assertions:
+            - { type: returns_matches, value: "(?i)side door on Ferry Road" }
+        - kind: agent_run
+          input: { question: "Book the redelivery for this customer." }
+          llm_script:
+            - { match: { regex: 'free redelivery to the home address[\s\S]*office reception at 14 Mill Lane' },
+                reply: "Final Answer: I booked a free redelivery to the office reception at 14 Mill Lane." }
+            - { match: { contains: "free redelivery to the home address" },
+                reply: "Final Answer: I booked a free redelivery to the home address." }
+            - { match: "*", reply: "Action: history()" }
+          tools:
+            history:
+              returns:
+                status: 200
+                turns:
+                  - { n: 1, kind: approval, text: "The shift manager approved a free redelivery to the home address." }
+                  - { n: 2, kind: chat, text: "That is kind of you." }
+                  - { n: 3, kind: requirement, text: "Send it to the office reception at 14 Mill Lane instead, because nobody is home on weekdays." }
+                  - { n: 4, kind: chat, text: "Speak soon." }
+          budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+          assertions:
+            - { type: returns_matches, value: "(?i)office reception at 14 Mill Lane" }
+  # s3 carries its own case, because the public answers turned green once
+  # TODO 2 wrote the survivors, before any count existed. Five of the seven
+  # turns are chat, and the handover says what was left out only when one
+  # line counts five dropped chat turns. Counting every turn says seven.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Write the handover note for the next shift." }
+      llm_script:
+        - { match: { regex: '\b5\b[^\n]*\bdropped\b|\bdropped\b[^\n]*\b5\b' },
+            reply: "Final Answer: Handover: the supervisor agreed to refund the delivery charge, and the new delivery date is still unconfirmed. Five chat turns were left out of this history." }
+        - { match: { contains: "refund the delivery charge" },
+            reply: "Final Answer: Handover: the supervisor agreed to refund the delivery charge, and the new delivery date is still unconfirmed. That is the whole conversation." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: chat, text: "Good afternoon." }
+              - { n: 2, kind: approval, text: "The supervisor agreed to refund the delivery charge." }
+              - { n: 3, kind: chat, text: "Thank you so much." }
+              - { n: 4, kind: chat, text: "Is there anything else you need from me?" }
+              - { n: 5, kind: open_question, text: "Nobody has confirmed the new delivery date yet." }
+              - { n: 6, kind: chat, text: "I will wait for the email." }
+              - { n: 7, kind: chat, text: "Bye for now." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)five chat turns were left out" }
+
+hints:
+  - Look at the fields each turn carries before you look at where it sits in
+    the list.
+  - Recency is a guess about what matters. A requirement stated in turn one is
+    the oldest thing in the thread and the part the agent will be held to.
+  - Make survival a property of the turn itself, decided one turn at a time,
+    and let the chat turns collapse into a count.
+  - Walk the turns in order. Keep a requirement, an approval or an open
+    question word for word, count every chat turn, and add the count as one
+    line.
+
+scenario:
+  headline: "The rebooking agent forgets the customer uses a wheelchair"
+  who: The support team behind a delivery rebooking agent
+  situation: >-
+    A support chat ran to nine turns. In turn one the customer said the
+    delivery must reach a ground-floor entrance because they use a
+    wheelchair. Compaction kept the last four turns and summed up the rest as
+    "customer discussed delivery options".
+  stakes: >-
+    The redelivery was booked to a third-floor flat. The requirement was the
+    oldest turn in the thread, so it was the first thing compaction removed.
+  metrics:
+    - { label: Turns in the chat, value: "9" }
+    - { label: Turns kept, value: the last 4 }
+    - { label: Turn that mattered, value: "1" }
+
+diagram:
+  title: Where compaction drops the requirement
+  caption: >-
+    Compaction keyed on age keeps the newest turns. The requirement was said
+    first, so it went into a summary line that promises nothing.
+  direction: lr
+  nodes:
+    - { id: chat, label: Support chat, sub: "nine turns, oldest first", kind: store, tone: blue, at: [0, 1] }
+    - { id: req, label: "Turn 1: requirement", sub: ground-floor entrance only, kind: doc, tone: green, at: [0, 0] }
+    - { id: compactor, label: Compaction, sub: keeps the last four turns, kind: agent, tone: purple, at: [1, 1] }
+    - { id: summary, label: Summary line, sub: 'says "discussed delivery options"', kind: doc, tone: pink, at: [1, 2] }
+    - { id: model, label: Rebooking model, sub: books from what it reads, kind: model, tone: teal, at: [2, 1] }
+    - { id: booking, label: Redelivery, sub: booked to a third-floor flat, kind: output, tone: pink, at: [3, 1] }
+  edges:
+    - { from: chat, to: compactor, label: nine turns, step: 1 }
+    - { from: compactor, to: summary, label: turns 1 to 5, tone: danger, step: 2 }
+    - { from: compactor, to: model, label: turns 6 to 9, step: 3 }
+    - { from: summary, to: model, label: one vague line, tone: muted }
+    - { from: model, to: booking, label: no floor requirement, tone: danger, step: 4 }
+    - { from: req, to: model, label: kept for what it is, tone: success }
+
+approach:
+  goal: Compact the history without losing what the agent is held to
+  branches:
+    - label: Ask what the conversation is for
+      leaves: [requirements the customer stated, approvals somebody gave, questions still open]
+    - label: Key the filter on something stable
+      detail: A turn's position changes with every new message. What a turn is stays the same.
+      leaves: [age is a proxy, every turn is already labelled]
+    - label: Mark the gap
+      leaves: [count what you dropped, a model fills an unmarked gap]
+    - label: Keep the order
+      leaves: [survivors stay in the order they were said]
+
+coach:
+  opening: >-
+    Look at what the customer said in turn one, then find the line in your
+    code that decides whether it reaches the prompt.
+  signals:
+    - id: keeps-the-last-few
+      when: { code_matches: '\[\s*-\s*\w+\s*:\s*\]' }
+      say: >-
+        You keep the most recent turns. The wheelchair requirement was the
+        oldest turn in the thread. What rule would keep it?
+    - id: ignores-kind
+      when: { code_lacks: '["'']kind["'']' }
+      say: >-
+        Every turn already says what kind of turn it is, and nothing in your
+        code reads that field yet.
+    - id: no-dropped-line
+      when: { code_lacks: 'dropped' }
+      say: >-
+        The chat turns you remove need one line that counts them. A model
+        reading a gap with no marker fills it in.
+    - id: hidden-oldest-turn
+      when: { test_failed: the_oldest_turn_survives_when_it_is_the_requirement }
+      say: >-
+        In that conversation the requirement was the first of eight turns and
+        the other seven were chat. Check whether turn one reached the prompt.
+    - id: hidden-approval-and-question
+      when: { test_failed: an_approval_and_an_open_question_both_survive }
+      say: >-
+        That history held an open question in turn one and an approval in turn
+        five, with chat around both. Check that both reached the prompt word
+        for word.
+    - id: hidden-survivor-order
+      when: { test_failed: the_survivors_stay_in_the_order_they_were_said }
+      say: >-
+        In that conversation a requirement in turn six settled the open
+        question from turn three and replaced the requirement from turn one.
+        Check that the survivors reach the prompt in the order they were said.
+    - id: hidden-chat-replaced
+      when: { test_failed: chat_turns_are_replaced_by_one_line_that_counts_them }
+      say: >-
+        Four of the five turns in that conversation were chat, and one of them
+        mentioned a neighbour who takes parcels in. Check that no chat turn
+        reaches the prompt word for word, and that one line counts the four
+        you dropped.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one turn. Given a single turn, does it survive? Write that
+        as a small check and the loop in compact gets short.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Hints open after one failed run on this tier,
+        and the first one says where to look.
+  wrap_up: >-
+    Compaction is a filter, and its key decides what the agent can still be
+    held to. Key it on what a turn is, keep the obligations whole, and count
+    the rest out loud.
+
+tests:
+  - name: keeps_a_short_history_intact
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Rebook the delivery" }
+      llm_script:
+        - { match: { contains: "before noon" },
+            reply: "Final Answer: Rebooked for a morning slot before noon." }
+        - { match: { contains: "turns" }, reply: "Final Answer: Rebooked." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: requirement, text: "Delivery must arrive before noon." }
+              - { n: 2, kind: chat, text: "Thanks for getting back to me." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: history }
+        - { type: returns_matches, value: "(?i)before noon" }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: summarises_when_every_turn_is_chat
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Rebook the delivery" }
+      llm_script:
+        - { match: { contains: "dropped" }, reply: "Final Answer: Rebooked for the next available slot." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: chat, text: "Hello there." }
+              - { n: 2, kind: chat, text: "Are you still there?" }
+              - { n: 3, kind: chat, text: "Thanks." }
+              - { n: 4, kind: chat, text: "No rush." }
+              - { n: 5, kind: chat, text: "Appreciated." }
+              - { n: 6, kind: chat, text: "Understood." }
+              - { n: 7, kind: chat, text: "Go ahead." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)next available" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: the_oldest_turn_survives_when_it_is_the_requirement
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Rebook the delivery for this customer" }
+      llm_script:
+        - { match: { contains: "ground-floor entrance" },
+            reply: "Final Answer: Rebooked to the ground-floor entrance as required." }
+        - { match: { contains: "dropped" }, reply: "Final Answer: Rebooked to the flat." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: requirement, text: "Delivery must reach a ground-floor entrance." }
+              - { n: 2, kind: chat, text: "Hello." }
+              - { n: 3, kind: chat, text: "Any update?" }
+              - { n: 4, kind: chat, text: "Still waiting." }
+              - { n: 5, kind: chat, text: "Thanks for checking." }
+              - { n: 6, kind: chat, text: "No problem." }
+              - { n: 7, kind: chat, text: "Understood." }
+              - { n: 8, kind: chat, text: "Please rebook it." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)ground-floor" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: an_approval_and_an_open_question_both_survive
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Can we proceed with the replacement?" }
+      llm_script:
+        - { match: { contains: "who pays the return postage" },
+            reply: "Final Answer: Approved by the duty manager, but return postage is unresolved." }
+        - { match: { contains: "duty manager" },
+            reply: "Final Answer: Approved by the duty manager." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: open_question, text: "Nobody has said who pays the return postage." }
+              - { n: 2, kind: chat, text: "Morning." }
+              - { n: 3, kind: chat, text: "Checking now." }
+              - { n: 4, kind: chat, text: "One moment." }
+              - { n: 5, kind: approval, text: "The duty manager approved a replacement." }
+              - { n: 6, kind: chat, text: "Great." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)return postage is unresolved" }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: the_survivors_stay_in_the_order_they_were_said
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Book the Saturday collection for this customer." }
+      llm_script:
+        - { match: { regex: 'back office at 4 Quay Street[\s\S]*open on Saturdays[\s\S]*front reception instead' },
+            reply: "Final Answer: Booked the Saturday collection from the front reception at 4 Quay Street." }
+        - { match: { contains: "open on Saturdays" },
+            reply: "Final Answer: I need to know whether the back office is open on Saturdays before I book the collection." }
+        - { match: { contains: "front reception instead" },
+            reply: "Final Answer: Booked the Saturday collection from the front reception at 4 Quay Street." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: requirement, text: "Collect the return from the back office at 4 Quay Street." }
+              - { n: 2, kind: chat, text: "Thanks for calling back." }
+              - { n: 3, kind: open_question, text: "Nobody has said whether the back office is open on Saturdays." }
+              - { n: 4, kind: chat, text: "I will ask the building manager." }
+              - { n: 5, kind: chat, text: "Still waiting to hear back." }
+              - { n: 6, kind: requirement, text: "The back office is shut on Saturdays, so collect from the front reception instead." }
+              - { n: 7, kind: chat, text: "Thanks, that is everything." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)from the front reception" }
+        - { type: no_exception }
+        - { type: terminates }
+
+  - name: chat_turns_are_replaced_by_one_line_that_counts_them
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Write the redelivery ticket for the prescription parcel." }
+      llm_script:
+        - { match: { contains: "neighbour at number 9" },
+            reply: "Final Answer: Redelivery: if nobody answers, leave the parcel with the neighbour at number 9." }
+        - { match: { all: [ { contains: "hand it to me in person" }, { regex: '\b4\b[^\n]*\bdropped\b|\bdropped\b[^\n]*\b4\b' } ] },
+            reply: "Final Answer: Redelivery: hand the parcel over in person, because it holds medication. History: 4 chat turns were left out." }
+        - { match: { contains: "hand it to me in person" },
+            reply: "Final Answer: Redelivery: hand the parcel over in person, because it holds medication." }
+        - { match: "*", reply: "Action: history()" }
+      tools:
+        history:
+          returns:
+            status: 200
+            turns:
+              - { n: 1, kind: requirement, text: "The parcel holds medication, so hand it to me in person." }
+              - { n: 2, kind: chat, text: "Morning." }
+              - { n: 3, kind: chat, text: "My neighbour at number 9 usually takes parcels in." }
+              - { n: 4, kind: chat, text: "Anyway, sorry for the fuss." }
+              - { n: 5, kind: chat, text: "Talk soon." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)in person[\\s\\S]*4 chat turns were left out" }
+        - { type: no_exception }
+        - { type: terminates }
+
+reference_md: |
+  Compaction is a filter, and the argument is what the filter is keyed on.
+
+  Recency is the obvious key and it is wrong here for a reason worth saying
+  out loud: the things a conversation is held to tend to be stated early. A
+  requirement arrives in turn one because that is when the customer explains
+  their situation. An approval arrives in the middle because that is when
+  someone senior read the thread. Keeping the last four turns keeps the part
+  of the conversation with the least in it.
+
+  Keying on kind costs nothing, because kind is already on every turn. The
+  work is in deciding that the rule is a rule rather than a heuristic to tune,
+  and in writing it down where a reviewer can see it: requirements,
+  approvals and open questions survive, chat gets counted.
+
+  The dropped-turn line matters more than it looks. A model reading a history
+  with a gap and no marker will fill the gap, confidently. A line that says
+  six turns were dropped is a model that knows it is reading a summary.
+
+  The failure this problem is named after is not a bug in the compaction code.
+  The compaction code did what it said. It is a bug in deciding what a
+  conversation is for, and it put a wheelchair user's delivery on the third
+  floor.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    What belongs in durable memory rather than the active context window?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I016.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: history
+    args: ''
+    returns: A status and the conversation's `turns`, each with `n`, a `kind` (`chat`, `requirement`,
+      `approval` or `open_question`) and its `text`.
+example:
+  case: keeps_a_short_history_intact
+  expect: Keep the requirement word for word, replace the chat turn with one line counting it as dropped,
+    and return the model's answer that the delivery is rebooked for a morning slot before noon.
+traps:
+  - Keeping the most recent turns, which drops a requirement stated at the start of a long conversation.
+  - Keeping requirements and dropping approvals or open questions, which also survive word for word whatever
+    their age.
+  - Writing the survivors grouped by kind, which loses the order they were said in when a later requirement
+    changes an earlier one.
+  - Letting a chat turn reach the prompt word for word, or counting anything other than the dropped chat
+    turns in the count line.

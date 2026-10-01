@@ -32,6 +32,9 @@ export interface CatalogueRow {
   skill: string | null;
   /** The incident the problem starts from, shown under the title. */
   headline: string | null;
+  /** The topic inside the chapter, and the question the problem answers. */
+  topic: string | null;
+  question: string | null;
   difficulty: Difficulty;
   track: string;
   artefactType: string;
@@ -77,12 +80,17 @@ export async function listProblems(
   const params: unknown[] = [options.enrolmentId];
   const add = (clause: string, value: unknown) => {
     params.push(value);
-    where.push(clause.replace("$$", `$${params.length}`));
+    // Every $$ names the same value. split and join number each one, where
+    // replace would number the first and leave the rest for Postgres to read
+    // as a dollar-quoted string.
+    where.push(clause.split("$$").join(`$${params.length}`));
   };
 
   if (options.search) {
     add("(p.title ilike '%' || $$ || '%' or p.slug ilike '%' || $$ || '%' " +
-        "or p.skill ilike '%' || $$ || '%' or p.track ilike '%' || $$ || '%')", options.search);
+        "or p.skill ilike '%' || $$ || '%' or p.track ilike '%' || $$ || '%' " +
+        "or cur.kit->'concept'->>'question' ilike '%' || $$ || '%' " +
+        "or cur.kit->'concept'->>'topic' ilike '%' || $$ || '%')", options.search);
   }
   if (options.track && options.track !== "all") add("p.track = $$", options.track);
   if (options.tracks?.length) add("p.track = any($$::text[])", [...options.tracks]);
@@ -109,6 +117,7 @@ export async function listProblems(
         from attempt a group by a.problem_id
     )
     select p.id, p.slug, p.title, p.day, p.skill, cur.kit->'scenario'->>'headline' as headline,
+           cur.kit->'concept'->>'topic' as topic, cur.kit->'concept'->>'question' as question,
            p.difficulty::text as difficulty, p.track,
            p.artefact_type::text as artefact_type, p.est_minutes,
            coalesce(stats.attempts, 0) as attempts,
@@ -158,6 +167,8 @@ function toRow(row: Record<string, any>): CatalogueRow {
     day: row["day"] === null || row["day"] === undefined ? null : Number(row["day"]),
     skill: row["skill"] ?? null,
     headline: row["headline"] ?? null,
+    topic: row["topic"] ?? null,
+    question: row["question"] ?? null,
     difficulty,
     track: row["track"],
     artefactType: row["artefact_type"],

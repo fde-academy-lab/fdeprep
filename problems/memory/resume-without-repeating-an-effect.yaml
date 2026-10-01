@@ -1,10 +1,13 @@
 slug: resume-without-repeating-an-effect
 title: "Resume after a crash without sending twice"
-day: 15
+day: 14
 skill: Resume a crashed run without sending the email twice
 artefact_type: code
 difficulty: extreme
 track: memory
+concept:
+  topic: "What to persist"
+  question: "What must be written down so a crash never sends an email twice?"
 est_minutes: 45
 competencies:
   - { slug: state-and-memory, weight: 1.0 }

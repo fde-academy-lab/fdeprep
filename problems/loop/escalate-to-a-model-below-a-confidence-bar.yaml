@@ -1,0 +1,385 @@
+slug: escalate-to-a-model-below-a-confidence-bar
+title: "Escalate to a model below a confidence bar"
+day: 3
+skill: Spend a model call only on the tickets a classifier is unsure about
+artefact_type: code
+difficulty: easy
+track: loop
+concept:
+  topic: "Do you need a loop?"
+  question: "When is a model call worth paying for?"
+est_minutes: 20
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [re]
+
+brief_md: |
+  The food delivery app has two routers that work. The Jev router is cheap
+  and fast and sends every unsure ticket to a person. The model router reads
+  anything and costs a language model call on every ticket. At dinner time
+  that is a lot of calls for tickets that say "where is my food".
+
+  The support lead wants both in one pipeline. Jev goes first. When it is
+  confident, its choice is the route and nothing else runs. When it is not, or
+  when it fails, one model call gets a look at the ticket. When that reply is
+  unclear too, a person reads it.
+
+  Finance added one rule. A ticket routed to `refunds` starts a refund, so
+  Jev has to be more confident there than anywhere else.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the ticket text. Call `tools["jev"](ticket=question)` once.
+  As on day 2 it is a scripted stand-in for Jev, and it replies
+  `{"choice": <label>, "confidence": <0 to 1>}` or `{"error": <reason>}`.
+
+  Jev's choice is the route when it is one of the three queues and its
+  confidence reaches that queue's bar:
+
+  | Queue | Bar |
+  |---|---|
+  | `refunds` | 0.85 |
+  | `late_delivery` | 0.6 |
+  | `account` | 0.6 |
+
+  In every other case, a low score, a label that is not a queue, or an
+  error, make one call to `llm(prompt)` with a prompt that holds the ticket
+  and names all four queues, and read the reply as on day 3: exactly one
+  queue name as a whole word, in any case, is the route, and anything else
+  is `human`.
+
+  Return exactly one of `refunds`, `late_delivery`, `account` or `human`.
+
+  Budget: one call to `jev` and at most one model call, and none when Jev is
+  confident. Allowed imports: re.
+
+stub_code: |
+  import re
+
+  BARS = {"refunds": 0.85, "late_delivery": 0.6, "account": 0.6}
+  NAMES = ("refunds", "late_delivery", "account", "human")
+  HUMAN = "human"
+
+
+  def confident_choice(verdict) -> str | None:
+      """Jev's choice when it is a queue that clears its own bar, else None."""
+      # TODO 1: an error reply, or a choice outside BARS, is not confident
+      # TODO 2: compare the confidence with the bar for that choice
+      return None
+
+
+  def route_with_model(question: str, llm) -> str:
+      """One model call, read the way the day 3 router reads it."""
+      # TODO 3: one prompt naming the four queues and holding the ticket,
+      #         then exactly one name in the reply, or HUMAN
+      return HUMAN
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      choice = confident_choice(tools["jev"](ticket=question))
+      # TODO 4: a confident choice is the route, with no model call
+      return route_with_model(question, llm)
+
+steps:
+  - id: s1
+    text: Return Jev's choice without a model call when it clears that queue's bar.
+    check_id: s1
+  - id: s2
+    text: Make one model call when Jev's confidence is below the bar.
+    check_id: s2
+  - id: s3
+    text: Hold a refund to the 0.85 bar, not the 0.6 one.
+    check_id: s3
+  - id: s4
+    text: Send the ticket to the model when Jev fails, and to `human` when the reply is unclear.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "Charged three times for one burger" }
+      llm_script:
+        - { match: "*", reply: "account" }
+      tools:
+        jev: { returns: { choice: "refunds", confidence: 0.93 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: returns_equals, value: "refunds" }
+        - { type: llm_calls_at_most, value: 0 }
+  # The stub sends every ticket to `human`, so s2 and s3 run tickets the
+  # model routes to a real queue.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Rider is going the wrong way on the map" }
+      llm_script:
+        - { match: "*", reply: "late_delivery" }
+      tools:
+        jev: { returns: { choice: "late_delivery", confidence: 0.5 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: returns_equals, value: "late_delivery" }
+        - { type: llm_calls_at_most, value: 1 }
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "The naan was missing and the curry came an hour late" }
+      llm_script:
+        - { match: "*", reply: "late_delivery" }
+      tools:
+        jev: { returns: { choice: "refunds", confidence: 0.78 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: returns_equals, value: "late_delivery" }
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "Two accounts, one phone number, neither logs in" }
+      llm_script:
+        - { match: "*", reply: "This looks like an account problem: account." }
+      tools:
+        jev: { returns: { error: "timeout" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_equals, value: "account" }
+
+hints:
+  - The pipeline has three stages and each one hands over to the next. Write
+    down what makes Jev's answer good enough to stop at stage one, and check
+    that it depends on which queue Jev chose.
+  - One bar for every queue lets a 0.72 refund through. The bar is a property
+    of the queue, which is why `BARS` is a dictionary.
+  - "`confident_choice` is the day 2 router with the bar looked up per
+    choice, returning None instead of `HUMAN`. `route_with_model` is the day 3
+    router. `run_agent` calls the first and falls back to the second."
+  - An error from Jev is a reason to ask the model, not a crash. Check for it
+    before reading the choice.
+
+scenario:
+  headline: "A refund the model was 72 percent sure of went out unchecked"
+  who: "Customer support at a food delivery app the size of Swiggy"
+  situation: >-
+    The pipeline sends tickets to a decision model first and to a language
+    model only when it is unsure. It used one bar for every queue, so refunds
+    went out at 0.72, and it crashed when the decision model failed.
+  stakes: >-
+    A refund at the wrong bar is money paid on a guess, and a crash at dinner
+    time routes nothing until someone restarts it.
+  metrics:
+    - { label: Refunds bar, value: "0.85" }
+    - { label: Other queues bar, value: "0.6" }
+    - { label: Model calls allowed, value: "1" }
+
+diagram:
+  title: Decision model first, a model call only when it is unsure
+  caption: >-
+    A confident choice ends the pipeline at stage one. Anything else costs one
+    model call, and an unclear reply goes to a person.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: writes a ticket, kind: actor, tone: blue, at: [0, 1] }
+    - { id: jev, label: "`jev`", sub: a choice and a confidence, kind: model, tone: teal, at: [1, 1] }
+    - { id: bar, label: "Clears its bar?", sub: refunds 0.85 and others 0.6, kind: decision, tone: blue, at: [2, 1] }
+    - { id: model, label: Model, sub: one call, kind: model, tone: teal, at: [3, 2] }
+    - { id: queue, label: Named queue, sub: from Jev or the model, kind: queue, tone: green, at: [4, 0] }
+    - { id: human, label: "`human`", sub: the reply was unclear, kind: queue, tone: orange, at: [4, 2] }
+    - { id: wrong, label: Refund at 0.72, sub: one bar for every queue, kind: output, tone: pink, at: [2, 0] }
+  edges:
+    - { from: customer, to: jev, label: ticket text, step: 1 }
+    - { from: jev, to: bar, label: choice and confidence, step: 2 }
+    - { from: bar, to: wrong, label: a single 0.6 bar, tone: danger }
+    - { from: bar, to: queue, label: clears it, tone: success, step: 3 }
+    - { from: bar, to: model, label: "below it, or an error", step: 3 }
+    - { from: model, to: queue, label: one name in the reply, tone: success, step: 4 }
+    - { from: model, to: human, label: none or several, step: 4 }
+
+approach:
+  goal: Route most tickets cheaply and spend the model call where it changes the answer
+  branches:
+    - label: Ask the cheap model first
+      leaves: [one call to jev on every ticket]
+    - label: Set the bar per queue
+      detail: The cost of a wrong route differs by queue, so the bar does too.
+      leaves: [refunds 0.85, "`late_delivery` and account 0.6"]
+    - label: Fall back on doubt and on failure
+      leaves: [a low score, an unknown label and an error all go to one model call]
+    - label: Read the model's reply strictly
+      leaves: [exactly one queue name is a route, anything else goes to human]
+
+coach:
+  opening: >-
+    Take a refund ticket Jev scores at 0.72 and walk it through your pipeline
+    by hand. Which stage should decide it, and why?
+  signals:
+    - id: one-bar
+      when:
+        code_matches: '(?i)confidence\W*\s*>=?\s*0?\.\d'
+        code_lacks: '0?\.85'
+      say: >-
+        Your pipeline compares every choice with the same number. Should a
+        refund, which moves money, clear the same bar as a late delivery?
+    - id: raw-reply
+      when: { code_matches: '(?i)return\s+\w+(\.strip\(\)|\.lower\(\))+\s*$' }
+      say: >-
+        Your fallback returns the model's reply as the queue name. What does
+        the reply "account, or maybe refunds" become?
+    - id: no-error-branch
+      when:
+        code_matches: '(?i)confidence'
+        code_lacks: '["'']error["'']'
+      say: >-
+        What does your pipeline do when Jev replies `{"error": "timeout"}`
+        with no choice and no confidence?
+    - id: hidden-refund-bar
+      when: { test_failed: a_refund_needs_the_higher_bar }
+      say: >-
+        In that run Jev chose refunds at a score that clears 0.6 and misses
+        0.85. Which bar did your pipeline compare it with?
+    - id: hidden-error
+      when: { test_failed: a_failed_decision_goes_to_the_model }
+      say: >-
+        In that run Jev replied with an error. Read your first line after the
+        call with that reply in mind.
+    - id: hidden-unclear
+      when: { test_failed: an_unclear_reply_goes_to_a_person }
+      say: >-
+        In that run the model's reply named two queues. How many did your
+        pipeline look for before it returned?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and TODO 2. They are the day 2 router with the bar
+        looked up from `BARS` for the choice Jev made.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and on
+        this tier it costs nothing to open.
+  wrap_up: >-
+    Put the cheap, checkable model first and spend the expensive call only
+    where it changes the answer. Set each bar by what a wrong route costs, and
+    keep a person at the end of the line.
+
+tests:
+  - name: a_confident_choice_skips_the_model
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "It has been an hour and the app still says preparing" }
+      llm_script:
+        - { match: "*", reply: "refunds" }
+      tools:
+        jev: { returns: { choice: "late_delivery", confidence: 0.88 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "late_delivery" }
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: tool_calls_at_most, value: 1 }
+
+  - name: an_unsure_choice_asks_the_model
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Got a message saying my email was changed, I did not do that" }
+      llm_script:
+        - { match: "*", reply: "account" }
+      tools:
+        jev: { returns: { choice: "account", confidence: 0.42 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "account" }
+        - { type: prompt_contains, value: "late_delivery" }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_refund_needs_the_higher_bar
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Food came 50 minutes late, can I get something back" }
+      llm_script:
+        - { match: "*", reply: "late_delivery" }
+      tools:
+        jev: { returns: { choice: "refunds", confidence: 0.72 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "late_delivery" }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_failed_decision_goes_to_the_model
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Reset link expired again" }
+      llm_script:
+        - { match: "*", reply: "account" }
+      tools:
+        jev: { returns: { error: "timeout" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_equals, value: "account" }
+
+  - name: an_unclear_reply_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Everything about tonight was wrong" }
+      llm_script:
+        - { match: "*", reply: "Probably account, or maybe refunds" }
+      tools:
+        jev: { returns: { choice: "account", confidence: 0.31 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "human" }
+        - { type: llm_calls_at_most, value: 1 }
+
+reference_md: |
+  This is the shape most production routing ends up in: a cheap, checkable
+  stage first, an expensive general stage behind it, and a person at the end.
+  Each stage handles the tickets it is good at and hands the rest down, so the
+  expensive call is spent only on the tickets where it changes the answer.
+
+  The per-queue bar is the decision worth defending in an interview. A wrong
+  route to `late_delivery` costs a support agent a minute to forward the
+  ticket. A wrong route to `refunds` pays money out on a guess. The bar is
+  therefore a statement about cost, and it belongs to the queue rather than
+  to the pipeline. The 0.85 and 0.6 here are this problem's numbers. A real
+  team sets them from labelled tickets, by checking how often Jev's choices
+  above each bar turn out right.
+
+  Two stages also mean two ways to fail. Jev can return an error, and the
+  model can return a reply that names no queue or two. The first is a reason
+  to ask the model, because a timeout says nothing about the ticket. The
+  second goes to a person, for the reason the day 3 router gave: a ticket
+  that confused the model once is the one most likely to confuse it again.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    You have a cheap classifier and an expensive model. How do you combine them, and where do the thresholds come from?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: jev
+    args: ticket
+    returns: '`{"choice": <label>, "confidence": <0 to 1>}`, or `{"error": <reason>}` when the decision model fails.'
+example:
+  case: a_confident_choice_skips_the_model
+  expect: Jev chose `late_delivery` at 0.88, above that queue's 0.6 bar, so return `late_delivery` without calling the
+    model.
+traps:
+  - Using one bar for every queue, so a refund Jev is 72 percent sure of goes out without the model's look.
+  - Reading the choice from an error reply, which raises instead of asking the model.
+  - Returning the model's reply as the queue name instead of reading it for exactly one queue.

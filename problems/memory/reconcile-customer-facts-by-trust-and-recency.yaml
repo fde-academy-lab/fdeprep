@@ -1,10 +1,13 @@
 slug: reconcile-customer-facts-by-trust-and-recency
 title: "Keep a verified fact over a newer claim"
-day: 13
+day: 12
 skill: Keep a verified fact when a newer claim disagrees
 artefact_type: code
 difficulty: medium
 track: memory
+concept:
+  topic: "Memory writes"
+  question: "Which fact wins when a newer claim disagrees with a verified one?"
 est_minutes: 30
 competencies:
   - { slug: state-and-memory, weight: 1.0 }

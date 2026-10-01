@@ -1,0 +1,389 @@
+slug: route-tickets-with-a-decision-model
+title: "Route tickets with a decision model"
+day: 1
+skill: Trust a classifier's choice only when its confidence says so
+artefact_type: code
+difficulty: easy
+track: loop
+concept:
+  topic: "Do you need a loop?"
+  question: "When should you trust a classifier's confidence score?"
+est_minutes: 15
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [re]
+
+brief_md: |
+  The phrase table at the food delivery app routes the tickets it recognises,
+  and customers keep writing ones it does not. "The rider never turned up and
+  the app says delivered" mentions no phrase from the table.
+
+  The support lead has replaced the table with a decision model. Jev, the
+  model TypeSafe AI released in September 2026, answers a fixed question with
+  one choice from a list and a confidence between 0 and 1. It writes no prose,
+  so there is no reply to parse, only a choice and a number.
+
+  On the first night the router returned whatever Jev chose. A ticket Jev was
+  41 percent sure about was refunded automatically, a ticket it labelled
+  `cancellations` went to a queue that does not exist, and when Jev timed out
+  the router crashed.
+
+  Write the router that treats Jev's answer as evidence.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the ticket text. Call `tools["jev"](ticket=question)` once. In
+  this problem the tool is a scripted stand-in for Jev, and its reply has one
+  of two shapes:
+
+      {"choice": "refunds", "confidence": 0.92}
+      {"error": "timeout"}
+
+  Return exactly one queue name: `refunds`, `late_delivery`, `account` or
+  `human`.
+
+  | Jev replied | Return |
+  |---|---|
+  | A queue from the list with confidence of at least 0.7 | That queue |
+  | A queue from the list with confidence below 0.7 | `human` |
+  | A choice that is not one of the three queues | `human` |
+  | A queue from the list with no confidence | `human` |
+  | An error | `human` |
+
+  Budget: one call to `jev` and no model calls. `llm` is passed in and must
+  not be called. Allowed imports: re.
+
+stub_code: |
+  QUEUES = ("refunds", "late_delivery", "account")
+  HUMAN = "human"
+  BAR = 0.7
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      # TODO 1: ask Jev once with tools["jev"](ticket=question). A reply
+      #         that carries "error" has no choice in it, so send the ticket
+      #         to HUMAN before reading anything else
+      # TODO 2: a choice outside QUEUES is a label, not a route
+      # TODO 3: a confidence below BAR is a guess. Guesses go to HUMAN
+      # TODO 4: a reply with no confidence at all is not confident either,
+      #         and what is left is a confident choice of a real queue
+
+      return HUMAN
+
+steps:
+  - id: s1
+    text: Send the ticket to `human` when Jev replies with an error.
+    check_id: s1
+  - id: s2
+    text: Send a choice that is not one of the three queues to `human`.
+    check_id: s2
+  - id: s3
+    text: Send a choice below the 0.7 bar to `human`.
+    check_id: s3
+  - id: s4
+    text: Send a choice that carries no confidence to `human`.
+    check_id: s4
+
+step_checks:
+  # The public replies are all confident choices of a real queue, so each
+  # check runs its own reply. Every check also asks that Jev was consulted,
+  # because a router that never asks sends everything to human by accident.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "Where did my dosa go" }
+      llm_script:
+        - { match: "*", reply: "late_delivery" }
+      tools:
+        jev: { returns: { error: "rate_limited" } }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: calls_tool, name: jev }
+        - { type: no_exception }
+        - { type: returns_equals, value: "human" }
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "I want to stop my weekly lunch plan" }
+      llm_script:
+        - { match: "*", reply: "account" }
+      tools:
+        jev: { returns: { choice: "subscriptions", confidence: 0.97 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: calls_tool, name: jev }
+        - { type: returns_equals, value: "human" }
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Food was fine but the bill looks odd" }
+      llm_script:
+        - { match: "*", reply: "refunds" }
+      tools:
+        jev: { returns: { choice: "refunds", confidence: 0.55 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: calls_tool, name: jev }
+        - { type: returns_equals, value: "human" }
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "The app logged me out and kept my cart" }
+      llm_script:
+        - { match: "*", reply: "account" }
+      tools:
+        jev: { returns: { choice: "account" } }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: calls_tool, name: jev }
+        - { type: no_exception }
+        - { type: returns_equals, value: "human" }
+
+hints:
+  - Jev's reply carries two things, a choice and a number, and it can also
+    carry neither. Decide what each one has to be before the choice becomes a
+    route.
+  - The confidence is the model telling you how often a choice like this one
+    turns out right. A choice at 0.41 is wrong more often than it is right.
+  - "Check in the order the reply can fail: is there an error, is the choice
+    one of `QUEUES`, does the confidence clear `BAR`. Each failed check
+    returns `HUMAN`."
+  - "`verdict[\"choice\"]` raises when the key is missing. `verdict.get(\"choice\")`
+    returns None, which is not in `QUEUES`, so the next check catches it."
+
+scenario:
+  headline: "A ticket the model was 41 percent sure of got a refund"
+  who: "Customer support at a food delivery app the size of Swiggy"
+  situation: >-
+    The router hands each ticket to a decision model and returns its choice.
+    It routed a 0.41 guess as a certainty, sent a ticket to a queue that does
+    not exist, and crashed when the model timed out.
+  stakes: >-
+    A route nobody checked moves money, strands a customer in a queue no team
+    reads, or drops the ticket on the floor during dinner.
+  metrics:
+    - { label: Confidence bar, value: "0.7" }
+    - { label: Decision model calls, value: "1" }
+    - { label: Model calls allowed, value: "0" }
+
+diagram:
+  title: Three checks between a choice and a route
+  caption: >-
+    Jev's reply becomes a route only when it has a choice, the choice is a
+    real queue, and the confidence clears the bar.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: writes a ticket, kind: actor, tone: blue, at: [0, 1] }
+    - { id: jev, label: "`jev`", sub: a choice and a confidence, kind: model, tone: teal, at: [1, 1] }
+    - { id: checks, label: Three checks, sub: "error, real queue, bar", kind: guard, tone: purple, at: [2, 1] }
+    - { id: queue, label: Named queue, sub: confidence 0.7 or more, kind: queue, tone: green, at: [3, 0] }
+    - { id: human, label: "`human`", sub: a person reads it first, kind: queue, tone: orange, at: [3, 2] }
+    - { id: wrong, label: Refund at 0.41, sub: the choice returned unchecked, kind: output, tone: pink, at: [1, 2] }
+  edges:
+    - { from: customer, to: jev, label: ticket text, step: 1 }
+    - { from: jev, to: wrong, label: return the choice, tone: danger }
+    - { from: jev, to: checks, label: choice and confidence, step: 2 }
+    - { from: checks, to: queue, label: all three pass, tone: success, step: 3 }
+    - { from: checks, to: human, label: any one fails, step: 3 }
+
+approach:
+  goal: Turn a classifier's answer into a route only when the answer earns it
+  branches:
+    - label: Read the reply before trusting it
+      leaves: [an error carries no choice, a missing key should not raise]
+    - label: Check the choice is a queue
+      detail: A classifier can return a label that no team owns. That label is not a route.
+      leaves: [compare against the three queues]
+    - label: Hold the confidence to a bar
+      leaves: [below 0.7 is a guess, a guess goes to a person]
+    - label: Keep it to one call
+      leaves: [no retry, no model call]
+
+coach:
+  opening: >-
+    Before you write a check, list every shape Jev's reply can arrive in. The
+    first router handled one of them.
+  signals:
+    - id: trusts-choice
+      when:
+        code_matches: '\[\s*["'']choice["'']\s*\]'
+        code_lacks: '(?i)confidence'
+      say: >-
+        Your router returns Jev's choice without looking at the confidence.
+        Should a 0.41 guess and a 0.95 answer take the same route?
+    - id: no-error-branch
+      when:
+        code_matches: '(?i)confidence'
+        code_lacks: '["'']error["'']'
+      say: >-
+        What does your router do when Jev's reply is `{"error": "timeout"}`
+        and carries no choice at all?
+    - id: calls-model
+      when: { code_matches: '\bllm\s*\(' }
+      say: >-
+        Jev already gave a choice and a number. What would a model call add,
+        and what would it cost on every ticket?
+    - id: hidden-low-confidence
+      when: { test_failed: a_guess_goes_to_a_person }
+      say: >-
+        In that run Jev chose a real queue with low confidence. Which line of
+        your router compares the confidence with the bar?
+    - id: hidden-no-confidence
+      when: { test_failed: a_choice_without_a_confidence_goes_to_a_person }
+      say: >-
+        In that run Jev chose a real queue and sent no confidence with it.
+        What does your router compare with the bar when the number is
+        missing?
+    - id: hidden-unknown-label
+      when: { test_failed: a_label_that_is_not_a_queue_goes_to_a_person }
+      say: >-
+        In that run Jev was sure, and its choice was a label no team owns.
+        Where does your router check the choice against the three queues?
+    - id: hidden-error
+      when: { test_failed: a_failed_decision_goes_to_a_person }
+      say: >-
+        In that run Jev replied with an error and no choice. Read your first
+        line after the call with that reply in mind.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1. Once the error reply returns `HUMAN`, the other
+        checks read a reply that has a choice in it.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and on
+        this tier it costs nothing to open.
+  wrap_up: >-
+    A classifier's choice is evidence with a number attached. Check the reply
+    has a choice, the choice is real and the number clears the bar, and send
+    everything else to a person.
+
+tests:
+  - name: routes_a_confident_refund
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Charged for two orders, only placed one" }
+      llm_script:
+        - { match: "*", reply: "late_delivery" }
+      tools:
+        jev: { returns: { choice: "refunds", confidence: 0.92 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "refunds" }
+        - { type: calls_tool_with, name: jev, args: { ticket: "Charged for two orders, only placed one" } }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: routes_a_ticket_the_phrase_table_missed
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "The rider never turned up and the app says delivered" }
+      llm_script:
+        - { match: "*", reply: "refunds" }
+      tools:
+        jev: { returns: { choice: "late_delivery", confidence: 0.81 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "late_delivery" }
+        - { type: tool_calls_at_most, value: 1 }
+
+  - name: a_guess_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Not happy with tonight at all" }
+      llm_script:
+        - { match: "*", reply: "refunds" }
+      tools:
+        jev: { returns: { choice: "refunds", confidence: 0.41 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "human" }
+
+  - name: a_choice_without_a_confidence_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Paid by card, the app says payment pending" }
+      llm_script:
+        - { match: "*", reply: "refunds" }
+      tools:
+        jev: { returns: { choice: "refunds" } }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "human" }
+
+  - name: a_label_that_is_not_a_queue_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Please cancel, I ordered to the wrong address" }
+      llm_script:
+        - { match: "*", reply: "account" }
+      tools:
+        jev: { returns: { choice: "cancellations", confidence: 0.95 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "human" }
+
+  - name: a_failed_decision_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "My account shows someone else's orders" }
+      llm_script:
+        - { match: "*", reply: "account" }
+      tools:
+        jev: { returns: { error: "timeout" } }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_equals, value: "human" }
+
+reference_md: |
+  A decision model sits between the phrase table and a language model. It
+  reads free text the way a model does, and it answers the way a rule does:
+  one choice from a fixed list, with no prose to parse. That makes it cheap to
+  call on every ticket and easy to check.
+
+  The confidence is the part the first router threw away. It is the model's
+  estimate of how often a choice like this one turns out right, and it is the
+  only signal that separates "refunds, almost certainly" from "refunds, if I
+  had to pick". A bar turns that number into a decision. On a well-calibrated
+  model a choice at exactly 0.7 is still wrong three times in ten, which is
+  why the next problem in the track raises the bar for the
+  one queue where a wrong route moves money.
+
+  The other two checks guard against the classifier itself. A label outside
+  the list happens whenever the list in the prompt and the list in the router
+  drift apart, and an error happens whenever the network does. Both send the
+  ticket to a person. Neither raises, because a crashed router routes nothing.
+
+complexity: C1
+
+interview_evidence:
+  round: written
+  asked_as: |
+    A classifier gives you a label and a confidence score. What do you do with the score, and where does the threshold come from?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: jev
+    args: ticket
+    returns: '`{"choice": <label>, "confidence": <0 to 1>}`, or `{"error": <reason>}` when the decision model fails.'
+example:
+  case: routes_a_confident_refund
+  expect: Jev chose `refunds` at 0.92, a real queue above the 0.7 bar, so return `refunds` without calling the model.
+traps:
+  - Returning Jev's choice without reading the confidence, so a 0.41 guess is routed like a certainty.
+  - Returning a label that is not one of the three queues, so the ticket waits in a queue nobody reads.
+  - Reading `verdict["choice"]` on an error reply, which raises and routes nothing.

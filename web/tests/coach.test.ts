@@ -18,8 +18,8 @@ import { validateProblemYaml } from "../lib/problems/validate.ts";
 import { resetDatabase, seedLearner } from "./helpers.ts";
 
 const PROBLEMS = path.join(import.meta.dirname, "..", "..", "problems");
-const EASY = "tool-creation/dispatch-only-registered-actions";
-const EXTREME = "agent-loop/bind-approval-to-an-exact-action";
+const EASY = "tools/dispatch-only-registered-actions";
+const EXTREME = "human-in-the-loop/bind-approval-to-an-exact-action";
 
 let learner: Awaited<ReturnType<typeof seedLearner>>;
 

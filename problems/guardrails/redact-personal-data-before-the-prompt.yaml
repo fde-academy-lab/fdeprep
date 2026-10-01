@@ -1,10 +1,13 @@
 slug: redact-personal-data-before-the-prompt
 title: "Remove personal data before it reaches the model"
-day: 17
+day: 16
 skill: Take personal data out before the prompt and put it back in the reply
 artefact_type: code
 difficulty: medium
 track: guardrails
+concept:
+  topic: "Input and output filtering"
+  question: "How do you keep personal data away from the model?"
 est_minutes: 25
 competencies:
   - { slug: context-assembly, weight: 1.0 }

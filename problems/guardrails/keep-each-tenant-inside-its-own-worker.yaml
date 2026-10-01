@@ -1,10 +1,13 @@
 slug: keep-each-tenant-inside-its-own-worker
 title: "Keep each client's data in its own worker"
-day: 22
+day: 21
 skill: Keep each client's job inside its own worker
 artefact_type: code
 difficulty: extreme
 track: guardrails
+concept:
+  topic: "Blast radius"
+  question: "How do you stop one client's job from touching another's data?"
 est_minutes: 45
 competencies:
   - { slug: system-design, weight: 1.0 }

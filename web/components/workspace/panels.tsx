@@ -105,6 +105,11 @@ export function ProblemIntro({ title, day, skill, interview, track, difficulty, 
           <p className="mb-1 text-meta font-medium text-text-faint">Day {day} as an FDE</p>
         ) : null}
         <p className="text-title font-semibold leading-tight tracking-[-0.01em] text-text">{title}</p>
+        {kit.concept ? (
+          <p className="mt-2 text-text">
+            <span className="text-text-faint">The question: </span>{kit.concept.question}
+          </p>
+        ) : null}
         {skill ? (
           <p className="mt-1.5 text-text-dim">
             <span className="text-text-faint">You practise: </span>{renderCode(skill)}
@@ -112,7 +117,7 @@ export function ProblemIntro({ title, day, skill, interview, track, difficulty, 
         ) : null}
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-meta">
           <DifficultyMeter difficulty={difficulty} />
-          <TrackLabel track={track} />
+          <TrackLabel track={track} topic={kit.concept?.topic} />
           <span className="inline-flex items-center gap-1.5 text-text-dim">
             <Clock3 aria-hidden className="size-3.5" strokeWidth={1.9} /> About {estMinutes} min
           </span>

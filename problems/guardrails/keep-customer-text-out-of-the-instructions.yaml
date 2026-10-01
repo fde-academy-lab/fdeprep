@@ -1,10 +1,13 @@
 slug: keep-customer-text-out-of-the-instructions
 title: "Keep customer text out of the instructions"
-day: 16
+day: 15
 skill: Keep the customer's words out of the agent's instructions
 artefact_type: code
 difficulty: easy
 track: guardrails
+concept:
+  topic: "Input and output filtering"
+  question: "How do you stop a customer's words from becoming instructions?"
 est_minutes: 15
 competencies:
   - { slug: prompt-hardening, weight: 1.0 }
