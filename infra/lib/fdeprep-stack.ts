@@ -219,7 +219,14 @@ export class FdePrepStack extends Stack {
       lifecycleRules: [{
         id: "delete-learner-audio-after-30-days",
         enabled: true,
+        // Learner answers only. The bucket also caches the synthesised
+        // follow-up lines under voice/follow-ups/, and a rule on the whole
+        // bucket deleted that cache every thirty days.
+        prefix: "voice/answers/",
         expiration: Duration.days(VOICE_AUDIO_RETENTION_DAYS),
+      }, {
+        id: "abort-incomplete-uploads",
+        enabled: true,
         abortIncompleteMultipartUploadAfter: Duration.days(1),
       }],
     });

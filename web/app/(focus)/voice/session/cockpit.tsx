@@ -14,9 +14,13 @@
  * the cue engine is substring matching, and the only fetches are one to open
  * the session and one to close it. A test asserts the count is zero across
  * the answer window.
+ *
+ * A typed answer lives in typed-answer.tsx and never here, because a text box
+ * is the learner's words on screen and this file exists to keep them off it.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
+import type { Route } from "next";
 import { useRouter } from "next/navigation";
 import { encodePcm, startCapture, type Capture } from "@/lib/voice/capture";
 import { runMicCheck } from "@/lib/voice/mic-check.browser";
@@ -53,6 +57,39 @@ const TICK_MS = 100;
  */
 const NUDGE_LIFETIME_MS = 8_000;
 
+/**
+ * How long Stop waits for the socket to say it has drained. The transcriber
+ * holds the last second or two of speech until its stream closes, and the
+ * socket sends those words and then "closed". Saving before that dropped the
+ * end of every answer, which is where the close lands. Past this the
+ * cockpit saves what it has, with any words still in flight kept as they
+ * were last heard.
+ */
+const CLOSE_WAIT_MS = 1_500;
+
+/** docs/07 section 7 asks for the check "before the first session and before
+ *  any Pressure run". Inside this window a passed check carries over to the
+ *  next question, so Next question does not cost five seconds of silence. */
+const MIC_CHECK_KEEPS_MS = 30 * 60_000;
+const MIC_CHECK_KEY = "voice-mic-checked-at";
+
+function recentMicCheck(): boolean {
+  try {
+    const at = Number(window.sessionStorage.getItem(MIC_CHECK_KEY));
+    return Number.isFinite(at) && at > 0 && Date.now() - at < MIC_CHECK_KEEPS_MS;
+  } catch {
+    return false;
+  }
+}
+
+function rememberMicCheck(): void {
+  try {
+    window.sessionStorage.setItem(MIC_CHECK_KEY, String(Date.now()));
+  } catch {
+    // Storage refused, so the next question asks for the check again.
+  }
+}
+
 type Phase = "idle" | "checking" | "ready" | "live" | "closing" | "done";
 
 type Interruption = { followUp: FollowUp; firedAtMs: number; endsAt: number };
@@ -63,11 +100,21 @@ function spoken(segments: { text: string }[]): string {
   return segments.map((segment) => segment.text).join(" ");
 }
 
-export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: VoiceMode }) {
+export function Cockpit({ question, mode, nextSlug, lobby }: {
+  question: VoiceQuestion;
+  mode: VoiceMode;
+  /** The picker's next question, or null when this is the only one. */
+  nextSlug: string | null;
+  /** The mode links and the typed-answer link. Drawn before and after an
+   *  answer and never during one. */
+  lobby?: ReactNode;
+}) {
   const router = useRouter();
 
   const [phase, setPhase] = useState<Phase>("idle");
   const [verdict, setVerdict] = useState<MicVerdict | null>(null);
+  /** A check passed on an earlier question inside the last half hour. */
+  const [carried, setCarried] = useState(false);
   const [note, setNote] = useState<string | null>(null);
 
   const [elapsedMs, setElapsedMs] = useState(0);
@@ -78,6 +125,9 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
   const [rms, setRms] = useState(0);
   const [interruption, setInterruption] = useState<Interruption | null>(null);
   const [finishedId, setFinishedId] = useState<number | null>(null);
+  /** The microphone, the socket or the transcriber failed mid-answer, so the
+   *  cockpit offers the typed answer. */
+  const [failed, setFailed] = useState(false);
 
   /**
    * Transcript text lives here and only here.
@@ -105,8 +155,29 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
   const pausedFrom = useRef<number | null>(null);
   const firedFollowUps = useRef(new Set<number>());
   const interruptions = useRef<{ followUpId: number; firedAtMs: number; endedAtMs: number | null }[]>([]);
+  /** Resolves the wait in finish() when the socket says it has drained. */
+  const drained = useRef<(() => void) | null>(null);
+  /** Set once finish() has begun, so a second Stop, the unmount and the
+   *  closing tab cannot each try to close the same session. */
+  const finishing = useRef(false);
+  /** Set when the answer starts. Before that, a failure is the platform's
+   *  and the session is closed at once, which hands its allowance back. */
+  const answering = useRef(false);
 
   const guided = mode === "guided" || mode === "pressure";
+  const typedHref = {
+    pathname: "/voice/session",
+    query: { q: question.slug, mode: mode === "pressure" ? "guided" : mode, input: "typed" },
+  } as const;
+  const nextHref = nextSlug ? { pathname: "/voice/session", query: { q: nextSlug, mode } } as const : null;
+
+  // A check passed on the last question carries over, except into pressure.
+  useEffect(() => {
+    if (mode !== "pressure" && recentMicCheck()) {
+      setCarried(true);
+      setPhase("ready");
+    }
+  }, [mode]);
 
   const check = useCallback(async () => {
     setPhase("checking");
@@ -114,6 +185,7 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
     const result = await runMicCheck(({ rms: level }) => setRms(level));
     setRms(0);
     setVerdict(result);
+    if (result.ok) rememberMicCheck();
     setPhase(result.ok ? "ready" : "idle");
   }, []);
 
@@ -126,12 +198,31 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
   }, []);
 
   const finish = useCallback(async () => {
+    if (finishing.current) return;
+    finishing.current = true;
     const cockpit = run.current;
-    socket.current?.send(JSON.stringify({ t: "stop" }));
-    socket.current?.close();
-    socket.current = null;
+    // The microphone first, so no frame follows the stop.
     const recording = await capture.current?.stop();
     capture.current = null;
+
+    const ws = socket.current;
+    socket.current = null;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      const heard = new Promise<void>((resolve) => { drained.current = resolve; });
+      ws.send(JSON.stringify({ t: "stop" }));
+      await Promise.race([heard, new Promise((resolve) => setTimeout(resolve, CLOSE_WAIT_MS))]);
+      drained.current = null;
+    }
+    ws?.close();
+
+    // Words the transcriber had not settled when the wait ran out. They were
+    // spoken, so they are kept rather than dropped.
+    const { partial } = transcript.current;
+    if (partial.trim()) {
+      const at = answerClock();
+      transcript.current.finals.push({ text: partial.trim(), startMs: at, endMs: at });
+      transcript.current.partial = "";
+    }
 
     if (cockpit && sessionId.current !== null) {
       const timeline = cockpit.timeline();
@@ -161,7 +252,7 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
     }
     setPhase("done");
     router.refresh();
-  }, [router]);
+  }, [answerClock, router]);
 
   /** Pressure mode: at a beat boundary, the authored follow-up for the beat
    *  just covered fires, at most twice in a session. */
@@ -253,26 +344,62 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
    * gone. The socket closes by itself and the Phase 7a session core already
    * reports the partial transcript on its own side.
    */
+  /**
+   * The socket or the microphone failed after Start and before the answer
+   * began. The session row exists and holds an allowance, so it is closed
+   * here with nothing said, which docs/07 section 10 gives back.
+   */
+  const abandon = useCallback(() => {
+    const id = sessionId.current;
+    sessionId.current = null;
+    run.current = null;
+    socket.current?.close();
+    socket.current = null;
+    if (id === null || finishing.current) return;
+    finishing.current = true;
+    void fetch(`/api/voice/sessions/${id}/finish`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ transcript: "", segments: [], timeline: { beats: [], nudges: [] } }),
+    }).catch(() => undefined);
+  }, []);
+
+  const saveByBeacon = useCallback(() => {
+    const cockpit = run.current;
+    if (!cockpit || sessionId.current === null || finishing.current) return;
+    finishing.current = true;
+    const body = JSON.stringify({
+      transcript: spoken(transcript.current.finals),
+      segments: transcript.current.finals,
+      timeline: { ...cockpit.timeline(), interruptions: interruptions.current },
+    });
+    navigator.sendBeacon?.(
+      `/api/voice/sessions/${sessionId.current}/finish`,
+      new Blob([body], { type: "application/json" }),
+    );
+  }, []);
+
   useEffect(() => {
     if (phase !== "live") return;
-    const save = () => {
-      const cockpit = run.current;
-      if (!cockpit || sessionId.current === null) return;
-      const body = JSON.stringify({
-        transcript: spoken(transcript.current.finals),
-        segments: transcript.current.finals,
-        timeline: { ...cockpit.timeline(), interruptions: interruptions.current },
-      });
-      navigator.sendBeacon?.(
-        `/api/voice/sessions/${sessionId.current}/finish`,
-        new Blob([body], { type: "application/json" }),
-      );
-    };
     // pagehide fires on a closed tab and on a back navigation, where
     // beforeunload is unreliable on mobile Safari.
-    window.addEventListener("pagehide", save);
-    return () => window.removeEventListener("pagehide", save);
-  }, [phase]);
+    window.addEventListener("pagehide", saveByBeacon);
+    return () => window.removeEventListener("pagehide", saveByBeacon);
+  }, [phase, saveByBeacon]);
+
+  /**
+   * A link followed mid-answer, such as the header or the picker. That is a
+   * navigation inside the application, which fires no pagehide, so the
+   * cockpit unmounts with the microphone and the socket still open. Close
+   * both and save what was heard.
+   */
+  useEffect(() => () => {
+    saveByBeacon();
+    void capture.current?.stop();
+    capture.current = null;
+    socket.current?.close();
+    socket.current = null;
+  }, [saveByBeacon]);
 
   /** Announce each beat as it becomes current, so the beat track has a voice. */
   const lastAnnouncedBeat = useRef<string | null>(null);
@@ -291,7 +418,7 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
     const response = await fetch("/api/voice/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ mode, question: question.slug }),
     });
     if (!response.ok) {
       const body = (await response.json()) as { message?: string };
@@ -317,26 +444,49 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
           text: message.text, startMs: message.startMs, endMs: message.endMs,
         });
         transcript.current.partial = "";
-      } else if (message.t === "error") setNote(message.message);
+      } else if (message.t === "closed") {
+        drained.current?.();
+      } else if (message.t === "error") {
+        setNote(message.message);
+        if (message.code === "stt_failed") setFailed(true);
+      }
     };
-    ws.onerror = () => setNote("The voice socket failed. Your answer is not being transcribed.");
+    ws.onerror = () => {
+      setNote(answering.current
+        ? "The voice socket failed, so your answer is not being transcribed."
+        : "The voice socket did not connect, so the answer did not start and nothing was counted.");
+      setFailed(true);
+      if (!answering.current) abandon();
+    };
+    ws.onclose = () => {
+      if (!answering.current) abandon();
+    };
 
     ws.onopen = async () => {
-      capture.current = await startCapture({
-        record: true,
-        onFrame: ({ pcm, rms: level }) => {
-          if (ws.readyState === WebSocket.OPEN) {
-            ws.send(JSON.stringify({ t: "audio", seq: seq.current++, pcm: encodePcm(pcm) }));
-          }
-          setRms(level);
-          if (level >= VOICED_RMS) voicedAt.current = Date.now();
-        },
-      });
+      try {
+        capture.current = await startCapture({
+          record: true,
+          onFrame: ({ pcm, rms: level }) => {
+            if (ws.readyState === WebSocket.OPEN) {
+              ws.send(JSON.stringify({ t: "audio", seq: seq.current++, pcm: encodePcm(pcm) }));
+            }
+            setRms(level);
+            if (level >= VOICED_RMS) voicedAt.current = Date.now();
+          },
+        });
+      } catch {
+        setNote("The microphone could not be opened, so nothing was counted. Check the " +
+                "browser's permission for this site.");
+        setFailed(true);
+        abandon();
+        return;
+      }
+      answering.current = true;
       startedAt.current = Date.now();
       voicedAt.current = Date.now();
       setPhase("live");
     };
-  }, [guided, mode, question.beats, question.totalSeconds]);
+  }, [abandon, guided, mode, question.beats, question.slug, question.totalSeconds]);
 
   const remainingMs = question.totalSeconds * 1000 - elapsedMs;
   // Once every beat is covered there is no current beat, and showing the
@@ -348,29 +498,48 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
 
   if (phase === "done") {
     return (
+      <>
+      {lobby}
       <div className="mt-8 border border-border bg-surface p-6">
         <h2 className="font-medium">Answer recorded.</h2>
         <p className="mt-2 text-text-dim">
           Scoring runs next and takes a moment. The debrief replays your answer with the
           instruments turned on.
         </p>
-        {finishedId !== null && (
-          <Link
-            href={`/voice/sessions/${finishedId}`}
-            className="mt-4 inline-block rounded border border-accent px-3 py-1.5 text-accent
-                       hover:bg-surface-2"
-          >
-            Open the debrief
-          </Link>
-        )}
+        <div className="mt-4 flex flex-wrap gap-2.5">
+          {finishedId !== null && (
+            <Link
+              href={`/voice/sessions/${finishedId}` as Route}
+              className="inline-block rounded border border-accent px-3 py-1.5 text-accent
+                         hover:bg-surface-2"
+            >
+              Open the debrief
+            </Link>
+          )}
+          {nextHref && (
+            <Link href={nextHref}
+                  className="inline-block rounded border border-border px-3 py-1.5 text-text-dim hover:text-text">
+              Next question
+            </Link>
+          )}
+        </div>
         {note && <p className="mt-3 text-warn">{note}</p>}
       </div>
+      </>
     );
   }
 
   if (!live) {
     return (
+      <>
+      {lobby}
       <div className="mt-8 space-y-6">
+        {/* The question, read before the answer starts. Guided and pressure
+            never showed it, so a learner answered a title. */}
+        <section aria-label="The question" className="border-l-2 border-border-strong pl-4">
+          <p className="whitespace-pre-line text-lg leading-relaxed">{question.promptText}</p>
+        </section>
+
         <section className="border border-border bg-surface p-4">
           <div className="flex items-baseline justify-between">
             <h2 className="font-medium">Microphone check</h2>
@@ -386,9 +555,23 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
             {phase === "checking" ? "Listening" : "Run the check"}
           </button>
           {phase === "checking" && <MicLevel rms={rms} live />}
+          {carried && !verdict && (
+            <p className="mt-3 text-text-dim">
+              Checked on an earlier question in the last half hour. Run it again if anything changed.
+            </p>
+          )}
           {verdict && (
             <p className={`mt-3 ${verdict.ok ? "text-pass" : "text-fail"}`}>
               {verdict.ok ? "Heard you. You are ready." : verdict.message}
+            </p>
+          )}
+          {(failed || (verdict && !verdict.ok)) && (
+            <p className="mt-2 text-text-dim">
+              If the microphone will not work here,{" "}
+              <Link href={typedHref} className="text-text underline underline-offset-2">
+                type the answer instead
+              </Link>
+              .
             </p>
           )}
         </section>
@@ -396,20 +579,21 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
         <button
           type="button"
           onClick={() => void start()}
-          disabled={!verdict?.ok}
+          disabled={!verdict?.ok && !(carried && !verdict)}
           className="rounded border border-accent px-4 py-2 text-accent hover:bg-surface
                      disabled:opacity-50"
         >
           Start the answer
         </button>
-        {!verdict?.ok && (
+        {!verdict?.ok && !(carried && !verdict) && (
           <p className="text-text-faint">
-            The check has to pass first. A learner who finds out at 0:40 that they were muted
-            has lost the attempt.
+            The check has to pass first. Finding out at 0:40 that you were muted costs you the
+            attempt.
           </p>
         )}
         {note && <p className="text-warn">{note}</p>}
       </div>
+      </>
     );
   }
 
@@ -475,7 +659,41 @@ export function Cockpit({ question, mode }: { question: VoiceQuestion; mode: Voi
         </div>
       )}
 
-      <div className="mt-10 flex justify-end">
+      {failed && (
+        <div className="mt-8 border border-border bg-surface p-4">
+          <p className="text-text-dim">
+            What you said so far is kept. You can stop here and type the answer instead.
+          </p>
+          <button
+            type="button"
+            onClick={() => {
+              setPhase("closing");
+              void finish().then(() => router.push(`/voice/session?q=${question.slug}&mode=${typedHref.query.mode}&input=typed` as Route));
+            }}
+            disabled={phase === "closing"}
+            className="mt-3 rounded border border-border px-3 py-1.5 text-text-dim hover:text-text
+                       disabled:opacity-50"
+          >
+            Stop and type it
+          </button>
+        </div>
+      )}
+
+      <div className="mt-10 flex justify-end gap-2.5">
+        {nextHref && (
+          <button
+            type="button"
+            onClick={() => {
+              setPhase("closing");
+              void finish().then(() => router.push(`/voice/session?q=${nextSlug}&mode=${mode}` as Route));
+            }}
+            disabled={phase === "closing"}
+            className="rounded border border-border px-3 py-1.5 text-text-dim hover:text-text
+                       disabled:opacity-50"
+          >
+            Next question
+          </button>
+        )}
         <button
           type="button"
           onClick={() => {

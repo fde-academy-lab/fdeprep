@@ -10,6 +10,7 @@
  * "generate once per question and cache" means in practice.
  */
 import { NextResponse } from "next/server";
+import { learnerOrNull } from "@/lib/session/current";
 import { ensureFollowUpAudio, followUpAudio } from "@/lib/voice/tts";
 
 export const dynamic = "force-dynamic";
@@ -18,11 +19,28 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string; followUpId: string }> },
 ) {
+  // The proxy only checks that a cookie is present. This is the check that
+  // the cookie is real, and it comes before anything that could call Polly.
+  if (!(await learnerOrNull())) {
+    return NextResponse.json(
+      { message: "Your session has ended. Sign in again to continue." }, { status: 401 });
+  }
   const { id, followUpId } = await params;
   const questionId = Number(id);
 
-  await ensureFollowUpAudio(questionId);
-  const audio = await followUpAudio(questionId, Number(followUpId));
+  let audio: Awaited<ReturnType<typeof followUpAudio>>;
+  try {
+    await ensureFollowUpAudio(questionId);
+    audio = await followUpAudio(questionId, Number(followUpId));
+  } catch (error) {
+    // Polly or the bucket failed. The cockpit shows the follow-up as text
+    // whatever this answers, so the interruption still lands.
+    console.error(`follow-up audio for question ${questionId} failed:`, error);
+    return NextResponse.json(
+      { message: "The follow-up could not be spoken. It is shown as text instead." },
+      { status: 503 },
+    );
+  }
 
   if (!audio) {
     return NextResponse.json(
@@ -38,9 +56,10 @@ export async function GET(
   return new NextResponse(audio.body as BodyInit, {
     headers: {
       "content-type": audio.contentType,
-      // The object never changes for a given follow-up, and a new follow-up
-      // gets a new id.
-      "cache-control": "private, max-age=86400",
+      // Revalidated on every use. A follow-up keeps its id when its words
+      // change on a re-import, and the object under that id is synthesised
+      // again, so a day of browser cache would play the old line.
+      "cache-control": "private, no-cache",
     },
   });
 }

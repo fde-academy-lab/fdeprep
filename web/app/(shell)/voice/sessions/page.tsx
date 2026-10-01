@@ -19,15 +19,15 @@ export default async function PastSessionsPage() {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-display font-semibold tracking-[-0.02em] text-text">Past answers</h1>
-          <p className="mt-1 text-text-dim">Every spoken answer you finished, with its debrief.</p>
+          <p className="mt-1 text-text-dim">Every answer you finished, spoken or typed, with its debrief.</p>
         </div>
-        <ButtonLink href="/voice/session" variant="primary"><Mic aria-hidden /> Answer a question</ButtonLink>
+        <ButtonLink href="/voice" variant="primary"><Mic aria-hidden /> Answer a question</ButtonLink>
       </div>
 
       {sessions.length === 0 ? (
         <EmptyState icon={Mic} className="mt-8"
-                    action={<ButtonLink href="/voice/session" size="sm">Answer one now</ButtonLink>}>
-          You have not finished a spoken answer yet. The first one takes about three minutes.
+                    action={<ButtonLink href="/voice" size="sm">Pick a question</ButtonLink>}>
+          You have not finished an answer yet. Pick a question; each one runs two to three minutes.
         </EmptyState>
       ) : (
         <div className="mt-8 overflow-x-auto rounded-panel border border-border">
@@ -52,9 +52,12 @@ export default async function PastSessionsPage() {
                   <td className="px-4 py-3 capitalize text-text-dim">{session.mode}</td>
                   <td className="px-4 py-3 text-text-dim">{new Date(session.startedAt).toLocaleDateString()}</td>
                   <td className="tnum px-4 py-3 text-right font-mono text-text">
-                    {session.score === null ? "Scoring" : Math.round(session.score)}
+                    {session.notCounted ? "Not counted" : session.score === null ? "Scoring"
+                      : Math.round(session.score)}
                   </td>
-                  <td className="px-4 py-3 text-right text-text-dim">{session.hasAudio ? "Kept" : "Deleted"}</td>
+                  <td className="px-4 py-3 text-right text-text-dim">
+                    {session.input === "typed" ? "Typed" : session.hasAudio ? "Kept" : "Deleted"}
+                  </td>
                 </tr>
               ))}
             </tbody>

@@ -825,7 +825,7 @@ export const STORYLINE = { days: 30, titleMax: 64, skillMax: 90 } as const;
 /**
  * Rule: every catalogue problem has a day in the storyline, a title that says
  * what the client sees, and a skill line that says what is practised.
- * docs/04 section 1, as amended 1 October 2026. Fixtures are exempt.
+ * docs/04 section 1, as amended 30 September 2026. Fixtures are exempt.
  */
 function validateStoryline(
   raw: Record<string, unknown>,

@@ -172,6 +172,39 @@ of the two variables is missing; learners see that graded sessions are not
 switched on yet. The transport check page, `/voice/lab`, and its API are closed
 to learners, since both exist to diagnose the socket.
 
+---
+
+### Choosing a question, and moving to the next
+
+Added 30 September 2026. Before this the header opened whichever question
+sorted first, and every graded session was recorded against the section 2
+fixture whatever the screen showed, so the judge scored the fixture's beats.
+
+| Rule | Detail |
+|---|---|
+| The learner picks | `/voice` lists every published question, grouped by track in section 11's order and then by slug, with its difficulty, its clock and a way into each mode. Pressure is offered only where the question has follow-ups, since without them it is guided mode spending the weekly allowance. |
+| The server resolves the pick | The browser sends a mode and a question slug. The session route resolves the slug to a published question and refuses one it cannot find, rather than swapping in another. A link to an unknown question lands on the picker. |
+| The question is read first | The prompt text shows before the answer starts, in every mode. Guided and pressure never showed it, so a learner answered a title. |
+| Next question | Ends the current answer, saves it by the section 10 rule, and opens the next question in the picker's order, wrapping at the end. A microphone check passed in the last 30 minutes carries over, except into pressure, which section 7 says gets its own check. |
+| Nothing new on screen mid-answer | The mode links and the typed-answer link show before and after an answer and never during one. |
+
+### Typing the answer
+
+Added 30 September 2026. For a learner whose microphone or transcription
+fails, or who cannot speak where they are. The cockpit offers it when the
+microphone check fails, when the microphone cannot be opened, and when the
+socket or the transcriber fails mid-answer; the picker offers it for every
+question.
+
+| Rule | Detail |
+|---|---|
+| Where it lives | Its own page, never the cockpit. A text box is the learner's words on screen, and section 3 keeps those off the cockpit without exception. |
+| What it shows | Guided shows the beat labels as a list to answer against. Unguided shows the question alone. Pressure is refused and offered as guided, because an interviewer cannot interrupt a text box. |
+| Length | No more than the question's clock allows at 180 words a minute, a fast speaker's rate. Typing buys time to think, never length. |
+| Scoring | The same judge and rubric as a spoken answer. Structure is beat coverage alone, 30 times the share of beats covered, because order and budget are about when things were said. Pace is not scored. The total is content plus structure, scaled from 80 to 100 so it reads on the same line as a spoken score. Section 6 has the table. |
+| What the debrief leaves out | The replay, pace, delivery and the recording, and it says so rather than showing zeros. |
+| Allowance and consent | It spends the allowance a spoken answer in that mode spends, because it costs the same two model calls. It records no audio, so it needs no recording consent. |
+
 ## 5. Pressure mode
 
 An interviewer agent interrupts. Two interruptions maximum in one session.
@@ -190,6 +223,15 @@ Follow-ups come from the question's authored bank first. A model-generated follo
 
 Pressure mode is capped at the rehearsal allowance, two per week, since it is the expensive mode in both tokens and nerves.
 
+Amended 30 September 2026. A follow-up has an audio address whenever speech is
+configured, and the address synthesises the line on its first request and
+caches it; before this the address stayed empty until something synthesised
+the line, and nothing did, so no follow-up was ever heard. The address checks
+the learner's session before anything reaches Polly. A re-import keeps each
+follow-up's row and its cached audio while the words are unchanged, clears the
+audio when they change, and retires a follow-up the file drops rather than
+deleting it, because a past interruption points at it.
+
 ---
 
 ## 6. Scoring
@@ -200,6 +242,15 @@ Pressure mode is capped at the rehearsal allowance, two per week, since it is th
 | Structure | 30 | Deterministic. Beat coverage, beat order, and whether each beat was reached before its budget ran out. |
 | Pace | 20 | Deterministic. Time to first substantive claim, count of overrun beats, whether the answer closed inside the clock. |
 | Delivery | 0 | Reported, never scored. Filler rate, longest silence, words per minute. |
+
+A typed answer (section 4) is scored on two axes, amended 30 September 2026:
+
+| Axis | Weight | Computed by |
+|---|---|---|
+| Content | 50 | The same rubric judge over the typed text |
+| Structure | 30 | Deterministic. Beat coverage alone: 30 times covered beats over all beats. |
+| Pace | none | Not scored, because a typed answer has no clock. |
+| Total | 100 | Content plus structure, scaled from 80 to 100. |
 
 ### The fairness rule
 
@@ -239,6 +290,27 @@ Structure and pace are scored because they are about the answer, not the speaker
 +--------------------------------------------------------------+
 ```
 
+Amended 30 September 2026:
+
+- **Territory not entered is per beat.** For each beat, the anchors the
+  answer never said, and the sentence of the strong exemplar that names most
+  of them. Matching is the cockpit's own, over the whole answer, since a typed
+  answer has no timings and a spoken one often lands a beat's words while
+  another beat is current.
+- **It does not mark evidence, numbers or trade-offs.** Measured across the 36
+  authored exemplars, those markers do not separate a strong answer from a
+  weak one: evidence appears in 4 of 12 strong answers and 2 of 12 weak ones, a
+  number in 12 and 9, a trade-off phrase in 7 and 6. docs/10 section 4 found
+  the same for trade-off phrases. Anchors do separate them: every strong
+  exemplar names all of its question's anchors, an adequate one 13 percent on
+  average and a weak one 4. The anchors were written alongside the strong
+  exemplars, so part of that gap is by construction, which is why the panel
+  shows what a strong answer said rather than calling an answer shallow.
+- **A beat is not "missed" before the judge has run.** Coverage is the judge's
+  answer, so until it arrives the beats read "not judged yet".
+- **The debrief ends with the next step**: answer it again, the next question,
+  or the picker.
+
 ---
 
 ## 7. Technical design
@@ -248,6 +320,14 @@ Structure and pace are scored because they are about the answer, not the speaker
 `getUserMedia` with `echoCancellation` and `noiseSuppression` on, an `AudioWorklet` downsampling to 16kHz mono PCM, frames pushed every 100ms. The `MediaRecorder` copy is kept separately for playback and written to S3 at the end.
 
 Run a 5-second microphone check before the first session and before any Pressure run. A learner who discovers their microphone is muted at 0:40 has lost the attempt.
+
+Amended 30 September 2026. Stop closes the microphone first, then sends `stop`
+and waits up to 1.5 seconds for the socket's `closed` message, which follows
+the transcriber's last final. Saving before that dropped the last words of
+every answer, which is where the close lands. Words still unsettled when the
+wait runs out are kept as last heard. Leaving the page mid-answer by a link
+inside the application closes the microphone and the socket and saves what
+was heard, as closing the tab already did.
 
 ### Streaming
 
@@ -370,6 +450,14 @@ create table voice_consent (
 
 `voice_nudge.was_shown` is what makes instrument replay work in unguided mode. Nudges are computed in both modes and only rendered in one.
 
+Added 30 September 2026, in migration 021, all additive:
+
+| Column | Why |
+|---|---|
+| `voice_follow_up.retired_at` | A follow-up the file drops is retired, never deleted, because `voice_interruption` points at it. |
+| `voice_session.input` | `spoken` or `typed`, so the scorer, the debrief and the history treat a typed answer as one. |
+| `voice_session.spent_allowance` | Whether the session holds one unit of its mode's allowance. Set when it opens, cleared when an answer that said nothing gives the unit back. |
+
 ---
 
 ## 9. Audio privacy
@@ -377,7 +465,7 @@ create table voice_consent (
 | Rule | Implementation |
 |---|---|
 | Consent before the first recording | A one-screen explanation of what is recorded, who can hear it and for how long, with an explicit accept. No session starts without a `voice_consent` row. |
-| Audio retention 30 days | S3 lifecycle rule, then the object is deleted and `audio_deleted_at` is set. Transcripts and scores survive. |
+| Audio retention 30 days | S3 lifecycle rule, then the object is deleted and `audio_deleted_at` is set. Transcripts and scores survive. Amended 30 September 2026: the rule covers `voice/answers/` only, because the bucket also caches follow-up speech, and the voice scorer's loop deletes each recording past 30 days itself and sets the column, which nothing set before. |
 | Learner can delete their own audio at any time | A button on every past session. Deletion is immediate and irreversible, and the score stays. |
 | Faculty access is not automatic | Faculty see transcripts and scores. Audio requires the learner to share that session explicitly. |
 | No audio leaves the account | Audio goes to S3 in the same account. The STT adapter streams it to the provider and nothing else does. |
@@ -395,6 +483,20 @@ Say all of this on the consent screen in plain words. A learner who is unsure wh
 | Pressure sessions | 2 per week, shared with the rehearsal allowance |
 
 STT and TTS are metered services, so these are rows in `rate_limit_policy` like every other cap and adjustable without a deploy.
+
+Amended 30 September 2026, when the caps first bound; before this nothing
+checked them.
+
+| Rule | Detail |
+|---|---|
+| Claimed when the session opens | In the same transaction as the session row, so a refusal leaves nothing behind and two tabs cannot both take the last answer. |
+| Given back when the answer said nothing | An answer counts once it has run 30 seconds or said 40 words. Anything shorter gives its unit back when it finishes and is never sent to the judge, since two model calls on an answer that said nothing buy nothing. Thirty seconds is the first beat's budget in section 2, and forty words is about fifteen seconds of speech. The duration is the server's; the word count is the browser's and only matters inside the first thirty seconds. |
+| At most six free a day | Each mode gives back six short answers in a rolling day. Each one is up to thirty seconds of metered transcription that costs the learner nothing, so without a bound a start-and-stop loop is unlimited. The seventh counts and is scored like any other answer. |
+| A start that fails | When the socket does not connect or the microphone does not open after Start, the cockpit closes the session at once with nothing said, so the failure costs nothing. |
+| A judge that keeps failing | A session the judge fails on for the third and last time gives its unit back, and the debrief says so. A judge that throws counts as a failed attempt rather than stopping the scorer. CLAUDE.md: an error verdict never consumes an allowance. |
+| A typed answer | Spends the allowance of its mode when it is sent. |
+| The transport check | Spends nothing, because it carries no answer. |
+| A tab closed with no beacon | Keeps its claim. The page sends a beacon on close and on leaving by a link, and only a browser that sends neither loses the unit. |
 
 ---
 
@@ -424,5 +526,5 @@ The client-communication questions matter most and are the ones no coding platfo
 6. No transcript text appears anywhere on screen during an answer, in any mode.
 7. An unguided session replays with instruments and shows every nudge that would have fired.
 8. Delivery metrics appear in the debrief and nowhere in the score, the heatmap, or the CSV export used for placement.
-9. A session abandoned mid-answer closes its socket, saves the partial transcript, and does not consume the daily allowance.
+9. A session abandoned mid-answer closes its socket, saves the partial transcript, and does not consume the daily allowance. Read, from 30 September 2026, as an answer that ends before it has run 30 seconds or said 40 words, which is the only abandonment the server can verify. Section 10 has the rule.
 10. Deleting audio removes the S3 object and leaves the score intact.

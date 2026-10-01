@@ -6,7 +6,8 @@
  * cannot name an enrolment, a question, a mode or a session, which is what
  * keeps the consent gate and the caps real rather than advisory.
  */
-import { db } from "../db/pool.ts";
+import { inTransaction } from "../db/pool.ts";
+import { consume, voiceScope } from "../policy/caps.ts";
 import { requireConsent } from "./consent.ts";
 import { mintVoiceToken } from "./token.ts";
 
@@ -57,23 +58,43 @@ function secret(): string {
   return value;
 }
 
+/**
+ * Open a session: consent, configuration, the cap, then the row.
+ *
+ * The allowance is claimed here, in the same transaction as the row, so a
+ * refused cap leaves nothing behind and two tabs cannot both take the last
+ * answer of the day. docs/07 section 10 names the caps; lib/policy/caps.ts
+ * says which one each mode spends. An answer that ends before it says
+ * anything gives the unit back when it finishes, in lib/voice/persist.ts.
+ *
+ * `capped: false` is for the faculty transport check alone, which carries no
+ * answer and is not scored.
+ */
 export async function startVoiceSession(input: {
   enrolmentId: number;
   cohortId: number;
   voiceQuestionId: number;
   mode: VoiceMode;
+  capped?: boolean;
 }): Promise<StartedSession> {
-  // Order matters. The refusal costs nothing and leaves no row behind.
+  // Order matters. Every refusal costs nothing and leaves no row behind.
   await requireConsent(input.enrolmentId);
   const url = socketUrl();
   const signing = secret();
 
-  const { rows } = await db().query<{ id: string }>(
-    `insert into voice_session (enrolment_id, voice_question_id, cohort_id, mode)
-     values ($1, $2, $3, $4) returning id`,
-    [input.enrolmentId, input.voiceQuestionId, input.cohortId, input.mode],
-  );
-  const sessionId = Number(rows[0]!.id);
+  const sessionId = await inTransaction(async (client) => {
+    if (input.capped !== false) {
+      await consume(client, { enrolmentId: input.enrolmentId, scope: voiceScope(input.mode) });
+    }
+    const { rows } = await client.query<{ id: string }>(
+      `insert into voice_session
+         (enrolment_id, voice_question_id, cohort_id, mode, spent_allowance)
+       values ($1, $2, $3, $4, $5) returning id`,
+      [input.enrolmentId, input.voiceQuestionId, input.cohortId, input.mode,
+       input.capped !== false],
+    );
+    return Number(rows[0]!.id);
+  });
 
   return {
     sessionId,

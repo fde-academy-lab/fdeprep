@@ -79,8 +79,8 @@ export default async function VoiceConsentPage() {
 
       {state.granted ? (
         <div className="mt-8">
-          <ButtonLink href="/voice/session" variant="primary">
-            Go to the Voice Screen <ArrowRight aria-hidden />
+          <ButtonLink href="/voice" variant="primary">
+            Pick a question <ArrowRight aria-hidden />
           </ButtonLink>
         </div>
       ) : null}

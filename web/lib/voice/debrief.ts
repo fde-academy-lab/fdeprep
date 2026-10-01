@@ -3,7 +3,9 @@
  *
  * docs/07 section 6 draws five panels: the score line, the beats, the
  * territory not entered, the judge's sentence, and delivery marked not
- * scored. This returns exactly those and the replay timeline.
+ * scored. This returns exactly those and the replay timeline. The territory
+ * is per beat since 30 September 2026: the words a strong answer used there that
+ * this one did not, and the sentence it used them in (lib/voice/depth.ts).
  *
  * Delivery arrives here because this is the screen it is for. It arrives as
  * its own field on its own type, never folded into the score, and the test in
@@ -13,6 +15,8 @@
 import { db } from "../db/pool.ts";
 import type { PaceState } from "./cues.ts";
 import { deliveryFor, type Delivery, type Segment } from "./delivery.ts";
+import { depthByBeat, type BeatDepth } from "./depth.ts";
+import { MAX_JUDGE_ATTEMPTS } from "./judge.ts";
 import { loadQuestion, type VoiceQuestion } from "./question.ts";
 import type { VoiceMode } from "./run.ts";
 
@@ -38,22 +42,33 @@ export type DebriefNudge = { atMs: number; kind: string; line: string; wasShown:
 export type Debrief = {
   sessionId: number;
   mode: VoiceMode;
+  /** Typed answers have no clock, no pace, no delivery and no recording. */
+  input: "spoken" | "typed";
   question: VoiceQuestion;
   startedAt: string;
   finishedAt: string | null;
   durationMs: number;
   scored: boolean;
-  score: { total: number; content: number; structure: number; pace: number } | null;
+  /** Ended before it counted (docs/07 section 10): given back, never judged. */
+  notCounted: boolean;
+  /** The judge failed on every attempt, so the answer is unscored for good
+   *  and its allowance was given back. */
+  judgeGaveUp: boolean;
+  /** Pace is null on a typed answer, which is scored without it. */
+  score: { total: number; content: number; structure: number; pace: number | null } | null;
   beats: DebriefBeat[];
-  /** Anchors of beats the judge says were not covered. The "TERRITORY NOT
-   *  ENTERED" panel: what the answer never went near. */
-  territoryNotEntered: string[];
+  /** The "TERRITORY NOT ENTERED" panel, per beat: what a strong answer named
+   *  that this one did not, and the strong answer's own sentence.
+   *  lib/voice/depth.ts says why it is this and not an evidence, number and
+   *  trade-off check. */
+  depth: BeatDepth[];
   judgeSummary: string;
   transcript: string;
   segments: Segment[];
   nudges: DebriefNudge[];
-  /** Reported, never scored. docs/07 section 6. */
-  delivery: Delivery;
+  /** Reported, never scored. docs/07 section 6. Null on a typed answer,
+   *  which has no speech to report on. */
+  delivery: Delivery | null;
   audio: { available: boolean; deletedAt: string | null; shared: boolean };
 };
 
@@ -64,17 +79,18 @@ export async function loadDebrief(
   const pool = db();
 
   const { rows } = await pool.query<{
-    id: string; mode: VoiceMode; voice_question_id: string;
+    id: string; mode: VoiceMode; voice_question_id: string; input: "spoken" | "typed";
     started_at: Date; finished_at: Date | null; scored_at: Date | null;
     transcript: string | null; transcript_segments: Segment[] | null;
     content_score: string | null; structure_score: string | null;
     pace_score: string | null; score: string | null;
-    delivery: Delivery | null; judge_result: { summary?: string } | null;
+    delivery: Delivery | null; judge_result: { summary?: string; skipped?: string } | null;
     audio_s3_key: string | null; audio_deleted_at: Date | null; shared: boolean;
+    judge_attempts: number;
   }>(
-    `select s.id, s.mode, s.voice_question_id, s.started_at, s.finished_at, s.scored_at,
+    `select s.id, s.mode, s.voice_question_id, s.input, s.started_at, s.finished_at, s.scored_at,
             s.transcript, s.transcript_segments, s.content_score, s.structure_score,
-            s.pace_score, s.score, s.delivery, s.judge_result,
+            s.pace_score, s.score, s.delivery, s.judge_result, s.judge_attempts,
             s.audio_s3_key, s.audio_deleted_at,
             coalesce(sh.id is not null and sh.withdrawn_at is null, false) as shared
        from voice_session s
@@ -99,6 +115,11 @@ export async function loadDebrief(
     [sessionId, Number(row.voice_question_id)],
   );
 
+  const strong = await pool.query<{ transcript: string }>(
+    "select transcript from voice_exemplar where voice_question_id = $1 and band = 'strong'",
+    [Number(row.voice_question_id)],
+  );
+
   const nudgeRows = await pool.query<{
     at_ms: number; kind: string; line: string; was_shown: boolean;
   }>(
@@ -120,24 +141,30 @@ export async function loadDebrief(
   const segments = row.transcript_segments ?? [];
   const finishedAt = row.finished_at;
 
+  const typed = row.input === "typed";
+  const notCounted = row.judge_result?.skipped === "did_not_count";
+  const scored = row.scored_at !== null && !notCounted;
+
   return {
     sessionId,
     mode: row.mode,
+    input: row.input,
     question,
     startedAt: row.started_at.toISOString(),
     finishedAt: finishedAt ? finishedAt.toISOString() : null,
     durationMs: finishedAt ? finishedAt.getTime() - row.started_at.getTime() : 0,
-    scored: row.scored_at !== null,
-    score: row.scored_at === null ? null : {
+    scored,
+    notCounted,
+    judgeGaveUp: row.finished_at !== null && row.scored_at === null &&
+      row.judge_attempts >= MAX_JUDGE_ATTEMPTS,
+    score: !scored ? null : {
       total: Number(row.score ?? 0),
       content: Number(row.content_score ?? 0),
       structure: Number(row.structure_score ?? 0),
-      pace: Number(row.pace_score ?? 0),
+      pace: typed || row.pace_score === null ? null : Number(row.pace_score),
     },
     beats,
-    territoryNotEntered: beats
-      .filter((beat) => !beat.covered)
-      .flatMap((beat) => labels.get(beat.key)?.anchors ?? []),
+    depth: depthByBeat(question.beats, row.transcript ?? "", strong.rows[0]?.transcript ?? null),
     judgeSummary: row.judge_result?.summary ?? "",
     transcript: row.transcript ?? "",
     segments,
@@ -149,7 +176,7 @@ export async function loadDebrief(
     })),
     // Recomputed rather than read back, so the debrief shows the same numbers
     // whether or not the judge has run. It is reported either way.
-    delivery: row.delivery ?? deliveryFor(segments),
+    delivery: typed ? null : row.delivery ?? deliveryFor(segments),
     audio: {
       available: row.audio_s3_key !== null && row.audio_deleted_at === null,
       deletedAt: row.audio_deleted_at ? row.audio_deleted_at.toISOString() : null,
@@ -161,11 +188,12 @@ export async function loadDebrief(
 /** The learner's own past sessions, newest first. */
 export async function pastSessions(enrolmentId: number) {
   const { rows } = await db().query<{
-    id: string; mode: VoiceMode; title: string; started_at: Date;
-    score: string | null; scored_at: Date | null;
+    id: string; mode: VoiceMode; input: "spoken" | "typed"; title: string; started_at: Date;
+    score: string | null; scored_at: Date | null; not_counted: boolean;
     audio_s3_key: string | null; audio_deleted_at: Date | null;
   }>(
-    `select s.id, s.mode, q.title, s.started_at, s.score, s.scored_at,
+    `select s.id, s.mode, s.input, q.title, s.started_at, s.score, s.scored_at,
+            coalesce(s.judge_result ->> 'skipped' = 'did_not_count', false) as not_counted,
             s.audio_s3_key, s.audio_deleted_at
        from voice_session s join voice_question q on q.id = s.voice_question_id
       where s.enrolment_id = $1 and s.finished_at is not null
@@ -176,9 +204,11 @@ export async function pastSessions(enrolmentId: number) {
   return rows.map((row) => ({
     id: Number(row.id),
     mode: row.mode,
+    input: row.input,
     title: row.title,
     startedAt: row.started_at.toISOString(),
-    score: row.scored_at === null ? null : Number(row.score ?? 0),
+    notCounted: row.not_counted,
+    score: row.scored_at === null || row.not_counted ? null : Number(row.score ?? 0),
     hasAudio: row.audio_s3_key !== null && row.audio_deleted_at === null,
   }));
 }

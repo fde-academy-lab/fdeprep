@@ -10,7 +10,7 @@ export function palettePages(role: "learner" | "faculty" | "admin"): PalettePage
     { href: "/", label: "Home", icon: "home", keywords: "journey roadmap next up" },
     { href: "/problems", label: "All problems", icon: "problems", keywords: "catalogue list" },
     { href: "/rehearsal", label: "Rehearsal", icon: "rehearsal", keywords: "screen timed mock" },
-    { href: "/voice/session", label: "Voice practice", icon: "voice", keywords: "speak interview" },
+    { href: "/voice", label: "Voice practice", icon: "voice", keywords: "speak interview type questions" },
     { href: "/progress", label: "Progress", icon: "progress",
       keywords: "heatmap competencies readiness" },
   ];
