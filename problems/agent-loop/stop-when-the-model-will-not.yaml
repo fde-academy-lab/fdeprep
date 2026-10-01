@@ -14,7 +14,7 @@ time_limit_s: 10
 allowed_imports: [json, re]
 
 brief_md: |
-  A research assistant looks things up and summarises what it found. It works.
+  The procurement team at a ride-hailing company the size of Uber runs a research assistant. It looks things up and summarises what it found. It works.
   Once or twice a week it does not: the model keeps asking for one more lookup
   and never writes the summary, and the loop keeps going because the only way
   out of it is a Final Answer that never arrives.
@@ -142,7 +142,7 @@ hints:
 
 scenario:
   headline: "One question cost $340 and the buyer got nothing back"
-  who: The procurement team's contract research assistant
+  who: "Procurement research at a ride-hailing firm the size of Uber"
   situation: >-
     Once or twice a week the model keeps asking for one more lookup and never
     writes the summary. The loop's only exit is a Final Answer, so it keeps

@@ -15,7 +15,7 @@ time_limit_s: 10
 allowed_imports: [json, re]
 
 brief_md: |
-  A payouts agent asks a human before it moves money. The human sees a summary,
+  A UK fintech the size of Revolut runs a payouts agent. It asks a human before it moves money. The human sees a summary,
   clicks approve, and the agent executes.
 
   Last month it paid 8,400 pounds to an account nobody had approved. The
@@ -99,7 +99,7 @@ hints:
 
 scenario:
   headline: "An approved £8,400 payout went to a different account"
-  who: The payouts team at a UK fintech
+  who: "The payouts team at a UK fintech the size of Revolut"
   situation: >-
     The agent asks a human before it moves money. Between the click and the
     payment it re-planned, and the new plan sent the money somewhere else.

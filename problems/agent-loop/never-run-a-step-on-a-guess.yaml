@@ -15,7 +15,7 @@ time_limit_s: 10
 allowed_imports: [json, re]
 
 brief_md: |
-  The returns desk at an online furniture retailer runs an agent that plans a
+  The returns desk at a furniture marketplace the size of Pepperfry runs an agent that plans a
   return in one go: find the order, open a case, refund it, book a collection
   of the damaged item, and email the customer the refund reference and the
   collection slot. The model writes the plan and the loop executes it.
@@ -133,7 +133,7 @@ hints:
 
 scenario:
   headline: "A sofa refund went to a dining table the customer still has"
-  who: The returns desk at an online furniture retailer
+  who: "The returns desk at a furniture marketplace the size of Pepperfry"
   situation: >-
     The order lookup found two matching orders and answered with an empty
     order id. The executor passed it to the refund API, which reads a blank id

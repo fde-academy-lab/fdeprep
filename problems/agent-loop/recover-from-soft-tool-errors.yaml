@@ -17,7 +17,7 @@ defence_question: |
   Say why a retry that sends an identical prompt would not have recovered this, and what your code sends instead.
 
 brief_md: |
-  A shipping-status tool in your pipeline answers with HTTP 200 even when it
+  You work on order tracking at a food delivery app the size of Swiggy. A delivery-status tool in your pipeline answers with HTTP 200 even when it
   fails. The failure arrives as an `error` key inside the response body, so any
   loop that branches on the status code treats the failure as a success and
   keeps going.
@@ -193,9 +193,9 @@ hints:
 
 scenario:
   headline: "The order assistant mistakes failed lookups for answers"
-  who: The support team behind an order-status assistant
+  who: "Order tracking at a food delivery app the size of Swiggy"
   situation: >-
-    The shipping-status tool answers 200 even when a lookup fails, and puts
+    The delivery-status tool answers 200 even when a lookup fails, and puts
     the failure in an error key inside the body. The loop branched on the
     status code.
   stakes: >-

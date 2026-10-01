@@ -14,7 +14,7 @@ time_limit_s: 10
 allowed_imports: [json, re]
 
 brief_md: |
-  A restaurant booking agent has been telling customers their table is
+  A dining app at Zomato's scale runs a restaurant booking agent, and it has been telling customers their table is
   confirmed when nothing was booked. The support team pulled the traces and
   found the cause: about one reply in twenty carries an answer and an action
   at the same time.
@@ -152,7 +152,7 @@ hints:
 
 scenario:
   headline: "Guests are told their table is booked when nothing was"
-  who: Guest support for a restaurant booking agent
+  who: "Guest support at a dining app with Zomato's table bookings"
   situation: >-
     About one reply in twenty carries a Final Answer and an Action together.
     The loop returns the answer as soon as it sees one, so the booking call

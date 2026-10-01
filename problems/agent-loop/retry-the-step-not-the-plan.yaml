@@ -15,7 +15,7 @@ time_limit_s: 10
 allowed_imports: [json, re]
 
 brief_md: |
-  The returns desk at an online furniture retailer runs an agent that plans a
+  The returns desk at a furniture marketplace the size of Pepperfry runs an agent that plans a
   return in four steps: find the order, refund it, book a collection of the
   damaged item, and email the customer the refund reference and the
   collection slot. Every attempt writes a run record of what each step did
@@ -143,7 +143,7 @@ hints:
 
 scenario:
   headline: "Retrying a half-finished return refunded the customer again"
-  who: The returns desk at an online furniture retailer
+  who: "The returns desk at a furniture marketplace the size of Pepperfry"
   situation: >-
     A return got halfway: the refund went out, then the carrier's booking API
     was down. The next morning a support lead pressed Retry, which runs the
