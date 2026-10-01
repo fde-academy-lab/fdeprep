@@ -46,7 +46,19 @@ export async function scoreVoiceOnce(options: ScoreOptions = {}): Promise<number
     [options.limit ?? 5, MAX_JUDGE_ATTEMPTS],
   );
 
-  for (const row of rows) await scoreSession(row, options);
+  for (const row of rows) {
+    try {
+      await scoreSession(row, options);
+    } catch (error) {
+      // A session the scorer cannot read, a question that will not load or a
+      // reply in a shape it does not expect, is that session's failed
+      // attempt. It used to throw out of this loop and stop the scorer, so
+      // every answer behind it waited until somebody restarted the process.
+      console.warn(`voice session ${row.id} not scored: ${
+        error instanceof Error ? error.message : String(error)}`);
+      await giveBackAfterLastAttempt(Number(row.id));
+    }
+  }
   return rows.length;
 }
 
@@ -91,6 +103,7 @@ async function scoreSession(row: SessionRow, options: ScoreOptions): Promise<voi
   }
 
   await writeScore(sessionId, row, question.totalSeconds, result);
+  console.log(`voice session ${sessionId} scored`);
 }
 
 /**

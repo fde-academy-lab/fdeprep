@@ -7,24 +7,31 @@
  * stored here reaches a score, the competency heatmap, or the placement
  * export. The session id is checked against the learner's own enrolment, so a
  * browser cannot close somebody else's sitting.
+ *
+ * Every reply is JSON, failures included, because the cockpit decides from
+ * the status whether the answer is saved, and tries again on a 500.
+ * lib/voice/save.ts reads it; lib/http/failure.ts says why.
  */
 import { NextResponse } from "next/server";
+import { jsonBody, signedOut, unexpected } from "@/lib/http/failure";
 import { finishSession, SessionNotOpen, type TimelineIn } from "@/lib/voice/persist";
-import { currentLearner } from "@/lib/session/current";
+import { learnerOrNull } from "@/lib/session/current";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
   try {
-    const learner = await currentLearner();
-    const { id } = await params;
-    const body = (await request.json()) as {
+    const learner = await learnerOrNull();
+    if (!learner) return signedOut();
+
+    const body = await jsonBody<{
       transcript?: string;
       segments?: { text: string; startMs: number; endMs: number }[];
       timeline?: TimelineIn;
-    };
+    }>(request);
 
-    if (!body.timeline || !Array.isArray(body.timeline.beats)) {
+    if (!body?.timeline || !Array.isArray(body.timeline.beats)) {
       return NextResponse.json({ message: "Needs a timeline." }, { status: 400 });
     }
 
@@ -40,6 +47,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     if (error instanceof SessionNotOpen) {
       return NextResponse.json({ message: error.message }, { status: error.status });
     }
-    throw error;
+    // finishSession writes in one transaction, so a failure has changed
+    // nothing and the same request can be sent again.
+    return unexpected(`saving voice session ${id}`, error,
+      "The answer was not saved because the server hit an error. Nothing was changed, so " +
+        "send it again.");
   }
 }

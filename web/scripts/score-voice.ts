@@ -17,11 +17,22 @@ const INTERVAL_MS = Number(process.env.VOICE_SCORE_INTERVAL_MS ?? 5_000);
 
 async function main(): Promise<void> {
   const once = process.argv.includes("--once");
+  console.log("voice scorer started, polling for finished answers");
   for (;;) {
-    const scored = await scoreVoiceOnce();
-    if (scored > 0) console.log(`scored ${scored} voice session${scored === 1 ? "" : "s"}`);
-    const expired = await markExpiredAudio();
-    if (expired > 0) console.log(`deleted ${expired} recording${expired === 1 ? "" : "s"} past retention`);
+    try {
+      // Each session it takes is logged as scored or not scored, with the
+      // judge's reason. A count here read "scored 5" when all five failed.
+      await scoreVoiceOnce();
+      const expired = await markExpiredAudio();
+      if (expired > 0) console.log(`deleted ${expired} recording${expired === 1 ? "" : "s"} past retention`);
+    } catch (error) {
+      // The same rule as the submission worker: a pass that throws, a database
+      // restarting under it for example, must not take the scorer down with
+      // it, or every answer waits unscored until somebody notices.
+      console.error(`voice scoring pass failed, trying again in ${INTERVAL_MS / 1000}s:`,
+                    error instanceof Error ? error.message : error);
+      if (once) process.exitCode = 1;
+    }
     if (once) break;
     await new Promise((resolve) => setTimeout(resolve, INTERVAL_MS));
   }
