@@ -17,7 +17,7 @@ The platform is built and has not yet been deployed. The beta runs on AWS for in
 | Commits | 285, counting each pull request's own commits | GitHub and git |
 | Lines changed | +152,496 and -4,832 | GitHub |
 | Test cases declared at the end | 276 Python, 716 web, 26 voice, 37 infrastructure | Git |
-| Bugs found and fixed | 20 | This file |
+| Bugs found and fixed | 21 | This file |
 | Delivered size | 360 points | Estimate |
 | Human-team equivalent | 203 person-days expected, 174 to 232 at two standard deviations | Estimate |
 <!-- /generated:numbers -->

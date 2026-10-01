@@ -509,7 +509,15 @@ VOICE_TOKEN_SECRET=pick-anything VOICE_SOCKET_URL=ws://localhost:8787 \
 
 Accept at `/voice/consent`, then answer one at `/voice/session?mode=guided`.
 
-`VOICE_STT=scripted` produces placeholder words driven by how loud you are, which makes the whole pipeline visible with no AWS credential. The two `VOICE_TOKEN_SECRET` values have to match, because one end signs the session token and the other verifies it.
+`VOICE_STT=scripted` produces placeholder words driven by how loud you are, which makes the whole pipeline visible with no AWS credential. The two `VOICE_TOKEN_SECRET` values have to match, because one end signs the session token and the other verifies it. Leave `VOICE_STT` out and the socket uses Amazon Transcribe; on a machine with no AWS credentials each Start then ends at once with "The transcriber failed", and terminal 3 prints `Could not load credentials from any providers`.
+
+Scoring calls the judge, and the judge calls Claude on Amazon Bedrock. Terminal 4 as written has no model, so every answer still saves and its debrief still replays, and after three tries, about fifteen seconds, the debrief says the judge could not score it and gives the allowance back. Terminal 4 prints `JUDGE_MODEL_ID is not set` on each try. To score for real, sign the AWS CLI in (`aws login` needs CLI 2.32.0 or newer), make sure the account can call Claude (section C1), and start the scorer with the model named:
+
+```bash
+cd web && JUDGE_MODEL_ID=us.anthropic.claude-opus-5 AWS_REGION=us-east-1 npm run scorevoice
+```
+
+Each scored answer is two model calls on that account. A typed answer, from **Type the answer instead** on any question, needs neither the socket nor a microphone and is scored the same way.
 
 ## 2.6 Demonstrating it to a room
 
@@ -530,9 +538,9 @@ A five-minute path that shows the product's actual argument rather than its scre
 ```bash
 createdb fdeprep_test
 export TEST_DATABASE_URL="postgres://localhost/fdeprep_test"
-cd web   && npm test                   # 717 tests
-cd ../   && .venv/bin/python -m pytest -q   # 980 tests, some skip, see below
-cd voice && npm test                   # 26 tests
+cd web   && npm test                   # 805 tests
+cd ../   && .venv/bin/python -m pytest -q   # 1035 tests, some skip, see below
+cd voice && npm test                   # 28 tests
 cd ../infra && npm test                # 37 tests
 ```
 
@@ -1128,6 +1136,11 @@ Judge prompts are files in `judge/prompts/`, versioned as `rubric.v1.md` and so 
 | A learner lost an Extreme attempt to a platform fault. | This should be impossible, since an `error` verdict does not consume an allowance and that is tested rather than assumed. | If it happened anyway, clear the counter row for that learner, scope and window on `/admin/ops`, and log the reason. The audit trail is the point. |
 | Every design or prompt submission returns `error`. | The judge cannot reach Bedrock, or `JUDGE_MODEL_ID` is a bare model id. | Check the Lambda logs. A bare id fails at start-up with a message that names the fix. |
 | The voice cockpit shows a dead microphone. | The socket is unreachable, or the two `VOICE_TOKEN_SECRET` values differ. | Check both ends. `/voice/lab` is a bare transport check that prints transcripts to the browser console and shows them nowhere. |
+| Start says "The voice socket could not take this answer" and quotes "That session token is not signed by this application". | The web application and the socket hold different `VOICE_TOKEN_SECRET` values. | Set the same value on both and restart both. Nothing was counted against the learner. |
+| An answer says "The transcriber failed at 0:00". | The socket runs Amazon Transcribe with no AWS credentials, or Transcribe refused the stream. The socket's terminal or log names the reason. | On a laptop, start the socket with `VOICE_STT=scripted`. On AWS, read the voice Lambda's log. |
+| "Your answer did not save" with **Save again**. | The finish request failed three times: the web process restarted, or the database was unreachable. The answer is held in that browser tab. | Fix the web process or the database, then the learner presses **Save again**. Closing the tab first loses the answer. |
+| A debrief says the judge could not score it after three tries. | The scorer has no `JUDGE_MODEL_ID`, no AWS credentials, or Bedrock refused the call. Its allowance was given back. | `journalctl -u fdeprep-scorer -n 20` on AWS, or terminal 4 locally, names the reason on each try. Section 2.5 has the local fix. |
+| A page shows "This page did not load" with a reference number. | That page threw on the server. The reference is the digest Next writes about twenty lines below the error in the web log. | On AWS, `journalctl -u fdeprep-web --no-pager \| grep -B25 REFERENCE` prints the error above it. Locally, the `npm run dev` terminal shows the same. |
 | The Voice Screen serves the wrong question. | Content was never imported, so it fell back to the `docs/07` fixture. | `npm run import:content`. The fixture's prompt mentions spinning forever in production, which is how you recognise it. |
 | `next build` fails on `/_global-error` with a null `useContext`. | `NODE_ENV` is set to `development` in the shell. | `NODE_ENV=production npx next build`. |
 | A local run cannot find Python. | The runner subprocess resolves `.venv` then `python3`. | Set `RUNNER_PYTHON` to an explicit interpreter path. |

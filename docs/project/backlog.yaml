@@ -18,7 +18,7 @@
 # Every pull request adds or closes the story it delivers. CI checks this file.
 
 version: 1
-as_of: 2026-09-30
+as_of: 2026-10-01
 
 project:
   owner: fde-academy-lab
@@ -1376,6 +1376,17 @@ stages:
         acceptance:
           - Each session is recorded against the question on screen, the docs/07 section 10 caps bind, and an answer that ends before it counts, a failed start and a judge that keeps failing all cost the learner nothing.
           - Follow-ups are heard, survive a content re-import, and keep their cached speech past thirty days, and a recording past thirty days is deleted and marked so.
+      - id: S13.9
+        title: Keep the debrief up, and say what failed when an answer does not save
+        type: Bug
+        status: done
+        points: 5
+        area: Voice
+        finish: 2026-10-01
+        found_by: Running it
+        acceptance:
+          - The debrief and the past answers list render for every session in development and in a production build, and a test walks every page's imports so a module the server bundle cannot load fails CI instead of a learner's screen.
+          - A failed start, save, recording upload or socket says what happened and what to press, an answer that did not save is never shown as recorded and stays in the tab for Save again, and neither the scorer nor the development socket stops for one session it cannot handle.
 
   - id: S14
     name: Voice interviewer v2, step 2
