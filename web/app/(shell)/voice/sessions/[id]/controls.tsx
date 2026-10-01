@@ -10,6 +10,7 @@
  */
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { readReply } from "@/lib/http/reply";
 
 export function AudioControls({
   sessionId,
@@ -39,8 +40,9 @@ export function AudioControls({
         body: body ? JSON.stringify(body) : undefined,
       });
       if (!response.ok) {
-        const payload = (await response.json()) as { message?: string };
-        setError(payload.message ?? "That did not work. Try again.");
+        const reply = await readReply(response);
+        setError(reply.message ??
+          `That did not work: the server answered ${reply.status}. Try again in a minute.`);
         return;
       }
       router.refresh();
