@@ -35,6 +35,21 @@ Why Lambda rather than a cluster: at 200 learners the peak is roughly 30 concurr
 
 Timeouts: Lambda timeout 60s, per-test wall clock from `problem_version.time_limit_s`, default 10s.
 
+### 1.1 Agent frameworks in the sandbox
+
+Added 1 October 2026. A problem may list `langgraph` and `langchain_core` in `allowed_imports`, so a learner builds a graph, a checkpointed interrupt or a validated tool the way production code does. The runner image pins `langgraph==1.2.12` and `langchain-core==1.6.6`, read from PyPI that day; together they add about 86 MB to the image and about 0.7 seconds to a case that imports them.
+
+Nothing about the model changes. A graph node calls the `llm` proxy like any other code, so the scripted model answers it and learner code still never reaches a model endpoint. A LangChain chat-model class is not offered, because the only model in the sandbox is the proxy.
+
+| Change | Why |
+|---|---|
+| The sandbox preloads the full dotted module a solution imports, such as `langgraph.graph`, before the import hook goes in | A framework imports `importlib` and `asyncio` as it loads; loaded first, those imports never reach the hook |
+| `importlib` stays loaded for a solution that imports a framework, and only then | pydantic, under LangChain's `@tool`, imports by name on first use. The static gate still refuses `import importlib`, and every other solution loses it as before |
+| The static gate names four more hops: `logging`, `pickle`, `shutil` and `asyncio` | The route walk in `tests/test_static_gate.py` found public routes through them to `threading`, `pickle`, `shutil`, `socket` and `subprocess`, and now walks the framework submodules too |
+
+CrewAI was measured the same day and left out: 855 MB across 139 packages and 2.6 seconds of import per case. CrewAI is taught through design problems until it has a runner image of its own.
+
+
 ---
 
 ## 2. The mock LLM contract
@@ -437,7 +452,7 @@ The runner executes untrusted code written by 200 people who are learning, some 
 |---|---|
 | Network | Lambda in a VPC with no NAT and no internet route. Nothing in the runner can reach out. Model calls for probes and judging happen in a separate Lambda that never executes learner code. |
 | Filesystem | Working directory under `/tmp`, 512MB. The runner empties `/tmp` before each invocation and after each case, and an instance that cannot empty it runs nothing (section 1). Image layers are read-only. |
-| Process | No `subprocess`, blocked at the AST gate and again by an import hook. Since 29 September 2026 the kernel refuses it too: the sandbox runs with `RLIMIT_NPROC` at 0, and the runner kills the sandbox's whole process group before reaping it. |
+| Process | No `subprocess`, blocked at the AST gate and again by an import hook (section 1.1 says which modules a framework problem keeps loaded). Since 29 September 2026 the kernel refuses it too: the sandbox runs with `RLIMIT_NPROC` at 0, and the runner kills the sandbox's whole process group before reaping it. |
 | Harness state | The scripted model, the tool fixtures, the budget ceilings and the trace live in the runner, which answers each call over a pipe (section 2.1). The sandbox reports how `run_agent` ended and nothing else; a trace or a count in its result file is ignored. |
 | CPU and memory | Lambda memory 1024MB, per-test wall clock enforced by a watchdog thread that raises, then by the Lambda timeout as a backstop. |
 | Fork and thread bombs | `resource.setrlimit(RLIMIT_NPROC)` at 0 in the sandbox, set after its watchdog thread starts, because the limit counts threads. Root ignores the limit; Lambda does not run code as root, and a test run as a normal user proves the fork is refused. |

@@ -36,6 +36,15 @@ BLOCKED_MODULES = frozenset({
     "ssl", "asyncio", "pickle", "marshal", "code", "pty", "signal", "resource",
 })
 
+# A framework a problem allows imports by name at run time, not only as it
+# loads: pydantic resolves a validator through importlib on first use. For a
+# solution that imports one, importlib stays loaded so those imports resolve.
+# The static gate still refuses `import importlib` in learner code, and the
+# boundary is unchanged: nothing worth reaching is in this process
+# (.claude/rules/01-trust-boundaries.md). Added 1 October 2026.
+FRAMEWORKS = frozenset({"langgraph", "langchain_core", "pydantic"})
+FRAMEWORK_KEEPS = frozenset({"importlib"})
+
 _open = _builtins.open
 _exit = _os._exit
 
@@ -96,6 +105,19 @@ def _preload(names) -> None:
             pass
 
 
+def kept_modules(preload) -> frozenset[str]:
+    """Blocked modules that stay loaded after the blocker goes in.
+
+    sys, os and threading always do, because this file holds them. importlib
+    stays only for a solution that imports a framework, which needs it at run
+    time; every other solution loses it, as before.
+    """
+    kept = {"sys", "os", "threading"}
+    if any(str(name).split(".")[0] in FRAMEWORKS for name in preload):
+        kept |= FRAMEWORK_KEEPS
+    return frozenset(kept)
+
+
 def _no_new_processes() -> None:
     """docs/03 section 7: a fork or thread bomb stops at the kernel.
 
@@ -144,8 +166,9 @@ def main(argv: list[str]) -> int:
     _no_new_processes()
 
     _sys.meta_path.insert(0, _Blocker())
+    kept = kept_modules(payload.get("preload") or [])
     for name in list(_sys.modules):
-        if name.split(".")[0] in BLOCKED_MODULES and name not in ("sys", "os", "threading"):
+        if name.split(".")[0] in BLOCKED_MODULES and name.split(".")[0] not in kept:
             _sys.modules.pop(name, None)
 
     # A real module, registered, because dataclasses and typing look a class's

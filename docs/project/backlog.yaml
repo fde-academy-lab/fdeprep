@@ -1318,6 +1318,17 @@ stages:
         acceptance:
           - Every problem sits in one of twelve chapters, from loop engineering to Agentic SDLC, under a topic from that chapter's closed list, and its page and catalogue row show the question it answers before the learner starts.
           - The 30-day path walks the four stages in order, a test fails when any problem's day is off it, and searching the problems page by a word, a chapter or a question returns matches.
+      - id: S12.13
+        title: Let a problem use LangGraph and LangChain inside the sandbox
+        type: Feature
+        status: done
+        pr: 45
+        points: 5
+        area: Runner
+        finish: 2026-10-01
+        acceptance:
+          - A solution that builds a LangGraph graph, pauses at an interrupt and resumes from its checkpoint, and validates a LangChain tool's arguments passes inside the real sandbox, and a graph that never ends stops at its recursion limit.
+          - A solution that imports no framework runs in exactly the sandbox it ran in before, and the static gate's route walk covers the framework modules.
 
   - id: S13
     name: Voice interviewer v2, step 1
