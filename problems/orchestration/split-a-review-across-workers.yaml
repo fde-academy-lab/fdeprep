@@ -1,0 +1,411 @@
+slug: split-a-review-across-workers
+title: "Split a review across workers and check quotes"
+day: 12
+skill: Give each worker one document, keep only answers its quote proves, and never count votes
+artefact_type: code
+difficulty: hard
+track: orchestration
+concept:
+  topic: "One agent or many"
+  question: "When workers disagree, how do you decide which answer to keep?"
+est_minutes: 45
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: context-assembly, weight: 0.5 }
+call_budget: 7
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  Procurement at a hospital group the size of Apollo Hospitals reviews every
+  supplier contract before it renews. The review used to be one agent reading
+  the whole contract pack, about 140 pages per supplier, and it kept answering
+  from the wrong document. So the team split it: an orchestrator sends each
+  question to one worker per document, and the answer most workers give wins.
+
+  In August the pack for the patient-records supplier held the master
+  agreement, an amendment and an order form. Asked how much notice ends the
+  contract, the worker reading the master agreement replied 90 days and
+  quoted clause 14.2. The workers reading the amendment and the order form,
+  neither of which sets a notice period, both replied 30 days. Thirty days
+  won two to one. Notice went out 30 days before renewal, the contract needed
+  90, and the group is held to another year at 4.1 crore rupees.
+
+  The split was meant to give each worker less to read. Each one was handed
+  the whole request anyway: every document in the pack, and the procurement
+  lead's private note on the walk-away price.
+
+  Write the orchestrator. Give each worker its one question and its one
+  document, keep only the answers a worker's quote proves, and send a real
+  disagreement to a person.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the review request as JSON:
+
+      {"supplier": "Medisys Records",
+       "questions": [{"id": "notice", "ask": "How much notice ends the contract at renewal?"}],
+       "documents": [{"id": "MSA", "text": "..."}, {"id": "ORDER", "text": "..."}],
+       "notes": "Walk-away price ..."}
+
+  Ask one worker for each question and each document, in request order:
+  `llm(worker_prompt(q["id"], q["ask"], d["id"], d["text"]))` with the
+  starter code's `worker_prompt`. A worker's prompt holds its question and
+  its document's text, and no other part of the request.
+
+  A worker replies with JSON: `{"value": "90 days", "quote": "<a sentence>"}`,
+  or `{"value": null}` when its document does not answer.
+
+  A claim is proved when its value and its quote are non-empty strings, the
+  quote appears exactly in that worker's own document, and the value appears
+  in the quote, ignoring case. Nothing else proves anything: a null value, a
+  quote the document does not contain, a value the quote does not contain, a
+  reply that is not JSON. How many workers gave a value never matters.
+
+  Return one line per question, in request order:
+
+  | Proved claims | Line |
+  |---|---|
+  | None | `<id>: not found` |
+  | All the same value, ignoring case and spacing | `<id>: <value> (<doc>, <doc>)` |
+  | More than one value | `<id>: conflict: <doc> says "<quote>"; <doc> says "<quote>"` |
+
+  Documents appear in request order. The agreed line writes the value as the
+  first proving document wrote it, and the conflict line lists every proved
+  claim, for a person to decide.
+
+  Budget: at most 7 model calls, one per question and document, and no
+  request here needs more than six. `tools` is empty. Allowed imports: json, re.
+
+defence_question: |
+  Your orchestrator sends a question to a person whenever two quoted
+  documents disagree. The procurement lead says that happens on one renewal
+  in three and asks you to let the newest document win instead. What would
+  that fix, what would it get wrong, and what would you check in past
+  renewals before agreeing?
+
+stub_code: |
+  import json
+
+
+  def worker_prompt(qid: str, ask: str, doc_id: str, text: str) -> str:
+      """The prompt for one worker: one question and one document."""
+      return (
+          "You check one document for one question. Answer only from the document.\n"
+          f"Job: {qid} in {doc_id}\n"
+          f"Question: {ask}\n"
+          f"<document>\n{text}\n</document>\n"
+          'Reply with JSON only: {"value": ..., "quote": ...}, copying the sentence '
+          'you rely on exactly, or {"value": null} when the document does not answer.\n'
+      )
+
+
+  def proved(reply: str, text: str):
+      """The claim in a worker's reply when its quote proves it, otherwise None.
+
+      Proved: value and quote are non-empty strings, the worker's own
+      document contains the quote exactly, and the quote contains the value,
+      ignoring case. A reply that is not JSON proves nothing.
+      """
+      return None
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Ask one worker per question and document, and keep what quotes prove.
+
+      Each worker's prompt is worker_prompt(...) with its question and its one
+      document, and nothing else from the request. Return one line per
+      question, in request order:
+        "<id>: not found"                                 no proved claim
+        "<id>: <value> (<doc>, <doc>)"                    one value, every doc proving it
+        '<id>: conflict: <doc> says "<quote>"; ...'       more than one value
+      Values compare ignoring case and spacing. Documents in request order.
+      At most 7 model calls. Allowed imports: json, re.
+      """
+      request = json.loads(question)
+      return "\n".join(f"{q['id']}: not found" for q in request.get("questions", []))
+
+hints:
+  - Read one worker's prompt as the worker sees it. Anything in it that its one
+    job does not need costs tokens, and every extra document is another place
+    the worker can take an answer from.
+  - Two workers agreeing is evidence only when each of them read something that
+    says so. A worker asked about a document that never mentions notice still
+    answers, and guesses tend to agree with each other.
+  - A claim earns its place with a quote you can find in the worker's own
+    document, with the value inside it. Check the document that worker was
+    given, and never the whole pack.
+  - Once claims are proved, count distinct values, never workers. None means
+    not found, one is the answer with every document that proved it, and more
+    than one goes to a person with the quotes.
+
+scenario:
+  headline: "Two guessing workers outvoted the one that quoted the contract"
+  who: "Procurement at a hospital group the size of Apollo Hospitals"
+  situation: >-
+    Contract questions go to one worker per document, and the answer most
+    workers give wins. Two workers whose documents set no notice period
+    answered 30 days. The worker reading the master agreement quoted 90.
+  stakes: >-
+    Notice went out 30 days before renewal, the contract needed 90, and the
+    group is held to another year of a contract it meant to leave.
+  metrics:
+    - { label: Notice the contract needs, value: 90 days }
+    - { label: Notice the vote chose, value: 30 days }
+    - { label: Year it was held to, value: "₹4.1 crore" }
+
+diagram:
+  title: Where two guesses outvoted one quote
+  caption: >-
+    Each worker should see one document, and a claim should count only when
+    its quote is in that document. The vote counted the guesses as evidence.
+  direction: lr
+  nodes:
+    - { id: request, label: Review request, sub: "questions, documents, a private note", kind: doc, tone: neutral, at: [0, 1] }
+    - { id: orchestrator, label: Orchestrator, sub: one job per question and document, kind: agent, tone: purple, at: [1, 1] }
+    - { id: msa, label: MSA worker, sub: quotes clause 14.2, kind: model, tone: teal, at: [2, 0] }
+    - { id: amd, label: Amendment worker, sub: says 30 days with no proof, kind: model, tone: teal, at: [2, 1] }
+    - { id: order, label: Order form worker, sub: says 30 days with no proof, kind: model, tone: teal, at: [2, 2] }
+    - { id: vote, label: Majority, sub: 30 days wins two to one, kind: output, tone: pink, at: [3, 2] }
+    - { id: proof, label: Quote check, sub: found in the worker's own document, kind: guard, tone: green, at: [3, 0] }
+    - { id: person, label: A person, sub: when proved values differ, kind: queue, tone: orange, at: [4, 1] }
+    - { id: answer, label: Answer line, sub: "notice: 90 days (MSA)", kind: output, tone: green, at: [4, 0] }
+  edges:
+    - { from: request, to: orchestrator, label: split into jobs, step: 1 }
+    - { from: orchestrator, to: msa, label: one question and document, step: 2 }
+    - { from: orchestrator, to: amd }
+    - { from: orchestrator, to: order }
+    - { from: msa, to: proof, label: value and quote, step: 3 }
+    - { from: amd, to: vote, label: counted as a vote, tone: danger }
+    - { from: order, to: vote, label: counted as a vote, tone: danger }
+    - { from: proof, to: answer, label: one proved value, tone: success }
+    - { from: proof, to: person, label: values that differ }
+
+approach:
+  goal: Give each worker one job and keep only what a quote proves
+  branches:
+    - label: Scope each job
+      leaves: [one question, one document, nothing else from the request]
+    - label: Prove each claim
+      detail: The evidence is a quote found in the worker's own document with the value inside it.
+      leaves: [a quote from another document proves nothing, a reply that is not JSON proves nothing]
+    - label: Count values, never workers
+      leaves: [no proved value is not found, one value is the answer, two values go to a person]
+    - label: Say where the answer came from
+      leaves: [every document that proved it, the quotes when they disagree]
+
+coach:
+  opening: >-
+    Take the brief's notice question and write down what each of the three
+    workers read. Which of their answers could a lawyer check, and against what?
+  signals:
+    - id: no-quote-check
+      when: { code_lacks: 'not\s+in\s+\w+|\bin\s+(text|document|doc_text|body)\b|\.find\(' }
+      say: >-
+        Nothing in your code checks a worker's quote against its document. A
+        worker that never saw a notice clause can still reply 30 days.
+    - id: counts-votes
+      when: { code_matches: 'Counter\(|most_common|max\([^)]*key\s*=|\.count\(' }
+      say: >-
+        Your code picks the answer most workers gave. Two workers can agree
+        because both guessed. What does a worker have to show before its
+        answer counts at all?
+    - id: whole-request-to-workers
+      when: { code_matches: 'worker_prompt\([^)]*(json\.dumps\(|\bquestion\b|\brequest\b)' }
+      say: >-
+        Each worker's prompt carries the whole request, other documents and
+        the private note included. What does one worker need for its one job?
+    - id: hidden-guesses
+      when: { test_failed: two_guesses_do_not_outvote_one_quote }
+      say: >-
+        In that run one worker quoted its document and two did not. Which
+        claims did your code count, and why?
+    - id: hidden-conflict
+      when: { test_failed: proved_claims_that_differ_go_to_a_person }
+      say: >-
+        In that run one question had documents that genuinely disagreed, and
+        another had documents that agreed in different words. Which did your
+        code send to a person?
+    - id: hidden-scope
+      when: { test_failed: each_worker_sees_one_document }
+      say: >-
+        In that run a worker's prompt held more than its question and its one
+        document. Read the prompt your code builds for the first job.
+    - id: adversarial-other-document
+      when: { test_failed: adversarial_a_quote_from_another_document }
+      say: >-
+        In that run a worker quoted a real sentence from a different document
+        in the pack. Which document did your check look in?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with `proved`: one reply and one document in, one claim or None
+        out. The rest of the orchestrator is loops and counting.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints are open, starting with what a
+        worker's prompt should hold.
+  wrap_up: >-
+    Splitting work across agents buys focus and costs agreement. Give each
+    worker only its job, make every answer carry proof from what it was
+    given, and when proofs disagree, ask a person.
+
+tests:
+  - name: proved_answers_name_their_document
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"supplier": "Carelink Imaging", "questions": [{"id": "notice", "ask": "How much notice ends the contract at renewal?"}, {"id": "liability_cap", "ask": "What is the liability of the supplier capped at?"}], "documents": [{"id": "MSA", "text": "Ref MSA-2023-114. Master Services Agreement between the Hospital Group and Carelink Imaging. 14.2 Either party may end this Agreement at renewal by giving 90 days of written notice. 18.1 The total liability of the Supplier in each contract year is capped at 2 crore rupees."}, {"id": "ORDER", "text": "Ref OF-2025-031. Order Form 3. The Hospital Group orders imaging archive storage for 24 hospitals at 61 lakh rupees a year, invoiced quarterly."}], "notes": "Our ceiling for renewal is 58 lakh a year. Procurement only."}' }
+      llm_script:
+        - { match: { contains: "Job: notice in MSA" }, reply: '{"value": "90 days", "quote": "14.2 Either party may end this Agreement at renewal by giving 90 days of written notice."}' }
+        - { match: { contains: "Job: liability_cap in MSA" }, reply: '{"value": "2 crore rupees", "quote": "18.1 The total liability of the Supplier in each contract year is capped at 2 crore rupees."}' }
+        - { match: "*", reply: '{"value": null}' }
+      budget: { max_llm_calls: 7, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '^notice: 90 days \(MSA\)\nliability_cap: 2 crore rupees \(MSA\)$' }
+        - { type: llm_calls_at_most, value: 4 }
+
+  - name: documents_that_agree_are_both_named
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"supplier": "Nimbus Health Cloud", "questions": [{"id": "breach_hours", "ask": "How soon must the supplier report a data breach?"}], "documents": [{"id": "DPA", "text": "Ref DPA-2024-077. Data Processing Agreement. 9.1 The Processor shall notify the Controller of a personal data breach within 72 hours of becoming aware of it."}, {"id": "SQ", "text": "Ref SQ-2026-012. Security Questionnaire answered by Nimbus Health Cloud. Q31 Breach notification: we notify customers within 72 hours."}, {"id": "ORDER", "text": "Ref OF-2026-004. Order Form 1. Cloud hosting for the patient portal at 38 lakh rupees a year."}], "notes": "Renewal budget is fixed at 40 lakh. Procurement only."}' }
+      llm_script:
+        - { match: { contains: "Job: breach_hours in DPA" }, reply: '{"value": "72 hours", "quote": "9.1 The Processor shall notify the Controller of a personal data breach within 72 hours of becoming aware of it."}' }
+        - { match: { contains: "Job: breach_hours in SQ" }, reply: '{"value": "72 hours", "quote": "Q31 Breach notification: we notify customers within 72 hours."}' }
+        - { match: "*", reply: '{"value": null}' }
+      budget: { max_llm_calls: 7, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '^breach_hours: 72 hours \(DPA, SQ\)$' }
+
+  - name: two_guesses_do_not_outvote_one_quote
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"supplier": "Medisys Records", "questions": [{"id": "notice", "ask": "How much notice ends the contract at renewal?"}], "documents": [{"id": "MSA", "text": "Ref MSA-2022-061. Master Services Agreement between the Hospital Group and Medisys Records. 14.2 Either party may end this Agreement at renewal by giving 90 days of written notice."}, {"id": "AMD", "text": "Ref AMD-2025-009. Amendment 1. Clause 6 is replaced: the annual fee rises by 4 percent from 1 April 2026. Either party may end this Agreement on notice."}, {"id": "ORDER", "text": "Ref OF-2025-118. Order Form 2. Patient records hosting for 31 hospitals at 1.4 crore rupees a year."}], "notes": "Walk-away price is 1.25 crore. Procurement only."}' }
+      llm_script:
+        - { match: { contains: "Job: notice in MSA" }, reply: '{"value": "90 days", "quote": "14.2 Either party may end this Agreement at renewal by giving 90 days of written notice."}' }
+        - { match: { contains: "Job: notice in AMD" }, reply: '{"value": "30 days", "quote": "Either party may end this Agreement on notice."}' }
+        - { match: { contains: "Job: notice in ORDER" }, reply: '{"value": "30 days", "quote": "Either party may end this Order Form on 30 days notice."}' }
+        - { match: "*", reply: '{"value": null}' }
+      budget: { max_llm_calls: 7, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '^notice: 90 days \(MSA\)$' }
+
+  - name: proved_claims_that_differ_go_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"supplier": "Nimbus Health Cloud", "questions": [{"id": "data_location", "ask": "Where is patient data stored?"}, {"id": "breach_hours", "ask": "How soon must the supplier report a data breach?"}], "documents": [{"id": "DPA", "text": "Ref DPA-2025-140. Data Processing Agreement. 9.1 The Processor shall notify the Controller of a personal data breach within 48 hours of becoming aware of it. Annex 3 Sub-processors: Brightlane Analytics Inc, analytics support, data stored in the United States."}, {"id": "SQ", "text": "Ref SQ-2026-027. Security Questionnaire answered by Nimbus Health Cloud. Q12 Where is customer data stored: all customer data is stored in India."}, {"id": "ORDER", "text": "Ref OF-2026-019. Order Form 4. Hosting region: India. Breach reports are due within 48 Hours under the DPA. Patient portal hosting at 44 lakh rupees a year."}], "notes": "Walk-away price is 41 lakh. Procurement only."}' }
+      llm_script:
+        - { match: { contains: "Job: data_location in DPA" }, reply: '{"value": "United States", "quote": "Annex 3 Sub-processors: Brightlane Analytics Inc, analytics support, data stored in the United States."}' }
+        - { match: { contains: "Job: data_location in SQ" }, reply: '{"value": "India", "quote": "Q12 Where is customer data stored: all customer data is stored in India."}' }
+        - { match: { contains: "Job: data_location in ORDER" }, reply: '{"value": "India", "quote": "Hosting region: India."}' }
+        - { match: { contains: "Job: breach_hours in DPA" }, reply: '{"value": "48 hours", "quote": "9.1 The Processor shall notify the Controller of a personal data breach within 48 hours of becoming aware of it."}' }
+        - { match: { contains: "Job: breach_hours in SQ" }, reply: "Most suppliers promise 72 hours, so probably that." }
+        - { match: { contains: "Job: breach_hours in ORDER" }, reply: '{"value": "48 Hours", "quote": "Breach reports are due within 48 Hours under the DPA."}' }
+        - { match: "*", reply: '{"value": null}' }
+      budget: { max_llm_calls: 7, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '^data_location: conflict: DPA says "Annex 3 Sub-processors: [^"]*United States\."; SQ says "Q12 [^"]*stored in India\."; ORDER says "Hosting region: India\."\n' }
+        - { type: returns_matches, value: '\nbreach_hours: 48 hours \(DPA, ORDER\)$' }
+
+  - name: each_worker_sees_one_document
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"supplier": "Vitalis Labs", "questions": [{"id": "notice", "ask": "How much notice ends the contract at renewal?"}], "documents": [{"id": "MSA", "text": "Ref MSA-2024-203. Master Services Agreement between the Hospital Group and Vitalis Labs. 12.4 Either party may end this Agreement at renewal by giving 60 days of written notice."}, {"id": "ORDER", "text": "Ref OF-2026-033. Order Form 1. Pathology results interface for 12 hospitals at 22 lakh rupees a year."}], "notes": "Walk-away price is 19 lakh a year. Never share this with the supplier."}' }
+      llm_script:
+        - { match: { contains: "Job: notice in MSA" }, reply: '{"value": "60 days", "quote": "12.4 Either party may end this Agreement at renewal by giving 60 days of written notice."}' }
+        - { match: "*", reply: '{"value": null}' }
+      budget: { max_llm_calls: 7, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_lacks, value: '(?i)walk-away' }
+        - { type: prompt_contains, in: every, value: '(?s)^(?!.*\bRef [A-Z]+-\d{4}-\d{3}\b.*\bRef [A-Z]+-\d{4}-\d{3}\b)' }
+        - { type: returns_matches, value: '^notice: 60 days \(MSA\)$' }
+
+  - name: adversarial_a_quote_from_another_document
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The order form worker answered 60 days and quoted a real sentence,
+      "Invoices are payable within 60 days of receipt.", which sits in the
+      amendment. It is about invoices, and the order form never says it.
+
+      A check that looks for the quote anywhere in the pack, or anywhere in
+      the request text, finds it and counts a proved 60 days against the
+      master agreement's 90, so a question with one answer turns into a
+      conflict. A worker can only prove what its own document says, which is
+      also why each worker should only ever see that document.
+    spec:
+      kind: agent_run
+      input: { question: '{"supplier": "Medisys Records", "questions": [{"id": "notice", "ask": "How much notice ends the contract at renewal?"}], "documents": [{"id": "MSA", "text": "Ref MSA-2022-061. Master Services Agreement between the Hospital Group and Medisys Records. 14.2 Either party may end this Agreement at renewal by giving 90 days of written notice."}, {"id": "AMD", "text": "Ref AMD-2026-002. Amendment 2. Clause 9 is replaced: Invoices are payable within 60 days of receipt."}, {"id": "ORDER", "text": "Ref OF-2026-045. Order Form 5. Records archive retrieval for 31 hospitals at 18 lakh rupees a year."}], "notes": "Walk-away price is 16 lakh. Procurement only."}' }
+      llm_script:
+        - { match: { contains: "Job: notice in MSA" }, reply: '{"value": "90 days", "quote": "14.2 Either party may end this Agreement at renewal by giving 90 days of written notice."}' }
+        - { match: { contains: "Job: notice in ORDER" }, reply: '{"value": "60 days", "quote": "Invoices are payable within 60 days of receipt."}' }
+        - { match: "*", reply: '{"value": null}' }
+      budget: { max_llm_calls: 7, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '^notice: 90 days \(MSA\)$' }
+
+reference_md: |
+  One agent reading 140 pages answered from the wrong document because
+  everything was in front of it at once. Splitting the work fixes that only
+  if each worker really does see less: one question and one document. A
+  worker handed the whole request is the single agent again, with the cost
+  multiplied by the number of workers, and it can still answer from a
+  document that is not its own. The procurement lead's note had no business
+  in any of those prompts.
+
+  The split creates a problem the single agent never had, which is
+  disagreement, and majority voting is the tempting answer to it. Votes
+  assume independent voters. These workers run the same model with the same
+  prompt, so when their documents are silent they guess, and they guess
+  alike. Two workers saying 30 days is one guess made twice. The worker that
+  quoted clause 14.2 had evidence, and evidence does not lose a vote.
+
+  So a claim counts only with proof a person could check: a quote found in
+  the worker's own document, containing the value. That is a deterministic
+  check, cheap enough to run on every claim, and it throws out the three
+  common failures together: the guess with no quote, the real quote that
+  does not contain the value, and the quote invented for the occasion. It
+  has to look in the worker's own document. A quote matched against the
+  whole pack lets a sentence about invoices prove a notice period.
+
+  When proved claims still differ, the documents themselves disagree, and
+  that is a finding. The data processing agreement names a sub-processor in
+  the United States and the questionnaire says India; two documents saying
+  India does not make the annex untrue. Code cannot know which document
+  governs, so the line carries every quote to a person. The defence question
+  asks whether "newest wins" could replace that person. That is a precedence
+  rule, and a lawyer has to sign it off before any code applies it.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    You split a task across worker agents and two of them come back with different answers. How do you decide which one to keep?
+  source: |
+    Author judgement. The context-duplication point echoes docs/source-pack/09-interview-bank.json I012,
+    which labels every entry "Original interview-style practice; actual employer frequency unverified",
+    and this inherits the caveat.
+
+example:
+  case: proved_answers_name_their_document
+  expect: 'Four workers, one per question and document. The MSA worker''s quotes are in the MSA and hold their values,
+    and the order form proves nothing, so the lines are 90 days and 2 crore rupees, each from MSA.'
+traps:
+  - Handing every worker the whole request, other documents and the private note included, when its job needs one
+    question and one document.
+  - Taking the answer most workers gave, so guesses that happen to agree outvote the one worker that quoted the
+    contract.
+  - Checking a quote against the whole pack, so a real sentence from another document proves a claim.
+  - Settling a disagreement between two quoted documents by count or by order, when only a person can choose
+    between them.

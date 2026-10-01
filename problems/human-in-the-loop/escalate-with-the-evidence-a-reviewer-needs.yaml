@@ -1,0 +1,460 @@
+slug: escalate-with-the-evidence-a-reviewer-needs
+title: "Escalate with the evidence a reviewer needs"
+day: 19
+skill: Hand a doubtful decision to a person with everything they need to decide it
+artefact_type: code
+difficulty: medium
+track: human-in-the-loop
+concept:
+  topic: "Confidence thresholds"
+  question: "What does a reviewer need so they never have to rerun the agent?"
+est_minutes: 30
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A neobank the size of Monzo checks every new customer's identity with an
+  agent. It reads the application and the identity document the customer
+  uploaded, asks a model whether the two match, and records the decision. When
+  the model is less sure than the compliance team's bar, a person decides.
+
+  Last month the reviewers received 2,100 of those escalations. Each one was
+  an applicant id and a score such as 0.61. Every reviewer reopened the
+  application, pulled the document again and redid the check from the start:
+  11 minutes a case, and the queue ran four days deep. Twice a reviewer
+  approved a newer upload than the one the agent had doubted, because the
+  applicant had replaced an edited licence with a clean one in the meantime.
+
+  Make the escalation the whole case. A reviewer should be able to decide from
+  it alone, on exactly what the agent saw.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the applicant id. Call `tools["application"](applicant=...)`
+  and `tools["document"](applicant=...)` once each. The document result is
+  what was read from one upload:
+
+      {"status": 200, "applicant": "AP-3391", "upload": "UP-77120",
+       "kind": "driving_licence", "name": "PRIYA RAMAN",
+       "date_of_birth": "1991-04-12", "address": "...", "expires": "2031-06-30"}
+
+  Then call `llm(prompt)` once, with both results in the prompt. The model
+  replies:
+
+      Decision: {"decision": "verify", "confidence": 0.94, "because": "..."}
+
+  Record a reply whose decision is `verify` or `reject` and whose confidence
+  is at least 0.85, with `tools["record"](applicant=..., decision=...)`.
+  Escalate everything else with `tools["escalate"]`, never record it, and
+  never ask the model again. The reason it goes to a person is the first of
+  these that applies:
+
+  | The reply | `reason` |
+  |---|---|
+  | Holds no readable `Decision: {...}` | `unreadable` |
+  | Decides something other than `verify` or `reject` | `unknown_decision` |
+  | Gives no confidence, or one that is not a number from 0 to 1 | `no_confidence` |
+  | Gives a confidence below 0.85 | `below_bar` |
+
+  An escalation passes six arguments:
+
+      tools["escalate"](applicant=..., proposed=..., confidence=..., reason=...,
+                        because=..., evidence=[<application result>, <document result>])
+
+  `proposed`, `confidence` and `because` are what the model said, or null
+  when it said nothing usable. `evidence` holds both results exactly as they
+  came back.
+
+  Return `{"outcome": "recorded", "decision": ...}` or
+  `{"outcome": "escalated", "reason": ...}` as a JSON string.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  BAR = 0.85
+  DECISIONS = ("verify", "reject")
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      # TODO 1: fetch tools["application"](applicant=question) and
+      #         tools["document"](applicant=question) once each, and ask the
+      #         model once with both results in the prompt
+      # TODO 2: a decision in DECISIONS with a confidence of at least BAR is
+      #         recorded with tools["record"](applicant=..., decision=...)
+      # TODO 3: anything else is escalated, never recorded and never asked
+      #         about again. Its reason is the first rule in the contract's
+      #         table that applies
+      # TODO 4: the escalation carries what the reviewer needs: proposed,
+      #         confidence, reason, because, and evidence, both results as
+      #         they came back
+      return json.dumps({"outcome": "escalated", "reason": "unreadable"})
+
+
+  def read_decision(reply: str):
+      """The object in a "Decision: {...}" reply, or None when there is none."""
+      match = re.search(r"Decision:\s*(\{.*\})", reply, re.DOTALL)
+      if not match:
+          return None
+      try:
+          decision = json.loads(match.group(1))
+      except ValueError:
+          return None
+      return decision if isinstance(decision, dict) else None
+
+steps:
+  - id: s1
+    text: Fetch the application and the document once each, and ask the model once with both in the prompt.
+    check_id: s1
+  - id: s2
+    text: Record a decision of `verify` or `reject` whose confidence is at least 0.85.
+    check_id: s2
+  - id: s3
+    text: Escalate anything else instead of recording it, with the reason it came to a person.
+    check_id: s3
+  - id: s4
+    text: Put the whole case in the escalation, the proposed decision, the confidence, the model's reason and both results as they came back.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: document }
+        - { type: prompt_contains, value: 'UP-77120' }
+        - { type: llm_calls_at_most, value: 1 }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: record, args: { applicant: "AP-3391", decision: "verify" } }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: escalate, args: { reason: "below_bar" } }
+        - { type: does_not_call_tool, name: record }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: escalate,
+            args: { proposed: "verify", confidence: 0.64,
+                    evidence: [ { status: 200, applicant: "AP-3407", name: "Daniel Okafor", date_of_birth: "1985-11-03", address: "22 Mill Lane, York YO1 7HH" },
+                                { status: 200, applicant: "AP-3407", upload: "UP-77158", kind: "driving_licence", name: "DANIEL OKAFOR", date_of_birth: "1985-11-03", address: "22 Mill Lane, York YO1 7HU", expires: "2029-03-14" } ] } }
+
+hints:
+  - Picture the reviewer opening your escalation. List everything they would
+    have to fetch or rerun before they could decide.
+  - Anything the reviewer fetches again may have changed since the agent
+    looked. The results this run already holds are the evidence.
+  - A confidence below the bar is the model's answer to how sure it is.
+    Asking again until it gives a higher number shops for a number, and the
+    bar stops meaning anything.
+  - "Check the reply in the table's order: is there a readable decision, is it one of the two, is there a confidence that is a number from 0 to 1, does it reach the bar. The first check that fails is the reason."
+
+scenario:
+  headline: "Reviewers redo every doubtful identity check from scratch"
+  who: Financial crime operations at a neobank the size of Monzo
+  situation: >-
+    Each escalation from the identity agent was an applicant id and a score.
+    Reviewers refetched everything and redid the check, and twice approved a
+    newer upload than the one the agent had doubted.
+  stakes: >-
+    New customers wait four days to open an account, and a reviewer can
+    approve a document the agent never saw.
+  metrics:
+    - { label: Escalations last month, value: "2,100" }
+    - { label: Minutes per review, value: "11" }
+    - { label: Review queue, value: 4 days }
+
+diagram:
+  title: What reaches the reviewer when the model is unsure
+  caption: >-
+    Below the bar the case goes to a person with the proposal, the score, the
+    reason and both results as fetched. An id and a score sends them to refetch.
+  direction: lr
+  nodes:
+    - { id: sources, label: Application and document, sub: fetched once each, kind: store, tone: orange, at: [0, 1] }
+    - { id: agent, label: Identity agent, sub: asks the model once, kind: agent, tone: purple, at: [1, 1] }
+    - { id: model, label: Model, sub: "decision, confidence, because", kind: model, tone: teal, at: [1, 0] }
+    - { id: bar, label: The bar, sub: "0.85, and a valid decision", kind: decision, tone: green, at: [2, 1] }
+    - { id: record, label: "`record()`", sub: confident and valid, kind: output, tone: blue, at: [3, 0] }
+    - { id: escalate, label: "`escalate()`", sub: the whole case in one packet, kind: queue, tone: green, at: [3, 1] }
+    - { id: reviewer, label: Reviewer, sub: decides from the packet alone, kind: actor, tone: blue, at: [4, 1] }
+    - { id: refetch, label: An id and a score, sub: reviewer refetches a newer upload, kind: output, tone: pink, at: [3, 2] }
+  edges:
+    - { from: sources, to: agent, label: two results, step: 1 }
+    - { from: agent, to: model, label: one prompt, step: 2 }
+    - { from: model, to: bar, label: the reply, step: 3 }
+    - { from: bar, to: record, label: clears it, tone: success }
+    - { from: bar, to: escalate, label: anything else, tone: success }
+    - { from: escalate, to: reviewer, label: "proposal, reason, evidence", step: 4 }
+    - { from: bar, to: refetch, label: escalated with a score, tone: danger }
+
+approach:
+  goal: Make the escalation a case a person can decide without running anything
+  branches:
+    - label: Trust the reply only when it is complete
+      leaves: [one of the two decisions, a confidence that is a number, at or above 0.85]
+    - label: Say why it came to a person
+      leaves: [unreadable, an unknown decision, no confidence, below the bar]
+    - label: Hand over what the agent saw
+      detail: The reviewer judges the same upload the agent judged, so the results travel with the case.
+      leaves: [both results as they came back, the proposed decision and the score, the model's own reason]
+    - label: Ask once
+      leaves: [a second answer is shopping for a number, the reviewer is the second opinion]
+
+coach:
+  opening: >-
+    Before you write the escalation, picture the reviewer opening it and list
+    what they would have to fetch again.
+  signals:
+    - id: no-evidence
+      when: { code_lacks: 'evidence' }
+      say: >-
+        Your escalation carries no evidence. What will the reviewer have to
+        fetch again, and will it still be the upload the agent looked at?
+    - id: invented-confidence
+      when: { code_matches: '["'']confidence["'']\s*,\s*[01](?:\.0)?\s*\)' }
+      say: >-
+        Your code gives a missing confidence a value of its own. Which reason
+        should the reviewer read when the model never said how sure it was?
+    - id: thin-packet
+      when: { test_failed: the_reviewer_gets_what_the_agent_saw }
+      say: >-
+        That escalation reached the reviewer without everything the agent had.
+        Compare your `escalate` call with the six arguments in the contract.
+    - id: asked-again
+      when: { test_failed: a_doubtful_answer_is_not_asked_again }
+      say: >-
+        The model answered once below the bar. What does a second, more
+        confident answer to the same prompt prove?
+    - id: missing-confidence
+      when: { test_failed: a_decision_with_no_confidence_goes_to_a_person }
+      say: >-
+        That reply gave a decision and no confidence. What did your code
+        compare with the bar, and which reason did the reviewer read?
+    - id: unknown-label
+      when: { test_failed: a_label_outside_the_two_goes_to_a_person }
+      say: >-
+        The model was sure of a decision that is neither `verify` nor
+        `reject`. Can a record hold that, and who decides instead?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and the first public case. Once the model's reply
+        is in hand, the rest is reading it in the table's order.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hints start from what the reviewer has
+        to do when your escalation arrives.
+  wrap_up: >-
+    A threshold decides who looks at a case. What travels with the case
+    decides whether that person can judge it, so send the proposal, the
+    reason and the evidence the agent actually saw.
+
+tests:
+  - name: records_a_confident_match
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "AP-3391" }
+      llm_script:
+        - { match: "*",
+            reply: 'Decision: {"decision": "verify", "confidence": 0.94, "because": "Name, date of birth and address match the licence, which is in date."}' }
+      tools:
+        application: { returns: { status: 200, applicant: "AP-3391", name: "Priya Raman", date_of_birth: "1991-04-12", address: "14 Elm Row, Leeds LS6 2AB" } }
+        document: { returns: { status: 200, applicant: "AP-3391", upload: "UP-77120", kind: "driving_licence", name: "PRIYA RAMAN", date_of_birth: "1991-04-12", address: "14 Elm Row, Leeds LS6 2AB", expires: "2031-06-30" } }
+        record: { returns: { status: 200, recorded: true } }
+        escalate: { returns: { status: 200, queued: true, case: "REV-20411" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: record, args: { applicant: "AP-3391", decision: "verify" } }
+        - { type: does_not_call_tool, name: escalate }
+        - { type: returns_matches, value: '"outcome":\s*"recorded"' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: escalates_a_doubtful_match
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "AP-3407" }
+      llm_script:
+        - { match: "*",
+            reply: 'Decision: {"decision": "verify", "confidence": 0.64, "because": "Name and date of birth match. The postcode on the licence ends 7HU and the application says 7HH."}' }
+      tools:
+        application: { returns: { status: 200, applicant: "AP-3407", name: "Daniel Okafor", date_of_birth: "1985-11-03", address: "22 Mill Lane, York YO1 7HH" } }
+        document: { returns: { status: 200, applicant: "AP-3407", upload: "UP-77158", kind: "driving_licence", name: "DANIEL OKAFOR", date_of_birth: "1985-11-03", address: "22 Mill Lane, York YO1 7HU", expires: "2029-03-14" } }
+        record: { returns: { status: 200, recorded: true } }
+        escalate: { returns: { status: 200, queued: true, case: "REV-20412" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: escalate }
+        - { type: does_not_call_tool, name: record }
+        - { type: returns_matches, value: '"outcome":\s*"escalated"' }
+        - { type: returns_matches, value: '"reason":\s*"below_bar"' }
+
+  - name: the_reviewer_gets_what_the_agent_saw
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "AP-3415" }
+      llm_script:
+        - { match: "*",
+            reply: 'Decision: {"decision": "verify", "confidence": 0.71, "because": "The date of birth and address match. The first name on the licence has an extra letter."}' }
+      tools:
+        application: { returns: { status: 200, applicant: "AP-3415", name: "Sara Haddad", date_of_birth: "1993-07-21", address: "5 Quay Street, Bristol BS1 4DB" } }
+        document: { returns: { status: 200, applicant: "AP-3415", upload: "UP-77203", kind: "driving_licence", name: "SARAH HADDAD", date_of_birth: "1993-07-21", address: "5 Quay Street, Bristol BS1 4DB", expires: "2030-01-09" } }
+        record: { returns: { status: 200, recorded: true } }
+        escalate: { returns: { status: 200, queued: true, case: "REV-20413" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: record }
+        - { type: calls_tool_with, name: escalate,
+            args: { evidence: [ { status: 200, applicant: "AP-3415", name: "Sara Haddad", date_of_birth: "1993-07-21", address: "5 Quay Street, Bristol BS1 4DB" },
+                                { status: 200, applicant: "AP-3415", upload: "UP-77203", kind: "driving_licence", name: "SARAH HADDAD", date_of_birth: "1993-07-21", address: "5 Quay Street, Bristol BS1 4DB", expires: "2030-01-09" } ] } }
+        - { type: calls_tool_with, name: escalate,
+            args: { proposed: "verify", confidence: 0.71, reason: "below_bar",
+                    because: "The date of birth and address match. The first name on the licence has an extra letter." } }
+
+  - name: a_doubtful_answer_is_not_asked_again
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "AP-3422" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: 'Decision: {"decision": "verify", "confidence": 0.62, "because": "The fields match, but the scan quality is low, so the reading may be wrong."}' }
+        - { match: "*",
+            reply: 'Decision: {"decision": "verify", "confidence": 0.93, "because": "The fields match."}' }
+      tools:
+        application: { returns: { status: 200, applicant: "AP-3422", name: "Tomasz Nowak", date_of_birth: "1979-05-30", address: "8 Canal Walk, Manchester M1 3LT" } }
+        document: { returns: { status: 200, applicant: "AP-3422", upload: "UP-77260", kind: "driving_licence", name: "TOMASZ NOWAK", date_of_birth: "1979-05-30", address: "8 Canal Walk, Manchester M1 3LT", expires: "2027-08-18", quality: "low" } }
+        record: { returns: { status: 200, recorded: true } }
+        escalate: { returns: { status: 200, queued: true, case: "REV-20414" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: does_not_call_tool, name: record }
+        - { type: calls_tool_with, name: escalate, args: { reason: "below_bar", confidence: 0.62 } }
+
+  - name: a_decision_with_no_confidence_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "AP-3430" }
+      llm_script:
+        - { match: "*",
+            reply: 'Decision: {"decision": "verify", "because": "Every field matches."}' }
+      tools:
+        application: { returns: { status: 200, applicant: "AP-3430", name: "Grace Mensah", date_of_birth: "1990-12-02", address: "41 Station Road, Leicester LE1 3AB" } }
+        document: { returns: { status: 200, applicant: "AP-3430", upload: "UP-77311", kind: "driving_licence", name: "GRACE MENSAH", date_of_birth: "1990-12-02", address: "41 Station Road, Leicester LE1 3AB", expires: "2032-04-22" } }
+        record: { returns: { status: 200, recorded: true } }
+        escalate: { returns: { status: 200, queued: true, case: "REV-20415" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: record }
+        - { type: calls_tool_with, name: escalate,
+            args: { reason: "no_confidence", confidence: null, proposed: "verify" } }
+        - { type: returns_matches, value: '"reason":\s*"no_confidence"' }
+
+  - name: a_label_outside_the_two_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "AP-3436" }
+      llm_script:
+        - { match: "*",
+            reply: 'Decision: {"decision": "verify_with_caution", "confidence": 0.97, "because": "Every field matches, but the licence expires in eight weeks."}' }
+      tools:
+        application: { returns: { status: 200, applicant: "AP-3436", name: "Arjun Mehta", date_of_birth: "1996-09-15", address: "3 Harbour View, Cardiff CF10 5AL" } }
+        document: { returns: { status: 200, applicant: "AP-3436", upload: "UP-77349", kind: "driving_licence", name: "ARJUN MEHTA", date_of_birth: "1996-09-15", address: "3 Harbour View, Cardiff CF10 5AL", expires: "2026-11-30" } }
+        record: { returns: { status: 200, recorded: true } }
+        escalate: { returns: { status: 200, queued: true, case: "REV-20416" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: record }
+        - { type: calls_tool_with, name: escalate,
+            args: { reason: "unknown_decision", proposed: "verify_with_caution" } }
+
+reference_md: |
+  The threshold in the incident worked. Every case under 0.85 reached a
+  person. What failed was the handover: the person received a score, which
+  tells them how unsure the model was and nothing about why, so they rebuilt
+  the case themselves, at 11 minutes a case, from sources that had moved on
+  since the agent looked.
+
+  An escalation is a case file. It carries what the model proposed, how sure
+  it said it was, why the case came to a person, the model's own sentence of
+  reasoning, and the evidence. The evidence is the results this run fetched,
+  passed as they came back, because the upload the reviewer refetches may
+  not be the upload the agent judged. That is how a reviewer came to approve
+  a clean licence when the agent had doubted an edited one.
+
+  The reason matters as much as the score. "No confidence" and "below the
+  bar" send a reviewer to different places: one is a model that did not do
+  what it was asked, the other a model that did and was unsure. A missing
+  confidence read as 0 hides the first behind the second, and a missing
+  confidence read as 1 records a decision nobody measured. A decision outside
+  the two goes to a person however sure the model is, because a record cannot
+  hold `verify_with_caution`.
+
+  The model is asked once. Asking again until a reply clears the bar turns
+  the bar into a retry count, and the second answer is the same model on the
+  same evidence, which is no second opinion. The reviewer is the second
+  opinion.
+
+  Where the bar comes from is the next question, and a model's own number
+  needs measuring before it gates anything. Guo and colleagues found modern
+  neural networks poorly calibrated (On Calibration of Modern Neural
+  Networks, ICML 2017), and Xiong and colleagues found that language models
+  stating their confidence in words tend to be overconfident (ICLR 2024). Set
+  the bar from how often decisions at each confidence turned out right on
+  cases people have already checked.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your agent hands low-confidence cases to a person. What does that person see when the case arrives, and how do you make sure they never have to rerun the agent?
+  source: |
+    Author judgement. No employer frequency data stands behind it. The two
+    calibration findings in the walkthrough were read on 1 October 2026 from
+    arXiv 1706.04599 (Guo, Pleiss, Sun and Weinberger, ICML 2017) and arXiv
+    2306.13063 (Xiong and others, ICLR 2024).
+
+tools:
+  - name: application
+    args: applicant
+    returns: A status and the application as the customer filled it in, the `name`, `date_of_birth` and
+      `address`.
+  - name: document
+    args: applicant
+    returns: A status and what was read from one `upload`, its `kind`, `name`, `date_of_birth`, `address`
+      and `expires`.
+  - name: record
+    args: applicant, decision
+    returns: A status and `recorded` set to true.
+  - name: escalate
+    args: applicant, proposed, confidence, reason, because, evidence
+    returns: A status, `queued` set to true and the review `case` number.
+example:
+  case: records_a_confident_match
+  expect: The model says verify at 0.94, a valid decision above the 0.85 bar, so call `record` with the
+    applicant and `verify` once, escalate nothing, and return the recorded outcome.
+traps:
+  - Escalating an id and a score, so the reviewer fetches everything again and may judge a newer upload.
+  - Asking the model again until its confidence clears the bar.
+  - Giving a missing confidence a number of its own, so the reviewer reads the wrong reason or nobody
+    reviews it at all.
+  - Recording a confident decision that is neither of the two the record can hold.

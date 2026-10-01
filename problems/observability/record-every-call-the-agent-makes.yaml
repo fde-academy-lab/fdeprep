@@ -1,0 +1,473 @@
+slug: record-every-call-the-agent-makes
+title: "Record every call the agent makes"
+day: 16
+skill: Record every model and tool call, including the ones that fail
+artefact_type: code
+difficulty: easy
+track: observability
+concept:
+  topic: "Trace every step"
+  question: "What does a record need so a failed run can be replayed?"
+est_minutes: 20
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 4
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  An electronics retailer the size of Croma runs a repair agent. A customer
+  asks for a faulty TV or fridge to be collected, and the agent looks the
+  order up and books a courier pickup. Last week it told 214 customers a
+  courier was booked, and no courier came.
+
+  Nobody could say why. The run log kept each run's final answer and nothing
+  else, so every one of the 214 runs looked like a booking. An engineer then
+  added a log line after each call, and the next failed run still looked
+  clean: the booking call had raised, so the line after it never ran.
+
+  The support lead wants a record of every run that an engineer can replay
+  call by call: every model call with its tokens and latency, every tool
+  call with its arguments, output and latency, and whether each one worked.
+  Write the recorder into the agent's loop.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the customer's message. `llm(prompt)` returns the model
+  gateway's reply as a JSON string. The gateway passes on the token counts
+  and the latency that the Bedrock Converse response reports, under the
+  names Converse gives them, and puts the reply's text in `text`:
+
+      {"text": "Action: lookup_order(order_id=88-1204)",
+       "usage": {"inputTokens": 412, "outputTokens": 21},
+       "metrics": {"latencyMs": 830}}
+
+  `text` is `Action: <tool>(<name>=<value>, ...)` or `Final Answer: <text>`.
+  Every tool answers with an envelope:
+
+      {"status": 200, "ms": 140, "data": {...}}
+
+  A tool can also answer a status other than 200, with an `error` and no
+  `data`, and it can raise.
+
+  Record one event per call, in the order the calls happened:
+
+      {"seq": 1, "call": "model", "output": <the reply's text>,
+       "input_tokens": 412, "output_tokens": 21, "ms": 830, "outcome": "ok"}
+      {"seq": 2, "call": "tool", "name": "lookup_order",
+       "args": {"order_id": "88-1204"}, "output": <the envelope's data>,
+       "ms": 140, "outcome": "ok"}
+
+  | The tool call | `output` | `ms` | `outcome` |
+  |---|---|---|---|
+  | answered status 200 | the envelope's `data` | the envelope's `ms` | `ok` |
+  | answered any other status | the envelope's `error` | the envelope's `ms` | `error` |
+  | raised | `"<ExceptionType>: <message>"` | `null` | `error` |
+
+  A model call's `outcome` is always `ok` here. After a tool call, tell the
+  model what came back, including an error, and carry on.
+
+  Return a JSON string:
+
+      {"answer": <the final answer's text>,
+       "events": [...],
+       "totals": {"model_calls": n, "tool_calls": n, "input_tokens": n,
+                  "output_tokens": n, "errors": n}}
+
+  Add the totals up from the events. Budget: at most 4 model calls. Allowed
+  imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  ACTION = re.compile(r"Action:\s*(\w+)\((.*)\)")
+
+
+  def parse_args(text: str) -> dict:
+      """order_id=88-1204, slot=sat-am -> {"order_id": "88-1204", "slot": "sat-am"}"""
+      args = {}
+      for part in filter(None, (p.strip() for p in text.split(","))):
+          name, _, value = part.partition("=")
+          args[name.strip()] = value.strip()
+      return args
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      events = []
+      scratchpad = f"Customer: {question}\n"
+      answer = "I could not finish this request."
+
+      for _ in range(4):
+          reply = json.loads(llm(scratchpad))
+          text = reply.get("text", "")
+          # TODO 1: record this model call as an event: its text, its tokens
+          #         from reply["usage"] and its latency from reply["metrics"]
+
+          if text.startswith("Final Answer:"):
+              answer = text[len("Final Answer:"):].strip()
+              break
+
+          action = ACTION.search(text)
+          if action is None or action.group(1) not in tools:
+              scratchpad += f"{text}\nObservation: that is not a tool you have.\n"
+              continue
+          name, args = action.group(1), parse_args(action.group(2))
+
+          result = tools[name](**args)
+          # TODO 2: record this tool call as an event: its arguments, the
+          #         envelope's data and its latency
+          # TODO 3: a call that raises, or answers a status other than 200,
+          #         is still a call. Record it with the outcome "error"
+          scratchpad += f"{text}\nObservation: {json.dumps(result.get('data'))}\n"
+
+      # TODO 4: add the run's totals up from the events
+      totals = {"model_calls": 0, "tool_calls": 0, "input_tokens": 0,
+                "output_tokens": 0, "errors": 0}
+      return json.dumps({"answer": answer, "events": events, "totals": totals})
+
+steps:
+  - id: s1
+    text: Record each model call with its text, its tokens and its latency.
+    check_id: s1
+  - id: s2
+    text: Record each tool call with its arguments, its output and its latency.
+    check_id: s2
+  - id: s3
+    text: Record a tool call that raises or answers an error status, as an error.
+    check_id: s3
+  - id: s4
+    text: Add the run's totals up from the events.
+    check_id: s4
+
+step_checks:
+  # s1, s2 and s4 read records_a_pickup_that_was_booked. Every public tool
+  # call works, so s3 carries its own cases: one call raises, and one answers
+  # a status that is not 200. The step holds only when both are recorded.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"call":\s*"model"' }
+        - { type: returns_matches, value: '"input_tokens":\s*412\b' }
+        - { type: returns_matches, value: '"ms":\s*830\b' }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"name":\s*"book_pickup"' }
+        - { type: returns_matches, value: '"ms":\s*380\b' }
+        - { type: returns_matches, value: '"booking":\s*"PK-5531"' }
+  - step_id: s3
+    spec:
+      cases:
+        - kind: agent_run
+          input: { question: "Order 77-3090, the washing machine leaks. Please collect it." }
+          llm_script:
+            - { match: { call_index: 1 },
+                reply: '{"text": "Action: lookup_order(order_id=77-3090)", "usage": {"inputTokens": 398, "outputTokens": 20}, "metrics": {"latencyMs": 790}}' }
+            - { match: { call_index: 2 },
+                reply: '{"text": "Action: book_pickup(order_id=77-3090, slot=tue-pm)", "usage": {"inputTokens": 521, "outputTokens": 25}, "metrics": {"latencyMs": 880}}' }
+            - { match: "*",
+                reply: '{"text": "Final Answer: I could not book a pickup yet. A colleague will call you today.", "usage": {"inputTokens": 610, "outputTokens": 18}, "metrics": {"latencyMs": 700}}' }
+          tools:
+            lookup_order: { returns: { status: 200, ms: 150, data: { order_id: "77-3090", item: "washing machine", warranty: "active" } } }
+            book_pickup:
+              fixture: slow_then_timeout
+              params: { succeeds: 0, message: "the courier booking service did not reply in time" }
+          budget: { max_llm_calls: 4, max_tool_calls: 4, wall_ms: 5000 }
+          assertions:
+            - { type: no_exception }
+            - { type: returns_matches, value: '"name":\s*"book_pickup"' }
+            - { type: returns_matches, value: '"outcome":\s*"error"' }
+        - kind: agent_run
+          input: { question: "Order 77-3114, the microwave sparks. Please collect it." }
+          llm_script:
+            - { match: { call_index: 1 },
+                reply: '{"text": "Action: lookup_order(order_id=77-3114)", "usage": {"inputTokens": 401, "outputTokens": 20}, "metrics": {"latencyMs": 770}}' }
+            - { match: { call_index: 2 },
+                reply: '{"text": "Action: book_pickup(order_id=77-3114, slot=wed-am)", "usage": {"inputTokens": 530, "outputTokens": 25}, "metrics": {"latencyMs": 860}}' }
+            - { match: "*",
+                reply: '{"text": "Final Answer: I could not book a pickup yet. A colleague will call you today.", "usage": {"inputTokens": 622, "outputTokens": 18}, "metrics": {"latencyMs": 690}}' }
+          tools:
+            lookup_order: { returns: { status: 200, ms: 160, data: { order_id: "77-3114", item: "microwave", warranty: "active" } } }
+            book_pickup: { returns: { status: 503, ms: 2900, error: "booking service unavailable" } }
+          budget: { max_llm_calls: 4, max_tool_calls: 4, wall_ms: 5000 }
+          assertions:
+            - { type: returns_matches, value: '"outcome":\s*"error"' }
+            - { type: returns_matches, value: '"ms":\s*2900\b' }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"input_tokens":\s*1590\b' }
+        - { type: returns_matches, value: '"tool_calls":\s*2\b' }
+
+hints:
+  - Picture the run where the booking call raises. Which lines of your loop
+    run after the raise, and is the line that writes the event one of them?
+  - An exception skips every line after the call in the same block. The
+    event has to be written on both paths, when the call returns and when it
+    raises, and a call that returned can still have failed.
+  - Put the tool call in a `try` block and build one event from whichever
+    happened. A returned envelope whose `status` is not 200 is an error too,
+    and it still carries its `ms`.
+  - Have a small function return three things for a call, the output, the
+    latency and the outcome, and append one event from them. An exception
+    gives its type and message, no latency, and the outcome error.
+
+scenario:
+  headline: "214 customers were told a courier was booked, and none came"
+  who: Customer support at an electronics retailer the size of Croma
+  situation: >-
+    The repair agent told 214 customers a pickup was booked when the booking
+    call had failed. The run log kept only each final answer, and the log
+    line added after each call never ran for the call that raised.
+  stakes: >-
+    Until every call is on the record, a failed booking looks like a clean
+    run, and the next one will too.
+  metrics:
+    - { label: Customers with no courier, value: "214" }
+    - { label: Calls in a booking run, value: "5" }
+    - { label: What the log kept, value: final answer }
+
+diagram:
+  title: Where the record loses the call that failed
+  caption: >-
+    An event written after a call returns misses the call that raised.
+    Writing each event around the call keeps every call on the record.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: asks for a pickup, kind: actor, tone: blue, at: [0, 1] }
+    - { id: loop, label: Repair agent, sub: one model call per step, kind: agent, tone: purple, at: [1, 1] }
+    - { id: model, label: Model gateway, sub: "text, usage, latency", kind: model, tone: teal, at: [2, 0] }
+    - { id: lookup, label: "`lookup_order`", sub: answers in an envelope, kind: tool, tone: neutral, at: [2, 1] }
+    - { id: booking, label: "`book_pickup`", sub: "raises, or answers an error", kind: tool, tone: pink, at: [2, 2] }
+    - { id: record, label: The record, sub: one event per call, kind: store, tone: green, at: [3, 1] }
+  edges:
+    - { from: customer, to: loop, label: message, step: 1 }
+    - { from: loop, to: model, label: prompt, step: 2 }
+    - { from: loop, to: lookup, label: order id, step: 3 }
+    - { from: loop, to: booking, label: "order id, slot", step: 4 }
+    - { from: booking, to: record, label: no event after a raise, tone: danger }
+    - { from: loop, to: record, label: every call and its outcome, tone: success, step: 5 }
+
+approach:
+  goal: A record of every call, written whether the call worked or not
+  branches:
+    - label: Record around the call, not after it
+      leaves: [a call that raises never reaches the next line, one event from whatever happened]
+    - label: Answered is not the same as worked
+      detail: An envelope came back with a status other than 200, and the call still failed.
+      leaves: [an error status is an error outcome, it still has a latency]
+    - label: Keep what a replay needs
+      leaves: [the model's text as it came back, each tool's arguments and output, in order]
+    - label: Add up from the record
+      leaves: [totals come from the events]
+
+coach:
+  opening: >-
+    Find the line that writes an event for a tool call. Then ask what happens
+    to that line when the call raises.
+  signals:
+    - id: nothing-recorded
+      when: { code_lacks: '\.append\(|\+=\s*\[' }
+      say: >-
+        Your loop does not write an event yet. Start with the model call:
+        what does the gateway's reply tell you about it?
+    - id: no-error-outcome
+      when: { code_lacks: '["'']error["'']' }
+      say: >-
+        Nothing in your recorder can write the outcome error. Which calls in a
+        booking run can fail, and what does their event say now?
+    - id: no-status-check
+      when: { code_lacks: '["'']status["'']' }
+      say: >-
+        Your recorder never reads the envelope's status. When `book_pickup`
+        answers a status other than 200, does its event say it worked?
+    - id: event-after-the-call
+      when: { code_matches: 'try:\s*\n\s*\w+\s*=\s*tools\[[^\n]*\n\s*events\.append' }
+      say: >-
+        Your event is written on the line after the call, inside the `try`.
+        When the call raises, that line is skipped. Where else does an event
+        need to be written?
+    - id: raised-case
+      when: { test_failed: a_booking_call_that_raises_is_on_the_record }
+      say: >-
+        The booking call in that run raised. Count the events your recorder
+        wrote and find the one that is missing.
+    - id: refused-case
+      when: { test_failed: a_refused_booking_is_an_error_not_a_success }
+      say: >-
+        The booking service answered that run with a status other than 200.
+        What outcome did your event give it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1: append one event per model call and press Run. The
+        first public case shows the five events it expects.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints start from the run where the booking
+        call raises, and they cost nothing on this tier.
+  wrap_up: >-
+    A record is only worth having if the call that failed is on it. Write
+    each event around the call, mark an error status as an error, and keep
+    what a replay needs.
+
+tests:
+  - name: records_a_pickup_that_was_booked
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Order 88-1204, my TV has no picture. Can you collect it on Saturday morning?" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"text": "Action: lookup_order(order_id=88-1204)", "usage": {"inputTokens": 412, "outputTokens": 21}, "metrics": {"latencyMs": 830}}' }
+        - { match: { call_index: 2 },
+            reply: '{"text": "Action: book_pickup(order_id=88-1204, slot=sat-am)", "usage": {"inputTokens": 538, "outputTokens": 24}, "metrics": {"latencyMs": 910}}' }
+        - { match: "*",
+            reply: '{"text": "Final Answer: A courier will collect your TV on Saturday morning. Your booking is PK-5531.", "usage": {"inputTokens": 640, "outputTokens": 19}, "metrics": {"latencyMs": 760}}' }
+      tools:
+        lookup_order: { returns: { status: 200, ms: 140, data: { order_id: "88-1204", item: "55-inch TV", warranty: "active" } } }
+        book_pickup: { returns: { status: 200, ms: 380, data: { booking: "PK-5531", slot: "sat-am" } } }
+      budget: { max_llm_calls: 4, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [answer, events, totals],
+                      properties: { events: { type: array, minItems: 5, maxItems: 5 } } } }
+        - { type: returns_matches, value: '"output":\s*"Action: book_pickup\(order_id=88-1204, slot=sat-am\)"' }
+        - { type: returns_matches, value: '"args":\s*\{"order_id":\s*"88-1204",\s*"slot":\s*"sat-am"\}' }
+        - { type: returns_matches, value: '"booking":\s*"PK-5531"' }
+        - { type: returns_matches, value: '"input_tokens":\s*1590\b' }
+        - { type: returns_matches, value: '"output_tokens":\s*64\b' }
+        - { type: returns_matches, value: '"answer":\s*"A courier will collect your TV' }
+        - { type: calls_tool_with, name: book_pickup, args: { order_id: "88-1204", slot: "sat-am" } }
+
+  - name: records_an_answer_that_needed_no_tool
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Do your service centres open on Sundays?" }
+      llm_script:
+        - { match: "*",
+            reply: '{"text": "Final Answer: Yes, from 10am to 6pm.", "usage": {"inputTokens": 288, "outputTokens": 15}, "metrics": {"latencyMs": 640}}' }
+      budget: { max_llm_calls: 4, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [answer, events, totals],
+                      properties: { events: { type: array, minItems: 1, maxItems: 1 } } } }
+        - { type: returns_matches, value: '"ms":\s*640\b' }
+        - { type: returns_matches, value: '"model_calls":\s*1\b' }
+        - { type: returns_matches, value: '"tool_calls":\s*0\b' }
+        - { type: returns_matches, value: '"input_tokens":\s*288\b' }
+
+  - name: a_booking_call_that_raises_is_on_the_record
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order 64-0815, the fridge stopped cooling. Collect it on Monday morning please." }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"text": "Action: lookup_order(order_id=64-0815)", "usage": {"inputTokens": 405, "outputTokens": 20}, "metrics": {"latencyMs": 810}}' }
+        - { match: { call_index: 2 },
+            reply: '{"text": "Action: book_pickup(order_id=64-0815, slot=mon-am)", "usage": {"inputTokens": 529, "outputTokens": 25}, "metrics": {"latencyMs": 940}}' }
+        - { match: "*",
+            reply: '{"text": "Final Answer: I could not book the pickup just now. A colleague will call you today to arrange it.", "usage": {"inputTokens": 655, "outputTokens": 23}, "metrics": {"latencyMs": 720}}' }
+      tools:
+        lookup_order: { returns: { status: 200, ms: 150, data: { order_id: "64-0815", item: "double-door fridge", warranty: "active" } } }
+        book_pickup:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the courier service did not answer within 10 seconds" }
+      budget: { max_llm_calls: 4, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"name":\s*"book_pickup"' }
+        - { type: returns_matches, value: '"outcome":\s*"error"' }
+        - { type: returns_matches, value: '"ms":\s*null' }
+        - { type: returns_matches, value: 'TimeoutError: the courier service' }
+        - { type: returns_matches, value: '"tool_calls":\s*2\b' }
+        - { type: returns_matches, value: '"errors":\s*1\b' }
+
+  - name: a_refused_booking_is_an_error_not_a_success
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order 64-0932, the AC unit rattles. Can someone collect it on Friday afternoon?" }
+      llm_script:
+        - { match: { call_index: 1 },
+            reply: '{"text": "Action: lookup_order(order_id=64-0932)", "usage": {"inputTokens": 409, "outputTokens": 20}, "metrics": {"latencyMs": 800}}' }
+        - { match: { call_index: 2 },
+            reply: '{"text": "Action: book_pickup(order_id=64-0932, slot=fri-pm)", "usage": {"inputTokens": 533, "outputTokens": 25}, "metrics": {"latencyMs": 900}}' }
+        - { match: "*",
+            reply: '{"text": "Final Answer: There are no courier slots for your area on Friday. A colleague will call you to find another day.", "usage": {"inputTokens": 661, "outputTokens": 26}, "metrics": {"latencyMs": 730}}' }
+      tools:
+        lookup_order: { returns: { status: 200, ms: 145, data: { order_id: "64-0932", item: "split AC", warranty: "active" } } }
+        book_pickup: { returns: { status: 409, ms: 260, error: "no courier slots left for this pin code" } }
+      budget: { max_llm_calls: 4, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"error"' }
+        - { type: returns_matches, value: '"ms":\s*260\b' }
+        - { type: returns_matches, value: '"output":\s*"no courier slots left' }
+        - { type: returns_matches, value: '"errors":\s*1\b' }
+
+reference_md: |
+  A record exists for the run that went wrong. Every run that went right
+  can be reconstructed from its final answer; the one that told 214
+  customers a courier was coming cannot, and it is the only one anybody will
+  open.
+
+  That is why the event is written around the call rather than after it. A
+  line after a call runs only when the call returns, so a recorder built
+  that way writes down every success and loses the call that raised, which
+  makes a broken run look cleaner than a working one. Putting the call in a
+  `try` block and building one event from whatever happened, a returned
+  envelope or an exception, puts both paths on the record.
+
+  Returned is also not the same as worked. The booking service that answers
+  409 came back promptly and refused the booking, and an event marked ok
+  because nothing raised tells the engineer the booking went through. The
+  envelope's status decides the outcome, and its latency is still worth
+  keeping, because a slow refusal and a fast one point at different
+  problems. A call that raised has no latency the record can trust, so it
+  says null rather than inventing one.
+
+  The record keeps the model's text exactly as it came back and each tool's
+  arguments and output, in order, because that is what a replay needs: feed
+  the recorded texts back as the model and the recorded outputs back as the
+  tools, and the run happens again on a laptop. The totals are added up from
+  the events, so a dashboard built on them can never disagree with the
+  record underneath it.
+
+  The token counts come straight from the gateway, which passes on the
+  `usage` and `metrics` blocks of the Bedrock Converse response, whose
+  `inputTokens`, `outputTokens` and `latencyMs` fields are documented in the
+  Bedrock API reference.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your agent told a customer a booking was made, and the logs show nothing wrong. What should the trace have recorded, and how do you make sure a failed call is on it?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: lookup_order
+    args: order_id
+    returns: An envelope with `status`, `ms` and the order in `data`, or an `error` when the status is not 200.
+  - name: book_pickup
+    args: order_id, slot
+    returns: An envelope with the booking in `data`, or an `error` when the status is not 200. It can also raise.
+example:
+  case: records_a_pickup_that_was_booked
+  expect: Record five events in order, three model calls with their text, tokens and latency and two tool
+    calls with their arguments, output and latency, then totals of 1590 input tokens.
+traps:
+  - Writing the event on the line after the call, so a call that raises leaves no event and the run looks
+    clean.
+  - Marking a tool call ok because an envelope came back, when its status says the call failed.

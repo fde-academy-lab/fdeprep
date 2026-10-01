@@ -1,0 +1,492 @@
+slug: run-independent-lookups-together
+title: "Run independent lookups together and merge in order"
+day: 11
+skill: Put each lookup in the earliest round its inputs allow, and merge results in a fixed order
+artefact_type: code
+difficulty: medium
+track: orchestration
+concept:
+  topic: "Parallel or sequential"
+  question: "Which lookups can run at the same time, and which must wait?"
+est_minutes: 30
+competencies:
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: system-design, weight: 1.0 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The travel desk at an IT services firm the size of Infosys books about
+  3,000 trips a week. For each request an orchestrator agent plans the
+  lookups the trip brief needs: the flight and its fare rules, the hotel and
+  its room rate, the visa rules and the travel policy check. The brief goes to
+  the traveller's manager, who reads the policy line first and approves.
+
+  The lookups used to run one at a time, and a brief took 14 seconds. Last
+  sprint a developer sent every lookup in a single call to `run_round`, which
+  runs lookups at the same time. Briefs now take 4 seconds, and two things
+  broke.
+
+  The policy check went out before the room rate came back, so it checked a
+  trip with no room cost and passed a London hotel at 41,000 rupees a night
+  against a cap of 26,000. And the sections now arrive in whatever order the
+  lookups finish, so the policy line is sometimes at the bottom of the brief,
+  where managers do not look.
+
+  Write the scheduler. Run every lookup as early as its inputs allow, wait
+  where an input is missing, and build the brief in its fixed order.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the trip request as text. Call the model once with
+  `plan_prompt(question)` from the starter code. It replies with the plan:
+
+      Plan: {"lookups": [
+        {"id": "flight", "args": {"route": "BLR-LHR", "date": "2026-10-13"}},
+        {"id": "fare_rules", "args": {"fare_basis": "$flight.fare_basis"}},
+        ...]}
+
+  An argument written `$<id>.<field>` is a reference. It stands for that
+  field of that lookup's result, so the lookup carrying it cannot run until
+  that one has finished. The starter code's `parse_plan` reads the reply,
+  `needs(lookup)` lists the ids a lookup refers to, and
+  `fill(args, results)` replaces each reference with its value. The plan
+  lists each lookup once, in no particular order, and every lookup a
+  reference names is in the plan.
+
+  `tools["run_round"](lookups=[...])` runs lookups at the same time and
+  returns `{"results": [...]}` in the order they finished. Each result is
+  `{"id": <id>, "summary": <one line>}` plus the lookup's own fields, such as
+  the flight's `fare_basis` or the hotel's `hotel`.
+
+  - Put each lookup in the earliest round it can run in: round 1 when it
+    refers to no other lookup, otherwise the round after the latest round
+    among the lookups it refers to.
+  - Run the rounds in order, one `run_round` call each. A round lists its
+    lookups as `{"id": ..., "args": <filled args>}`, in the order the plan
+    lists them.
+  - Return the brief: one line `<id>: <summary>` per lookup, in the order of
+    `SECTIONS`, whatever order the results arrived in.
+
+  Budget: at most 2 model calls. Planning needs one. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  # The order managers read a brief in. The policy line comes first.
+  SECTIONS = ("policy", "flight", "fare_rules", "hotel", "room_rate", "visa")
+  REFERENCE = re.compile(r"^\$([a-z_]+)\.([a-z_]+)$")
+
+
+  def plan_prompt(request: str) -> str:
+      return (
+          "Plan the lookups for a trip brief. The lookups are flight, fare_rules, "
+          "hotel, room_rate, visa and policy. Write an argument that needs another "
+          'lookup\'s result as "$<id>.<field>". Reply with one line: '
+          'Plan: {"lookups": [{"id": ..., "args": {...}}]}\n'
+          f"Request: {request}\n"
+      )
+
+
+  def parse_plan(reply: str) -> list:
+      """The lookups of a 'Plan: {...}' reply, in the order the model wrote them."""
+      text = reply.strip()
+      if text.startswith("Plan:"):
+          text = text[len("Plan:"):]
+      return list(json.loads(text).get("lookups") or [])
+
+
+  def needs(lookup: dict) -> list:
+      """The ids of the lookups this one refers to."""
+      found = []
+      for value in (lookup.get("args") or {}).values():
+          match = REFERENCE.match(value) if isinstance(value, str) else None
+          if match and match.group(1) not in found:
+              found.append(match.group(1))
+      return found
+
+
+  def fill(args: dict, results: dict) -> dict:
+      """args with each reference replaced by the field it names in results.
+
+      results maps a lookup's id to its result. A reference to a lookup with
+      no result yet stays as written.
+      """
+      filled = {}
+      for key, value in args.items():
+          match = REFERENCE.match(value) if isinstance(value, str) else None
+          if match and match.group(1) in results:
+              filled[key] = results[match.group(1)].get(match.group(2))
+          else:
+              filled[key] = value
+      return filled
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      lookups = parse_plan(llm(plan_prompt(question)))
+      results = {}
+      # TODO 1: give every lookup a round: 1 when needs(lookup) is empty,
+      #         otherwise one more than the latest round among the lookups it
+      #         needs. The plan may list a lookup before the ones it needs.
+      # TODO 2: run the rounds in order, one tools["run_round"] call each,
+      #         with [{"id": ..., "args": fill(args, results)}, ...] in plan
+      #         order, and keep every result in results by its id
+      # TODO 3: build the brief by walking SECTIONS: one line
+      #         "<id>: <summary>" for every id that has a result
+      return ""
+
+steps:
+  - id: s1
+    text: Give each lookup the earliest round it can run in, however deep its references go.
+    check_id: s1
+  - id: s2
+    text: Run each round with one `run_round` call, every reference filled from earlier results.
+    check_id: s2
+  - id: s3
+    text: Build the brief in the order of `SECTIONS`, whatever order the results finished in.
+    check_id: s3
+
+step_checks:
+  # The public plans are at most two rounds deep, so s1 owns a plan whose
+  # policy check sits three rounds deep and is listed first.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "Rohit Das flies Hyderabad to Dubai on 26 October for two nights. Check the trip against policy." }
+      llm_script:
+        - match: "*"
+          reply: 'Plan: {"lookups": [{"id": "policy", "args": {"fare": "$flight.fare", "nightly": "$room_rate.nightly"}}, {"id": "room_rate", "args": {"hotel": "$hotel.hotel", "nights": 2}}, {"id": "hotel", "args": {"city": "Dubai", "nights": 2}}, {"id": "flight", "args": {"route": "HYD-DXB", "date": "2026-10-26"}}]}'
+      tools:
+        run_round:
+          sequence:
+            - results:
+                - { id: hotel, summary: "Creek View Suites, 2 nights from 26 Oct", hotel: "HTL-5581" }
+                - { id: flight, summary: "09:15 Hyderabad to Dubai, Mon 26 Oct", fare_basis: "MSAVER", fare: 21400 }
+            - results:
+                - { id: room_rate, summary: "14,800 rupees a night, room only", nightly: 14800 }
+            - results:
+                - { id: policy, summary: "Within policy: fare and room are both under their caps", within: true }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 5000 }
+      assertions:
+        - { type: calls_tool_with, name: run_round, args: { lookups: [ { id: policy, args: { fare: 21400, nightly: 14800 } } ] } }
+        - { type: tool_calls_at_most, value: 3 }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: run_round, args: { lookups: [ { id: fare_rules, args: { fare_basis: "SAVER7" } } ] } }
+  # In the public cases results arrive in brief order, so s3 owns a case
+  # where they do not.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Neha Kapoor goes to Paris by train on 2 November for two nights. Book a hotel and check her visa." }
+      llm_script:
+        - match: "*"
+          reply: 'Plan: {"lookups": [{"id": "hotel", "args": {"city": "Paris", "nights": 2}}, {"id": "room_rate", "args": {"hotel": "$hotel.hotel", "nights": 2}}, {"id": "visa", "args": {"passport": "IN", "country": "FR"}}]}'
+      tools:
+        run_round:
+          sequence:
+            - results:
+                - { id: visa, summary: "Schengen visa held, valid to June 2027" }
+                - { id: hotel, summary: "Hotel Rive Gauche, 2 nights from 2 Nov", hotel: "HTL-7104" }
+            - results:
+                - { id: room_rate, summary: "19,900 rupees a night, breakfast included", nightly: 19900 }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 5000 }
+      assertions:
+        - { type: returns_matches, value: '^hotel: [^\n]*\nroom_rate: [^\n]*\nvisa: ' }
+
+hints:
+  - For each lookup, write down the lookups it refers to. That list decides
+    when a lookup can run. The order the plan happens to list them in does
+    not.
+  - A lookup can run once everything it refers to has a result. Its round is
+    one more than the latest round among those, and a plan can be three or
+    more rounds deep.
+  - Assign rounds in passes over the plan until a pass assigns nothing new.
+    Then call `run_round` once per round, filling references from the results
+    gathered so far.
+  - Keep every result in a dict by its id as it arrives, and build the brief
+    by walking `SECTIONS`, so the order results arrive in never reaches the
+    page.
+
+scenario:
+  headline: "A policy check passed a hotel before its room rate arrived"
+  who: "The travel desk at an IT services firm the size of Infosys"
+  situation: >-
+    An orchestrator plans up to six lookups for each trip brief. Sending them
+    all at once cut a brief from 14 seconds to 4, and the policy check ran
+    before the room rate it needed had arrived.
+  stakes: >-
+    Managers approve from the first line of the brief. A policy line built on
+    a missing rate, or pushed to the bottom, gets a trip approved that breaks
+    policy.
+  metrics:
+    - { label: One lookup at a time, value: 14 s }
+    - { label: Every lookup at once, value: 4 s }
+    - { label: Room rate against cap, value: "41,000 vs 26,000" }
+
+diagram:
+  title: Three rounds, because the policy check needs the room rate
+  caption: >-
+    Each lookup runs one round after the latest of the lookups it refers to.
+    Sent all at once, the policy check went out with no room rate to check.
+  direction: lr
+  nodes:
+    - { id: request, label: Trip request, sub: free text from the traveller, kind: actor, tone: blue, at: [0, 1] }
+    - { id: planner, label: Planner model, sub: lists lookups with references, kind: model, tone: teal, at: [1, 1] }
+    - { id: scheduler, label: Scheduler, sub: earliest round each can run in, kind: guard, tone: purple, at: [2, 1] }
+    - { id: round1, label: Round 1, sub: "flight, hotel, visa", kind: tool, tone: green, at: [3, 0] }
+    - { id: round2, label: Round 2, sub: "fare rules, room rate", kind: tool, tone: green, at: [4, 0] }
+    - { id: round3, label: Round 3, sub: policy check, kind: tool, tone: green, at: [5, 0] }
+    - { id: brief, label: Trip brief, sub: sections in a fixed order, kind: output, tone: orange, at: [5, 1] }
+    - { id: blank, label: Policy on no room rate, sub: sent in the same round as everything, kind: output, tone: pink, at: [3, 2] }
+  edges:
+    - { from: request, to: planner, label: the request, step: 1 }
+    - { from: planner, to: scheduler, label: the plan, step: 2 }
+    - { from: scheduler, to: round1, label: nothing to wait for, step: 3 }
+    - { from: round1, to: round2, label: results fill references, step: 4 }
+    - { from: round2, to: round3, label: room rate arrives, step: 5 }
+    - { from: round3, to: brief, label: merged in section order, tone: success }
+    - { from: scheduler, to: blank, label: everything at once, tone: danger }
+
+approach:
+  goal: Run what can run together, wait for what cannot, and keep the brief stable
+  branches:
+    - label: Read the dependencies
+      leaves: [a reference means wait, no reference means round 1]
+    - label: Give each lookup its earliest round
+      detail: A lookup runs one round after the latest of the lookups it refers to, however the plan lists them.
+      leaves: [the plan's order is not the dependency order, some plans are three rounds deep]
+    - label: Run round by round
+      leaves: [one `run_round` call per round, references filled from earlier rounds]
+    - label: Merge in the stated order
+      detail: Finishing order changes from run to run. The order managers read never does.
+      leaves: [results kept by id, the brief built from SECTIONS]
+
+coach:
+  opening: >-
+    Before you write a loop, take the policy check in a full trip and count
+    how many lookups have to finish before it can start, and in how many
+    rounds.
+  signals:
+    - id: merge-by-arrival
+      when: { code_lacks: 'in\s+SECTIONS\b|SECTIONS\.index' }
+      say: >-
+        Your brief follows the order results arrive in. Managers read the
+        policy line first, and the order lookups finish in changes from run
+        to run.
+    - id: no-run-round
+      when: { code_lacks: 'run_round' }
+      say: >-
+        Nothing in your code calls `run_round` yet. Which lookups could go in
+        the first call?
+    - id: hidden-depth
+      when: { test_failed: the_policy_check_waits_two_rounds }
+      say: >-
+        In that run the policy check needed the room rate, which needed the
+        hotel. How many rounds did your schedule allow, and what did the
+        policy check get?
+    - id: hidden-finish-order
+      when: { test_failed: results_merge_in_the_brief_order }
+      say: >-
+        In that run every lookup was in one round and they finished out of
+        order. Which order did your brief follow?
+    - id: hidden-across-rounds
+      when: { test_failed: a_later_round_still_lands_in_its_section }
+      say: >-
+        In that run a section from round 2 belongs between two sections from
+        round 1. Does your brief put it there?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 alone: print each lookup's id with its round, and
+        check the policy check comes out one round after the room rate.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints are open, and the first one is about
+        where a lookup's round comes from.
+  wrap_up: >-
+    Parallel work is a graph. Run each level as soon as the level before it
+    finishes, and build the output in an order you chose, because the order
+    work finishes in is chosen by nobody.
+
+tests:
+  - name: a_lookup_waits_for_the_one_it_needs
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Priya Nair flies Bengaluru to Chennai on 13 October and back that evening. Can her ticket be changed?" }
+      llm_script:
+        - match: "*"
+          reply: 'Plan: {"lookups": [{"id": "flight", "args": {"route": "BLR-MAA", "date": "2026-10-13"}}, {"id": "fare_rules", "args": {"fare_basis": "$flight.fare_basis"}}]}'
+      tools:
+        run_round:
+          sequence:
+            - results:
+                - { id: flight, summary: "07:40 Bengaluru to Chennai, Tue 13 Oct", fare_basis: "SAVER7", fare: 5400 }
+            - results:
+                - { id: fare_rules, summary: "Changes allowed up to 2 hours before departure for a fee, no refund" }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: run_round, args: { lookups: [ { id: fare_rules, args: { fare_basis: "SAVER7" } } ] } }
+        - { type: tool_calls_at_most, value: 2 }
+        - { type: returns_matches, value: '^flight: 07:40 Bengaluru to Chennai[^\n]*\nfare_rules: Changes allowed' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: independent_lookups_share_a_round
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Arun Mehta flies Bengaluru to London on 13 October for three nights. Find a hotel and check his visa." }
+      llm_script:
+        - match: "*"
+          reply: 'Plan: {"lookups": [{"id": "flight", "args": {"route": "BLR-LHR", "date": "2026-10-13"}}, {"id": "hotel", "args": {"city": "London", "nights": 3}}, {"id": "visa", "args": {"passport": "IN", "country": "GB"}}]}'
+      tools:
+        run_round:
+          sequence:
+            - results:
+                - { id: flight, summary: "07:10 Bengaluru to London Heathrow, Tue 13 Oct", fare_basis: "YFLEX", fare: 61200 }
+                - { id: hotel, summary: "Strand Park Hotel, 3 nights from 13 Oct", hotel: "HTL-2207" }
+                - { id: visa, summary: "Standard Visitor visa held, valid to March 2027" }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - type: calls_tool_with
+          name: run_round
+          args:
+            lookups:
+              - { id: flight, args: { route: "BLR-LHR", date: "2026-10-13" } }
+              - { id: hotel, args: { city: London, nights: 3 } }
+              - { id: visa, args: { passport: "IN", country: "GB" } }
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: returns_matches, value: '^flight: [^\n]*\nhotel: Strand Park Hotel[^\n]*\nvisa: Standard Visitor' }
+
+  - name: the_policy_check_waits_two_rounds
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Meera Iyer flies Bengaluru to London on 13 October for three nights near the Strand. Check the trip against policy." }
+      llm_script:
+        - match: "*"
+          reply: 'Plan: {"lookups": [{"id": "policy", "args": {"fare": "$flight.fare", "nightly": "$room_rate.nightly"}}, {"id": "hotel", "args": {"city": "London", "nights": 3}}, {"id": "room_rate", "args": {"hotel": "$hotel.hotel", "nights": 3}}, {"id": "flight", "args": {"route": "BLR-LHR", "date": "2026-10-13"}}]}'
+      tools:
+        run_round:
+          sequence:
+            - results:
+                - { id: flight, summary: "07:10 Bengaluru to London Heathrow, Tue 13 Oct", fare_basis: "YFLEX", fare: 58900 }
+                - { id: hotel, summary: "Aldwych Court Hotel, 3 nights from 13 Oct", hotel: "HTL-3310" }
+            - results:
+                - { id: room_rate, summary: "41,000 rupees a night, breakfast included", nightly: 41000 }
+            - results:
+                - { id: policy, summary: "Outside policy: the room is 41,000 rupees a night against a cap of 26,000", within: false }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: run_round, args: { lookups: [ { id: room_rate, args: { hotel: "HTL-3310", nights: 3 } } ] } }
+        - { type: calls_tool_with, name: run_round, args: { lookups: [ { id: policy, args: { fare: 58900, nightly: 41000 } } ] } }
+        - { type: tool_calls_at_most, value: 3 }
+        - { type: returns_matches, value: '^policy: Outside policy[^\n]*\nflight: [^\n]*\nhotel: [^\n]*\nroom_rate: ' }
+
+  - name: results_merge_in_the_brief_order
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Sanjay Rao flies Mumbai to Frankfurt on 19 October for two nights. Check his Schengen visa." }
+      llm_script:
+        - match: "*"
+          reply: 'Plan: {"lookups": [{"id": "visa", "args": {"passport": "IN", "country": "DE"}}, {"id": "hotel", "args": {"city": "Frankfurt", "nights": 2}}, {"id": "flight", "args": {"route": "BOM-FRA", "date": "2026-10-19"}}]}'
+      tools:
+        run_round:
+          sequence:
+            - results:
+                - { id: visa, summary: "Schengen visa expires 30 October, after the return date" }
+                - { id: flight, summary: "02:05 Mumbai to Frankfurt, Mon 19 Oct", fare_basis: "KLITE", fare: 47300 }
+                - { id: hotel, summary: "Mainufer Hotel, 2 nights from 19 Oct", hotel: "HTL-6045" }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: returns_matches, value: '^flight: 02:05 Mumbai[^\n]*\nhotel: Mainufer[^\n]*\nvisa: Schengen visa expires[^\n]*$' }
+
+  - name: a_later_round_still_lands_in_its_section
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Kavya Menon flies Delhi to Singapore on 21 October for four nights. Can the fare be refunded?" }
+      llm_script:
+        - match: "*"
+          reply: 'Plan: {"lookups": [{"id": "flight", "args": {"route": "DEL-SIN", "date": "2026-10-21"}}, {"id": "fare_rules", "args": {"fare_basis": "$flight.fare_basis"}}, {"id": "hotel", "args": {"city": "Singapore", "nights": 4}}]}'
+      tools:
+        run_round:
+          sequence:
+            - results:
+                - { id: hotel, summary: "Marina Quay Hotel, 4 nights from 21 Oct", hotel: "HTL-8862" }
+                - { id: flight, summary: "23:40 Delhi to Singapore, Wed 21 Oct", fare_basis: "Y2REF", fare: 32800 }
+            - results:
+                - { id: fare_rules, summary: "Refundable up to 24 hours before departure, less a 3,000 rupee fee" }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: run_round, args: { lookups: [ { id: fare_rules, args: { fare_basis: "Y2REF" } } ] } }
+        - { type: returns_matches, value: '^flight: 23:40 Delhi[^\n]*\nfare_rules: Refundable[^\n]*\nhotel: Marina Quay' }
+
+reference_md: |
+  A plan of lookups is a graph, and its references are the edges. A lookup
+  with no references can start at once. One that refers to others can start
+  only when they have finished, so its earliest round is one more than the
+  latest round among them. Assigning rounds that way puts every independent
+  lookup in round 1 and makes the number of rounds the length of the longest
+  chain of references, which is the shortest a brief can take whatever
+  machinery runs the rounds.
+
+  Both of the sprint's bugs come from treating the plan as flat. Sending
+  everything at once assumes nothing waits for anything, and the policy check
+  read a room rate that did not exist yet. The common repair, "independent
+  lookups first, everything else second", assumes the graph is two levels
+  deep. It is right until the first plan where the policy check needs a room
+  rate that needs a hotel, and then it fails the same way one level down.
+
+  The order of the brief is a separate decision from the order of the work.
+  Results come back in the order lookups finish, which depends on network and
+  load and changes from run to run. A brief built in that order differs
+  between two runs of the same trip, so a manager cannot rely on where the
+  policy line is, and nobody can diff today's brief against yesterday's.
+  Python draws the same line: `asyncio.gather` returns results in the order
+  the awaitables were passed, and `asyncio.as_completed` hands them back as
+  they finish (Python 3.12 documentation, read 1 October 2026). Keeping
+  results by id and walking a fixed list of sections makes finishing order
+  irrelevant. Sorting each round's results is not enough, because a section
+  that runs in round 2 can belong between two sections from round 1.
+
+  The rounds here run in sequence because the sandbox has no threads, but
+  the schedule is the one an asynchronous executor would run, and its length
+  is the latency. One lookup per round would also produce a correct brief,
+  at the 14 seconds the team was trying to remove.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Your agent runs six lookups and some of them need another one's result. How do you decide what runs in parallel, and how do you keep the output the same from run to run?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: run_round
+    args: lookups
+    returns: '`{"results": [...]}`, one result per lookup it ran, in the order they finished. Each has the
+      lookup''s `id`, a one-line `summary` and its own fields.'
+example:
+  case: a_lookup_waits_for_the_one_it_needs
+  expect: '`fare_rules` refers to the flight''s fare basis, so the flight runs in round 1 and `fare_rules` in round
+    2 with `SAVER7` filled in. The brief lists the flight, then its fare rules.'
+traps:
+  - Running every lookup with no references first and everything else second, when a plan can be three rounds
+    deep.
+  - Building the brief in the order results arrive, which changes from run to run.
+  - Sorting each round's results while still appending rounds in turn, so a later round's section lands after
+    sections it should precede.
+  - Running one lookup per round, which builds the right brief at the latency the team set out to remove.

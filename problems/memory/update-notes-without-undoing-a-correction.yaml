@@ -1,0 +1,716 @@
+slug: update-notes-without-undoing-a-correction
+title: "Update notes without undoing a user's correction"
+day: 14
+skill: Merge new notes by who said them, keep corrections in force, and keep every value's source
+artefact_type: code
+difficulty: hard
+track: memory
+concept:
+  topic: "Memory writes"
+  question: "How can a fact the user corrected become wrong again in an agent's memory?"
+est_minutes: 45
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A travel management company the size of BCD Travel keeps a notes file for
+  every traveller, which its booking assistant reads before each chat: the
+  surname as it appears on the passport, seat and meal preferences, loyalty
+  tiers. At the end of each chat an extraction model proposed notes, and they
+  were written key by key, each new value replacing the old one.
+
+  In August a consultant told the assistant that her surname is Mukherjee, as
+  on her passport, and not Mukerji, as an old HR import had it. In September
+  a chat about an expense claim quoted an old itinerary. The extraction model
+  proposed Mukerji from it, and the write replaced her correction. Her next
+  ticket was issued as Mukerji, the airline refused it at check-in, and the
+  name change cost 180 pounds and a missed meeting. The notes file held one
+  value, Mukerji, and nothing to say it had ever been corrected.
+
+  An audit since then has found 1,140 corrections overwritten the same way.
+  Write the merge that applies a chat's proposals to the notes file.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` names the traveller. Writing notes is a rule, so `llm` is not
+  called. Three tools:
+
+      tools["notes"]()       -> {"status": 200, "notes": [
+                                  {"key": "surname", "value": "Mukherjee", "source": "user",
+                                   "session": "s-31", "turn": 4, "status": "current"}, ...]}
+      tools["transcript"]()  -> {"status": 200, "session": "s-48", "turns": [
+                                  {"n": 1, "role": "traveller", "text": "..."}, ...]}
+      tools["proposals"]()   -> {"status": 200, "proposals": [
+                                  {"key": "seat", "value": "aisle", "source": "user", "turn": 3}, ...]}
+
+  A note's `source` is `user` when the traveller said it, and `agent` when
+  the assistant inferred it or read it somewhere. `user` ranks above `agent`.
+  A note's `status` is `current` (the value in force, one per key),
+  `replaced` (an older value) or `conflict` (a weaker value that disagreed
+  with the one in force).
+
+  A proposal's `source` is the extraction model's claim, and the claim is not
+  evidence. A proposal is `user` only when the turn it cites is in this
+  chat's transcript, has the role `traveller`, and contains the value,
+  ignoring case. Otherwise it is `agent`.
+
+  Apply the proposals in order, each against the current note for its key:
+
+  - No current note: the proposal becomes the current note.
+  - The same value, after trimming spaces and ignoring case: nothing changes.
+  - A different value from a source ranked at least as high as the current
+    note's: the proposal becomes current, and the old note becomes
+    `replaced`.
+  - A different value from a lower-ranked source: the current note stays,
+    and the proposal is kept beside it as a `conflict`.
+
+  A note written in this chat carries its `key`, `value`, its own `source`
+  as worked out above, this chat's `session`, the cited `turn` and its
+  `status`. No note is ever deleted, and an existing note can change only its
+  `status`. Return the whole file, the existing notes in their order and then
+  the new ones:
+
+      json.dumps({"notes": [...]})
+
+  When the notes file or the transcript cannot be read, because the call
+  raises or answers without a list, write nothing: return the JSON
+  `{"notes": null}`. A proposals call that fails leaves nothing to apply.
+
+  Budget: `llm` is not called. Allowed imports: json, re.
+
+defence_question: |
+  Your merge treats a value as the traveller's when their own turn contains
+  it. Next week a traveller asks, "Is my surname spelled Mukerji on the
+  ticket?" What does your merge write, and what would you change so that a
+  question can never pass for a correction?
+
+stub_code: |
+  import json
+  import re
+
+  RANK = {"user": 2, "agent": 1}
+
+
+  def same_value(a, b) -> bool:
+      return str(a).strip().lower() == str(b).strip().lower()
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Apply this chat's proposals to the traveller's notes file.
+
+      tools["notes"]()      -> {"status": 200, "notes": [{"key", "value", "source",
+                                "session", "turn", "status"}, ...]}
+      tools["transcript"]() -> {"status": 200, "session": ..., "turns": [
+                                {"n": 1, "role": "traveller" | "assistant", "text": ...}]}
+      tools["proposals"]()  -> {"status": 200, "proposals": [{"key", "value",
+                                "source", "turn"}, ...]}, in the order to apply them
+
+      A proposal is "user" only when the turn it cites is the traveller's and
+      contains the value, ignoring case; otherwise "agent", whatever it claims.
+      Against the current note for its key: none, it becomes current; the same
+      value, nothing changes; a different value ranked at least as high, it
+      becomes current and the old note "replaced"; ranked lower, it is kept as
+      "conflict". New notes carry this session and the cited turn. Nothing is
+      deleted.
+
+      Return json.dumps({"notes": [<the whole file>]}), or
+      json.dumps({"notes": None}) when the notes or the transcript cannot be read.
+      llm is not called. Allowed imports: json, re.
+      """
+      return json.dumps({"notes": []})
+
+hints:
+  - Look at what decided the surname in the incident, which was the order of
+    the writes, and ask what should have decided it instead.
+  - Rank the sources. What the traveller said outranks what the assistant
+    inferred, and a weaker value that disagrees is kept beside the value in
+    force as a conflict, never in its place.
+  - The proposal's source is the extraction model's claim. Check the turn it
+    cites in the transcript, which has to be the traveller's own and has to
+    contain the value.
+  - Compare values after trimming and ignoring case before deciding anything,
+    because the same value written differently is no change at all.
+  - A notes file you could not read is not an empty notes file. Writing back
+    what you have would erase every correction in it.
+
+scenario:
+  headline: "A ticket was issued in a surname the traveller had corrected"
+  who: The booking assistant at a travel management company the size of BCD Travel
+  situation: >-
+    A consultant corrected her surname in August. In September the extraction
+    model read the old spelling off an itinerary in an expense chat, and the
+    write replaced her correction with it, leaving no trace that it had ever
+    been corrected.
+  stakes: >-
+    The airline refused the ticket at check-in and the name change cost 180
+    pounds and a meeting. An audit found 1,140 corrections overwritten the
+    same way.
+  metrics:
+    - { label: Name change fee, value: "£180" }
+    - { label: Corrections overwritten, value: "1,140" }
+    - { label: History of the change, value: none }
+
+diagram:
+  title: Where a guess replaced what the traveller said
+  caption: >-
+    Writing key by key lets the last proposal win. Ranking by who said it,
+    checked against the transcript, keeps the correction and records the
+    guess as a conflict.
+  direction: lr
+  nodes:
+    - { id: traveller, label: Traveller, sub: "Mukherjee, as on my passport", kind: actor, tone: blue, at: [0, 0] }
+    - { id: chat, label: Expense chat, sub: quotes an old itinerary, kind: doc, tone: neutral, at: [0, 2] }
+    - { id: extract, label: Extraction model, sub: proposes notes and labels them, kind: model, tone: teal, at: [1, 2] }
+    - { id: merge, label: Note merge, sub: "who said it, then what changed", kind: guard, tone: purple, at: [2, 1] }
+    - { id: transcript, label: Transcript, sub: who actually said each turn, kind: store, tone: green, at: [1, 0] }
+    - { id: notes, label: Notes file, sub: "current, replaced, conflict", kind: store, tone: green, at: [3, 1] }
+    - { id: ticket, label: Ticket as Mukerji, sub: refused at check-in, kind: output, tone: pink, at: [3, 3] }
+  edges:
+    - { from: traveller, to: transcript, label: the correction, step: 1 }
+    - { from: chat, to: extract, label: Mukerji on an itinerary, step: 2 }
+    - { from: extract, to: merge, label: proposals, step: 3 }
+    - { from: transcript, to: merge, label: checks each source, tone: success }
+    - { from: merge, to: notes, label: correction stays current, tone: success }
+    - { from: extract, to: ticket, label: last write wins, tone: danger }
+
+approach:
+  goal: Write what the chat learned without losing what the traveller said
+  branches:
+    - label: Who said it?
+      detail: The extraction model's label is a claim. The transcript records who spoke.
+      leaves: [the traveller outranks the assistant, check the turn the proposal cites]
+    - label: Does it change anything?
+      leaves: [the same value written differently, a real disagreement]
+    - label: Where does the losing value go?
+      leaves: ["replaced, when an equal or stronger value arrives", "conflict, when a weaker one disagrees"]
+    - label: What must never happen?
+      leaves: [a note deleted, a failed read written back as an empty file]
+
+coach:
+  opening: >-
+    Before you write the merge, take the incident's two surnames and say
+    which one should be in force afterwards, and what in the data tells your
+    code so.
+  signals:
+    - id: last-write-wins
+      when: { code_lacks: 'RANK\s*\[|RANK\.get\(' }
+      say: >-
+        Nothing in your merge compares who said the two values, so the
+        proposal written last wins. Should the assistant's reading of an old
+        itinerary outrank the traveller's own correction?
+    - id: trusts-the-label
+      when: { code_lacks: '(?:\.get\(\s*|\[\s*)["'']role["'']' }
+      say: >-
+        Your merge takes each proposal's source from the proposal itself.
+        Where could your code check who actually said the value?
+    - id: hidden-correction
+      when: { test_failed: an_assistant_guess_never_replaces_a_correction }
+      say: >-
+        In that run the assistant read the old spelling off an itinerary, and
+        the traveller's correction was in force. Which surname did your file
+        leave current, and where did the other one go?
+    - id: hidden-same-value
+      when: { test_failed: the_same_value_written_differently_changes_nothing }
+      say: >-
+        Both proposals in that run repeated values already in force, written
+        differently. How many notes did your file gain?
+    - id: hidden-mislabel
+      when: { test_failed: a_correction_the_model_mislabelled_still_counts }
+      say: >-
+        The extraction model labelled that proposal as the assistant's, and the
+        traveller said it. Whose source did your note record?
+    - id: adversarial-claim
+      when: { test_failed: adversarial_a_claimed_correction_with_nothing_behind_it }
+      say: >-
+        That proposal claimed the traveller said it. Read the turn it cites
+        and look for the value.
+    - id: adversarial-failed-read
+      when: { test_failed: adversarial_the_notes_file_could_not_be_read }
+      say: >-
+        The notes store answered with an error in that run. What did your code
+        return as the traveller's whole notes file?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one function: given a proposal and the transcript, return
+        `user` or `agent`. Then write the comparison against the current note.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Hints open after one failed run on this tier,
+        and the first says where to look in the incident.
+  wrap_up: >-
+    Memory is written by a model and corrected by people, so a write has to
+    know who said each value. Rank by who said it, checked against the
+    record, keep the losing value with its source, and never let a failed
+    read become an empty write.
+
+tests:
+  - name: a_traveller_changes_a_preference_and_adds_one
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "traveller T-2207" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        notes:
+          returns:
+            status: 200
+            notes:
+              - { key: seat, value: window, source: user, session: s-20, turn: 5, status: current }
+              - { key: surname, value: Mukherjee, source: user, session: s-31, turn: 4, status: current }
+        transcript:
+          returns:
+            status: 200
+            session: s-48
+            turns:
+              - { n: 1, role: traveller, text: "I am flying to Frankfurt on Monday." }
+              - { n: 2, role: assistant, text: "Shall I book your usual window seat?" }
+              - { n: 3, role: traveller, text: "No, I want an aisle seat from now on, and a vegetarian meal please." }
+        proposals:
+          returns:
+            status: 200
+            proposals:
+              - { key: seat, value: aisle, source: user, turn: 3 }
+              - { key: meal, value: vegetarian, source: user, turn: 3 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: transcript }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [notes]
+            properties:
+              notes:
+                type: array
+                minItems: 4
+                maxItems: 4
+                contains:
+                  required: [key, value, source, session, turn, status]
+                  properties:
+                    key: { const: seat }
+                    value: { const: aisle }
+                    source: { const: user }
+                    session: { const: s-48 }
+                    turn: { const: 3 }
+                    status: { const: current }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              notes:
+                type: array
+                contains:
+                  required: [key, value, status]
+                  properties: { key: { const: seat }, value: { const: window }, status: { const: replaced } }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              notes:
+                type: array
+                contains:
+                  required: [key, value, status]
+                  properties: { key: { const: meal }, value: { const: vegetarian }, status: { const: current } }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: the_assistant_updates_its_own_note
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "traveller T-3150" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        notes:
+          returns:
+            status: 200
+            notes:
+              - { key: loyalty_tier, value: silver, source: agent, session: s-12, turn: 6, status: current }
+              - { key: meal, value: vegetarian, source: user, session: s-20, turn: 2, status: current }
+        transcript:
+          returns:
+            status: 200
+            session: s-49
+            turns:
+              - { n: 1, role: traveller, text: "Did my status change after last month's trips?" }
+              - { n: 2, role: assistant, text: "Yes. The airline's record shows your tier is now gold." }
+              - { n: 3, role: traveller, text: "Great. Vegetarian meals as usual, please." }
+        proposals:
+          returns:
+            status: 200
+            proposals:
+              - { key: loyalty_tier, value: gold, source: agent, turn: 2 }
+              - { key: meal, value: vegetarian, source: user, turn: 3 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [notes]
+            properties:
+              notes:
+                type: array
+                minItems: 3
+                maxItems: 3
+                contains:
+                  required: [key, value, source, session, status]
+                  properties:
+                    key: { const: loyalty_tier }
+                    value: { const: gold }
+                    source: { const: agent }
+                    session: { const: s-49 }
+                    status: { const: current }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              notes:
+                type: array
+                contains:
+                  required: [key, value, status]
+                  properties: { key: { const: loyalty_tier }, value: { const: silver }, status: { const: replaced } }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              notes:
+                type: array
+                contains:
+                  required: [key, session, status]
+                  properties: { key: { const: meal }, session: { const: s-20 }, status: { const: current } }
+
+  - name: an_assistant_guess_never_replaces_a_correction
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "traveller T-0481" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        notes:
+          returns:
+            status: 200
+            notes:
+              - { key: surname, value: Mukerji, source: agent, session: s-02, turn: null, status: replaced }
+              - { key: surname, value: Mukherjee, source: user, session: s-31, turn: 4, status: current }
+              - { key: seat, value: aisle, source: user, session: s-20, turn: 3, status: current }
+        transcript:
+          returns:
+            status: 200
+            session: s-52
+            turns:
+              - { n: 1, role: traveller, text: "Can you check my expense claim for the Frankfurt trip in March?" }
+              - { n: 2, role: assistant, text: "The itinerary for that trip shows S. Mukerji, Frankfurt, 14 March, 640 pounds." }
+              - { n: 3, role: traveller, text: "Yes, that is the one." }
+        proposals:
+          returns:
+            status: 200
+            proposals:
+              - { key: surname, value: Mukerji, source: agent, turn: 2 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [notes]
+            properties:
+              notes:
+                type: array
+                minItems: 4
+                maxItems: 4
+                contains:
+                  required: [key, value, status]
+                  properties: { key: { const: surname }, value: { const: Mukherjee }, status: { const: current } }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              notes:
+                type: array
+                contains:
+                  required: [key, value, source, session, status]
+                  properties:
+                    key: { const: surname }
+                    value: { const: Mukerji }
+                    source: { const: agent }
+                    session: { const: s-52 }
+                    status: { const: conflict }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              notes:
+                type: array
+                contains:
+                  required: [key, status]
+                  properties: { key: { const: surname }, status: { const: current } }
+                maxContains: 1
+
+  - name: the_same_value_written_differently_changes_nothing
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "traveller T-1196" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        notes:
+          returns:
+            status: 200
+            notes:
+              - { key: meal, value: Vegetarian, source: user, session: s-20, turn: 2, status: current }
+              - { key: home_airport, value: LHR, source: user, session: s-20, turn: 5, status: current }
+        transcript:
+          returns:
+            status: 200
+            session: s-53
+            turns:
+              - { n: 1, role: traveller, text: "Book me on the 07:10 to Zurich from Heathrow, please." }
+              - { n: 2, role: assistant, text: "Done. I have added a vegetarian meal as usual." }
+        proposals:
+          returns:
+            status: 200
+            proposals:
+              - { key: meal, value: " vegetarian", source: agent, turn: 2 }
+              - { key: home_airport, value: lhr, source: agent, turn: 1 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [notes]
+            properties:
+              notes:
+                type: array
+                minItems: 2
+                maxItems: 2
+                contains:
+                  required: [key, value, session, status]
+                  properties: { key: { const: meal }, value: { const: Vegetarian }, session: { const: s-20 }, status: { const: current } }
+
+  - name: a_correction_the_model_mislabelled_still_counts
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "traveller T-0907" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        notes:
+          returns:
+            status: 200
+            notes:
+              - { key: seat, value: aisle, source: user, session: s-20, turn: 3, status: current }
+        transcript:
+          returns:
+            status: 200
+            session: s-54
+            turns:
+              - { n: 1, role: assistant, text: "Shall I book your usual aisle seat?" }
+              - { n: 2, role: traveller, text: "Not this time or any other. My back is better, so window seats from now on." }
+        proposals:
+          returns:
+            status: 200
+            proposals:
+              - { key: seat, value: window, source: agent, turn: 2 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [notes]
+            properties:
+              notes:
+                type: array
+                minItems: 2
+                maxItems: 2
+                contains:
+                  required: [key, value, source, session, status]
+                  properties:
+                    key: { const: seat }
+                    value: { const: window }
+                    source: { const: user }
+                    session: { const: s-54 }
+                    status: { const: current }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              notes:
+                type: array
+                contains:
+                  required: [key, value, status]
+                  properties: { key: { const: seat }, value: { const: aisle }, status: { const: replaced } }
+
+  - name: adversarial_a_claimed_correction_with_nothing_behind_it
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The extraction model labelled its proposal as the traveller's and cited
+      the traveller's own turn. The turn asked for the expense form to match
+      the old itinerary. It never said Mukerji.
+
+      A merge that ranks by the label gives any guess the traveller's
+      authority, so the ranking that protects a correction becomes the route
+      that overwrites it. Checked against the transcript the proposal is the
+      assistant's, and it is kept as a conflict beside the correction.
+    spec:
+      kind: agent_run
+      input: { question: "traveller T-0481" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        notes:
+          returns:
+            status: 200
+            notes:
+              - { key: surname, value: Mukherjee, source: user, session: s-31, turn: 4, status: current }
+        transcript:
+          returns:
+            status: 200
+            session: s-55
+            turns:
+              - { n: 1, role: traveller, text: "Please fill in the expense form for Frankfurt the way the old itinerary had it." }
+              - { n: 2, role: assistant, text: "The old itinerary shows S. Mukerji." }
+        proposals:
+          returns:
+            status: 200
+            proposals:
+              - { key: surname, value: Mukerji, source: user, turn: 1 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [notes]
+            properties:
+              notes:
+                type: array
+                contains:
+                  required: [key, value, status]
+                  properties: { key: { const: surname }, value: { const: Mukherjee }, status: { const: current } }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              notes:
+                type: array
+                contains:
+                  required: [key, value, source, status]
+                  properties: { key: { const: surname }, value: { const: Mukerji }, source: { const: agent }, status: { const: conflict } }
+
+  - name: adversarial_the_notes_file_could_not_be_read
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      The notes store timed out and answered 200 with an error in the body.
+      There was no list of notes in the reply.
+
+      A merge that reads the missing list as an empty file applies the
+      chat's proposals to nothing and returns a file holding only the new
+      notes. The platform saves what it is given, so every correction and all
+      the history the traveller had is gone in one write. A file that could
+      not be read is unknown, and the only safe write is none.
+    spec:
+      kind: agent_run
+      input: { question: "traveller T-2207" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        notes: { fixture: tool_soft_error, params: { status: 200, body: { error: "store_timeout" } } }
+        transcript:
+          returns:
+            status: 200
+            session: s-56
+            turns:
+              - { n: 1, role: traveller, text: "Aisle seats from now on, please." }
+        proposals:
+          returns:
+            status: 200
+            proposals:
+              - { key: seat, value: aisle, source: user, turn: 1 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [notes]
+            properties:
+              notes: { type: "null" }
+
+reference_md: |
+  The incident was a write, and every part of it worked as built. The
+  extraction model read a surname off an itinerary and proposed it, which is
+  its job. The store replaced the value under the key, which is what a
+  key-value store does: LangGraph's store in langgraph 1.2.12, for one, replaces
+  the item under a namespace and key on `put` and keeps no history. Nothing
+  in the write knew that one value came from the traveller and the other from
+  a document she had already corrected.
+
+  So the write has to carry who said each value, and rank by it. The
+  traveller outranks the assistant. An equal or stronger value replaces the
+  one in force and the old one is kept as replaced, so the history survives.
+  A weaker value that disagrees is kept as a conflict, beside the correction:
+  the itinerary still says Mukerji, and somebody fixing the HR record will
+  want to know that.
+
+  The rank is only as good as the source behind it, and the source the
+  extraction model reports is a claim. Ranked by that claim, any guess can
+  borrow the traveller's authority, and the mechanism that protects a
+  correction becomes the way to overwrite one. The transcript records who
+  said what, so the merge checks the cited turn: the traveller's own, with
+  the value in it. The same check works the other way, and a correction the
+  model mislabelled as its own still counts as the traveller's.
+
+  Two smaller rules keep the file honest. The same value written in another
+  case or with a stray space is no change, so it neither replaces anything
+  nor raises a conflict nobody needs to resolve. And a notes file that could
+  not be read is unknown, never empty: written back, an empty read erases
+  every correction the traveller ever made.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A user corrected a fact about themselves, and a week later your agent is using the old value again. How did that happen, and what do you change in how the agent writes its memory?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I018.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: notes
+    args: ''
+    returns: A status and the traveller's `notes`, each with `key`, `value`, `source`, `session`, `turn`
+      and `status`.
+  - name: transcript
+    args: ''
+    returns: A status, this chat's `session` id, and its `turns`, each with `n`, `role` and `text`.
+  - name: proposals
+    args: ''
+    returns: A status and the extraction model's `proposals` in order, each with `key`, `value`, a claimed
+      `source` and the `turn` it cites.
+example:
+  case: a_traveller_changes_a_preference_and_adds_one
+  expect: Turn 3 is the traveller's and holds both values, so both proposals rank as theirs. The aisle seat
+    replaces the window seat, which stays in the file as replaced, and the meal becomes a new current note.
+traps:
+  - Letting the proposal written last win, so the assistant's reading of an old document replaces the
+    traveller's correction.
+  - Trusting the source the extraction model reports, when the transcript says who actually spoke.
+  - Treating the same value written in another case as a change, which writes a replacement or a conflict
+    nobody needs.
+  - Reading a notes file that failed to load as empty, and writing back a file with only the new notes.

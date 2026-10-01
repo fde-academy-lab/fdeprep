@@ -1,0 +1,596 @@
+slug: pack-the-window-without-cutting-items
+title: "Pack the context window without cutting items"
+day: 14
+skill: Fill a token budget by priority, leave items out whole, and name what was left out
+artefact_type: code
+difficulty: hard
+track: context
+concept:
+  topic: "Long context"
+  question: "What reaches the model when everything you have will not fit in the window?"
+est_minutes: 45
+competencies:
+  - { slug: context-assembly, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  An airline the size of IndiGo runs a disruption assistant that rebooks and
+  refunds passengers when flights are cancelled. Its prompt builder works
+  with four kinds of item: the desk's instructions, the chat so far, fare
+  rules retrieved for the ticket, and the results of booking lookups. It
+  joined them in the order they arrived and cut the text at the model's
+  limit.
+
+  On the night of Sunday 27 September a storm closed Mumbai airport for six
+  hours, and the chats ran long. In 212 of them the booking lookup arrived
+  last, and the cut fell inside it. One record reached the model as "Flexi
+  fare, 18,400 rupees paid. Refund: eligible", and the rest of it, "outbound
+  flown 26 Sep, the refund covers the unflown return only", never did. The
+  assistant promised 38 passengers a full refund, and nothing in any prompt
+  said a record had been cut.
+
+  The desk has written down what the model must read, which items earn their
+  place first, and what the model must be told about the rest. Write the
+  prompt builder.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the passenger's newest message. `tools["context"]()` returns
+  the token `window` and every item the builder could use, in the order the
+  items arrived:
+
+      {"status": 200, "window": 200,
+       "items": [{"id": "desk-1", "kind": "instruction", "tokens": 40, "text": "..."},
+                 {"id": "t-1", "kind": "turn", "tokens": 20, "text": "passenger: ..."},
+                 {"id": "pnr-1", "kind": "tool_result", "tokens": 60, "text": "..."},
+                 {"id": "fare-1", "kind": "passage", "rank": 1, "tokens": 30, "text": "..."}]}
+
+  Turns and tool results arrive in time order, so a later one is newer. A
+  passage's `rank` is 1 for the best match. Use `tokens` as given.
+
+  The prompt is one line per item taken, `[<id>] <text>`, then the question
+  as `Question: <question>`. The window holds every item line and the note
+  described below; the question line does not count. A prompt over the
+  window comes back from the model as `error: context_length_exceeded`.
+
+  What the desk requires of the prompt:
+
+  - Every instruction is in it, first, in the order listed. The service
+    refuses a configuration whose instructions do not fit, so they always do.
+  - The other items earn their place in this order: tool results, newest
+    first; then turns, newest first; then passages, best rank first. Each is
+    taken when it fits in the room left. Taken items follow the
+    instructions in the order they arrived.
+  - No item is ever cut. An item that does not fit is left out whole, and the
+    next one in the order is tried.
+  - The chat has no gaps. Once a turn is left out, no older turn is taken,
+    because an older turn read without the newer ones can ask for something
+    the passenger has taken back.
+  - An item whose `tokens` is not a whole number above zero cannot be
+    costed, and is left out.
+  - When anything is left out, the line before the question names every item
+    left out, in the order they arrived, as `Left out: pnr-2, fare-4`. That
+    line costs 10 tokens of the window, and it is there only when something
+    was left out.
+
+  Call `llm(prompt)` once and return
+
+      json.dumps({"answer": <the reply, stripped>,
+                  "included": [<the id on every item line, in prompt order>],
+                  "left_out": [<every id left out, in the order they arrived>]})
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your builder leaves the 1,400-token fare rules page out whenever a long
+  chat fills the window, and names it on the Left out line. The product
+  manager asks you to summarise anything that does not fit instead of
+  leaving it out. What would you be willing to summarise, what would you
+  never summarise, and what would you change upstream so the page stops
+  arriving as one item?
+
+stub_code: |
+  import json
+  import re
+
+  NOTE_TOKENS = 10
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Build a prompt that fits the window, in whole items, and say what is missing.
+
+      tools["context"]() -> {"status": 200, "window": 200, "items": [
+          {"id": ..., "kind": "instruction" | "tool_result" | "turn" | "passage",
+           "tokens": ..., "text": ..., "rank": <passages only>}, ...]}
+      in the order the items arrived.
+
+      Every instruction goes first. Then tool results newest first, turns
+      newest first and passages best rank first, each taken when it fits the
+      room left. No item is cut: one that does not fit is left out and the
+      next is tried. Once a turn is left out, no older turn is taken. An item
+      whose tokens is not a whole number above zero is left out.
+
+      When anything is left out, "Left out: <ids>" goes before the question,
+      naming them in arrival order. That line costs NOTE_TOKENS of the window
+      and is there only when something was left out.
+
+      Prompt: "[<id>] <text>" for each item taken (instructions first, then
+      the rest in arrival order), the Left out line if any, then
+      "Question: <question>". The question line is not counted.
+
+      Return json.dumps({"answer": <the reply, stripped>,
+                         "included": [<ids in prompt order>],
+                         "left_out": [<ids left out, in arrival order>]}).
+      At most 2 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"answer": "", "included": [], "left_out": []})
+
+hints:
+  - Look at what reached the model in the incident. It read the first half of
+    one record, and nothing told it a second half existed. Each requirement
+    in the contract stops one of those two things.
+  - An item is in whole or not at all. The room a big item would have used can
+    still hold a smaller one behind it, except in the chat, where an older
+    turn read without the newer ones can say something the passenger took
+    back.
+  - The Left out line is part of the prompt, and you only know you need it
+    after packing. Pack against the whole window, and when anything was left
+    out, pack again against the window less `NOTE_TOKENS`.
+  - Write one function that packs into a given room and returns the ids it
+    took. Walk tool results, then turns, then passages. A tool result or a
+    passage that does not fit is skipped; the first turn that does not fit
+    ends the turns.
+  - A missing or odd `tokens` value is a cost you cannot read. Treat it as too
+    big to take, and never as free.
+
+scenario:
+  headline: "A booking record cut in half promised full refunds"
+  who: The disruption desk at an airline the size of IndiGo
+  situation: >-
+    The prompt builder joined instructions, chat, fare rules and booking
+    lookups in the order they arrived, then cut the text at the model's
+    limit. On a night of storms the cut fell inside 212 booking records, and
+    the half that reached the model said the fare was refundable.
+  stakes: >-
+    38 passengers were promised full refunds on fares that covered one leg.
+    No prompt said a record had been cut, so the model answered as if it had
+    read all of it.
+  metrics:
+    - { label: Records cut in half, value: "212" }
+    - { label: Full refunds promised, value: "38" }
+    - { label: Hours the airport shut, value: "6" }
+
+diagram:
+  title: Where the limit decided what the model read
+  caption: >-
+    Cut at the limit, the newest record reached the model in half. Packed by
+    priority in whole items, the model reads what fits and hears what did not.
+  direction: lr
+  nodes:
+    - { id: desk, label: Desk instructions, sub: "always in, always first", kind: doc, tone: green, at: [0, 0] }
+    - { id: lookups, label: Booking lookups, sub: the facts an answer quotes, kind: tool, tone: neutral, at: [0, 1] }
+    - { id: chat, label: Chat turns, sub: a newer turn can take one back, kind: store, tone: blue, at: [0, 2] }
+    - { id: fares, label: Fare rules, sub: "ranked, some of them long", kind: doc, tone: teal, at: [0, 3] }
+    - { id: builder, label: Prompt builder, sub: decides what earns a place, kind: agent, tone: purple, at: [1, 1] }
+    - { id: note, label: Left out line, sub: names what did not fit, kind: doc, tone: green, at: [2, 2] }
+    - { id: window, label: Context window, sub: "items and the note, counted", kind: guard, tone: orange, at: [2, 1] }
+    - { id: model, label: Disruption assistant, sub: reads only what it is sent, kind: model, tone: teal, at: [3, 1] }
+    - { id: cut, label: Half a record, sub: "Refund: eligible, and nothing after", kind: output, tone: pink, at: [3, 3] }
+  edges:
+    - { from: desk, to: builder, label: pinned, step: 1 }
+    - { from: lookups, to: builder, label: newest first, step: 2 }
+    - { from: chat, to: builder, label: "newest first, no gaps", step: 3 }
+    - { from: fares, to: builder, label: by rank, step: 4 }
+    - { from: builder, to: window, label: whole items only, tone: success }
+    - { from: builder, to: note, label: what did not fit, tone: success }
+    - { from: note, to: window, label: costs 10 tokens }
+    - { from: window, to: model, label: "fits, and says so", tone: success }
+    - { from: builder, to: cut, label: cut at the limit, tone: danger }
+    - { from: cut, to: model, label: read as the whole record, tone: danger }
+
+approach:
+  goal: Choose what the model reads, in whole items, and tell it what is missing
+  branches:
+    - label: Rank what earns a place
+      leaves: [instructions always, booking facts before the chat, the chat before fare pages]
+    - label: Keep every item whole
+      detail: A cut record can say the opposite of the whole one.
+      leaves: [leave it out instead, "is there a smaller item behind it?"]
+    - label: Keep the chat in one piece
+      leaves: [a newer turn can take an older one back, "what does an older turn mean alone?"]
+    - label: Say what is missing
+      leaves: [name every item left out, the note's tokens count too, an unreadable cost is not zero]
+
+coach:
+  opening: >-
+    Before you write the packing loop, decide what happens at the first item
+    that does not fit, and whether the answer is the same for a turn as for a
+    passage.
+  signals:
+    - id: note-not-paid
+      when:
+        code_matches: 'Left out'
+        code_lacks: '-\s*NOTE_TOKENS'
+      say: >-
+        Your prompt names what was left out, and that line costs
+        `NOTE_TOKENS` of the window. Where does your packing pay for it?
+    - id: free-item
+      when: { code_matches: '\.get\(\s*["'']tokens["'']\s*,\s*0\s*\)' }
+      say: >-
+        An item with no `tokens` counts as free in your code. What does an
+        item whose cost you cannot read really cost the window?
+    - id: hidden-gap
+      when: { test_failed: a_newer_turn_that_does_not_fit_keeps_the_older_ones_out }
+      say: >-
+        In that run the newest turn was too long for the room left, and the
+        older turns were short. Read your prompt and say what it tells the
+        model the passenger wants.
+    - id: hidden-short-rule
+      when: { test_failed: a_short_rule_behind_a_long_page_still_gets_in }
+      say: >-
+        A long passage did not fit in that run. What happened to the short
+        one ranked behind it?
+    - id: hidden-note-room
+      when: { test_failed: the_left_out_line_needs_room_of_its_own }
+      say: >-
+        That run filled the window to within a few tokens before anything was
+        left out. Count your prompt again with the Left out line in it.
+    - id: hidden-whole
+      when: { test_failed: a_record_too_big_for_the_room_is_left_out_whole }
+      say: >-
+        One booking record in that run was bigger than all the room left. Is
+        any part of it in your prompt?
+    - id: adversarial-no-count
+      when: { test_failed: adversarial_a_result_with_no_token_count }
+      say: >-
+        One tool result in that run had no `tokens` field. What did your code
+        charge the window for it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write the packing for one kind first: tool results, newest first,
+        skipping what does not fit. Then add the turns, which stop instead of
+        skipping.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Hints open after one failed run on this tier,
+        and the first one says where to look in the incident.
+  wrap_up: >-
+    A window that cannot hold everything needs a decision about what goes,
+    made by priority and in whole items, and the model needs to hear it. A
+    cut item and a silent gap both read to the model as the whole story.
+
+tests:
+  - name: everything_fits_with_no_room_to_spare
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "How much do I get back, and when?" }
+      llm_script:
+        - match: { all: [ { contains: "the refund covers the unflown return only: 9,200 rupees" },
+                          { contains: "within 7 days" } ] }
+          reply: "You get 9,200 rupees back for the cancelled return, on the card you paid with, within 7 days."
+        - { match: "*", reply: "I need to see your booking before I can say." }
+      tools:
+        context:
+          returns:
+            status: 200
+            window: 200
+            items:
+              - { id: desk-1, kind: instruction, tokens: 40,
+                  text: "You are the disruption desk assistant. Quote a refund amount only when a booking record in this prompt states it." }
+              - { id: desk-2, kind: instruction, tokens: 20,
+                  text: "If a record you need is on the Left out line, say you are fetching it and quote no amount." }
+              - { id: t-1, kind: turn, tokens: 20, text: "passenger: My return flight 2134 tonight was cancelled." }
+              - { id: t-2, kind: turn, tokens: 20, text: "agent: I am sorry. I will look up your booking." }
+              - { id: pnr-1, kind: tool_result, tokens: 60,
+                  text: "Booking QX4T7P: Flexi fare, 18,400 rupees paid. Outbound flight 2131 flown on 26 Sep. Return flight 2134 cancelled, so the refund covers the unflown return only: 9,200 rupees." }
+              - { id: fare-1, kind: passage, rank: 1, tokens: 40,
+                  text: "Flexi fares: a cancelled flight is refunded for its unflown legs, to the card used to pay, within 7 days." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: context }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answer, included, left_out]
+            properties:
+              answer: { type: string }
+              included: { type: array }
+              left_out: { type: array, maxItems: 0 }
+        - { type: returns_matches, value: "9,200 rupees back" }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: two_passages_are_left_out_and_named
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "So how much will I get back?" }
+      llm_script:
+        - match: { all: [ { contains: "the refund covers the unflown return only: 9,200 rupees" },
+                          { contains: "Left out: fare-1, fare-2" } ] }
+          reply: "You get 9,200 rupees back for the cancelled return. I am fetching the refund rules to tell you when."
+        - { match: { contains: "the refund covers the unflown return only: 9,200 rupees" },
+            reply: "You get 9,200 rupees back for the cancelled return." }
+        - { match: "*", reply: "I need to see your booking before I can say." }
+      tools:
+        context:
+          returns:
+            status: 200
+            window: 200
+            items:
+              - { id: desk-1, kind: instruction, tokens: 40,
+                  text: "You are the disruption desk assistant. Quote a refund amount only when a booking record in this prompt states it." }
+              - { id: desk-2, kind: instruction, tokens: 20,
+                  text: "If a record you need is on the Left out line, say you are fetching it and quote no amount." }
+              - { id: t-1, kind: turn, tokens: 20, text: "passenger: The storm cancelled my return flight." }
+              - { id: t-2, kind: turn, tokens: 20, text: "agent: I am sorry. I will look up your booking." }
+              - { id: pnr-1, kind: tool_result, tokens: 60,
+                  text: "Booking QX4T7P: Flexi fare, 18,400 rupees paid. Outbound flight 2131 flown on 26 Sep. Return flight 2134 cancelled, so the refund covers the unflown return only: 9,200 rupees." }
+              - { id: t-3, kind: turn, tokens: 20, text: "passenger: I would rather have the money than another flight." }
+              - { id: fare-1, kind: passage, rank: 1, tokens: 30,
+                  text: "Flexi fares: a cancelled flight is refunded for its unflown legs." }
+              - { id: fare-2, kind: passage, rank: 2, tokens: 25,
+                  text: "Refunds reach the card used to pay within 7 days." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "fetching the refund rules" }
+        - { type: returns_matches, value: '"left_out"\s*:\s*\[\s*"fare-1"\s*,\s*"fare-2"\s*\]' }
+        - { type: returns_matches, value: '"included"\s*:\s*\[\s*"desk-1"\s*,\s*"desk-2"\s*,\s*"t-1"\s*,\s*"t-2"\s*,\s*"pnr-1"\s*,\s*"t-3"\s*\]' }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_newer_turn_that_does_not_fit_keeps_the_older_ones_out
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Can you go ahead with that now?" }
+      llm_script:
+        - { match: { contains: "rebook me on the 06:10 flight" },
+            reply: "Done. I have rebooked you on flight 2131 at 06:10 tomorrow." }
+        - { match: { contains: "Please refund the whole booking to my card" },
+            reply: "Done. I have refunded the whole booking, 18,400 rupees, to your card." }
+        - { match: { regex: 'Left out:[^\n]*t-3' },
+            reply: "Your last messages did not reach me in full. Do you want the refund or the rebooking?" }
+        - { match: "*", reply: "What would you like me to go ahead with?" }
+      tools:
+        context:
+          returns:
+            status: 200
+            window: 200
+            items:
+              - { id: desk-1, kind: instruction, tokens: 40,
+                  text: "You are the disruption desk assistant. Quote a refund amount only when a booking record in this prompt states it." }
+              - { id: desk-2, kind: instruction, tokens: 20,
+                  text: "If a record you need is on the Left out line, say you are fetching it and quote no amount." }
+              - { id: t-1, kind: turn, tokens: 15, text: "passenger: Please refund the whole booking to my card." }
+              - { id: t-2, kind: turn, tokens: 15, text: "agent: I can do that once I have checked your fare." }
+              - { id: pnr-1, kind: tool_result, tokens: 60,
+                  text: "Booking QX4T7P: Flexi fare, 18,400 rupees paid. Outbound flight 2131 flown on 26 Sep. Return flight 2134 cancelled, so the refund covers the unflown return only: 9,200 rupees." }
+              - { id: t-3, kind: turn, tokens: 90,
+                  text: "passenger: Wait, do not refund anything. My sister is flying tomorrow after all, so rebook me on the 06:10 flight instead, a window seat if there is one, and keep my booking reference so she can find me on the same booking." }
+              - { id: fare-3, kind: passage, rank: 1, tokens: 20,
+                  text: "Flexi fares can be rebooked once for free on the same route." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)do you want the refund or the rebooking" }
+        - { type: returns_matches, value: '"left_out"\s*:\s*\[\s*"t-1"\s*,\s*"t-2"\s*,\s*"t-3"\s*\]' }
+        - { type: prompt_lacks, value: "refund the whole booking" }
+
+  - name: a_short_rule_behind_a_long_page_still_gets_in
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Where will the money go if my old card no longer works?" }
+      llm_script:
+        - { match: { contains: "passes the refund on to the replacement card" },
+            reply: "Your bank passes the 9,200 rupees on to your replacement card." }
+        - { match: { regex: 'Left out:[^\n]*fare-4' },
+            reply: "I am fetching the rule for cancelled cards before I answer." }
+        - { match: "*", reply: "The refund goes back to the card you paid with." }
+      tools:
+        context:
+          returns:
+            status: 200
+            window: 220
+            items:
+              - { id: desk-1, kind: instruction, tokens: 40,
+                  text: "You are the disruption desk assistant. Quote a refund amount only when a booking record in this prompt states it." }
+              - { id: desk-2, kind: instruction, tokens: 20,
+                  text: "If a record you need is on the Left out line, say you are fetching it and quote no amount." }
+              - { id: t-1, kind: turn, tokens: 20, text: "passenger: My card was cancelled last week after it was stolen." }
+              - { id: t-2, kind: turn, tokens: 20, text: "agent: I am sorry to hear that. Your refund is 9,200 rupees." }
+              - { id: pnr-1, kind: tool_result, tokens: 60,
+                  text: "Booking QX4T7P: Flexi fare, 18,400 rupees paid. Outbound flight 2131 flown on 26 Sep. Return flight 2134 cancelled, so the refund covers the unflown return only: 9,200 rupees." }
+              - { id: fare-9, kind: passage, rank: 1, tokens: 120,
+                  text: "Flexi fare rules in full. Changes: one free change on the same route up to two hours before departure. Cancellations by the passenger: the fare less a fee of 1,500 rupees per leg. Cancellations by the airline: the unflown legs are refunded. Name changes are not allowed. Seats and meals carry over to a changed flight where the aircraft allows." }
+              - { id: fare-4, kind: passage, rank: 2, tokens: 25,
+                  text: "When the card used to pay has been cancelled, the bank passes the refund on to the replacement card." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)replacement card" }
+        - { type: returns_matches, value: '"left_out"\s*:\s*\[\s*"fare-9"\s*\]' }
+
+  - name: the_left_out_line_needs_room_of_its_own
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How much is coming back to me?" }
+      llm_script:
+        - match: { all: [ { contains: "Left out:" }, { contains: "Refunds go to the card." } ] }
+          reply: "error: context_length_exceeded"
+        - { match: { contains: "the refund covers both legs: 11,600 rupees" },
+            reply: "Both legs are refunded: 11,600 rupees in all, back on your card." }
+        - { match: "*", reply: "I need to see your booking before I can say." }
+      tools:
+        context:
+          returns:
+            status: 200
+            window: 200
+            items:
+              - { id: desk-1, kind: instruction, tokens: 40,
+                  text: "You are the disruption desk assistant. Quote a refund amount only when a booking record in this prompt states it." }
+              - { id: desk-2, kind: instruction, tokens: 20,
+                  text: "If a record you need is on the Left out line, say you are fetching it and quote no amount." }
+              - { id: t-1, kind: turn, tokens: 20, text: "passenger: Both of my flights were cancelled by the storm." }
+              - { id: pnr-2, kind: tool_result, tokens: 70,
+                  text: "Booking ZM8L2Q: Saver fare, 11,600 rupees paid. Outbound flight 5022 and return flight 5023 were both cancelled, so the refund covers both legs: 11,600 rupees." }
+              - { id: t-2, kind: turn, tokens: 20, text: "agent: I am sorry. I will check what your fare allows." }
+              - { id: t-3, kind: turn, tokens: 20, text: "passenger: Please put it all back on my card." }
+              - { id: fare-5, kind: passage, rank: 1, tokens: 25,
+                  text: "Saver fares: a flight the airline cancels is refunded in full." }
+              - { id: fare-6, kind: passage, rank: 2, tokens: 6, text: "Refunds go to the card." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "11,600 rupees in all" }
+        - { type: returns_matches, value: '"left_out"\s*:\s*\[\s*"fare-5"\s*,\s*"fare-6"\s*\]' }
+        - { type: returns_lacks, value: "context_length_exceeded" }
+
+  - name: a_record_too_big_for_the_room_is_left_out_whole
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "What will I get back for the cancelled flight?" }
+      llm_script:
+        - { match: { contains: "the refund covers the unflown return only: 9,200 rupees" },
+            reply: "You get 9,200 rupees back for the cancelled return." }
+        - { match: { contains: "Refund: eligible" },
+            reply: "You get the full 18,400 rupees back." }
+        - { match: { regex: 'Left out:[^\n]*pnr-3' },
+            reply: "I am fetching your booking record before I quote an amount." }
+        - { match: "*", reply: "Flexi fares are refunded for their unflown legs." }
+      tools:
+        context:
+          returns:
+            status: 200
+            window: 200
+            items:
+              - { id: desk-1, kind: instruction, tokens: 40,
+                  text: "You are the disruption desk assistant. Quote a refund amount only when a booking record in this prompt states it." }
+              - { id: desk-2, kind: instruction, tokens: 20,
+                  text: "If a record you need is on the Left out line, say you are fetching it and quote no amount." }
+              - { id: t-1, kind: turn, tokens: 20, text: "passenger: The storm cancelled my flight home." }
+              - { id: pnr-3, kind: tool_result, tokens: 150,
+                  text: "Booking KD5R9W: Flexi fare, 18,400 rupees paid. Refund: eligible. Passenger: one adult, seat 14A outbound, meal booked. Outbound flight 2131 Mumbai to Delhi flown on 26 Sep at 06:10 from gate 42. Baggage: one bag, 15 kg, delivered. Return flight 2134 Delhi to Mumbai cancelled on 27 Sep by the storm, so the refund covers the unflown return only: 9,200 rupees." }
+              - { id: fare-1, kind: passage, rank: 1, tokens: 30,
+                  text: "Flexi fares: a cancelled flight is refunded for its unflown legs." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)fetching your booking record" }
+        - { type: returns_matches, value: '"left_out"\s*:\s*\[\s*"pnr-3"\s*\]' }
+        - { type: prompt_lacks, value: "KD5R9W" }
+
+  - name: adversarial_a_result_with_no_token_count
+    visibility: adversarial
+    fixture: schema_drift
+    annotation_md: |
+      The booking service's new release renamed `tokens` to `token_count` on
+      its trip exports, and a trip export runs to 2,400 tokens. A builder
+      that reads the missing count as zero takes the export for free, and the
+      prompt reaches the model at more than ten times the window, which the
+      model refuses.
+
+      A cost nobody can read is a cost nobody can fit. The export is left out
+      and named on the Left out line, and the one booking the passenger asked
+      about still fits beside it.
+    spec:
+      kind: agent_run
+      input: { question: "What do I get back for the cancelled one?" }
+      llm_script:
+        - { match: { contains: "Trip export, 3 bookings" }, reply: "error: context_length_exceeded" }
+        - match: { all: [ { contains: "the refund covers that leg: 3,650 rupees" },
+                          { regex: 'Left out:[^\n]*pnr-4' } ] }
+          reply: "You get 3,650 rupees back for the cancelled return. I am still fetching the rest of your trip."
+        - { match: { contains: "the refund covers that leg: 3,650 rupees" },
+            reply: "You get 3,650 rupees back for the cancelled return." }
+        - { match: "*", reply: "I need to see your booking before I can say." }
+      tools:
+        context:
+          returns:
+            status: 200
+            window: 200
+            items:
+              - { id: desk-1, kind: instruction, tokens: 40,
+                  text: "You are the disruption desk assistant. Quote a refund amount only when a booking record in this prompt states it." }
+              - { id: desk-2, kind: instruction, tokens: 20,
+                  text: "If a record you need is on the Left out line, say you are fetching it and quote no amount." }
+              - { id: t-1, kind: turn, tokens: 20, text: "passenger: Can you check my whole trip? I have three bookings with you." }
+              - { id: pnr-4, kind: tool_result, token_count: 2400,
+                  text: "Trip export, 3 bookings, 41 segments, every fare rule, seat map and baggage record for each segment, newest first." }
+              - { id: pnr-5, kind: tool_result, tokens: 50,
+                  text: "Booking HT2M6Q: Saver fare, 7,300 rupees paid. Return flight 6081 cancelled, so the refund covers that leg: 3,650 rupees." }
+              - { id: fare-7, kind: passage, rank: 1, tokens: 30,
+                  text: "Saver fares: a flight the airline cancels is refunded in full for that leg." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_lacks, value: "context_length_exceeded" }
+        - { type: returns_matches, value: '"left_out"\s*:\s*\[\s*"pnr-4"\s*\]' }
+        - { type: returns_matches, value: "3,650 rupees back" }
+
+reference_md: |
+  The incident had two causes, and only one of them was the limit. The
+  builder joined items in the order they arrived, and the booking lookup
+  arrives last, so the item every answer depended on stood exactly where the
+  cut fell. Then the half that survived reached the model looking like a
+  whole record. "Refund: eligible" was true, and the sentence that limited it
+  was in the half that was cut.
+
+  Priority answers the first cause and whole items answer the second.
+  Booking facts outrank the chat because they are what an answer has to
+  quote, and the chat outranks fare pages because the passenger's own words
+  decide what they want. An item that does not fit is left out whole, and the
+  room it would have taken goes to the next item that fits, so a short rule
+  is never lost behind a long page.
+
+  The chat is the exception, because its order is its meaning. A newer turn
+  can withdraw an older one, and "refund it to my card" read without "wait,
+  rebook me instead" is an instruction the passenger has taken back. Once one
+  turn is left out, the older ones go with it, and the model asks.
+
+  The Left out line turns a silent gap into something the model can act on:
+  the desk's second instruction tells it not to quote an amount from a record
+  it cannot see. The line is part of the prompt, so it is paid for out of the
+  same window, and it exists only when something was left out. You only know
+  that after packing, which is why a packing that leaves anything out runs a
+  second time with ten tokens less room. A cost that cannot be read is
+  treated as too big, because free is the one cost it certainly does not
+  have.
+
+  Libraries make the same choices as flags. In langchain-core 1.6.6,
+  `trim_messages` keeps the newest run of whole messages that fits, cuts a
+  message only with `allow_partial=True`, and keeps the system message only
+  with `include_system=True`. Both flags default to `False`: whole items are
+  the default, and the pinned instructions are not.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Your agent's prompt holds instructions, chat history, retrieved documents and tool results, and they no longer fit the context window. What goes in, what comes out, and how does the model find out what it is missing?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: context
+    args: ''
+    returns: The token `window`, and every item in arrival order with its `id`, `kind`, `tokens` and `text`,
+      plus a `rank` on a passage.
+example:
+  case: two_passages_are_left_out_and_named
+  expect: Instructions, `pnr-1` and all three turns fill 180 of the 200 tokens. Neither passage fits the
+    20 left, so the prompt names both on the Left out line, and the reply quotes 9,200 rupees.
+traps:
+  - Taking an older turn after a newer one was left out, so a request the passenger has taken back reads
+    as what they want now.
+  - Stopping at the first passage or result that does not fit, when a shorter one behind it would have.
+  - Adding the Left out line after packing, so the note itself pushes the prompt past the window.
+  - Cutting an item to use the last few tokens, or counting an item with no token count as free.

@@ -1329,6 +1329,17 @@ stages:
         acceptance:
           - A solution that builds a LangGraph graph, pauses at an interrupt and resumes from its checkpoint, and validates a LangChain tool's arguments passes inside the real sandbox, and a graph that never ends stops at its recursion limit.
           - A solution that imports no framework runs in exactly the sandbox it ran in before, and the static gate's route walk covers the framework modules.
+      - id: S12.14
+        title: Write the problems the thin chapters were missing, weighted to Hard and Extreme
+        type: Feature
+        status: done
+        pr: 45
+        points: 21
+        area: Content
+        finish: 2026-10-01
+        acceptance:
+          - Human in the loop, observability, orchestration, harness, loop, tools, context, memory, guardrails, evals and Agentic PDLC gain 35 problems between them, 13 of them Hard and 9 Extreme, each validated in full.
+          - Every new code problem's reference passes every gate and its naive solution fails a hidden test through the runner, its stub fails a public test and every step check, and its coach is quiet on the reference and fires on the naive solution.
 
   - id: S13
     name: Voice interviewer v2, step 1

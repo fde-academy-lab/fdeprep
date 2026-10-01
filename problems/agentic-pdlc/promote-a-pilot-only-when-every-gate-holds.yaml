@@ -1,0 +1,494 @@
+slug: promote-a-pilot-only-when-every-gate-holds
+title: "Promote a pilot only when every gate holds"
+day: 27
+skill: Move a pilot up one stage only on evidence, and name every gate it still misses
+artefact_type: code
+difficulty: medium
+track: agentic-pdlc
+concept:
+  topic: "POC, MVP, production"
+  question: "When has a pilot earned the next stage, and what counts as evidence?"
+est_minutes: 30
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json]
+
+brief_md: |
+  Your client, a pharmacy chain the size of Apollo Pharmacy, runs three agent
+  pilots in its finance and supply teams. A steering committee reviews each
+  one every week and decides whether it stays a POC, becomes an MVP with real
+  users, or goes to production. The gates for each stage were agreed with the
+  chief financial officer, who sponsors all three pilots.
+
+  Until now a spreadsheet made the call. Last Thursday it moved the
+  supplier-onboarding pilot from POC straight to production. Its accuracy was
+  100 percent, read from 30 graded tasks where the table asks for 400, and its
+  spend column was empty, which the spreadsheet read as zero. The CFO caught
+  it the next morning and has asked you for a gate check the committee can
+  rerun and trust.
+
+  Write it. It says where a pilot stands after the review, and names every
+  gate the pilot still misses for the stage above.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the committee's question about one pilot. Call
+  `tools["pilot_results"]()` and `tools["gate_table"]()` once each. `llm` is
+  passed in and must not be called: the decision is arithmetic against a
+  table the sponsor agreed.
+
+  `pilot_results()` returns what the pilot measured:
+
+      {"stage": "poc", "tasks": 4200, "escalated": 966,
+       "graded": 250, "correct": 230, "spend_inr": 52500,
+       "signed_off": ["mvp"]}
+
+  `stage` is where the pilot is now, `poc` or `mvp`. `tasks` counts every task
+  the agent attempted, `escalated` the ones it handed to a person, `graded`
+  the ones a reviewer checked and `correct` how many of those it got right.
+  `spend_inr` is the model and tool spend for the period, and `signed_off`
+  lists the stages the sponsor has signed off.
+
+  `gate_table()` returns the gates of each stage above a POC:
+
+      {"mvp":        {"accuracy": 0.85, "min_graded": 100,
+                      "cost_per_task_inr": 18, "escalation_rate": 0.35},
+       "production": {"accuracy": 0.95, "min_graded": 400,
+                      "cost_per_task_inr": 9, "escalation_rate": 0.15}}
+
+  A stage has four gates, checked in this order:
+
+  | Gate | Holds when |
+  |---|---|
+  | `accuracy` | `graded` is at least `min_graded`, and `correct / graded` is at least `accuracy` |
+  | `cost_per_task` | `spend_inr / tasks` is at most `cost_per_task_inr` |
+  | `escalation_rate` | `escalated / tasks` is at most `escalation_rate` |
+  | `sign_off` | the stage is in `signed_off` |
+
+  A gate whose measurement is missing or null does not hold.
+
+  A pilot moves up one stage when every gate of the stage above holds. It
+  moves at most one stage in a review, so a POC never goes straight to
+  production, and it never moves down.
+
+  Return a JSON string:
+
+      {"stage": "mvp", "missed": ["accuracy", "sign_off"]}
+
+  `stage` is where the pilot stands after the review. `missed` names every
+  gate of the stage above it that does not hold, in the order of the table,
+  and is empty when the pilot is in production.
+
+  Budget: one call to each tool and no model calls. Allowed imports: json.
+
+stub_code: |
+  import json
+
+  STAGES = ("poc", "mvp", "production")
+  GATES = ("accuracy", "cost_per_task", "escalation_rate", "sign_off")
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      results = tools["pilot_results"]()
+      table = tools["gate_table"]()
+      stage = results.get("stage", "poc")
+
+      # TODO 1: for a stage, check its four gates in the order of GATES and
+      #         keep every one that does not hold, not only the first
+      # TODO 2: a measurement that is missing or null does not hold, and
+      #         neither does an accuracy read from fewer than min_graded tasks
+      # TODO 3: move up to the stage above when every one of its gates holds
+      # TODO 4: move at most one stage in a review, and never down
+
+      missed = []
+      return json.dumps({"stage": stage, "missed": missed})
+
+steps:
+  - id: s1
+    text: Check each of a stage's four gates, and name every one that does not hold.
+    check_id: s1
+  - id: s2
+    text: Treat a missing measurement, or accuracy from fewer than `min_graded` tasks, as a gate that does not hold.
+    check_id: s2
+  - id: s3
+    text: Move the pilot up a stage when every gate of the stage above holds.
+    check_id: s3
+  - id: s4
+    text: Move a POC no further than MVP in one review, whatever its numbers say.
+    check_id: s4
+
+step_checks:
+  # The first public pilot misses all four production gates, so only code
+  # that checks every gate names all four.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"missed":\s*\["accuracy",\s*"cost_per_task",\s*"escalation_rate",\s*"sign_off"\]' }
+  # Every public pilot reports every measurement on a big enough sample, so
+  # this check runs its own: 60 graded tasks against a table asking for 100,
+  # and no spend at all.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Can the credit-note pilot become an MVP this week?" }
+      llm_script:
+        - { match: "*", reply: "Production. Every number on the dashboard is green." }
+      tools:
+        pilot_results:
+          returns: { stage: poc, tasks: 900, escalated: 180, graded: 60, correct: 58, signed_off: [mvp] }
+        gate_table:
+          returns:
+            mvp: { accuracy: 0.85, min_graded: 100, cost_per_task_inr: 18, escalation_rate: 0.35 }
+            production: { accuracy: 0.95, min_graded: 400, cost_per_task_inr: 9, escalation_rate: 0.15 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"stage":\s*"poc"' }
+        - { type: returns_matches, value: '"missed":\s*\["accuracy",\s*"cost_per_task"\]' }
+  # The starter code never returns production, so this holds only once the
+  # third public pilot is promoted.
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"stage":\s*"production"' }
+  # No public pilot is a POC with production numbers, so this check runs one.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "The shelf-audit pilot beat the production gates. Where does it stand?" }
+      llm_script:
+        - { match: "*", reply: "Production. Every number on the dashboard is green." }
+      tools:
+        pilot_results:
+          returns: { stage: poc, tasks: 3000, escalated: 330, graded: 420, correct: 405, spend_inr: 24000, signed_off: [mvp, production] }
+        gate_table:
+          returns:
+            mvp: { accuracy: 0.85, min_graded: 100, cost_per_task_inr: 18, escalation_rate: 0.35 }
+            production: { accuracy: 0.95, min_graded: 400, cost_per_task_inr: 9, escalation_rate: 0.15 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"stage":\s*"mvp"' }
+
+hints:
+  - Before comparing anything, write down for each gate which fields it reads
+    and what has to be true of them. Then ask what each gate does when one of
+    those fields is missing.
+  - A blank and a zero are different facts, and so are 30 graded tasks and
+    400. A gate whose evidence is missing or too thin has not been shown to
+    hold.
+  - Write one function that takes a stage and returns every gate of that stage
+    that does not hold. Promotion is then a question of whether that list is
+    empty for the stage above.
+  - The stage above depends on where the pilot is now. A POC's stage above is
+    MVP, whatever its numbers say about production.
+
+scenario:
+  headline: "A spreadsheet moved a pilot from POC to production on 30 graded tasks"
+  who: The steering committee at a pharmacy chain the size of Apollo Pharmacy
+  situation: >-
+    Three agent pilots are reviewed every week against gates the CFO agreed.
+    Last Thursday the committee's spreadsheet sent one from POC straight to
+    production, on a perfect accuracy from 30 graded tasks and a spend column
+    nobody filled in.
+  stakes: >-
+    A pilot promoted on evidence nobody gathered touches real suppliers'
+    payments, and the committee stops trusting every number the next pilot
+    brings.
+  metrics:
+    - { label: Graded tasks behind 100%, value: 30 of 400 }
+    - { label: Spend recorded, value: none }
+    - { label: Stages skipped, value: "1" }
+
+diagram:
+  title: Where the spreadsheet read a blank as a pass
+  caption: >-
+    Each gate reads its evidence from the results. A gate whose evidence is
+    missing or too thin cannot hold, and a POC becomes an MVP first.
+  direction: lr
+  nodes:
+    - { id: results, label: Pilot results, sub: what the pilot measured, kind: store, tone: blue, at: [0, 0] }
+    - { id: table, label: Gate table, sub: agreed with the CFO, kind: doc, tone: purple, at: [0, 2] }
+    - { id: check, label: Gate check, sub: four gates for the stage above, kind: guard, tone: teal, at: [1, 1] }
+    - { id: stage, label: Stage after review, sub: one step up at most, kind: decision, tone: green, at: [2, 0] }
+    - { id: missed, label: Missed gates, sub: "every one, in table order", kind: output, tone: orange, at: [2, 2] }
+    - { id: sheet, label: The old spreadsheet, sub: read a blank spend as zero, kind: doc, tone: pink, at: [1, 3] }
+  edges:
+    - { from: results, to: check, label: measurements, step: 1 }
+    - { from: table, to: check, label: thresholds, step: 1 }
+    - { from: check, to: stage, label: every gate holds, tone: success, step: 2 }
+    - { from: check, to: missed, label: any gate does not, step: 2 }
+    - { from: results, to: sheet, label: "30 graded, no spend", tone: muted }
+    - { from: sheet, to: stage, label: POC to production, tone: danger }
+
+approach:
+  goal: Move a pilot up only when every gate of the stage above has its evidence
+  branches:
+    - label: Work out each measurement
+      leaves: [accuracy from the graded tasks, cost and escalation per task attempted]
+    - label: Decide what missing evidence means
+      detail: A blank spend is a figure nobody recorded, and a few graded tasks are too few to trust.
+      leaves: [a field that is missing or null, fewer graded tasks than `min_graded`]
+    - label: Name every miss
+      leaves: [all four gates every time, in the order of the table]
+    - label: Move one stage at a time
+      leaves: [a POC becomes an MVP first, a pilot never moves down]
+
+coach:
+  opening: >-
+    Before you compare anything, list what each gate needs from the results,
+    and what the gate does when that evidence is missing.
+  signals:
+    - id: no-min-graded
+      when:
+        code_matches: '["'']correct["'']'
+        code_lacks: 'min_graded'
+      say: >-
+        Your accuracy never looks at `min_graded`. Would you promote a pilot on
+        30 graded tasks when the table asks for 400?
+    - id: blank-as-zero
+      when: { code_matches: '\.get\(\s*["''](spend_inr|graded|correct|escalated|tasks)["'']\s*,\s*0' }
+      say: >-
+        A blank becomes a zero here. Is a spend nobody recorded the same as a
+        pilot that cost nothing?
+    - id: calls-model
+      when: { code_matches: '\bllm\s*\(' }
+      say: >-
+        The gates are arithmetic against a table the sponsor agreed. What would
+        a model call add, and could the committee reproduce its answer?
+    - id: hidden-skips-a-stage
+      when: { test_failed: a_poc_moves_one_stage_even_with_production_numbers }
+      say: >-
+        In that run a POC cleared every production gate. Where does your code
+        decide which stage is the one above?
+    - id: hidden-thin-sample
+      when: { test_failed: thirty_right_out_of_thirty_is_too_few_to_count }
+      say: >-
+        In that run the accuracy was perfect. How many tasks was it read from,
+        and how many does the table ask for?
+    - id: hidden-missing-spend
+      when: { test_failed: spend_nobody_recorded_does_not_hold }
+      say: >-
+        In that run one measurement was never recorded. What does your code do
+        with a value that is not there?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one function that takes a stage and returns every gate it
+        misses. The stage decision is whether that list is empty.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints go from where to look to the shape of
+        the fix, so open the first one.
+  wrap_up: >-
+    A gate holds only when its evidence is there. Count a blank as a miss,
+    read accuracy from a sample big enough to mean something, name every
+    miss, and move one stage at a time.
+
+tests:
+  - name: a_poc_that_holds_every_mvp_gate_becomes_an_mvp
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Where does the invoice-matching pilot stand after week six?" }
+      llm_script:
+        - { match: "*", reply: "Production. Every number on the dashboard is green." }
+      tools:
+        pilot_results:
+          returns: { stage: poc, tasks: 4200, escalated: 966, graded: 250, correct: 230, spend_inr: 52500, signed_off: [mvp] }
+        gate_table:
+          returns:
+            mvp: { accuracy: 0.85, min_graded: 100, cost_per_task_inr: 18, escalation_rate: 0.35 }
+            production: { accuracy: 0.95, min_graded: 400, cost_per_task_inr: 9, escalation_rate: 0.15 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: pilot_results }
+        - { type: calls_tool, name: gate_table }
+        - { type: tool_calls_at_most, value: 2 }
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [stage, missed]
+            properties:
+              stage: { enum: [poc, mvp, production] }
+              missed: { type: array, items: { type: string } }
+        - { type: returns_matches, value: '"stage":\s*"mvp"' }
+        - { type: returns_matches, value: '"missed":\s*\["accuracy",\s*"cost_per_task",\s*"escalation_rate",\s*"sign_off"\]' }
+
+  - name: a_poc_that_misses_two_mvp_gates_stays_a_poc
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Can the supplier-onboarding pilot become an MVP yet?" }
+      llm_script:
+        - { match: "*", reply: "Production. Every number on the dashboard is green." }
+      tools:
+        pilot_results:
+          returns: { stage: poc, tasks: 1800, escalated: 810, graded: 160, correct: 146, spend_inr: 23400, signed_off: [] }
+        gate_table:
+          returns:
+            mvp: { accuracy: 0.9, min_graded: 150, cost_per_task_inr: 15, escalation_rate: 0.3 }
+            production: { accuracy: 0.97, min_graded: 500, cost_per_task_inr: 8, escalation_rate: 0.1 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: returns_matches, value: '"stage":\s*"poc"' }
+        - { type: returns_matches, value: '"missed":\s*\["escalation_rate",\s*"sign_off"\]' }
+
+  - name: an_mvp_that_holds_every_production_gate_goes_to_production
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Is the stock-reorder pilot ready for production?" }
+      llm_script:
+        - { match: "*", reply: "Production. Every number on the dashboard is green." }
+      tools:
+        pilot_results:
+          returns: { stage: mvp, tasks: 12000, escalated: 1440, graded: 500, correct: 481, spend_inr: 96000, signed_off: [mvp, production] }
+        gate_table:
+          returns:
+            mvp: { accuracy: 0.85, min_graded: 100, cost_per_task_inr: 18, escalation_rate: 0.35 }
+            production: { accuracy: 0.95, min_graded: 400, cost_per_task_inr: 9, escalation_rate: 0.15 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"stage":\s*"production"' }
+        - { type: returns_matches, value: '"missed":\s*\[\s*\]' }
+
+  - name: a_poc_moves_one_stage_even_with_production_numbers
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The returns pilot beat every production number. Can it go live on Monday?" }
+      llm_script:
+        - { match: "*", reply: "Production. Every number on the dashboard is green." }
+      tools:
+        pilot_results:
+          returns: { stage: poc, tasks: 2000, escalated: 200, graded: 450, correct: 437, spend_inr: 14000, signed_off: [mvp, production] }
+        gate_table:
+          returns:
+            mvp: { accuracy: 0.8, min_graded: 100, cost_per_task_inr: 20, escalation_rate: 0.4 }
+            production: { accuracy: 0.95, min_graded: 400, cost_per_task_inr: 10, escalation_rate: 0.15 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"stage":\s*"mvp"' }
+        - { type: returns_matches, value: '"missed":\s*\[\s*\]' }
+
+  - name: thirty_right_out_of_thirty_is_too_few_to_count
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The price-check pilot is 100 percent accurate. Can it go to production?" }
+      llm_script:
+        - { match: "*", reply: "Production. Every number on the dashboard is green." }
+      tools:
+        pilot_results:
+          returns: { stage: mvp, tasks: 9000, escalated: 990, graded: 30, correct: 30, spend_inr: 72000, signed_off: [mvp, production] }
+        gate_table:
+          returns:
+            mvp: { accuracy: 0.85, min_graded: 100, cost_per_task_inr: 18, escalation_rate: 0.35 }
+            production: { accuracy: 0.95, min_graded: 400, cost_per_task_inr: 9, escalation_rate: 0.15 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"stage":\s*"mvp"' }
+        - { type: returns_matches, value: '"missed":\s*\["accuracy"\]' }
+
+  - name: spend_nobody_recorded_does_not_hold
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Has the delivery-slot pilot earned production this week?" }
+      llm_script:
+        - { match: "*", reply: "Production. Every number on the dashboard is green." }
+      tools:
+        pilot_results:
+          returns: { stage: mvp, tasks: 10000, escalated: 1200, graded: 600, correct: 576, spend_inr: null, signed_off: [mvp, production] }
+        gate_table:
+          returns:
+            mvp: { accuracy: 0.85, min_graded: 100, cost_per_task_inr: 18, escalation_rate: 0.35 }
+            production: { accuracy: 0.95, min_graded: 400, cost_per_task_inr: 9, escalation_rate: 0.15 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"stage":\s*"mvp"' }
+        - { type: returns_matches, value: '"missed":\s*\["cost_per_task"\]' }
+
+reference_md: |
+  The spreadsheet compared the numbers it had with the numbers in the table,
+  and that is the mistake. A gate is a promise the sponsor agreed to, and it
+  holds only when somebody measured the thing it is about. Code that checks
+  only the figures present reads every gap in the evidence as a pass.
+
+  Three gaps did the damage, and each one needs its own rule.
+
+  A measurement nobody recorded does not hold. The empty spend column was
+  read as zero, and a pilot that cost nothing clears every cost gate ever
+  written. `None` is the honest value, and a gate that receives it fails and
+  says so. A `TypeError` is no better, because a crashed check promotes
+  nothing and explains nothing.
+
+  An accuracy read from too few tasks does not hold either. Thirty right
+  answers out of thirty is a perfect score and very little evidence: at the
+  usual 95 percent confidence it still allows an agent that is wrong about one
+  time in ten, twice what the production gate allows. The table's
+  `min_graded` is the sponsor saying how much evidence she agreed to act on,
+  so it belongs inside the accuracy gate rather than beside it.
+
+  A pilot moves one stage per review. A POC usually runs on past data and
+  without real users, so its numbers say what the agent can do and say little
+  about what happens when people depend on it. The MVP is where that gets
+  measured. AWS draws the same line in its open-source AI-DLC workflows,
+  whose proof-of-concept profile the documentation calls "evidence for a
+  later decision; it is not the production-readiness profile" (version
+  2.10.0 of [aidlc-workflows](https://github.com/awslabs/aidlc-workflows),
+  read 1 October 2026).
+
+  Naming every miss, instead of the first, is what turns the check into a
+  work plan. "Escalation rate and sign-off" tells the sponsor two things to
+  fix and one to sign. A check that stops at the first failure hands the
+  committee one item a week.
+
+  The model stays out of it. The decision is arithmetic against a table the
+  sponsor signed, so anyone on the committee can rerun it and get the same
+  answer, and a model asked whether the pilot is ready answers with the
+  confidence of the dashboard it was shown.
+
+  The four gates, their thresholds and the one-stage rule are this problem's
+  own construction. No method prescribes them, and a real engagement agrees
+  its own table with its sponsor before the pilot starts.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Your agent pilot scored 100 percent and the sponsor wants it in production next week. What has to be true before you agree, and how would you check it?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: pilot_results
+    args: ""
+    returns: The pilot's `stage`, `tasks`, `escalated`, `graded`, `correct`, `spend_inr` and `signed_off`,
+      any of which may be missing.
+  - name: gate_table
+    args: ""
+    returns: The gates of `mvp` and `production`, each with `accuracy`, `min_graded`, `cost_per_task_inr`
+      and `escalation_rate`.
+example:
+  case: a_poc_that_holds_every_mvp_gate_becomes_an_mvp
+  expect: Every MVP gate holds, so the POC becomes an MVP, and all four production gates are named as
+    missed, in the order of the table.
+traps:
+  - Reading accuracy from however many tasks were graded, so a handful of perfect grades clears a gate
+    that asks for hundreds.
+  - Reading a measurement nobody recorded as zero, or letting it raise, when a missing figure is a gate
+    that does not hold.
+  - Moving a POC straight to production because its numbers clear the production gates.
+  - Stopping at the first gate that fails, so the sponsor never sees the rest of the list.

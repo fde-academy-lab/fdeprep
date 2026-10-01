@@ -1,0 +1,513 @@
+slug: decide-what-to-save-to-long-term-memory
+title: "Decide what to save to long-term memory"
+day: 12
+skill: Keep preferences and confirmed facts, and never store a card number, a code or a guess
+artefact_type: code
+difficulty: medium
+track: memory
+concept:
+  topic: "What to persist"
+  question: "Which things from a chat belong in long-term memory, and which must never go there?"
+est_minutes: 30
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A grocery delivery app the size of BigBasket gave its support assistant a
+  long-term memory. At the end of every chat an extraction model listed what
+  it thought was worth remembering about the customer, and the list was
+  saved as it came.
+
+  A review of the memory store in September found 4,812 full card numbers,
+  filed by the extraction model as payment preferences. It found 19,000
+  one-time codes, kept long after they expired. And it found notes such as
+  "probably diabetic", which the model had guessed from two orders of
+  sugar-free biscuits. The customer had never said it, and the assistant had
+  started steering them away from sweets.
+
+  The memory team has written the rule for what may be kept. Write the gate
+  that applies it to every candidate, with a reason for each decision, so the
+  next review finds none of those three.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` names the chat that just ended. Deciding what to keep is a
+  rule, so `llm` is not called: a model's opinion of whether a string is a
+  card number is a guess, however it is worded.
+
+  `tools["candidates"]()` returns what the extraction model proposed:
+
+      {"status": 200, "candidates": [
+         {"id": "m-1", "kind": "preference", "confirmed": true,
+          "text": "Prefers deliveries after 6pm on weekdays."}, ...]}
+
+  `kind` is `preference`, `fact` or `event`, as the extraction model
+  labelled it, and the label can be wrong. `confirmed` is true when the
+  customer said it themselves or agreed when the assistant read it back.
+
+  Decide each candidate by the first rule that matches:
+
+  | Order | When | Store | Reason |
+  |---|---|---|---|
+  | 1 | the text holds a card number | no | `card_number` |
+  | 2 | the text holds a one-time code | no | `one_time_code` |
+  | 3 | `confirmed` is not true | no | `unconfirmed` |
+  | 4 | `kind` is `preference` | yes | `preference` |
+  | 5 | `kind` is `fact` | yes | `confirmed_fact` |
+  | 6 | anything else | no | `one_off` |
+
+  A card number is 13 to 19 digits in a row, where a single space or hyphen
+  may sit between two digits. A one-time code is a run of 4 to 8 digits in a
+  text that also says `OTP`, `one-time`, `verification code` or
+  `security code`, in any case.
+
+  Return a JSON string with every candidate's decision, in the order they
+  arrived:
+
+      {"m-1": {"store": true, "reason": "preference"}, ...}
+
+  When the tool fails or sends no list of candidates, return `{}`: nothing
+  is stored.
+
+  Budget: `llm` is not called. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  CODE_WORDS = ("otp", "one-time", "verification code", "security code")
+
+
+  def holds_card_number(text: str) -> bool:
+      """True when text holds 13 to 19 digits in a row, where a single space or
+      hyphen may sit between two digits."""
+      raise NotImplementedError
+
+
+  def holds_one_time_code(text: str) -> bool:
+      """True when text holds a run of 4 to 8 digits and also says one of
+      CODE_WORDS, in any case."""
+      raise NotImplementedError
+
+
+  def decide(candidate: dict) -> dict:
+      """{"store": ..., "reason": ...} from the first rule in the contract's
+      table that matches."""
+      raise NotImplementedError
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      result = tools["candidates"]() or {}
+      candidates = result.get("candidates") if isinstance(result, dict) else None
+      if not isinstance(candidates, list):
+          return json.dumps({})
+
+      decisions = {}
+      # TODO 1: refuse a card number, wherever it sits and however its digits
+      #         are grouped, whatever the candidate is labelled
+      # TODO 2: refuse a one-time code
+      # TODO 3: refuse anything the customer did not say or confirm
+      # TODO 4: keep preferences and confirmed facts, and give everything else
+      #         the reason one_off
+      return json.dumps(decisions)
+
+steps:
+  - id: s1
+    text: Refuse a card number with the reason `card_number`, wherever it sits in the text and however its digits are grouped.
+    check_id: s1
+  - id: s2
+    text: Refuse a one-time code with the reason `one_time_code`.
+    check_id: s2
+  - id: s3
+    text: Refuse anything the customer did not say or confirm, with the reason `unconfirmed`.
+    check_id: s3
+  - id: s4
+    text: Keep preferences and confirmed facts with their reasons, and refuse everything else as `one_off`.
+    check_id: s4
+
+step_checks:
+  # s1 carries its own case: the public card number is written as one run of
+  # digits, and the step is about every way a customer writes one.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "chat-50117" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        candidates:
+          returns:
+            status: 200
+            candidates:
+              - { id: m-1, kind: preference, confirmed: true,
+                  text: "Charge 4000 0566 5566 5556 for the weekly box." }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [m-1]
+            properties:
+              m-1: { const: { store: false, reason: card_number } }
+  # s2 carries its own case too, with a code the public case does not name.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "chat-50118" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        candidates:
+          returns:
+            status: 200
+            candidates:
+              - { id: m-1, kind: fact, confirmed: true,
+                  text: "Read out the one-time PIN 5520 to the rider." }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [m-1]
+            properties:
+              m-1: { const: { store: false, reason: one_time_code } }
+  # Reads keeps_a_preference_and_a_confirmed_fact.
+  - step_id: s3
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [m-3]
+            properties:
+              m-3: { const: { store: false, reason: unconfirmed } }
+  # Reads keeps_a_preference_and_a_confirmed_fact.
+  - step_id: s4
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [m-1, m-2, m-4]
+            properties:
+              m-1: { const: { store: true, reason: preference } }
+              m-2: { const: { store: true, reason: confirmed_fact } }
+              m-4: { const: { store: false, reason: one_off } }
+
+hints:
+  - Look at where the card numbers in the review were filed. The label on a
+    candidate is the extraction model's guess, so the rules read the text
+    before they read the label.
+  - People type a card number in groups, with spaces or hyphens, and not
+    every card has 16 digits. A pattern for one way of writing it misses the
+    others.
+  - The opposite mistake costs as much. A delivery address with a postal PIN
+    and a phone number are worth keeping, and neither is a card or a code.
+    Check each pattern against the things it must not match.
+  - Decide each candidate with the rules in the table's order and stop at the
+    first that matches, so a card number in an unconfirmed note is refused as
+    a card number.
+
+scenario:
+  headline: "The assistant's memory held card numbers, codes and guesses"
+  who: Customer support at a grocery delivery app the size of BigBasket
+  situation: >-
+    At the end of each chat an extraction model listed what it thought worth
+    remembering, and everything it listed was saved. A September review found
+    card numbers filed as payment preferences, expired one-time codes, and
+    health guesses saved as facts.
+  stakes: >-
+    Full card numbers in a plain notes store, and a guessed condition the
+    customer never shared, which the assistant had started to act on.
+  metrics:
+    - { label: Card numbers in memory, value: "4,812" }
+    - { label: One-time codes kept, value: "19,000" }
+    - { label: Guesses saved as facts, value: "260" }
+
+diagram:
+  title: Where the extraction model's list went straight into memory
+  caption: >-
+    The extraction model proposes. A gate between it and the store decides,
+    by rules that read the text, and gives every decision a reason.
+  direction: lr
+  nodes:
+    - { id: chat, label: Finished chat, sub: what the customer and assistant said, kind: doc, tone: blue, at: [0, 1] }
+    - { id: extract, label: Extraction model, sub: lists what it thinks is worth keeping, kind: model, tone: teal, at: [1, 1] }
+    - { id: gate, label: Memory gate, sub: "card, code, confirmation, then kind", kind: guard, tone: purple, at: [2, 1] }
+    - { id: store, label: Long-term memory, sub: preferences and confirmed facts, kind: store, tone: green, at: [3, 0] }
+    - { id: refused, label: Refused with a reason, sub: kept out of memory, kind: output, tone: neutral, at: [3, 2] }
+    - { id: leak, label: Card numbers in memory, sub: saved as payment preferences, kind: output, tone: pink, at: [2, 3] }
+  edges:
+    - { from: chat, to: extract, label: end of chat, step: 1 }
+    - { from: extract, to: gate, label: candidates, step: 2 }
+    - { from: gate, to: store, label: keep, tone: success, step: 3 }
+    - { from: gate, to: refused, label: never keep, step: 3 }
+    - { from: extract, to: leak, label: saved as listed, tone: danger }
+
+approach:
+  goal: Keep what helps the next chat, and nothing that should never be kept
+  branches:
+    - label: Read the text, not the label
+      detail: The extraction model labelled card numbers as preferences, so a rule that trusts the label trusts the mistake.
+      leaves: [a card number in any kind of candidate, a code in any kind of candidate]
+    - label: Know every way it is written
+      leaves: [digits in groups, spaces or hyphens between, not every card has 16 digits]
+    - label: Do not refuse the harmless
+      leaves: [a postal PIN, a phone number, the word OTP with no code]
+    - label: Only what the customer said
+      leaves: [a guess is not a fact, confirmed means said or agreed]
+
+coach:
+  opening: >-
+    Pick one candidate from the review, a card number filed as a preference,
+    and trace which of your rules sees it first.
+  signals:
+    - id: sixteen-in-a-row
+      when: { code_matches: '\\d\{16\}' }
+      say: >-
+        Your card check looks for 16 digits in a row. How does a customer type
+        the same card into a chat, and how many digits does an Amex have?
+    - id: otp-alone
+      when: { code_matches: '(?i)["'']otp["'']\s+in\b' }
+      say: >-
+        Your code check listens for the word OTP. What else do texts call a
+        code that works once, and does every text with that word hold a code?
+    - id: hidden-card-forms
+      when: { test_failed: every_written_form_of_a_card_number_is_refused }
+      say: >-
+        That run held card numbers written three different ways, one of them
+        in a note the customer never confirmed. Which did your gate keep, and
+        what reason did it give the rest?
+    - id: hidden-codes
+      when: { test_failed: a_verification_code_is_never_kept }
+      say: >-
+        Neither code in that run was called an OTP. What did the texts call
+        them?
+    - id: hidden-harmless
+      when: { test_failed: an_address_a_phone_number_and_a_channel_preference_are_kept }
+      say: >-
+        Everything in that run was safe to keep, and something in your gate
+        refused part of it. Check each pattern against an address, a phone
+        number and a message that mentions OTP with no code in it.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with `holds_card_number`. Try it on a card written in groups of
+        four, one written with hyphens, and a ten-digit phone number.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Hints open after one failed run on this tier,
+        and the first says where the review found the card numbers.
+  wrap_up: >-
+    Memory outlives the chat, so the gate in front of it decides what the
+    product knows about a person for years. Read the text before the label,
+    refuse card numbers and codes however they are written, and keep only
+    what the customer said.
+
+tests:
+  - name: keeps_a_preference_and_a_confirmed_fact
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "chat-48210" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        candidates:
+          returns:
+            status: 200
+            candidates:
+              - { id: m-1, kind: preference, confirmed: true, text: "Prefers deliveries after 6pm on weekdays." }
+              - { id: m-2, kind: fact, confirmed: true, text: "Lives at 4B Lake View Road, Pune." }
+              - { id: m-3, kind: fact, confirmed: false, text: "Probably shops for a large family." }
+              - { id: m-4, kind: event, confirmed: true, text: "Order 55120 arrived late today." }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: candidates }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [m-1, m-2, m-3, m-4]
+            properties:
+              m-1: { const: { store: true, reason: preference } }
+              m-2: { const: { store: true, reason: confirmed_fact } }
+              m-3: { const: { store: false, reason: unconfirmed } }
+              m-4: { const: { store: false, reason: one_off } }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: never_keeps_a_card_number_or_a_one_time_code
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "chat-48211" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        candidates:
+          returns:
+            status: 200
+            candidates:
+              - { id: m-1, kind: preference, confirmed: true, text: "Pay with card 4242424242424242 next time." }
+              - { id: m-2, kind: fact, confirmed: true, text: "The OTP for the address change was 482913." }
+              - { id: m-3, kind: preference, confirmed: true, text: "Likes bananas slightly green." }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [m-1, m-2, m-3]
+            properties:
+              m-1: { const: { store: false, reason: card_number } }
+              m-2: { const: { store: false, reason: one_time_code } }
+              m-3: { const: { store: true, reason: preference } }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: every_written_form_of_a_card_number_is_refused
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "chat-48230" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        candidates:
+          returns:
+            status: 200
+            candidates:
+              - { id: m-1, kind: preference, confirmed: true,
+                  text: "Use my Visa 4242 4242 4242 4242 for every order from now on." }
+              - { id: m-2, kind: fact, confirmed: false,
+                  text: "May have paid with card 5555-5555-5555-4444 in the past." }
+              - { id: m-3, kind: fact, confirmed: true,
+                  text: "Paid with the Amex 3782 822463 10005 last time." }
+              - { id: m-4, kind: preference, confirmed: true, text: "Prefers paper bags to plastic." }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [m-1, m-2, m-3, m-4]
+            properties:
+              m-1: { const: { store: false, reason: card_number } }
+              m-2: { const: { store: false, reason: card_number } }
+              m-3: { const: { store: false, reason: card_number } }
+              m-4: { const: { store: true, reason: preference } }
+
+  - name: a_verification_code_is_never_kept
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "chat-48231" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        candidates:
+          returns:
+            status: 200
+            candidates:
+              - { id: m-1, kind: fact, confirmed: true,
+                  text: "The verification code sent for the new address was 77310." }
+              - { id: m-2, kind: event, confirmed: true, text: "Rated the last delivery five stars." }
+              - { id: m-3, kind: fact, confirmed: true,
+                  text: "Gave the Security Code 90417 to confirm the account." }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [m-1, m-2, m-3]
+            properties:
+              m-1: { const: { store: false, reason: one_time_code } }
+              m-2: { const: { store: false, reason: one_off } }
+              m-3: { const: { store: false, reason: one_time_code } }
+
+  - name: an_address_a_phone_number_and_a_channel_preference_are_kept
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "chat-48232" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        candidates:
+          returns:
+            status: 200
+            candidates:
+              - { id: m-1, kind: fact, confirmed: true, text: "Delivers to 12 MG Road, Bengaluru, PIN 560001." }
+              - { id: m-2, kind: fact, confirmed: true, text: "Reachable on +44 7700 900123 while she works in London." }
+              - { id: m-3, kind: preference, confirmed: true, text: "Wants OTP messages by email instead of SMS." }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [m-1, m-2, m-3]
+            properties:
+              m-1: { const: { store: true, reason: confirmed_fact } }
+              m-2: { const: { store: true, reason: confirmed_fact } }
+              m-3: { const: { store: true, reason: preference } }
+
+reference_md: |
+  The extraction model did its job. It was asked what might be worth
+  remembering, and a card number the customer typed is, in a sense, a payment
+  preference. The failure was saving its list as it came, which made a
+  model's labelling the last word on what the product keeps about a person
+  for years. The gate is a rule in front of the store, and the order of the
+  rules is part of it: the text is read for card numbers and codes before the
+  label or the confirmation is consulted, so a card number filed as a
+  preference, or in a note nobody confirmed, is refused as a card number.
+
+  Card numbers arrive however people type them. Groups of four with spaces,
+  hyphens, an Amex in groups of four, six and five. A pattern for sixteen
+  digits in a row matches the one form customers rarely use. A full card
+  number has no business in a plain notes store at all: the card industry's
+  standard, PCI DSS v4.0.1, requires the primary account number to be
+  rendered unreadable anywhere it is stored (requirement 3.5.1).
+
+  The gate also has to let the harmless through. A postal PIN and a phone
+  number are long runs of digits that a careless pattern refuses, and a
+  customer who asks for OTP messages by email has stated a preference, with
+  no code in it. A gate that refuses too much fails more quietly: the
+  assistant forgets the address, and nobody reviews what was never saved.
+
+  Confirmation is the line between a fact and a guess. The model inferred a
+  health condition from two orders, and an inference about a person that the
+  person never made is exactly what should not outlive the chat. The reason
+  on every decision is what the next review reads.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    At the end of a chat your agent can save things about the customer for next time. What do you let it keep, what must it never keep, and who decides?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I016.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: candidates
+    args: ''
+    returns: A status and the extraction model's `candidates`, each with an `id`, a `kind` (`preference`,
+      `fact` or `event`), `confirmed` and the `text`.
+example:
+  case: keeps_a_preference_and_a_confirmed_fact
+  expect: The preference and the confirmed address are kept, the family guess is refused as `unconfirmed`,
+    and the late order is refused as `one_off`, with no model call.
+traps:
+  - Looking only for sixteen digits in a row, when customers type card numbers in groups, with spaces or
+    hyphens, and an Amex has fifteen.
+  - Listening only for the word OTP, when texts call a one-time code by other names.
+  - Refusing a postal PIN, a phone number or a message about OTP settings, none of which is a card or a
+    code.
+  - Checking the confirmation before the card number, so a card number in an unconfirmed note is refused
+    for the wrong reason.

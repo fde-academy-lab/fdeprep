@@ -53,19 +53,18 @@ def catalogue() -> list[dict]:
 
 
 def split_days(counts: list[int]) -> list[int]:
-    """Days per stage: proportional to its problems, inside the per-day limits."""
-    total = sum(counts)
-    days = [max(1, round(DAYS * c / total)) for c in counts]
-    while sum(days) > DAYS:
-        i = max(range(len(days)), key=lambda k: days[k] * MIN_PER_DAY - counts[k])
-        days[i] -= 1
+    """Days per stage: each starts at the fewest days its problems fit in, and
+    each spare day goes to the stage with the most problems per day, never
+    past the point where a day would fall below MIN_PER_DAY."""
+    days = [max(1, -(-c // MAX_PER_DAY)) for c in counts]
     while sum(days) < DAYS:
-        i = max(range(len(days)), key=lambda k: counts[k] / days[k])
-        days[i] += 1
-    for count, n in zip(counts, days):
-        if not MIN_PER_DAY * n <= count <= MAX_PER_DAY * n:
-            raise SystemExit(f"{count} problems cannot fill {n} days at {MIN_PER_DAY} to "
-                             f"{MAX_PER_DAY} a day; change the catalogue or the limits")
+        room = [k for k in range(len(days)) if counts[k] >= MIN_PER_DAY * (days[k] + 1)]
+        if not room:
+            break
+        days[max(room, key=lambda k: counts[k] / days[k])] += 1
+    if sum(days) != DAYS:
+        raise SystemExit(f"{sum(counts)} problems in stages of {counts} cannot fill {DAYS} "
+                         f"days at {MIN_PER_DAY} to {MAX_PER_DAY} a day")
     return days
 
 

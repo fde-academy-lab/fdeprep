@@ -1,0 +1,697 @@
+slug: turn-failed-traces-into-eval-cases
+title: "Turn failed traces into eval cases safely"
+day: 21
+skill: Turn reviewed failures into eval cases that keep the failure and lose the customer
+artefact_type: code
+difficulty: extreme
+track: observability
+concept:
+  topic: "Failures into evals"
+  question: "How do you turn a failed trace into an eval case without copying the customer?"
+est_minutes: 50
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The support agent at a mobile network the size of Airtel gets a few
+  hundred conversations wrong every day. Reviewers mark each one: which step
+  went wrong, whether the agent or a failing service was to blame, and what
+  the agent should have done instead. The eval lead wants every reviewed
+  mistake turned into an eval case that the next release has to pass.
+
+  The first attempt copied whole traces into the eval set. It sent 2,300
+  customers' phone numbers to the vendor who tunes the prompt, and because
+  each case ran to the end of the conversation, it carried the reviewer's
+  handoff note saying what the right step was. The agent passed by reading
+  it.
+
+  The second attempt replaced every phone number with `[PHONE]`. The worst
+  failures that week were lookups of the wrong number, and every one of them
+  now read `lookup_subscriber(number=[PHONE])`, both as what the agent did and
+  as what it should have done. The broken agent passed all of them.
+
+  Write the job that turns a day's reviewed failures into eval cases that
+  keep the failure and lose the customer.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is a day, such as `2026-09-28`. `llm` is not called.
+
+  `tools["failed_traces"](day=question)` returns that day's failed
+  conversations and their reviews:
+
+      {"status": 200, "traces": [
+        {"trace": "T-4410",
+         "review": {"kind": "agent", "step": 4, "by": "support lead",
+                    "correct": {"type": "tool_call", "tool": "refund",
+                                "args": {"number": "9820012345", "amount": 299}}},
+         "steps": [
+           {"n": 1, "type": "user", "text": "I was charged twice for the 299 pack on 9820012345. ..."},
+           {"n": 2, "type": "tool_call", "tool": "lookup_subscriber", "args": {"number": "9820012345"}},
+           {"n": 3, "type": "observation", "value": {...}},
+           {"n": 4, "type": "tool_call", "tool": "refund", "args": {"number": "9820012345", "amount": 598}},
+           ...]}, ...]}
+
+  `review` is null when nobody has reviewed the trace. Its `kind` is `agent`
+  when the agent made the mistake and `infrastructure` when a service failed,
+  `step` is the `n` of the step that failed, and `correct` is the step the
+  reviewer says the agent should have taken.
+
+  Build one eval case per trace, in trace order:
+
+  1. Leave out a trace with no review, or with no `correct` step, as
+     `unreviewed`, and one whose review kind is `infrastructure` as
+     `infrastructure`.
+  2. The case's `context` is the steps before the failed step. Nothing after
+     the failed step is part of the case.
+  3. Replace customer data with placeholders, using a fresh set for each
+     trace. Every email address becomes `<EMAIL_k>` and every phone number
+     `<PHONE_k>`, found with the stub's `EMAIL` and `PHONE` patterns, emails
+     first. The same address compared in lower case gets the same
+     placeholder, and so does the same phone number compared by its last 10
+     digits. Number each kind from 1 in the order values first appear: the
+     context, then the failed step, then the expected step, each in the order
+     its values come. The data can sit at any depth of a step, and a phone
+     number can be stored as a whole number rather than as text. It becomes
+     its placeholder either way.
+  4. The case's `failed_step` is the failed step, and its `expected_step` is
+     the review's `correct` step, both with placeholders from the same set.
+  5. Leave out a case as `no_difference` when its failed step, without its
+     `n`, equals its expected step, and as `unanswerable` when its expected
+     step holds a placeholder that its context does not.
+
+  Return a JSON string:
+
+      {"cases": [{"id": "T-4410", "context": [...], "failed_step": {...},
+                  "expected_step": {...}}],
+       "left_out": {"unreviewed": 0, "infrastructure": 0,
+                    "no_difference": 0, "unanswerable": 0}}
+
+  Budget: no model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your cases keep a consistent placeholder per number, so a case can show
+  that the agent looked up `<PHONE_2>` when the customer gave `<PHONE_1>`.
+  The privacy lead says a consistent placeholder is still personal data and
+  wants every number replaced by the same `[PHONE]`. What do you tell them,
+  what would the eval set lose under their rule, and what would you change
+  so that both of you are satisfied?
+
+stub_code: |
+  import json
+  import re
+
+  # The data policy's patterns. Emails are replaced before phone numbers, so
+  # digits inside an address are never read as a number.
+  EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+  PHONE = re.compile(r"(?<!\d)(?:\+91[ -]?|0)?[6-9](?:[ -]?\d){9}(?!\d)")
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Turn a day's reviewed failures into eval cases.
+
+      tools["failed_traces"](day=question) returns {"traces": [{"trace", "review",
+      "steps": [{"n", "type", ...}, ...]}, ...]}. review is None, or
+      {"kind": "agent" | "infrastructure", "step": <n>, "correct": <step>}.
+
+      1. No review, or no correct step: unreviewed. Kind infrastructure:
+         infrastructure.
+      2. context: the steps before the failed step, and nothing after it.
+      3. One fresh set of placeholders per trace. EMAIL to <EMAIL_k>, then
+         PHONE to <PHONE_k>. Same address in lower case, same placeholder;
+         same number by its last 10 digits, same placeholder. Numbered by
+         first appearance: context, failed step, expected step. At any
+         depth, and a phone number stored as a whole number counts.
+      4. failed_step: the failed step. expected_step: review["correct"].
+      5. Failed step without its n equal to the expected step: no_difference.
+         A placeholder in the expected step that the context lacks:
+         unanswerable.
+
+      Return json.dumps({"cases": [{"id", "context", "failed_step",
+                                    "expected_step"}, ...],
+                         "left_out": {"unreviewed", "infrastructure",
+                                      "no_difference", "unanswerable"}}).
+      llm is not called. Allowed imports: json, re.
+      """
+      return json.dumps({"cases": [], "left_out": {"unreviewed": 0, "infrastructure": 0,
+                                                   "no_difference": 0, "unanswerable": 0}})
+
+hints:
+  - Start from the two attempts that failed. One leaked numbers and handed
+    the agent its own answer, and one erased the very failures the set was
+    for. Each rule in the contract stops one of those.
+  - A placeholder has to keep one fact, whether two values were the same
+    value. Decide what the same means for a number written three ways and
+    for an email typed in capitals, before you number anything.
+  - Customer data turns up wherever the services put it, inside nested
+    observations, in tool arguments, and in a number stored as a number.
+  - An eval case is fair only if the agent could have taken the expected
+    step from the context it had. Everything after the failed step is the
+    future, including the note that says what went wrong.
+  - "Per trace: take the steps before the failed one, make one fresh map,
+    and walk the context, the failed step and the expected step through it
+    in that order. Only then compare the two steps, and look for a
+    placeholder the expected step uses that the context never showed."
+
+scenario:
+  headline: "The eval set leaked 2,300 numbers, then passed the agent it was built to catch"
+  who: The eval lead for the support agent at a mobile network the size of Airtel
+  situation: >-
+    The first eval set copied whole traces, numbers and handoff notes
+    included. The second replaced every number with one placeholder, and the
+    wrong-number lookups it was built for read the same as their fixes.
+  stakes: >-
+    An eval set that leaks cannot go to the vendor, and one that passes the
+    broken agent is worse than none, because the release looks tested.
+  metrics:
+    - { label: Numbers sent to the vendor, value: "2,300" }
+    - { label: Reviewed mistakes a day, value: about 300 }
+    - { label: Wrong-number cases passed, value: all of them }
+
+diagram:
+  title: What an eval case keeps, and what it loses
+  caption: >-
+    Cut at the failed step, give each value a placeholder that keeps
+    sameness, and keep a case only if it shows a failure the agent could
+    have avoided.
+  direction: lr
+  nodes:
+    - { id: trace, label: A failed trace, sub: "steps, numbers, emails", kind: store, tone: blue, at: [0, 1] }
+    - { id: review, label: The review, sub: "which step, whose fault, the fix", kind: doc, tone: neutral, at: [0, 0] }
+    - { id: cut, label: Cut at the failure, sub: the future stays out, kind: guard, tone: purple, at: [1, 1] }
+    - { id: names, label: One map per trace, sub: "same value, same placeholder", kind: guard, tone: green, at: [2, 1] }
+    - { id: checks, label: Two checks, sub: "a difference, and a fair ask", kind: decision, tone: orange, at: [3, 1] }
+    - { id: case, label: Eval case, sub: "context, failed and expected step", kind: output, tone: green, at: [4, 1] }
+    - { id: flat, label: One placeholder for all, sub: the failure reads like the fix, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: review, to: cut, label: the failed step, step: 1 }
+    - { from: trace, to: cut, label: steps, step: 1 }
+    - { from: cut, to: names, label: context and both steps, step: 2 }
+    - { from: names, to: checks, label: placeholders, step: 3 }
+    - { from: checks, to: case, label: kept, tone: success, step: 4 }
+    - { from: cut, to: flat, label: every number alike, tone: danger }
+
+approach:
+  goal: An eval case that keeps the failure and loses the customer
+  branches:
+    - label: Which traces are agent mistakes?
+      leaves: [a review that names the right step, the agent's fault and not a service's]
+    - label: What the agent could see
+      detail: Everything after the failed step is the future, the reviewer's note included.
+      leaves: [the steps before the failure, the failed step, the step it should have been]
+    - label: Placeholders that keep sameness
+      leaves: [compare values in a normal form, fresh numbers per trace, at any depth and in numbers]
+    - label: Is the case worth keeping?
+      leaves: [the failure still differs from the fix, the fix uses only what the agent saw]
+
+coach:
+  opening: >-
+    List the facts an eval case needs from the trace before you remove
+    anything from it. Then remove everything else.
+  signals:
+    - id: no-normal-form
+      when: { code_lacks: '\.lower\(\)|\.casefold\(\)' }
+      say: >-
+        Nothing in your code compares values in a normal form. Is an email in
+        capitals a different customer, and is a number written with +91 a
+        different number?
+    - id: strings-only
+      when: { code_lacks: 'isinstance\([^)]*\bint\b' }
+      say: >-
+        Your scrub only ever changes text. What happens to a phone number that
+        a service stored as a number?
+    - id: keeps-the-future
+      when: { code_matches: '\[\s*["'']n["'']\s*\]\s*!=' }
+      say: >-
+        Your context keeps every step except the failed one, including the
+        steps after it. What could the agent read in those?
+    - id: wrong-number-case
+      when: { test_failed: a_wrong_number_keeps_its_own_placeholder }
+      say: >-
+        In that trace the agent looked up a number the customer never gave.
+        Does your case still show two different numbers, and does it stop at
+        the failed step?
+    - id: outage-case
+      when: { test_failed: a_service_outage_is_not_an_agent_mistake }
+      say: >-
+        One review that day blamed a service, not the agent. What would an
+        eval case built from it be testing?
+    - id: three-ways-case
+      when: { test_failed: one_number_written_three_ways_is_one_placeholder }
+      say: >-
+        That trace writes one customer's number and email in more than one
+        way. How many placeholders did your case give them?
+    - id: fresh-set-case
+      when: { test_failed: placeholders_start_again_for_every_trace }
+      say: >-
+        That day had two customers. Does the second case's first number start
+        from 1, or does it carry on from the first case?
+    - id: unanswerable-case
+      when: { test_failed: a_fix_the_agent_could_not_have_known_is_left_out }
+      say: >-
+        The reviewer's fix in one trace uses something the customer only said
+        after the failed step. Could the agent have taken that step?
+    - id: stored-number-case
+      when: { test_failed: adversarial_a_phone_number_stored_as_a_number }
+      say: >-
+        A service in that trace stored phone numbers as numbers, not text.
+        Search your output for the digits.
+    - id: no-difference-case
+      when: { test_failed: adversarial_a_review_that_only_rewrites_the_number }
+      say: >-
+        The fix in that review differs from what the agent did only in how
+        the number is written. What does your case test?
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint starts from the two attempts
+        that went wrong, and each rule stops one of them.
+  wrap_up: >-
+    An eval case from a failure keeps three things: what the agent could see,
+    what it did, and what it should have done, each with placeholders that
+    keep sameness and nothing that leads back to a person.
+
+tests:
+  - name: turns_a_reviewed_failure_into_a_case
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-28" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        failed_traces:
+          returns:
+            status: 200
+            traces:
+              - trace: T-4410
+                review:
+                  kind: agent
+                  step: 4
+                  by: support lead
+                  correct: { type: tool_call, tool: refund, args: { number: "9820012345", amount: 299 } }
+                steps:
+                  - { n: 1, type: user, text: "I was charged twice for the 299 pack on 9820012345. Please refund the extra one." }
+                  - { n: 2, type: tool_call, tool: lookup_subscriber, args: { number: "9820012345" } }
+                  - n: 3
+                    type: observation
+                    value:
+                      subscriber: S-88120
+                      email: "asha.rao@example.com"
+                      recharges:
+                        - { pack: 299, amount: 299, at: "2026-09-28 09:14" }
+                        - { pack: 299, amount: 299, at: "2026-09-28 09:15" }
+                  - { n: 4, type: tool_call, tool: refund, args: { number: "9820012345", amount: 598 } }
+                  - { n: 5, type: observation, value: { refunded: 598 } }
+                  - { n: 6, type: assistant, text: "I have refunded both charges, 598 rupees in all." }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [cases, left_out],
+                      properties: { cases: { type: array, minItems: 1, maxItems: 1 } } } }
+        - { type: returns_matches, value: '"id":\s*"T-4410"' }
+        - { type: returns_matches, value: '"failed_step":\s*\{"n":\s*4,[^{}]*"args":\s*\{"number":\s*"<PHONE_1>",\s*"amount":\s*598\}' }
+        - { type: returns_matches, value: '"expected_step":\s*\{[^{}]*"args":\s*\{"number":\s*"<PHONE_1>",\s*"amount":\s*299\}' }
+        - { type: returns_matches, value: '"email":\s*"<EMAIL_1>"' }
+        - { type: returns_lacks, value: '9820012345' }
+        - { type: returns_lacks, value: 'asha\.rao' }
+        - { type: returns_matches, value: '"left_out":\s*\{"unreviewed":\s*0,\s*"infrastructure":\s*0,\s*"no_difference":\s*0,\s*"unanswerable":\s*0\}' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: leaves_out_a_trace_nobody_reviewed
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-29" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        failed_traces:
+          returns:
+            status: 200
+            traces:
+              - trace: T-4421
+                review: null
+                steps:
+                  - { n: 1, type: user, text: "Why is my bill 40 rupees higher this month?" }
+                  - { n: 2, type: assistant, text: "It includes a late fee from August." }
+              - trace: T-4422
+                review:
+                  kind: agent
+                  step: 2
+                  by: support lead
+                  correct: { type: tool_call, tool: change_plan, args: { number: "9876501234", plan: "unlimited-399" } }
+                steps:
+                  - { n: 1, type: user, text: "Move 9876501234 to the 399 unlimited plan from next month." }
+                  - { n: 2, type: tool_call, tool: change_plan, args: { number: "9876501234", plan: "unlimited-299" } }
+                  - { n: 3, type: observation, value: { changed: true, plan: "unlimited-299" } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [cases, left_out],
+                      properties: { cases: { type: array, minItems: 1, maxItems: 1 } } } }
+        - { type: returns_matches, value: '"unreviewed":\s*1\b' }
+        - { type: returns_matches, value: '"id":\s*"T-4422"' }
+        - { type: returns_lacks, value: 'T-4421' }
+        - { type: returns_matches, value: '"plan":\s*"unlimited-399"' }
+        - { type: returns_lacks, value: '9876501234' }
+
+  - name: a_wrong_number_keeps_its_own_placeholder
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-24" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        failed_traces:
+          returns:
+            status: 200
+            traces:
+              - trace: T-5101
+                review:
+                  kind: agent
+                  step: 2
+                  by: support lead
+                  correct: { type: tool_call, tool: lookup_subscriber, args: { number: "9820012345" } }
+                steps:
+                  - { n: 1, type: user, text: "My number is 98200 12345 and my data stopped working this morning." }
+                  - { n: 2, type: tool_call, tool: lookup_subscriber, args: { number: "9820012354" } }
+                  - { n: 3, type: observation, value: { subscriber: S-90411, email: "k.menon@example.org", plan: "postpaid-599", data_blocked: false } }
+                  - { n: 4, type: assistant, text: "Your data is active, so please restart your phone." }
+                  - { n: 5, type: user, text: "That is not my number. Mine ends in 2345." }
+                  - { n: 6, type: note, text: "Agent note: looked up 9820012354 instead of 9820012345. Data was blocked for an unpaid bill." }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"failed_step":\s*\{"n":\s*2,[^{}]*"args":\s*\{"number":\s*"<PHONE_2>"\}' }
+        - { type: returns_matches, value: '"expected_step":\s*\{[^{}]*"args":\s*\{"number":\s*"<PHONE_1>"\}' }
+        - { type: returns_matches, value: '"text":\s*"My number is <PHONE_1> and my data' }
+        - { type: returns_lacks, value: 'restart your phone|Agent note|unpaid bill' }
+        - { type: returns_lacks, value: '98200 ?12345|9820012354' }
+        - { type: returns_lacks, value: 'k\.menon' }
+
+  - name: a_service_outage_is_not_an_agent_mistake
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-25" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        failed_traces:
+          returns:
+            status: 200
+            traces:
+              - trace: T-5201
+                review:
+                  kind: infrastructure
+                  step: 3
+                  by: platform on-call
+                  correct: { type: tool_call, tool: lookup_subscriber, args: { number: "9123456780" } }
+                steps:
+                  - { n: 1, type: user, text: "Is the 5G pack active on 9123456780?" }
+                  - { n: 2, type: tool_call, tool: lookup_subscriber, args: { number: "9123456780" } }
+                  - { n: 3, type: observation, value: { error: "subscriber service timed out after 30 seconds" } }
+                  - { n: 4, type: assistant, text: "Sorry, I cannot check your pack right now." }
+              - trace: T-5202
+                review:
+                  kind: agent
+                  step: 2
+                  by: support lead
+                  correct: { type: tool_call, tool: set_roaming, args: { number: "9988776655", roaming: "off" } }
+                steps:
+                  - { n: 1, type: user, text: "Please switch off international roaming on 9988776655 now that I am home." }
+                  - { n: 2, type: tool_call, tool: set_roaming, args: { number: "9988776655", roaming: "on" } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"infrastructure":\s*1\b' }
+        - { type: returns_lacks, value: 'T-5201' }
+        - { type: returns_matches, value: '"id":\s*"T-5202"' }
+        - { type: returns_matches, value: '"roaming":\s*"off"' }
+
+  - name: one_number_written_three_ways_is_one_placeholder
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-26" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        failed_traces:
+          returns:
+            status: 200
+            traces:
+              - trace: T-5301
+                review:
+                  kind: agent
+                  step: 4
+                  by: billing lead
+                  correct: { type: tool_call, tool: refund, args: { number: "+91 98450 67890", amount: 100 } }
+                steps:
+                  - { n: 1, type: user, text: "I was charged 249 for the 149 data pack on +91 98450 67890. Refund the difference and write to Asha.Rao@Example.com." }
+                  - { n: 2, type: tool_call, tool: lookup_subscriber, args: { number: "9845067890" } }
+                  - { n: 3, type: observation, value: { subscriber: S-77302, email: "asha.rao@example.com", charged: 249, pack_price: 149 } }
+                  - { n: 4, type: tool_call, tool: refund, args: { number: "9845067890", amount: 249 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_lacks, value: 'PHONE_2|EMAIL_2' }
+        - { type: returns_matches, value: '"failed_step":\s*\{"n":\s*4,[^{}]*"args":\s*\{"number":\s*"<PHONE_1>",\s*"amount":\s*249\}' }
+        - { type: returns_matches, value: '"expected_step":\s*\{[^{}]*"args":\s*\{"number":\s*"<PHONE_1>",\s*"amount":\s*100\}' }
+        - { type: returns_lacks, value: '(?i)asha\.rao|98450' }
+
+  - name: placeholders_start_again_for_every_trace
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-27" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        failed_traces:
+          returns:
+            status: 200
+            traces:
+              - trace: T-5401
+                review:
+                  kind: agent
+                  step: 2
+                  by: support lead
+                  correct: { type: tool_call, tool: block_sim, args: { number: "9000011111", reason: lost } }
+                steps:
+                  - { n: 1, type: user, text: "I lost my phone in a taxi. Block the SIM for 9000011111." }
+                  - { n: 2, type: tool_call, tool: block_sim, args: { number: "9000011111", reason: damaged } }
+              - trace: T-5402
+                review:
+                  kind: agent
+                  step: 2
+                  by: support lead
+                  correct: { type: tool_call, tool: send_bill, args: { number: "9000022222", month: "2026-09" } }
+                steps:
+                  - { n: 1, type: user, text: "Send me the September bill for 9000022222." }
+                  - { n: 2, type: tool_call, tool: send_bill, args: { number: "9000022222", month: "2026-08" } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"id":\s*"T-5401"' }
+        - { type: returns_matches, value: '"id":\s*"T-5402"' }
+        - { type: returns_lacks, value: 'PHONE_2' }
+        - { type: returns_lacks, value: '9000011111|9000022222' }
+
+  - name: a_fix_the_agent_could_not_have_known_is_left_out
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-30" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        failed_traces:
+          returns:
+            status: 200
+            traces:
+              - trace: T-5501
+                review:
+                  kind: agent
+                  step: 2
+                  by: support lead
+                  correct: { type: tool_call, tool: lookup_subscriber, args: { email: "neha.k@example.com" } }
+                steps:
+                  - { n: 1, type: user, text: "My bill is wrong again. Can you check it?" }
+                  - { n: 2, type: tool_call, tool: lookup_subscriber, args: { number: "9811122233" } }
+                  - { n: 3, type: observation, value: { error: "no subscriber with that number" } }
+                  - { n: 4, type: user, text: "That is not me. My account email is neha.k@example.com." }
+                  - { n: 5, type: tool_call, tool: lookup_subscriber, args: { email: "neha.k@example.com" } }
+              - trace: T-5502
+                review:
+                  kind: agent
+                  step: 2
+                  by: support lead
+                  correct: { type: tool_call, tool: set_roaming, args: { number: "9822233344", roaming: "off" } }
+                steps:
+                  - { n: 1, type: user, text: "Turn roaming off on 9822233344, I am back in Mumbai." }
+                  - { n: 2, type: tool_call, tool: set_roaming, args: { number: "9822233344", roaming: "on" } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"unanswerable":\s*1\b' }
+        - { type: returns_lacks, value: 'T-5501' }
+        - { type: returns_matches, value: '"id":\s*"T-5502"' }
+
+  - name: adversarial_a_phone_number_stored_as_a_number
+    visibility: adversarial
+    fixture: schema_drift
+    annotation_md: |
+      The subscriber service started returning the primary and alternate
+      numbers as numbers rather than text, and the agent passed the alternate
+      one, still a number, to the porting tool. A scrub that only reads text
+      leaves both in the case, so the eval set carries two customers' phone
+      numbers in plain digits.
+
+      Written out, each one matches the phone pattern, so each becomes its
+      placeholder like any other. The case then shows the failure exactly:
+      the customer asked about `<PHONE_1>`, the service listed `<PHONE_2>` as
+      the alternate, and the agent asked for the code for `<PHONE_2>`.
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-22" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        failed_traces:
+          returns:
+            status: 200
+            traces:
+              - trace: T-5601
+                review:
+                  kind: agent
+                  step: 4
+                  by: support lead
+                  correct: { type: tool_call, tool: porting_code, args: { number: "9876543210" } }
+                steps:
+                  - { n: 1, type: user, text: "I need my porting code for 9876543210." }
+                  - { n: 2, type: tool_call, tool: lookup_subscriber, args: { number: "9876543210" } }
+                  - { n: 3, type: observation, value: { subscriber: S-61207, primary: 9876543210, alternate: 9123409876, status: active } }
+                  - { n: 4, type: tool_call, tool: porting_code, args: { number: 9123409876 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_lacks, value: '9876543210|9123409876' }
+        - { type: returns_matches, value: '"alternate":\s*"<PHONE_2>"' }
+        - { type: returns_matches, value: '"failed_step":\s*\{"n":\s*4,[^{}]*"args":\s*\{"number":\s*"<PHONE_2>"\}' }
+        - { type: returns_matches, value: '"expected_step":\s*\{[^{}]*"args":\s*\{"number":\s*"<PHONE_1>"\}' }
+
+  - name: adversarial_a_review_that_only_rewrites_the_number
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The reviewer pointed at the lookup and wrote the customer's number with
+      its country code as the correct step. The agent had looked up exactly
+      that number, written without spaces. Its real mistake came two steps
+      later, when it told the customer the roaming charges were right.
+
+      Compared as written, the two numbers differ, so the case looks like a
+      wrong-number failure and goes into the set. Compared by their last ten
+      digits they are one number, the failed step and the fix are the same
+      step, and a case like that passes any agent. It is left out as
+      `no_difference`, which is also the signal that this review needs a
+      second look.
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-23" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        failed_traces:
+          returns:
+            status: 200
+            traces:
+              - trace: T-5701
+                review:
+                  kind: agent
+                  step: 2
+                  by: billing lead
+                  correct: { type: tool_call, tool: lookup_subscriber, args: { number: "+91 99001 23456" } }
+                steps:
+                  - { n: 1, type: user, text: "Why was I charged for roaming on 99001 23456 when I never left Pune?" }
+                  - { n: 2, type: tool_call, tool: lookup_subscriber, args: { number: "9900123456" } }
+                  - { n: 3, type: observation, value: { subscriber: S-50318, roaming_charges: 412, cell_ids: [PUN-0419, PUN-0420] } }
+                  - { n: 4, type: assistant, text: "Those charges are correct because you used roaming." }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"no_difference":\s*1\b' }
+        - { type: returns_matches, value: '"cases":\s*\[\]' }
+
+reference_md: |
+  An eval case built from a failure has one job: fail the agent that made
+  the mistake and pass the agent that does not. Both earlier attempts broke
+  that job, in opposite directions. The copied traces passed the broken agent
+  because they handed it the answer, and the `[PHONE]` cases passed it
+  because they deleted the difference the failure was made of.
+
+  The case ends at the failed step. What the agent could see then is the
+  context, and everything after it is the future: the agent's own recovery,
+  the customer's correction and the reviewer's handoff note. A case that
+  includes any of it tests reading, not deciding.
+
+  Placeholders have to keep exactly one fact, which values were the same
+  value. That is what a wrong-number failure is made of, so each number gets
+  its own placeholder and the same number keeps it everywhere it appears,
+  however it was written. The normal form is what makes "the same" true: an
+  email address in lower case, a phone number by its last ten digits. Without
+  it, one customer typing their number with a country code becomes two people,
+  the case claims the agent switched accounts, and a review that only
+  rewrote the number looks like a failure worth keeping.
+
+  The placeholders start from 1 in every trace, and the map is thrown away
+  afterwards. Inside a case they keep the failure readable. Across cases they
+  link nothing, so nobody can tell that two cases came from the same
+  customer. That is the answer to the privacy lead in the defence question,
+  and it is worth having ready: the GDPR's Recital 26 treats pseudonymised
+  data as personal data when additional information could attribute it to a
+  person, so the argument rests on there being no additional information
+  kept anywhere, not on the placeholder looking anonymous.
+
+  The data turns up wherever services put it. Observations nest it, tools
+  take it as arguments, and a service that changes its schema can start
+  sending a phone number as a number. The walk goes through every value, and
+  a number is checked against the same pattern as text.
+
+  The two checks at the end ask whether the case is worth keeping. A case
+  whose failed step and expected step are the same step passes every agent.
+  A case whose expected step uses a value the context never showed asks the
+  agent for something it could not have known, and the right step there was
+  probably a question to the customer, which is a decision for a person to
+  make rather than for this job. Service outages are left out for the same
+  reason: a case built from a timeout tests the service, and the agent
+  cannot pass it by being better.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    How do you turn a production failure into a regression case without copying customer data into your eval set, and without losing the failure?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: failed_traces
+    args: day
+    returns: The day's failed `traces`, each with its `steps` and its `review`, which is null when nobody
+      reviewed it.
+example:
+  case: turns_a_reviewed_failure_into_a_case
+  expect: Cut the trace before step 4, replace the number and the email with `<PHONE_1>` and `<EMAIL_1>`,
+    and return one case whose failed step refunds 598 and whose expected step refunds 299.
+traps:
+  - Giving every number the same placeholder, which can make the failed step and the expected step identical.
+  - Treating one number written two ways as two people, so the case claims the agent switched accounts.
+  - Keeping the steps after the failure, which hands the agent the reviewer's note and the customer's
+    correction.
+  - Scrubbing only text, so a phone number stored as a number goes into the eval set as it is.

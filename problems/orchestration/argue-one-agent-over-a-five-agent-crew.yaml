@@ -1,0 +1,452 @@
+slug: argue-one-agent-over-a-five-agent-crew
+title: "Argue for one agent over a five-agent crew"
+day: 14
+skill: Weigh a multi-agent crew against one agent in a fixed workflow by cost, time and evidence
+artefact_type: design
+difficulty: extreme
+track: orchestration
+concept:
+  topic: "When one agent wins"
+  question: "When does one agent in a fixed workflow beat a crew of agents?"
+est_minutes: 50
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: evaluation-design, weight: 0.5 }
+  - { slug: client-communication, weight: 0.5 }
+
+brief_md: |
+  Customer operations at a parcel network the size of DPD UK sends each of
+  its 600 business customers a summary every weekday morning: which of
+  yesterday's deliveries failed or ran late, why, and the service credit each
+  one earns under that customer's contract. The carrier feeds land at 06:00
+  and the summaries must be out by 08:00. Three tools already exist. One lists
+  a customer's exceptions, one returns the carrier's status note for a
+  delivery, and one returns the credit an exception earns.
+
+  The head of customer operations watched a vendor demo and wants a
+  five-agent CrewAI crew run in its hierarchical process: a manager, a
+  shipment researcher, a carrier analyst, a credits analyst and an account
+  writer. She has told the board that an AI crew will run the summaries from
+  next quarter.
+
+  You ran last Tuesday's 40 largest customers through two builds. The second
+  is a CrewAI Flow that calls the three tools in code and makes two model
+  calls per summary: one to turn carrier notes into reasons, and one to write
+  the email around the facts it is given.
+
+  | | Five-agent crew | Flow with one agent |
+  |---|---|---|
+  | Model calls per summary, median | 38 | 2 |
+  | Time per summary, median | 96 seconds | 9 seconds |
+  | Cost per summary | £0.52 | £0.04 |
+  | Credits that did not match the contract | 3 of 40 | 0 of 40 |
+  | Summaries out after 08:00 | 2 of 40 | 0 of 40 |
+  | Reasons an account manager would reword | 2 of 40 | 5 of 40 |
+
+  In the three wrong credits, the writer restated a figure the credits
+  analyst had passed on in prose. The two late summaries went round in
+  circles: the carrier analyst and the researcher kept delegating the same
+  status question to each other until each reached its iteration limit,
+  which is 20 by default.
+
+  Write the recommendation you would send her.
+
+contract_md: |
+  Write the recommendation as you would send it. It goes to the head of
+  customer operations, who knows the summaries and the contracts well and
+  does not write code.
+
+  Between 350 and 650 words. There is no template and no required structure.
+
+  Say what you would build and why, what each build costs in money and time,
+  how each one fails, how you would settle the question with evidence, and
+  what would change your mind. The CrewAI facts in the brief come from the
+  CrewAI documentation for version 1.15.23.
+
+word_range: [350, 650]
+required_headings: []
+
+rubric:
+  - label: Reads the shape of the work before choosing a build
+    weight: 20
+    descriptor_md: |
+      Strong answers observe that every summary runs the same three lookups
+      in the same order, so the order belongs in code, and that judgement is
+      needed in two places only: turning a carrier note into a reason, and
+      writing the email. They say what a manager agent adds to a fixed
+      sequence, which is planning and delegation on every summary, and that it
+      adds nothing to the answer. Answers that compare agents in the abstract,
+      without the steps, have not looked at the work.
+  - label: Prices both builds in the brief's own numbers
+    weight: 20
+    descriptor_md: |
+      Strong answers turn per-summary figures into the client's units: £312
+      against £24 a morning for 600 customers, and run time against the two
+      hours between 06:00 and 08:00. Sixteen hours of crew time needs at least
+      eight summaries running at once, and the Flow fits in 90 minutes run one
+      at a time. An answer that says "more expensive" or "slower" without a
+      figure gives the reader nothing to weigh.
+  - label: Names how each build fails, and which failures come from its shape
+    weight: 20
+    descriptor_md: |
+      Strong answers trace the wrong credits to a figure passed between agents
+      as prose, and the late summaries to a delegation loop, and say a better
+      prompt makes both rarer without making them impossible. They name the
+      Flow's own failure, exception types nobody coded for, and they deal
+      honestly with the one row the crew won: reasons account managers would
+      reword. Answers that list only the crew's faults, or call the wrong
+      credits a prompt problem, have missed what the comparison shows.
+  - label: Settles the question with an evaluation decided in advance
+    weight: 25
+    descriptor_md: |
+      Strong answers replay the same days through both builds and check the
+      facts in code: every exception present, every credit equal to the
+      credit tool's figure, every email out by 08:00. They read the prose
+      blind, compare cost per summary that passes every check, and say before
+      the replay which result decides it. A model's score from 1 to 10, which
+      is what `crewai test` reports, cannot tell a wrong credit from a right
+      one, and "run it for a month and monitor" decides nothing.
+  - label: Says what would change the recommendation, and keeps the board's statement true
+    weight: 15
+    descriptor_md: |
+      Strong answers name measurable conditions under which a crew earns its
+      place, such as work whose steps differ from case to case, like
+      investigating disputed deliveries, or a replay where the crew's better
+      prose comes with no credit errors at a cost the client accepts. They keep
+      the client on CrewAI with a Flow, which is how CrewAI's documentation
+      recommends starting a production application, so what the board was told
+      stays true.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      Build the morning summaries as a CrewAI Flow: fixed steps in code that
+      call the three tools, and one agent for the two places that need
+      judgement. The five-agent crew is the wrong shape for this work, and
+      last Tuesday's 40 customers show what that shape costs.
+
+      Every summary runs the same steps in the same order. List the customer's
+      exceptions, fetch the carrier note for each, fetch the credit each one
+      earns, write the email. That order never changes between customers, so
+      a manager agent planning and delegating it 600 times a morning adds
+      calls and adds nothing to the answer. Judgement is needed in two places:
+      turning a carrier's note into a reason a customer understands, and
+      writing the email. Those get one model call each.
+
+      Cost and time. The crew took a median of 38 model calls, 96 seconds and
+      £0.52 per summary. The Flow took 2 calls, 9 seconds and £0.04. At 600
+      customers that is £312 a morning against £24, about £75,000 a year on
+      weekdays alone. The feeds land at 06:00 and the emails go by 08:00. The
+      crew needs 16 hours of run time, so it must run at least eight
+      summaries at once to finish, with no slack for a slow morning. The Flow
+      finishes in 90 minutes running one at a time.
+
+      How each one fails. Three crew summaries quoted a credit that did not
+      match the contract, because the writer restated a figure the credits
+      analyst had passed on in prose. A better prompt makes that rarer. It
+      cannot make it impossible while a number travels between agents as
+      text. In the Flow the credit comes from the credit tool and goes into
+      the email as a field the model never writes. Two crew summaries missed
+      08:00 because two agents delegated the same question back and forth
+      until each hit its limit of 20 iterations, and CrewAI's own
+      documentation lists delegation loops as a known issue. The Flow fails
+      differently: it handles the exception types we coded, and a new carrier
+      status needs a code change. That failure is visible and testable.
+
+      The crew did one thing better than the Flow. Account managers would
+      reword 2 of its 40 reasons and 5 of the Flow's. That sits in one step,
+      and better instructions and examples for that step are the first fix I
+      would make.
+
+      How we decide. Replay the last three weekdays, 1,800 summaries, through
+      both builds. Check every summary in code: every exception appears,
+      every credit equals the tool's figure, every email is out by 08:00. Two
+      account managers read 60 summaries from each without knowing which is
+      which. We compare cost per summary that passes every check. A model
+      scoring each task from 1 to 10, which is what `crewai test` reports,
+      cannot tell us a credit is wrong, so it is not the deciding test.
+
+      What would change my mind. If the replay shows the crew with no credit
+      errors and clearly better reasons at a cost you accept, or if the work
+      grows into investigating disputed deliveries, where the steps differ
+      every time, a crew earns its place for that step, inside the Flow.
+
+      For the board: this is CrewAI, built the way CrewAI's documentation
+      recommends for production, which is to start with a Flow.
+  - band: adequate
+    score: 60
+    body_md: |
+      I recommend we do not go ahead with the five-agent crew for the daily
+      summaries, at least not yet. The comparison on 40 customers points
+      clearly towards the simpler build.
+
+      The crew is much more expensive. It costs £0.52 per summary against
+      £0.04 for the single agent, which is thirteen times as much, and it
+      takes 96 seconds per summary against 9. Most of the extra cost comes from
+      the manager agent planning and delegating work, and from the agents
+      passing results between each other. For a task that follows the same
+      steps for every customer, that coordination is not adding much.
+
+      More importantly, the crew made mistakes that matter to customers. Three
+      of the 40 summaries had the wrong service credit, which would lead to
+      disputes and possibly to paying out the wrong amount. Two summaries were
+      late because two of the agents kept delegating the same question to each
+      other. The single agent had no wrong credits and no late summaries,
+      because the credit figures come straight from the credit tool.
+
+      The single agent's reasons were reworded more often by account
+      managers, five against two, so there is some work to do on how it
+      explains delays. I would improve the prompt for that step and add some
+      good examples from the account team.
+
+      My plan is to run the single-agent version for the next two weeks
+      alongside the current manual process, and to monitor credit accuracy,
+      timing and how the account managers feel about the wording. I would also
+      ask the account managers to flag any summary that looks wrong, so that we
+      hear about problems quickly. If the results hold up, we roll it out to all
+      600 customers.
+
+      On the board: we can still describe this as AI running the summaries. It
+      uses the same CrewAI framework, and we could add more agents later if the
+      needs grow, for example if we start handling more complex queries from
+      customers. I would rather start simple and add complexity when we have a
+      reason than start complex and try to fix it in production.
+
+      If you would like, I can set up a short demo of both versions for you
+      and the account team so you can see the difference yourselves before the
+      board meeting.
+  - band: weak
+    score: 25
+    body_md: |
+      The five-agent crew is a strong choice and I would support going ahead
+      with it. Multi-agent systems are where the industry is heading, and a
+      crew with a manager and specialist agents mirrors how a real operations
+      team works, with each member focusing on what they do best. Specialist
+      agents also make it easier to share the work between teams later, since
+      each agent can be owned and improved on its own.
+
+      The comparison on 40 customers was a useful first look, but it is too
+      early to draw firm conclusions from one day of data. The crew's extra
+      cost is the price of having specialists, and model prices keep falling
+      every year, so the gap will close on its own. The time per summary can be
+      brought down by running more summaries in parallel, which is easy to do
+      in the cloud.
+
+      The few incorrect credits are a prompt problem. We can tell the writer
+      agent to copy figures exactly from the credits analyst, and add a
+      reviewer agent that checks every credit before the email goes out. The
+      delegation issue can be fixed by giving each agent clearer instructions
+      about what it owns. CrewAI also has a planning feature that should make
+      the crew more organised.
+
+      The crew also wrote better explanations of the delays, which is what
+      customers actually read. That shows the value of having a dedicated
+      writer agent focused on communication.
+
+      A single agent following a fixed workflow is simpler, but it is also less
+      flexible. If carriers change their formats or customers ask new kinds of
+      questions, a fixed workflow will need changes, while a crew can adapt on
+      its own. Building the crew now also prepares us for future use cases
+      across the business, and it matches what the board has been told.
+
+      To make sure it works, I would run the crew for a month and track a
+      quality score for each summary, which CrewAI can produce with its
+      built-in testing command. We should also monitor customer feedback and
+      the number of complaints about credits, and keep improving the prompts
+      as we learn.
+
+      Overall the crew is the more future-proof option, and with some tuning of
+      the prompts it should deliver high quality summaries for all 600
+      customers.
+
+hints:
+  - List the steps one summary goes through, in order. Then mark the steps that
+    have one right answer and the ones that need judgement.
+  - Put both builds through the same arithmetic. Work it out per summary, per
+    morning for 600 customers, and against the two hours between 06:00 and
+    08:00.
+  - For each wrong or late crew summary, ask whether a better prompt removes
+    the failure or only makes it rarer. Then ask the same about the Flow's five
+    reworded reasons.
+  - Decide the test before the argument. Replay the same days through both
+    builds, check the facts in code, read the prose blind, and say which result
+    would make you switch.
+  - The board was told an AI crew would run the summaries. Say something true
+    that they can check.
+
+scenario:
+  headline: "A five-agent crew cost 13 times as much and got 3 credits wrong"
+  who: "The head of customer operations at a parcel network the size of DPD UK"
+  situation: >-
+    She wants a five-agent CrewAI crew to write 600 delivery summaries every
+    weekday morning, and has told the board. Your run on 40 customers set it
+    against a Flow with one agent and the same three tools.
+  stakes: >-
+    Each summary quotes the service credits a customer is owed, so a wrong
+    credit becomes a dispute, and every summary must be out by 08:00.
+  metrics:
+    - { label: Cost per summary, value: "£0.52 vs £0.04" }
+    - { label: Wrong credits in 40, value: "3 vs 0" }
+    - { label: Summaries each morning, value: "600" }
+
+diagram:
+  title: Where the crew spent its calls, and where the Flow spends its two
+  caption: >-
+    The crew plans and delegates the same fixed steps on every summary. The
+    Flow runs the steps in code and calls a model only where judgement is
+    needed.
+  direction: lr
+  nodes:
+    - { id: feeds, label: Carrier feeds, sub: land at 06:00, kind: doc, tone: neutral, at: [0, 1] }
+    - { id: manager, label: Manager agent, sub: re-plans the same steps each time, kind: agent, tone: purple, at: [1, 0] }
+    - { id: crew, label: Four specialist agents, sub: pass facts to each other as prose, kind: agent, tone: purple, at: [2, 0] }
+    - { id: wrong, label: 3 of 40 credits wrong, sub: a figure restated in prose, kind: output, tone: pink, at: [3, 0] }
+    - { id: late, label: 2 of 40 after 08:00, sub: a delegation loop, kind: output, tone: pink, at: [3, 1] }
+    - { id: flow, label: CrewAI Flow, sub: fixed steps in code, kind: guard, tone: green, at: [1, 2] }
+    - { id: tools, label: Three tools, sub: "exceptions, carrier note, credit", kind: tool, tone: blue, at: [2, 2] }
+    - { id: model, label: One agent, sub: two calls for reasons and the email, kind: model, tone: teal, at: [3, 2] }
+    - { id: email, label: Summary email, sub: credits inserted from the tool, kind: output, tone: green, at: [4, 2] }
+  edges:
+    - { from: feeds, to: manager, label: the crew }
+    - { from: manager, to: crew, label: 38 calls a summary }
+    - { from: crew, to: wrong, label: credit restated, tone: danger }
+    - { from: crew, to: late, label: delegated back and forth, tone: danger }
+    - { from: feeds, to: flow, label: the Flow, step: 1 }
+    - { from: flow, to: tools, label: same order every time, step: 2, tone: success }
+    - { from: tools, to: model, label: facts it is given, step: 3 }
+    - { from: model, to: email, label: 2 calls a summary, tone: success }
+
+approach:
+  goal: Choose the build the work's shape calls for, and prove it on the client's own data
+  branches:
+    - label: Read the shape of the work
+      leaves: [the same three lookups for every customer, judgement in two places]
+    - label: Price both builds
+      leaves: [per summary and per morning, against the two hours before 08:00]
+    - label: Name how each one fails
+      detail: The crew's failures came from its structure. The Flow's come from what nobody coded for.
+      leaves: [a credit restated in prose, a delegation loop, a new carrier status, reasons to reword]
+    - label: Settle it with a replay
+      leaves: [the same days through both builds, facts checked in code, prose read blind]
+    - label: Say what would change your mind
+      leaves: [work whose steps differ every time, a measured win for the crew]
+
+coach:
+  opening: >-
+    Before you choose, write the steps one summary goes through and mark where
+    a person would need judgement. Then look at which build puts a model on
+    every step.
+  signals:
+    - id: no-numbers
+      when: { code_lacks: '£\s?0\.52|£\s?0\.04|£\s?312|£\s?24\b|96 seconds|9 seconds|38 (model )?calls' }
+      say: >-
+        Your recommendation never prices either build. The brief gives calls,
+        seconds and pounds per summary, and there are 600 summaries to send
+        before 08:00.
+    - id: trend-argument
+      when: { code_matches: '(?i)\bfuture\b|\bindustry\b|best practice|prices? (keep|will) fall|cheaper every' }
+      say: >-
+        Where the industry is heading is no evidence about this job. What do
+        the 40 summaries you already ran say?
+    - id: credits-as-prompt-problem
+      when:
+        code_matches: '(?i)prompt problem|tell the writer( agent)? to copy|clearer instructions'
+        code_lacks: '(?i)credit tool|from the tool|never writes|as a field'
+      say: >-
+        A better prompt makes a wrong credit rarer. What would make it
+        impossible for the email to carry a credit the contract does not give?
+    - id: no-deadline
+      when: { code_lacks: '08:00|8 ?am|two hours|2 hours' }
+      say: >-
+        The feeds land at 06:00 and the emails must go by 08:00. Does each build
+        finish 600 summaries in that window, and how?
+    - id: no-replay
+      when: { code_lacks: '(?i)replay|run both|both builds|same days|side by side' }
+      say: >-
+        How will the head of operations know which build is right? You can run
+        the same days through both and check the facts in code.
+    - id: no-mind-change
+      when: { code_lacks: '(?i)change my mind|would reconsider|earns? its place|would switch' }
+      say: >-
+        Say what result, or what change in the work, would make you recommend
+        the crew. A recommendation nothing could change reads as a position.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the steps of one summary and the arithmetic for 600 of them.
+        The recommendation follows from those two lists.
+    - id: hints
+      when: { failed_runs_at_least: 2 }
+      say: >-
+        Two runs have failed. Once your attempt note is written the hints open,
+        starting with the steps one summary goes through.
+  wrap_up: >-
+    A crew earns its cost when the work changes shape from one case to the
+    next. When every case runs the same steps, put the steps in code, spend
+    the model on judgement, and prove it on the client's own data.
+
+reference_md: |
+  The comparison answers most of the question before any argument starts.
+  The crew cost thirteen times as much per summary, took more than ten times
+  as long, and produced the only wrong credits and the only late summaries. A
+  recommendation that leads with those numbers, turned into the client's
+  units of a morning and a two-hour window, is most of a strong answer.
+
+  The deeper point is the shape of the work. Every summary runs the same
+  three lookups in the same order, and only two steps need judgement. A crew
+  in the hierarchical process puts a manager model in charge of choosing that
+  order on every summary, and an order chosen 600 times a morning that never
+  changes is pure overhead. The crew also passes facts between agents as
+  prose. A credit that travels from one agent's text into another's can be
+  restated, and three were. Taking the credit from the tool and inserting it
+  as a field removes the failure rather than making it rarer, and that is the
+  line between a structural fix and a prompt fix.
+
+  The delegation loop is the same lesson from another side. CrewAI's
+  collaboration guide lists "Delegation Loops: agents delegate back and forth
+  indefinitely" among its known issues, and an agent's `max_iter` defaults to
+  20 (CrewAI documentation for version 1.15.23, read 1 October 2026). Two
+  agents that may each delegate to the other will sometimes do so until a
+  limit stops them, and an iteration limit says nothing about 08:00.
+
+  Strong answers do not pretend the Flow has no faults. Its reasons needed
+  rewording more often, and it handles only the exception types someone
+  coded. The first sits in one step and has a cheap fix. The second is
+  visible and testable, which emergent behaviour across five agents is not.
+
+  The evaluation turns a recommendation into a decision. The facts in a
+  summary have right answers: the exceptions the tool returned, the credit
+  the tool computed, the time the email left. Those are checked in code on
+  every replayed summary, and the prose is judged blind by the people who
+  read it. A model scoring each task from 1 to 10, which is what `crewai test`
+  reports, has no access to the right credit, so it cannot settle whether one
+  is wrong.
+
+  Keeping the client on CrewAI matters as well. Its documentation recommends
+  starting a production application with a Flow, and for work that needs
+  high precision at low complexity it suggests "Flows with direct LLM calls
+  or simple Crews with structured outputs". The board was told an AI crew
+  would run the summaries. A Flow with an agent in it is CrewAI used as its
+  authors advise, and a crew can still be added inside it for a step that
+  earns one, such as investigating disputed deliveries, where the steps
+  differ every time.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A client wants a crew of five agents for a job that runs the same steps every time. What do you recommend, and what would change your mind?
+  source: |
+    Adapted from docs/source-pack/09-interview-bank.json I012, "When would multiple agents make this
+    workflow worse?", which labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat. The CrewAI facts were checked against
+    docs.crewai.com for version 1.15.23 on 1 October 2026.
+
+traps:
+  - Arguing from fashion or from what the board was told, with no cost, time or error figure from the comparison.
+  - Calling the wrong credits a prompt problem, when they come from a figure passed between agents as prose.
+  - Offering a model's score from 1 to 10 as the evaluation, when the facts in a summary can be checked in code.
+  - Ignoring the one row where the crew did better, the reasons account managers would reword.
