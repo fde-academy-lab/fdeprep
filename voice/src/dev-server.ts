@@ -11,21 +11,36 @@
  * the Lambda path opens one Transcribe stream per batch rather than one per
  * answer. Those need a deploy.
  *
+ * One session failing never takes the socket down. Anything thrown inside a
+ * connection handler used to be an unhandled rejection, which ends a Node
+ * process, so a transcriber that would not open (Amazon Transcribe on a
+ * machine with no AWS credentials) stopped the socket for every Start after
+ * it. That session now ends with an error the browser shows, and the socket
+ * keeps serving. test/dev-server.test.ts holds it there.
+ *
  *   VOICE_TOKEN_SECRET=dev npm run dev -w voice
  */
 import { createServer } from "node:http";
 import { WebSocketServer } from "ws";
 import { readVoiceToken, TokenRejected } from "../../web/lib/voice/token.ts";
-import { loadConfig } from "./config.ts";
+import { loadConfig, type VoiceConfig } from "./config.ts";
 import { sttSessionIdFor } from "./ids.ts";
-import { adapterFor } from "./stt/index.ts";
+import { adapterFor, type VoiceAdapter } from "./stt/index.ts";
 import { VoiceSession } from "./session.ts";
 import { randomUUID } from "node:crypto";
 
 const PORT = Number(process.env.VOICE_DEV_PORT ?? 8787);
 const TICK_MS = 1_000;
 
-export function startDevServer(port: number = PORT) {
+/** RFC 6455: the server met a condition that stopped it fulfilling the
+ *  request. The cockpit reads it as the transcriber failing. */
+const CLOSE_FAILED = 1011;
+
+export function startDevServer(
+  port: number = PORT,
+  /** Which transcriber each session gets. Tests pass one that fails. */
+  makeAdapter: (config: VoiceConfig) => VoiceAdapter = adapterFor,
+) {
   const config = loadConfig();
   const secret = process.env.VOICE_TOKEN_SECRET ?? "";
   const server = createServer();
@@ -45,7 +60,7 @@ export function startDevServer(port: number = PORT) {
       return;
     }
 
-    const adapter = adapterFor(config);
+    const adapter = makeAdapter(config);
     const session = new VoiceSession({
       sessionId: sid,
       // A connection id is what the Lambda path derives this from; here the
@@ -58,34 +73,76 @@ export function startDevServer(port: number = PORT) {
       },
     });
 
+    let ended = false;
+    /** End this session and say why, without ending the process. */
+    const fail = (error: unknown) => {
+      if (ended) return;
+      ended = true;
+      clearInterval(timer);
+      const reason = error instanceof Error ? error.message : String(error);
+      console.error(`voice session ${sid}: the transcriber failed: ${reason}`);
+      if (socket.readyState !== socket.OPEN) return;
+      socket.send(JSON.stringify({
+        t: "error",
+        code: "stt_failed",
+        message: `The development socket's transcriber failed: ${reason}.` +
+          (config.stt === "transcribe"
+            ? " On a machine without AWS credentials, start the socket with VOICE_STT=scripted."
+            : ""),
+      }));
+      socket.close(CLOSE_FAILED, "transcriber failed");
+    };
+
     const timer = setInterval(() => {
-      void session.tick().then((alive) => {
+      session.tick().then((alive) => {
         if (!alive) {
           clearInterval(timer);
           socket.close(1000, session.closeReason ?? "closed");
         }
-      });
+      }).catch(fail);
     }, TICK_MS);
 
-    socket.on("message", (data) => {
-      void session.handle(data.toString()).then((alive) => {
+    // Audio that arrives while the transcriber is still opening waits here
+    // and goes to it in order once it is open. The browser sends frames as
+    // soon as its microphone opens, and pushed straight through, the first
+    // of them threw "push before open".
+    let open = false;
+    const waiting: string[] = [];
+    const handle = (raw: string) => {
+      session.handle(raw).then((alive) => {
         if (!alive) {
           clearInterval(timer);
           socket.close(1000, "stopped");
         }
-      });
+      }).catch(fail);
+    };
+
+    socket.on("message", (data) => {
+      if (open) handle(data.toString());
+      else waiting.push(data.toString());
     });
 
     socket.on("close", () => {
       clearInterval(timer);
-      void session.close("client_gone");
+      session.close("client_gone").catch((error) => {
+        console.error(`voice session ${sid}: closing after the browser left failed:`, error);
+      });
     });
 
-    await session.start();
+    try {
+      await session.start();
+    } catch (error) {
+      fail(error);
+      return;
+    }
+    open = true;
+    for (const raw of waiting.splice(0)) handle(raw);
   });
 
   server.listen(port, () => {
-    console.log(`voice dev socket on ws://localhost:${port} (stt: ${config.stt})`);
+    const address = server.address();
+    const bound = typeof address === "object" && address ? address.port : port;
+    console.log(`voice dev socket on ws://localhost:${bound} (stt: ${config.stt})`);
   });
   return server;
 }
