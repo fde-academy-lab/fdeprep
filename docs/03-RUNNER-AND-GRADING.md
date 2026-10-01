@@ -45,6 +45,7 @@ Nothing about the model changes. A graph node calls the `llm` proxy like any oth
 |---|---|
 | The sandbox preloads the full dotted module a solution imports, such as `langgraph.graph`, before the import hook goes in | A framework imports `importlib` and `asyncio` as it loads; loaded first, those imports never reach the hook |
 | `importlib` stays loaded for a solution that imports a framework, and only then | pydantic, under LangChain's `@tool`, imports by name on first use. The static gate still refuses `import importlib`, and every other solution loses it as before |
+| LangChain core's `ContextThreadPoolExecutor` runs its work on the calling thread for a solution that imports a framework | LangGraph saves every checkpoint, and runs parallel branches, through that pool, and the sandbox cannot start a thread for any user but root. Inline, a graph runs sequentially and the same way every time. CI, which runs as a normal user, caught it |
 | The static gate names four more hops: `logging`, `pickle`, `shutil` and `asyncio` | The route walk in `tests/test_static_gate.py` found public routes through them to `threading`, `pickle`, `shutil`, `socket` and `subprocess`, and now walks the framework submodules too |
 
 CrewAI was measured the same day and left out: 855 MB across 139 packages and 2.6 seconds of import per case. CrewAI is taught through design problems until it has a runner image of its own.

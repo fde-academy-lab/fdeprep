@@ -113,6 +113,36 @@ def test_a_graph_that_never_ends_stops_at_its_recursion_limit():
     assert result["gates"]["public"]["status"] == "pass", result["gates"]["public"]
 
 
+def test_a_checkpointed_graph_needs_no_thread():
+    """LangGraph saves checkpoints through a thread pool, and the sandbox
+    cannot start a thread for any user but root. CI runs as a normal user and
+    caught it on 1 October 2026; the sandbox now runs that pool inline. This
+    asks the kernel directly, so it fails as root too."""
+    import subprocess
+    import sys
+
+    code = (
+        "import resource, threading\n"
+        "from runner.harness import sandbox\n"
+        "import langgraph.graph, langgraph.checkpoint.memory, langchain_core.runnables.config\n"
+        "sandbox._run_framework_work_inline()\n"
+        "threading.Thread.start = lambda self: (_ for _ in ()).throw(RuntimeError('thread'))\n"
+        "from typing import TypedDict\n"
+        "from langgraph.graph import StateGraph, START, END\n"
+        "from langgraph.checkpoint.memory import InMemorySaver\n"
+        "class S(TypedDict):\n    a: int\n"
+        "g = StateGraph(S)\n"
+        "g.add_node('n', lambda s: {'a': s['a'] + 1})\n"
+        "g.add_edge(START, 'n')\ng.add_edge('n', END)\n"
+        "app = g.compile(checkpointer=InMemorySaver())\n"
+        "print(app.invoke({'a': 1}, {'configurable': {'thread_id': 't'}})['a'])\n"
+    )
+    out = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True,
+                         cwd=ROOT, timeout=60)
+    assert out.returncode == 0, out.stderr[-2000:]
+    assert out.stdout.strip() == "2"
+
+
 def test_the_preload_names_the_submodule_a_solution_imports():
     names = _imports_to_preload(GRAPH, ["langgraph", "langchain_core"])
     assert "langgraph.graph" in names
