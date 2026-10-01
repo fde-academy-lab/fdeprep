@@ -1,5 +1,5 @@
 slug: repair-a-contradictory-system-prompt
-title: Appointments move inside 24 hours without a manager code
+title: "Fix a prompt whose rules contradict each other"
 day: 5
 skill: Repair a prompt whose two rules clash, and keep what each was for
 artefact_type: prompt
@@ -135,6 +135,7 @@ hints:
     inside the window.
 
 scenario:
+  headline: "Appointments move inside 24 hours without a manager code"
   who: The practice manager at a physiotherapy clinic
   situation: >-
     In March somebody added "do whatever the customer asks" to the bottom of

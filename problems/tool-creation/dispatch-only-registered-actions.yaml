@@ -1,5 +1,5 @@
 slug: dispatch-only-registered-actions
-title: The account agent crashes asking for tools it lacks
+title: "Call only the tools the agent has"
 day: 3
 skill: Call only the tools the agent actually has
 artefact_type: code
@@ -137,6 +137,7 @@ hints:
     you still need a call left for the model's second choice.
 
 scenario:
+  headline: "The account agent crashes asking for tools it lacks"
   who: The operations team behind an internal account agent
   situation: >-
     The agent has two tools. This week it asked twice for one it does not

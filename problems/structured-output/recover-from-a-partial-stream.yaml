@@ -1,5 +1,5 @@
 slug: recover-from-a-partial-stream
-title: A £1,845 job was quoted £184.50 when a connection dropped
+title: "Handle a response stream that stops halfway"
 day: 4
 skill: Keep a stream that stopped halfway from turning into a quote
 artefact_type: code
@@ -174,6 +174,7 @@ hints:
     belong in front of the stream that replaced it.
 
 scenario:
+  headline: "A £1,845 job was quoted £184.50 when a connection dropped"
   who: The sales desk at a freight broker
   situation: >-
     Quotes stream onto the screen so the lane shows while the price is still

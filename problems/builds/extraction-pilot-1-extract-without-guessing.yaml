@@ -1,5 +1,5 @@
 slug: extraction-pilot-1-extract-without-guessing
-title: The claims pilot invents details, and the sponsor may end it
+title: "Leave unknown fields empty instead of guessing"
 day: 25
 skill: Leave a field empty when the letter never says it
 artefact_type: code
@@ -216,6 +216,7 @@ hints:
     The check after the reply is the part that makes the record true.
 
 scenario:
+  headline: "The claims pilot invents details, and the sponsor may end it"
   who: The head of claims operations at a regional home insurer
   situation: >-
     Six weeks into a pilot that reads claim letters and fills the intake

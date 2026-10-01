@@ -1,5 +1,5 @@
 slug: design-eval-for-a-support-agent
-title: A refund agent passes 38 of 40 tests two weeks before launch
+title: "Design an evaluation for a support agent"
 day: 22
 skill: Design the evaluation for a support agent going to production
 artefact_type: design
@@ -194,6 +194,7 @@ hints:
     and name the version that ships on their date.
 
 scenario:
+  headline: "A refund agent passes 38 of 40 tests two weeks before launch"
   who: The head of support at a client launching a refund-capable agent
   situation: >-
     Two weeks before launch, the support agent passes 38 of 40 hand-written

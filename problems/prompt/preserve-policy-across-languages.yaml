@@ -1,5 +1,5 @@
 slug: preserve-policy-across-languages
-title: The assistant allows in Spanish what it refuses in English
+title: "Keep refusal rules the same in every language"
 day: 8
 skill: Make the refusal rules hold in every language
 artefact_type: prompt
@@ -170,6 +170,7 @@ hints:
     different permission by language.
 
 scenario:
+  headline: "The assistant allows in Spanish what it refuses in English"
   who: The support lead at a parcel carrier in the UK, Spain and France
   situation: >-
     A customer in Madrid asked the support assistant, in Spanish, to send her

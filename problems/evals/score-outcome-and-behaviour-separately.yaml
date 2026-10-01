@@ -1,5 +1,5 @@
 slug: score-outcome-and-behaviour-separately
-title: A perfect eval score hides a refund nobody asked for
+title: "Score what the agent said and did"
 day: 18
 skill: Score what the agent said and what the agent did
 artefact_type: code
@@ -146,6 +146,7 @@ hints:
   - "Read the record once. Work out behaviour from events and `allowed_tools` before any model call, ask the model about Expected and Answer only, then return both verdicts with one reason per tool."
 
 scenario:
+  headline: "A perfect eval score hides a refund nobody asked for"
   who: The team that owns evals for a retail support agent
   situation: >-
     Last Tuesday an eval case scored 100 percent while the agent called refund

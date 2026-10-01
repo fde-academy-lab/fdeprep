@@ -149,7 +149,7 @@ function BuildStepper({ build }: { build: NonNullable<WorkspaceKit["build"]> }) 
   return (
     <div className="mb-4 rounded-panel border border-border bg-surface px-3.5 py-3">
       <p className="text-meta text-text-faint">
-        Capstone build, stage {build.stage} of {build.of}
+        End-to-end build, stage {build.stage} of {build.of}
       </p>
       <p className="mt-0.5 font-semibold text-text">{renderCode(build.title)}</p>
       <ol className="mt-3 flex items-center gap-1.5">

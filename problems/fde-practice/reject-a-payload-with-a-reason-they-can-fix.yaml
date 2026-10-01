@@ -1,5 +1,5 @@
 slug: reject-a-payload-with-a-reason-they-can-fix
-title: After an upgrade, 14 urgent repairs sat in the normal queue
+title: "Reject bad requests with a fixable reason"
 day: 23
 skill: Reject a bad request with a reason their engineer can fix
 artefact_type: code
@@ -191,6 +191,7 @@ hints:
   - "The model call and `create_case` both belong below the rejection. A request that fails the contract should cost nothing."
 
 scenario:
+  headline: "After an upgrade, 14 urgent repairs sat in the normal queue"
   who: The integration team at a property management company
   situation: >-
     Their ticketing system was upgraded overnight. It now sends priority P1

@@ -1,5 +1,5 @@
 slug: stop-when-the-model-will-not
-title: One question cost $340 and the buyer got nothing back
+title: "Stop an agent that keeps calling the model"
 day: 3
 skill: Stop the loop yourself when the model never will
 artefact_type: code
@@ -141,6 +141,7 @@ hints:
     still use.
 
 scenario:
+  headline: "One question cost $340 and the buyer got nothing back"
   who: The procurement team's contract research assistant
   situation: >-
     Once or twice a week the model keeps asking for one more lookup and never

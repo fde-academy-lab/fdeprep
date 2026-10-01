@@ -1,5 +1,5 @@
 slug: validate-extracted-table-evidence
-title: A misread decimal point paid a garage ten times its invoice
+title: "Check a scanned invoice adds up before paying"
 day: 10
 skill: Pay a scanned invoice only when everything printed on it adds up
 artefact_type: code
@@ -126,6 +126,7 @@ hints:
     up.
 
 scenario:
+  headline: "A misread decimal point paid a garage ten times its invoice"
   who: Motor claims at a regional insurer
   situation: >-
     Garage invoices are scanned, a model reads the table, and invoices whose

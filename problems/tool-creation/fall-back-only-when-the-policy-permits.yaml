@@ -1,5 +1,5 @@
 slug: fall-back-only-when-the-policy-permits
-title: A caller nobody verified got a SIM swap during an outage
+title: "Use the fallback tool only when policy allows"
 day: 9
 skill: Fall back to the stronger tool only when the policy says so
 artefact_type: code
@@ -127,6 +127,7 @@ hints:
   - "In order: call `account_api` and catch a raise, return on a 200, stop unless the answer was an outage and the action is in FALLBACK_ALLOWED, then try `staff_console` once and report which tool answered."
 
 scenario:
+  headline: "A caller nobody verified got a SIM swap during an outage"
   who: The security team at a mobile network
   situation: >-
     The customer agent falls back to the staff console whenever the customer

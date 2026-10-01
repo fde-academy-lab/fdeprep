@@ -1,5 +1,5 @@
 slug: route-inside-hard-constraints
-title: When a model slows, claims leave the EU against the contract
+title: "Route requests only to contract-approved models"
 day: 21
 skill: Route each claim only to models the contract allows, or refuse it
 artefact_type: code
@@ -129,6 +129,7 @@ hints:
     constraint ruled each model out. The llm argument is not a candidate.
 
 scenario:
+  headline: "When a model slows, claims leave the EU against the contract"
   who: The platform team behind a European insurer's claims assistant
   situation: >-
     The preferred EU model was slow for forty minutes. The router walked its

@@ -50,7 +50,7 @@ export const TRACK_NAMES: Readonly<Record<Track, string>> = {
   "evals": "Evals and observability",
   "production": "Production operations",
   "fde-practice": "Client delivery",
-  "builds": "Capstone builds",
+  "builds": "End-to-end builds",
 };
 
 export const DIFFICULTIES = ["easy", "medium", "hard", "extreme"] as const;

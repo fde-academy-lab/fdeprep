@@ -1,5 +1,5 @@
 slug: key-the-cache-on-the-whole-request
-title: Employees get answers written for other companies and roles
+title: "Build a cache key that cannot mix users"
 day: 19
 skill: Key the cache on everything that shapes the answer
 artefact_type: code
@@ -202,6 +202,7 @@ hints:
     request id never hits, and the cache saves nothing.
 
 scenario:
+  headline: "Employees get answers written for other companies and roles"
   who: The platform team behind an HR assistant serving forty client companies
   situation: >-
     A response cache keyed on the question text cut model spend by a third in

@@ -1,5 +1,5 @@
 slug: carry-conflicting-evidence
-title: An email's bank details sent £38,400 to the wrong account
+title: "Flag documents that disagree before paying"
 day: 8
 skill: Say which documents disagree before the supplier is paid
 artefact_type: code
@@ -126,6 +126,7 @@ hints:
   - "`ready_to_pay` asks for agreed values to be present. Think about what your code returns when there are no documents at all."
 
 scenario:
+  headline: "An email's bank details sent £38,400 to the wrong account"
   who: Accounts payable at a building-supplies wholesaler
   situation: >-
     Before a new supplier is paid, an agent reads its paperwork and fills a

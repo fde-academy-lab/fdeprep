@@ -2,7 +2,7 @@
  * Screen S2, home: where a learner lands.
  *
  * One primary action at the top, which is always the next thing to open. Below
- * it, the whole path at a glance, then what comes next, the capstone builds,
+ * it, the whole path at a glance, then what comes next, the end-to-end builds,
  * and what happened recently. Every ordering decision comes from
  * lib/policy/roadmap; this file draws what it is handed.
  */
@@ -29,7 +29,7 @@ export default async function HomePage() {
   const resume = await continueItem(learner.enrolmentId);
   const grid = await heatmap(learner.enrolmentId);
   const path = await journey(learner.enrolmentId);
-  const capstones = await builds(learner.enrolmentId);
+  const builds_ = await builds(learner.enrolmentId);
   const recent = await recentActivity(learner.enrolmentId);
 
   const primary = resume ?? view.items[0] ?? null;
@@ -71,8 +71,8 @@ export default async function HomePage() {
           <UpNext items={upNext} teasers={teaserMap} />
         </section>
         <section>
-          <SectionHeading title={capstones.length ? "Capstone builds" : "Practise under pressure"} />
-          {capstones.length ? <BuildsPanel builds={capstones} /> : <PressurePanel />}
+          <SectionHeading title={builds_.length ? "End-to-end builds" : "Practise under pressure"} />
+          {builds_.length ? <BuildsPanel builds={builds_} /> : <PressurePanel />}
         </section>
       </div>
 
@@ -82,7 +82,7 @@ export default async function HomePage() {
                           action={<Link href="/progress" className="text-text-dim hover:text-text">Full history</Link>} />
           <ActivityList rows={recent} />
         </section>
-        {capstones.length ? (
+        {builds_.length ? (
           <section>
             <SectionHeading title="Practise under pressure" />
             <PressurePanel />

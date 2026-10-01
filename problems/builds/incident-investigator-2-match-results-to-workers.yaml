@@ -1,5 +1,5 @@
 slug: incident-investigator-2-match-results-to-workers
-title: In 90 seconds, the investigator told the wrong team
+title: "Match each worker's result to its own job"
 day: 27
 skill: Match every worker's result to the job that produced it
 artefact_type: code
@@ -210,6 +210,7 @@ hints:
     stop on definitive or follow the leads with the stage 1 loop."
 
 scenario:
+  headline: "In 90 seconds, the investigator told the wrong team"
   who: The on-call team at an online grocery
   situation: >-
     The investigator's checks now run on parallel workers. In the first trial

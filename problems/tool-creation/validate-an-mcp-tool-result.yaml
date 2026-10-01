@@ -1,5 +1,5 @@
 slug: validate-an-mcp-tool-result
-title: Shoppers were told a trainer sold out with 14 pairs in stock
+title: "Check an MCP tool result against its schema"
 day: 7
 skill: Check an MCP result against the schema its tool declared
 artefact_type: code
@@ -258,6 +258,7 @@ hints:
     either one rejected line or the declared fields as JSON."
 
 scenario:
+  headline: "Shoppers were told a trainer sold out with 14 pairs in stock"
   who: The digital team behind a sportswear retailer's store assistant
   situation: >-
     The assistant checks stock through an MCP server the inventory team runs.

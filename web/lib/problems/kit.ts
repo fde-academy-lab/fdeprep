@@ -40,6 +40,7 @@ export type EdgeTone = (typeof EDGE_TONES)[number];
 
 export const KIT_LIMITS = {
   scenarioWho: 80,
+  scenarioHeadline: 90,
   scenarioSituation: 320,
   scenarioStakes: 200,
   metrics: 3,
@@ -79,6 +80,9 @@ export const KIT_LIMITS = {
 
 export interface Scenario {
   who: string;
+  /** What went wrong, as a client would put it. It was the title until 1 October
+   *  2026; the title now names the task in plain words. */
+  headline?: string;
   situation: string;
   stakes: string;
   metrics: Array<{ label: string; value: string }>;
@@ -466,7 +470,7 @@ function validateScenario(value: unknown, add: Add, lineOf: LineOf): Scenario | 
   }
   const s = value as Record<string, unknown>;
   const L = KIT_LIMITS;
-  onlyKeys(s, ["who", "situation", "stakes", "metrics"], "scenario", "kit_scenario", add,
+  onlyKeys(s, ["who", "headline", "situation", "stakes", "metrics"], "scenario", "kit_scenario", add,
     lineOf(["scenario"]));
   const who = within(s["who"], L.scenarioWho, "scenario.who", "kit_scenario", add,
     lineOf(["scenario", "who"]));
@@ -490,7 +494,10 @@ function validateScenario(value: unknown, add: Add, lineOf: LineOf): Scenario | 
         `metric ${index + 1} value`, "kit_scenario", add, line),
     };
   });
-  return { who, situation, stakes, metrics };
+  const headline = s["headline"] === undefined ? undefined
+    : within(s["headline"], L.scenarioHeadline, "scenario.headline", "kit_scenario", add,
+        lineOf(["scenario", "headline"]));
+  return { who, ...(headline ? { headline } : {}), situation, stakes, metrics };
 }
 
 function validateDiagram(value: unknown, add: Add, lineOf: LineOf): Diagram | undefined {

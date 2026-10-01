@@ -1,5 +1,5 @@
 slug: validate-and-repair-once
-title: Returns stalled silently and 212 customers heard nothing
+title: "Validate a record, repair it once, then stop"
 day: 4
 skill: Check the record against its schema, repair it once, then stop
 artefact_type: code
@@ -205,6 +205,7 @@ hints:
     the first."
 
 scenario:
+  headline: "Returns stalled silently and 212 customers heard nothing"
   who: The returns desk at an online electronics shop
   situation: >-
     Return decisions go from a model straight to the warehouse system, which

@@ -104,3 +104,33 @@ describe("the storyline rule", () => {
     expect(["written", "oral", "both"]).toContain(problem.interview?.round);
   });
 });
+
+/**
+ * Amended 1 October 2026. A title names the task in plain words for a learner
+ * meeting the topic for the first time, and the incident it used to carry
+ * stays on the page as the scenario's headline.
+ */
+describe("titles a first-time learner can read", () => {
+  it("names every task in eight words or fewer, starting with a capital", async () => {
+    const long: string[] = [];
+    for (const { problem } of await catalogue()) {
+      const words = problem.title.trim().split(/\s+/).length;
+      if (words > STORYLINE.titleWords || !/^[A-Z]/.test(problem.title)) long.push(problem.title);
+    }
+    expect(long).toEqual([]);
+  });
+
+  it("keeps the incident every title used to carry as the scenario headline", async () => {
+    for (const { problem } of await catalogue()) {
+      expect(problem.kit.scenario?.headline, problem.slug).toBeTruthy();
+    }
+  });
+
+  it("refuses a ninth word in a title, and names the field the incident belongs in", async () => {
+    const { file, source } = (await catalogue())[0]!;
+    const long = source.replace(/^title: .*$/m,
+      'title: "Stop an agent that keeps calling the model again and again"');
+    const report = validateProblemYaml(long, file, { requireKit: true });
+    expect(report.errors.map((e) => e.message).join("\n")).toMatch(/scenario\.headline/);
+  });
+});

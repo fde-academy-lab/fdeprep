@@ -1,5 +1,5 @@
 slug: cancel-without-one-more-action
-title: Pressing cancel did not stop 37 texts and 12 late fees
+title: "Make Cancel stop the agent straight away"
 day: 6
 skill: Cancel a run without it taking one more action
 artefact_type: code
@@ -161,6 +161,7 @@ hints:
     model for anything else.
 
 scenario:
+  headline: "Pressing cancel did not stop 37 texts and 12 late fees"
   who: The collections team at a regional water utility
   situation: >-
     The billing lead pressed Cancel at 14:02. The model was mid-call, and the

@@ -1,5 +1,5 @@
 slug: complete-the-evidence-only-prompt
-title: The policy assistant makes up answers no article covers
+title: "Make the prompt answer only from cited articles"
 day: 2
 skill: Fill the empty slots so answers cite their article or say there is none
 artefact_type: prompt
@@ -128,6 +128,7 @@ hints:
     one line saying what article text is.
 
 scenario:
+  headline: "The policy assistant makes up answers no article covers"
   who: The compliance team at a retail help centre
   situation: >-
     The policy assistant went live with two of its three template slots

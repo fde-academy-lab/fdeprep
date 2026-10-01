@@ -1,5 +1,5 @@
 slug: fuse-lexical-and-semantic-rankings
-title: An engineer replaces the wrong part and a printer stays down
+title: "Combine keyword and vector search results"
 day: 14
 skill: Merge keyword and vector search results by their rank in each list
 artefact_type: code
@@ -124,6 +124,7 @@ hints:
     list can still answer the question.
 
 scenario:
+  headline: "An engineer replaces the wrong part and a printer stays down"
   who: Field engineering at a managed print company
   situation: >-
     An M400 showed E-4102 and would not feed from tray 2. The runbook for it

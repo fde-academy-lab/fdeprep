@@ -1,5 +1,5 @@
 slug: incident-investigator-4-resume-without-paging-twice
-title: After two restarts, the same engineer was paged three times
+title: "Resume an investigation without paging anyone twice"
 day: 28
 skill: Resume an interrupted investigation without paging anyone twice
 artefact_type: code
@@ -206,6 +206,7 @@ hints:
   - "An answer from `page_status` with no delivered flag is neither a yes nor a no. Page nobody, and say so in the result."
 
 scenario:
+  headline: "After two restarts, the same engineer was paged three times"
   who: The on-call team at an online grocery
   situation: >-
     The investigator now pages the owning team and resumes from a checkpoint

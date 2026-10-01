@@ -1,5 +1,5 @@
 slug: separate-missing-from-null-parameters
-title: Nobody was asked where to leave parcels, so 31 went back
+title: "Ask only about the field nobody mentioned"
 day: 1
 skill: Ask about the field nobody mentioned, and only that one
 artefact_type: code
@@ -169,6 +169,7 @@ hints:
     booking call, and when you book, pass the nulls through unchanged.
 
 scenario:
+  headline: "Nobody was asked where to leave parcels, so 31 went back"
   who: The redelivery desk at a parcel carrier
   situation: >-
     Customers rebook missed deliveries by message. A change meant to stop a

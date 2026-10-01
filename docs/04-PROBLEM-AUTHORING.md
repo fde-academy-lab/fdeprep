@@ -40,7 +40,7 @@ The last six rows land with `eval/` and are not enforced today, because no probl
 | A C1 problem declaring panelist 3 | Spending a model call on an exact-match question is waste that compounds across a cohort |
 | A heuristic named in a problem that is absent from the heuristic registry | An author inventing a heuristic inline writes a rule that fails at run time in front of a learner |
 | No `interview_evidence`, or an empty `asked_as` | Every problem exists to prepare somebody for a technical round, and a North Star CI cannot check is a wish |
-| A catalogue problem with no `day` from 1 to 30, no `skill`, a `title` over 64 characters or a `skill` over 90 | The catalogue is told as a learner's first 30 days as an FDE: the title says what the client sees, the skill line says what is practised, and the row shows both on one line each. Added 30 September 2026, after the first beta tester found the titles hard to follow. Fixtures are exempt. |
+| A catalogue problem with no `day` from 1 to 30, no `skill`, a `title` over 64 characters or a `skill` over 90 | The catalogue is told as a learner's first 30 days as an FDE: the title says what the client sees, the skill line says what is practised, and the row shows both on one line each. Added 30 September 2026, after the first beta tester found the titles hard to follow. Amended 1 October 2026: the title names the task in plain words, starting with a verb, in eight words or fewer, for a learner meeting the topic for the first time, and the incident it used to carry moves to `scenario.headline`, 90 characters at most, which the scenario card and the catalogue row show under the title. A ninth word is refused with a message naming `scenario.headline`. Fixtures are exempt. |
 | A name in code left outside backticks in any field a learner reads | A function, field or exception written as plain prose reads as an ordinary word. A name with an underscore, a call, a dot between two lower-case words, or a name ending in `Error` or `Exception` counts. `tests/test_inline_code.py` checks it and `python -m tools.inline_code --fix` marks them in place. Code blocks, required headings and the original prompt are left alone. Added 30 September 2026. |
 | A catalogue problem whose `tools` differ from the tools its cases script, whose `example` names a hidden case or repeats a probe, with fewer than two or more than four `traps`, or with a trap, tool or example that quotes a hidden case | The page spells out what the brief implies, and hidden means unpublished: a trap that quotes a hidden case publishes it. Section 2.1 has the fields. Added 30 September 2026. |
 
@@ -52,7 +52,7 @@ Run the validator in CI on the problems repository so a bad problem never reache
 
 ```yaml
 slug: recover-from-soft-tool-errors        # unique, url-safe, never reused
-title: The order assistant mistakes failed lookups for answers   # what the client sees, 64 characters at most
+title: Catch a tool failure that looks like success   # the task, a verb first, eight words at most
 day: 6                                     # 1..30, the day of a learner's first 30 as an FDE
 skill: Catch a tool failure that looks like a success, and retry once   # what is practised, 90 characters at most
 artefact_type: code                        # code | prompt | design

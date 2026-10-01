@@ -1,5 +1,5 @@
 slug: reject-invalid-action-arguments
-title: The refunds agent paid out one penny and reported success
+title: "Validate the model's arguments before acting"
 day: 7
 skill: Validate what the model asked for before you do it
 artefact_type: code
@@ -166,6 +166,7 @@ hints:
     round again."
 
 scenario:
+  headline: "The refunds agent paid out one penny and reported success"
   who: The payments team behind a refunds agent
   situation: >-
     The agent refunds up to 200 pounds with no person involved. Last month the

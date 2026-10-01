@@ -1,5 +1,5 @@
 slug: reply-once-to-a-retried-webhook
-title: 312 customers got two first replies, some conflicting
+title: "Reply once when a webhook arrives twice"
 day: 27
 skill: Reply once when the help desk delivers the same ticket twice
 artefact_type: code
@@ -192,6 +192,7 @@ hints:
     it, and only the delivery that claimed a key may give it back.
 
 scenario:
+  headline: "312 customers got two first replies, some conflicting"
   who: The support team at a subscription software company
   situation: >-
     The help desk retries any webhook it has not seen acknowledged within ten

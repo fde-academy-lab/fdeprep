@@ -1,5 +1,5 @@
 slug: resume-without-repeating-an-effect
-title: A customer gets two welcome emails and two discount codes
+title: "Resume after a crash without sending twice"
 day: 15
 skill: Resume a crashed run without sending the email twice
 artefact_type: code
@@ -109,6 +109,7 @@ hints:
     reconciled and nothing blocked has nothing to tell an operator.
 
 scenario:
+  headline: "A customer gets two welcome emails and two discount codes"
   who: The onboarding team behind an eight-step signup agent
   situation: >-
     On Sunday a deploy restarted the worker partway through one customer's

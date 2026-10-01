@@ -1,5 +1,5 @@
 slug: resolve-a-follow-up-without-changing-intent
-title: A customer is told where somebody else's parcel is
+title: "Answer follow-up questions about the right order"
 day: 14
 skill: Resolve "what about the other one" without borrowing someone else's order
 artefact_type: code
@@ -106,6 +106,7 @@ hints:
     no referent, not a different one.
 
 scenario:
+  headline: "A customer is told where somebody else's parcel is"
   who: The support queue at a parcel delivery service
   situation: >-
     A customer asked "and what about the other one?". The agent rewrote it from

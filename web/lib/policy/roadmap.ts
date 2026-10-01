@@ -136,7 +136,7 @@ export function rank(
  *
  * docs/00 orders a roadmap by tier and by the persona's emphasis and says
  * nothing about the tracks outside the emphasis, which used to tie and fall
- * to the slug. A builder then met a capstone build's first stage between two
+ * to the slug. A builder then met an end-to-end build's first stage between two
  * retrieval problems. The journey order is the one the home page draws, so
  * the roadmap and the map now agree.
  */

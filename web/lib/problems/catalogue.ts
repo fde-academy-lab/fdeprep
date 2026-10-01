@@ -30,6 +30,8 @@ export interface CatalogueRow {
   /** The day of a learner's first 30 as an FDE, or null before the problem is republished. */
   day: number | null;
   skill: string | null;
+  /** The incident the problem starts from, shown under the title. */
+  headline: string | null;
   difficulty: Difficulty;
   track: string;
   artefactType: string;
@@ -106,7 +108,8 @@ export async function listProblems(
              count(*) filter (where a.solved_at is not null)::int as solved
         from attempt a group by a.problem_id
     )
-    select p.id, p.slug, p.title, p.day, p.skill, p.difficulty::text as difficulty, p.track,
+    select p.id, p.slug, p.title, p.day, p.skill, cur.kit->'scenario'->>'headline' as headline,
+           p.difficulty::text as difficulty, p.track,
            p.artefact_type::text as artefact_type, p.est_minutes,
            coalesce(stats.attempts, 0) as attempts,
            coalesce(stats.solved, 0) as solved,
@@ -115,6 +118,7 @@ export async function listProblems(
            count(*) over () as total
       from problem p
       left join stats on stats.problem_id = p.id
+      left join problem_version cur on cur.problem_id = p.id and cur.version = p.current_version
       left join attempt mine on mine.problem_id = p.id and mine.enrolment_id = $1
       left join track_item road on road.problem_id = p.id and road.track_id = (
         select t.id from track t join enrolment e on t.slug = 'roadmap-' || e.persona::text
@@ -153,6 +157,7 @@ function toRow(row: Record<string, any>): CatalogueRow {
     title: row["title"],
     day: row["day"] === null || row["day"] === undefined ? null : Number(row["day"]),
     skill: row["skill"] ?? null,
+    headline: row["headline"] ?? null,
     difficulty,
     track: row["track"],
     artefactType: row["artefact_type"],

@@ -1,5 +1,5 @@
 slug: redact-personal-data-before-the-prompt
-title: Customers' card numbers turn up in the model provider's logs
+title: "Remove personal data before it reaches the model"
 day: 17
 skill: Take personal data out before the prompt and put it back in the reply
 artefact_type: code
@@ -202,6 +202,7 @@ hints:
     The field rules say what goes back instead.
 
 scenario:
+  headline: "Customers' card numbers turn up in the model provider's logs"
   who: The support desk at a home broadband provider
   situation: >-
     An audit found 1,900 of the agent's prompts in the model provider's logs

@@ -1,5 +1,5 @@
 slug: record-a-redacted-timeline
-title: A trace leaves out the stuck step and exposes a card number
+title: "Log every step without logging secrets"
 day: 19
 skill: Keep every step on the timeline and every secret off it
 artefact_type: code
@@ -212,6 +212,7 @@ hints:
     can come back in its reply.
 
 scenario:
+  headline: "A trace leaves out the stuck step and exposes a card number"
   who: The on-call engineers for an online retailer's order-support agent
   situation: >-
     A run failed at 2:10 one morning. The trace showed three steps. The

@@ -1,5 +1,5 @@
 slug: design-a-holdout-that-does-not-leak
-title: The billing eval says 94 percent while live tickets say 71
+title: "Build a test set that does not leak"
 day: 22
 skill: Design a holdout the next release can be judged on
 artefact_type: design
@@ -230,6 +230,7 @@ hints:
     before anyone asks.
 
 scenario:
+  headline: "The billing eval says 94 percent while live tickets say 71"
   who: The head of customer operations at a telecoms client
   situation: >-
     The billing assistant scores 94 percent on its eval set, and resolved 71

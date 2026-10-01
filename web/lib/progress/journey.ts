@@ -127,7 +127,7 @@ export interface BuildSummary {
                   solved: boolean; attempted: boolean }>;
 }
 
-/** Every capstone build in the catalogue, with this learner's stages. */
+/** Every end-to-end build in the catalogue, with this learner's stages. */
 export async function builds(
   enrolmentId: number, client: Pool | PoolClient = db(),
 ): Promise<BuildSummary[]> {

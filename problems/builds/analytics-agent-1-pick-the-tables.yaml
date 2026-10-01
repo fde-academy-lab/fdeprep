@@ -1,5 +1,5 @@
 slug: analytics-agent-1-pick-the-tables
-title: Managers restocked from best-seller lists years out of date
+title: "Pick only tables that exist and are current"
 day: 23
 skill: Pick only tables the schema says exist and are still in use
 artefact_type: code
@@ -192,6 +192,7 @@ hints:
     list.
 
 scenario:
+  headline: "Managers restocked from best-seller lists years out of date"
   who: The data team at a garden-centre chain
   situation: >-
     Managers ask an analytics agent about sales in plain English. For three

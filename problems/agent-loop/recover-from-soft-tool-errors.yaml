@@ -1,5 +1,5 @@
 slug: recover-from-soft-tool-errors
-title: The order assistant mistakes failed lookups for answers
+title: "Catch a tool failure that looks like success"
 day: 6
 skill: Catch a tool failure that looks like a success, and retry once
 artefact_type: code
@@ -192,6 +192,7 @@ hints:
     remove text that reads like an instruction before it goes in.
 
 scenario:
+  headline: "The order assistant mistakes failed lookups for answers"
   who: The support team behind an order-status assistant
   situation: >-
     The shipping-status tool answers 200 even when a lookup fails, and puts

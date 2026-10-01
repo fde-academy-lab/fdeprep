@@ -1,5 +1,5 @@
 slug: explain-an-incident-from-half-the-traces
-title: Patients arrive for appointments that were never booked
+title: "Explain an incident with half the traces missing"
 day: 22
 skill: Explain an incident when half the traces were never kept
 artefact_type: design
@@ -277,6 +277,7 @@ hints:
     will be known.
 
 scenario:
+  headline: "Patients arrive for appointments that were never booked"
   who: The chief operating officer of a regional hospital group
   situation: >-
     For two and a half hours the appointment assistant confirmed bookings the

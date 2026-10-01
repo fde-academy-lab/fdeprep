@@ -1,5 +1,5 @@
 slug: reconcile-customer-facts-by-trust-and-recency
-title: A settlement goes to an account the customer never held
+title: "Keep a verified fact over a newer claim"
 day: 13
 skill: Keep a verified fact when a newer claim disagrees
 artefact_type: code
@@ -159,6 +159,7 @@ hints:
     customer who types their address in lower case has not moved.
 
 scenario:
+  headline: "A settlement goes to an account the customer never held"
   who: The claims team at a home insurer, and the assistant that pays settlements
   situation: >-
     A chat message last week named a new bank account for a settlement. The

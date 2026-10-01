@@ -1,5 +1,5 @@
 slug: match-results-to-their-requests
-title: A customer is told their order arrived when another one did
+title: "Keep each result tied to its own request"
 day: 11
 skill: Keep each result attached to the thing it was asked about
 artefact_type: code
@@ -186,6 +186,7 @@ hints:
     the missing one still has to exist.
 
 scenario:
+  headline: "A customer is told their order arrived when another one did"
   who: The fulfilment team behind an order-status agent
   situation: >-
     A customer chasing order 9 was told it had been delivered. Order 12 had

@@ -1,5 +1,5 @@
 slug: incident-investigator-3-share-one-budget-across-workers
-title: One worker's traces used up the follow-ups another needed
+title: "Share one budget fairly across parallel workers"
 day: 28
 skill: Share one follow-up allowance so a noisy worker cannot take it all
 artefact_type: code
@@ -166,6 +166,7 @@ hints:
     Then write the not-run lines."
 
 scenario:
+  headline: "One worker's traces used up the follow-ups another needed"
   who: The on-call team at an online grocery
   situation: >-
     Each investigation now gets an allowance of follow-up calls. On Thursday

@@ -1,5 +1,5 @@
 slug: repair-an-invalid-json-response
-title: About one ticket in six fails and never reaches a queue
+title: "Repair invalid JSON before it moves on"
 day: 4
 skill: Give the downstream system JSON it can actually parse
 artefact_type: code
@@ -153,6 +153,7 @@ hints:
   - "In order: take off a fence if there is one, try `json.loads`, return the object as a JSON string when it parses, and when it does not, append the reply and the parser's message, say it did not parse, and go round once more."
 
 scenario:
+  headline: "About one ticket in six fails and never reaches a queue"
   who: The team running a ticket triage service for a client's workflow engine
   situation: >-
     The engine calls JSON.parse on whatever the service sends. Since Tuesday

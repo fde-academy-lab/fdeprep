@@ -258,7 +258,7 @@ run time because `dataclasses` imports `inspect`, which imports the blocked
 import blocker goes in, and compiles learner code with its own `__future__`
 flags as a registered module, so string annotations resolve.
 
-The same day, the capstone builds showed the format rule rejecting the most
+The same day, the end-to-end builds (then called capstone builds) showed the format rule rejecting the most
 common way to write a prompt template: `PROMPT = "..."` at the top of the file
 and `PROMPT.format(...)` below it, in seven reference solutions and three
 stubs. A module-level name bound exactly once, by any means and in any scope,

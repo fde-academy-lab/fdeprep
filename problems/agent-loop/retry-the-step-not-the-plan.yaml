@@ -1,5 +1,5 @@
 slug: retry-the-step-not-the-plan
-title: Retrying a half-finished return refunded the customer again
+title: "Resume a failed plan without redoing finished steps"
 day: 9
 skill: Resume a half-finished plan from the step that failed
 artefact_type: code
@@ -142,6 +142,7 @@ hints:
     still not run again.
 
 scenario:
+  headline: "Retrying a half-finished return refunded the customer again"
   who: The returns desk at an online furniture retailer
   situation: >-
     A return got halfway: the refund went out, then the carrier's booking API

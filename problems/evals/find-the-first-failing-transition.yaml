@@ -1,5 +1,5 @@
 slug: find-the-first-failing-transition
-title: An order agent fails and two hours go to the wrong team
+title: "Find the first broken step in a run"
 day: 21
 skill: Find the first broken step in a failed run's trace
 artefact_type: code
@@ -109,6 +109,7 @@ hints:
   - "Check the shape of what `trace()` returned before you walk it. A result with no step list still gets a report, with nothing in it."
 
 scenario:
+  headline: "An order agent fails and two hours go to the wrong team"
   who: The on-call engineer for an order agent that takes payments
   situation: >-
     A failed run's trace is forty steps long and ends in a red 500 from the

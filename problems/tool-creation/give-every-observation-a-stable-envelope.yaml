@@ -1,5 +1,5 @@
 slug: give-every-observation-a-stable-envelope
-title: A grocer's support agent gave a customer a database password
+title: "Give every tool result the same shape"
 day: 7
 skill: Give every tool result the same shape before the model reads it
 artefact_type: code
@@ -217,6 +217,7 @@ hints:
   - "In order: call inside a try, turn a raise into an error, turn an error body into an error, turn None and the empty values into empty, and call everything else ok. Then append the envelope with `json.dumps`."
 
 scenario:
+  headline: "A grocer's support agent gave a customer a database password"
   who: The support team at an online grocer
   situation: >-
     The support agent calls three tools written by three teams and pastes

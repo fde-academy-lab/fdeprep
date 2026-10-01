@@ -1,5 +1,5 @@
 slug: keep-the-answer-across-a-chunk-boundary
-title: Cancellation answers have been wrong for a month
+title: "Keep answers whole across chunk boundaries"
 day: 12
 skill: Stop the chunker cutting the answer in half
 artefact_type: code
@@ -82,6 +82,7 @@ hints:
     window in your list.
 
 scenario:
+  headline: "Cancellation answers have been wrong for a month"
   who: Support operations for a subscription service's help centre
   situation: >-
     For a month the policy assistant has answered "how long do I have to cancel

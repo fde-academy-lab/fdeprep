@@ -1,5 +1,5 @@
 slug: stop-the-tool-list-leak
-title: The support agent acts on whatever account a caller names
+title: "Stop the agent revealing its tool list"
 day: 8
 skill: Stop a support agent handing over its tool list
 artefact_type: prompt
@@ -153,6 +153,7 @@ hints:
     or a subscription ends, and one says what a message is allowed to change.
 
 scenario:
+  headline: "The support agent acts on whatever account a caller names"
   who: The support platform team at a subscription business
   situation: >-
     A security researcher asked the support agent what it could do and got

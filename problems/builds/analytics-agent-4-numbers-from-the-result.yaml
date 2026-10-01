@@ -1,5 +1,5 @@
 slug: analytics-agent-4-numbers-from-the-result
-title: The agent invented a 12% rise that went into a board pack
+title: "Report only numbers the query actually returned"
 day: 24
 skill: Report only figures the query returned, within three model calls
 artefact_type: code
@@ -273,6 +273,7 @@ hints:
     already in hand, so catch the refusal and answer with the rows alone.
 
 scenario:
+  headline: "The agent invented a 12% rise that went into a board pack"
   who: The operations director at a garden-centre chain
   situation: >-
     The agent answers with a sentence above the figures. Last month the

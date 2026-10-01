@@ -1,5 +1,5 @@
 slug: extract-a-ticket-without-guessing
-title: An invented order number sent a refund to the wrong customer
+title: "Extract ticket fields without inventing any"
 day: 1
 skill: Leave the order number empty when the customer never gave one
 artefact_type: code
@@ -161,6 +161,7 @@ hints:
     an invented order number fails, so they need no special case.
 
 scenario:
+  headline: "An invented order number sent a refund to the wrong customer"
   who: The support desk at an online homeware shop
   situation: >-
     A customer reported a cracked kettle lid and gave no order number. The

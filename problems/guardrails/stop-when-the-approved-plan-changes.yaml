@@ -1,5 +1,5 @@
 slug: stop-when-the-approved-plan-changes
-title: Checkouts fail for 22 minutes after an unapproved change
+title: "Stop when the approved plan changes"
 day: 20
 skill: Stop the run when the plan moves past the version that was approved
 artefact_type: code
@@ -125,6 +125,7 @@ hints:
     answers, and then you cannot claim to know what it did.
 
 scenario:
+  headline: "Checkouts fail for 22 minutes after an unapproved change"
   who: Database operations at a travel booking platform
   situation: >-
     The board approved version 3: drain db-7, patch it, put it back. After the

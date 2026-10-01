@@ -1,5 +1,5 @@
 slug: analytics-agent-3-repair-once-then-stop
-title: The agent's fix for a failed query skipped the safety check
+title: "Fix a failed query once, then stop"
 day: 24
 skill: Repair a failed query once from its error message, then stop
 artefact_type: code
@@ -240,6 +240,7 @@ hints:
     refused is never sent for repair.
 
 scenario:
+  headline: "The agent's fix for a failed query skipped the safety check"
   who: The data team at a garden-centre chain
   situation: >-
     The first retry resent a failing query four times and then showed the

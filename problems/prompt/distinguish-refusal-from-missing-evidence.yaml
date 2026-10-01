@@ -1,5 +1,5 @@
 slug: distinguish-refusal-from-missing-evidence
-title: Employees cannot tell why the benefits assistant said no
+title: "Tell \"not allowed\" apart from \"not covered\""
 day: 5
 skill: Say whether the handbook is silent or the question is off-limits
 artefact_type: prompt
@@ -130,6 +130,7 @@ hints:
     boundary paragraph as it is.
 
 scenario:
+  headline: "Employees cannot tell why the benefits assistant said no"
   who: The HR benefits team at a large employer
   situation: >-
     The benefits assistant has one sentence for every kind of no. It says "I

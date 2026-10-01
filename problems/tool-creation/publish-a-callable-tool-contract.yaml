@@ -1,5 +1,5 @@
 slug: publish-a-callable-tool-contract
-title: A two-hour meeting was asked to leave after thirty minutes
+title: "Write a tool definition the model can use"
 day: 3
 skill: Publish a tool the model can call without guessing
 artefact_type: code
@@ -207,6 +207,7 @@ hints:
     no default, then the contract in the first prompt."
 
 scenario:
+  headline: "A two-hour meeting was asked to leave after thirty minutes"
   who: The front desk team at a coworking operator
   situation: >-
     The room booking tool was published to the model as one line. This week

@@ -1,5 +1,5 @@
 slug: separate-actions-from-final-answers
-title: Guests are told their table is booked when nothing was
+title: "Confirm a booking only after it really happened"
 day: 2
 skill: Tell an action apart from an answer
 artefact_type: code
@@ -151,6 +151,7 @@ hints:
     is identical to the last one, and so is the next reply.
 
 scenario:
+  headline: "Guests are told their table is booked when nothing was"
   who: Guest support for a restaurant booking agent
   situation: >-
     About one reply in twenty carries a Final Answer and an Action together.

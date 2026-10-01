@@ -74,13 +74,13 @@ describe("acceptance 1: three personas, three different Next Up sets", () => {
 describe("the order inside a tier follows the journey", () => {
   // Found in the 29 September 2026 review: inside a tier every track outside
   // the persona's emphasis tied, and the slug decided, so a builder met a
-  // capstone build's first stage between two retrieval problems.
+  // end-to-end build's first stage between two retrieval problems.
   const row = (slug: string, track: string, difficulty: "easy" | "medium" = "easy") =>
     ({ id: slug.length, slug, track, difficulty, artefact_type: "code" });
 
-  it("puts the foundations tracks before a capstone build in the same tier", () => {
+  it("puts the foundations tracks before an end-to-end build in the same tier", () => {
     const order = orderFor("builder", [
-      row("a-capstone-stage-one", "builds"),
+      row("an-end-to-end-stage-one", "builds"),
       row("z-structured-output", "structured-output"),
       row("m-guardrail", "guardrails"),
     ]).map((item) => item.track);
@@ -90,9 +90,9 @@ describe("the order inside a tier follows the journey", () => {
   it("still lets the tier decide first", () => {
     const order = orderFor("builder", [
       row("medium-structured", "structured-output", "medium"),
-      row("easy-capstone", "builds", "easy"),
+      row("easy-end-to-end", "builds", "easy"),
     ]).map((item) => item.slug);
-    expect(order).toEqual(["easy-capstone", "medium-structured"]);
+    expect(order).toEqual(["easy-end-to-end", "medium-structured"]);
   });
 
   it("still lets the persona's emphasis beat the journey", () => {

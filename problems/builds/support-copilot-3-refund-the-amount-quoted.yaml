@@ -1,5 +1,5 @@
 slug: support-copilot-3-refund-the-amount-quoted
-title: A customer was told £23.50 and refunded £47.00
+title: "Refund exactly the amount the customer was told"
 day: 30
 skill: Refund exactly the amount the customer was told, once
 artefact_type: code
@@ -241,6 +241,7 @@ hints:
     money moved.
 
 scenario:
+  headline: "A customer was told £23.50 and refunded £47.00"
   who: Support operations at a meal-kit subscription service
   situation: >-
     The copilot answers from cited policy, and this week it gained a refund

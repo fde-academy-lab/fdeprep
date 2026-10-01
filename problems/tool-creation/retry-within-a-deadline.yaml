@@ -1,5 +1,5 @@
 slug: retry-within-a-deadline
-title: Checkout gave up while the agent was still waiting to retry
+title: "Retry a failing service within a deadline"
 day: 10
 skill: Retry a carrier that is failing, without blowing the deadline
 artefact_type: code
@@ -118,6 +118,7 @@ hints:
     delay does not fit, and only then add the delay to the total."
 
 scenario:
+  headline: "Checkout gave up while the agent was still waiting to retry"
   who: The checkout team in front of a carrier booking agent
   situation: >-
     The carrier was down for four minutes on Tuesday. The agent retried with

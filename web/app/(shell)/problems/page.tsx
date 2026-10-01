@@ -206,8 +206,10 @@ function Row({ row, line }: { row: CatalogueRow; line: string | undefined }) {
             {row.day ? <span className="tnum mr-2 text-meta font-medium text-text-faint">Day {row.day}</span> : null}
             {row.title}
           </p>
-          {row.skill ?? line
-            ? <p className="mt-0.5 line-clamp-1 text-meta text-text-dim">{renderCode((row.skill ?? line)!)}</p>
+          {/* The title names the task, so the line under it tells the story the
+              task starts from rather than saying the task a second time. */}
+          {row.headline ?? row.skill ?? line
+            ? <p className="mt-0.5 line-clamp-1 text-meta text-text-dim">{renderCode((row.headline ?? row.skill ?? line)!)}</p>
             : null}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-meta">
             <DifficultyMeter difficulty={row.difficulty} />

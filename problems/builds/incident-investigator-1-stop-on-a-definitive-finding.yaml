@@ -1,5 +1,5 @@
 slug: incident-investigator-1-stop-on-a-definitive-finding
-title: The investigator found the cause, then blamed the database
+title: "Stop investigating once the cause is found"
 day: 27
 skill: Stop the investigation at the check that finds the cause
 artefact_type: code
@@ -193,6 +193,7 @@ hints:
     cause was found competes with the cause.
 
 scenario:
+  headline: "The investigator found the cause, then blamed the database"
   who: The on-call team at an online grocery
   situation: >-
     The investigation prototype found the cause of Tuesday's checkout alert

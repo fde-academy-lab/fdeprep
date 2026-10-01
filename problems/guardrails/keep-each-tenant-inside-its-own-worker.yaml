@@ -1,5 +1,5 @@
 slug: keep-each-tenant-inside-its-own-worker
-title: A buyer is quoted another client's confidential pallet rate
+title: "Keep each client's data in its own worker"
 day: 22
 skill: Keep each client's job inside its own worker
 artefact_type: code
@@ -109,6 +109,7 @@ hints:
     stops on its own limit and the next client's job still gets its turn.
 
 scenario:
+  headline: "A buyer is quoted another client's confidential pallet rate"
   who: Client services at a third-party logistics company
   situation: >-
     A homeware buyer asked for their pallet rate to Leeds and was told 38

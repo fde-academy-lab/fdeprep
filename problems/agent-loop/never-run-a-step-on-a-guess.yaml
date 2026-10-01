@@ -1,5 +1,5 @@
 slug: never-run-a-step-on-a-guess
-title: A sofa refund went to a dining table the customer still has
+title: "Run a multi-step plan without guessing between steps"
 day: 9
 skill: Run a plan whose steps depend on each other, and never on a guess
 artefact_type: code
@@ -132,6 +132,7 @@ hints:
     failed, and its dependents are blocked like any others.
 
 scenario:
+  headline: "A sofa refund went to a dining table the customer still has"
   who: The returns desk at an online furniture retailer
   situation: >-
     The order lookup found two matching orders and answered with an empty

@@ -1,5 +1,5 @@
 slug: retrieve-memories-with-stable-ranking
-title: A repeated question leaks another retailer's customer data
+title: "Return the same memories for the same question"
 day: 15
 skill: Give the same question the same memories every time
 artefact_type: code
@@ -134,6 +134,7 @@ hints:
     is not.
 
 scenario:
+  headline: "A repeated question leaks another retailer's customer data"
   who: The team running one memory service for forty retailers' assistants
   situation: >-
     A florist's support agent asked the same question twice in a minute and

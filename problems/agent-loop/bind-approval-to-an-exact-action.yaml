@@ -1,5 +1,5 @@
 slug: bind-approval-to-an-exact-action
-title: An approved £8,400 payout went to a different account
+title: "Pay exactly what was approved, and nothing else"
 day: 10
 skill: Make an approval mean the exact payment that was approved
 artefact_type: code
@@ -98,6 +98,7 @@ hints:
   - "Two facts live outside the fingerprint. Whether the approval was withdrawn since the click, which `revoked()` answers just before you pay, and anything a proposal or tool result claims about approval, which decides nothing."
 
 scenario:
+  headline: "An approved £8,400 payout went to a different account"
   who: The payouts team at a UK fintech
   situation: >-
     The agent asks a human before it moves money. Between the click and the
