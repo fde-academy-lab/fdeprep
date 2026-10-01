@@ -13,7 +13,7 @@ The order you will see built is the one the product owner set on 30 September: t
 
 | Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
 |---|---|---|---|---|---|---|
-| S11 Beta launch | Four integrations have never made a live call, so without this the first learner to touch one becomes the test. | 26 | 6 (3 to 8) | 262 | 1 to 9 Oct 2026 | High |
+| S11 Beta launch | Four integrations have never made a live call, so without this the first learner to touch one becomes the test. | 29 | 6 (3 to 8) | 262 | 1 to 9 Oct 2026 | High |
 | S10 Delivery board | Management and non-technical teams need to see what was built, when, how big it was and what comes next. | 21 | 3 (2 to 4) | 63 | 30 Sep to 1 Oct 2026 | Low |
 
 ### Next
@@ -55,15 +55,16 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S10.3 | Write the project pages for management | Task | 5 | Done | docs/project holds the summary, the delivery history, the roadmap, the estimation method, quality, risks, decisions and setup.<br>Every figure is marked as a fact from git or GitHub, or as an estimate. |
 | S10.4 | Add the token, run the first sync and create the views | Task | 2 | Planned | The repository secret PROJECT_TOKEN exists and the first sync run is green.<br>The five views that docs/project/board-setup.md describes exist on the Project. |
 | S10.5 | Retire the skill script that bypassed the reviewed allowlists | Task | 1 | Done | scripts/sync-skills.sh is gone, and SETUP.md points at bootstrap.sh --with-skills, whose allowlists and pins were reviewed. |
-| S11.1 | Deploy route C: the stack, the web host, DNS, GitHub sign-in and HTTPS | Task | 8 | Planned | README route C steps C0 to C10 are done and the site answers on its public address over HTTPS.<br>The first admin signs in through an invite minted on the host. |
+| S11.1 | Deploy route C: the stack, the web host, DNS, GitHub sign-in and HTTPS | Task | 8 | Planned | DEPLOY.md steps 0 to 6 are done and the site answers on its public address over HTTPS.<br>The first admin signs in through an invite minted on the host. |
 | S11.2 | Prove the Bedrock judge with one live submission | Task | 2 | Planned | One design submission comes back with a band from the live judge, and the judge's cost appears in the spend alarm's metric. |
 | S11.3 | Prove Transcribe, Polly and S3 with one real voice session | Task | 3 | Planned | A spoken answer is transcribed live, a pressure-mode follow-up plays aloud, and the recording can be fetched from the bucket afterwards. |
 | S11.4 | Run the database restore drill once | Task | 3 | Planned | A backup restores into a scratch database, and the time it took is written in README section 4. |
 | S11.5 | Brief a second operator and run one practice drill | Task | 2 | Planned | A second person pauses grading, requeues a submission and reads an alarm without help. |
-| S11.6 | Set the Bedrock budget alarm at 50 and 80 percent | Task | 1 | Planned | An AWS Budgets alarm on the Bedrock line notifies at 50 and 80 percent of the monthly limit. |
+| S11.6 | Set the Bedrock budget alarm at 50 and 80 percent | Task | 1 | Planned | An AWS Budgets alert filtered on the AWS Marketplace billing entity, where Claude's charges appear, notifies at 50 and 80 percent of the monthly limit. |
 | S11.7 | Run the 200-submission burst test against staging | Task | 3 | Planned | npm run burst completes 200 concurrent submissions against the deployed stack, and the result is recorded in docs/project/quality.md. |
 | S11.8 | Fetch the embedding model on every worker host | Task | 1 | Planned | The worker starts without EVAL_DEGRADED_PANELISTS and reports all three evaluators available. |
 | S11.9 | Invite the first testers and collect their feedback every week | Task | 3 | Planned | The first invited students have signed in, and their feedback is a story on this board within a week. |
+| S11.10 | Write the AWS go-live as one runbook, click by click | Task | 3 | Done | DEPLOY.md takes one operator from an AWS account to a working beta, with the console path, the CloudShell or server command and the expected output for every step, prices and AWS behaviour checked on the day, and README route C points to it. |
 | S12.1 | Tell the catalogue as a storyline: your first 30 days as an FDE | Feature | 8 | Done | Every problem has a day in the storyline, a plain title that says what the client sees, and a skill line that says what is practised.<br>Problem addresses stay the same, so no link breaks. |
 | S12.2 | Render inline code in every field a learner reads | Feature | 5 | Done | Backticked text renders as code in the scenario card, the steps, the coach, the diagram labels and the approach map. |
 | S12.3 | Mark the bare identifiers in 286 fields as code | Task | 5 | Done | A check fails on a snake_case name, a dotted call or an exception name outside backticks in any learner-facing field. |

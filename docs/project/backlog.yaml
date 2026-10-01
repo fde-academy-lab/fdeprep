@@ -1084,7 +1084,7 @@ stages:
         area: Infrastructure
         finish: 2026-10-03
         acceptance:
-          - README route C steps C0 to C10 are done and the site answers on its public address over HTTPS.
+          - DEPLOY.md steps 0 to 6 are done and the site answers on its public address over HTTPS.
           - The first admin signs in through an invite minted on the host.
       - id: S11.2
         title: Prove the Bedrock judge with one live submission
@@ -1132,7 +1132,7 @@ stages:
         area: Infrastructure
         finish: 2026-10-03
         acceptance:
-          - An AWS Budgets alarm on the Bedrock line notifies at 50 and 80 percent of the monthly limit.
+          - An AWS Budgets alert filtered on the AWS Marketplace billing entity, where Claude's charges appear, notifies at 50 and 80 percent of the monthly limit.
       - id: S11.7
         title: Run the 200-submission burst test against staging
         type: Task
@@ -1160,6 +1160,16 @@ stages:
         finish: 2026-10-09
         acceptance:
           - The first invited students have signed in, and their feedback is a story on this board within a week.
+      - id: S11.10
+        title: Write the AWS go-live as one runbook, click by click
+        type: Task
+        status: done
+        pr: 45
+        points: 3
+        area: Docs and process
+        finish: 2026-10-01
+        acceptance:
+          - DEPLOY.md takes one operator from an AWS account to a working beta, with the console path, the CloudShell or server command and the expected output for every step, prices and AWS behaviour checked on the day, and README route C points to it.
 
   - id: S12
     name: Problem pages v2
