@@ -3,10 +3,10 @@
 Two model calls and no more: the rubric over the final transcript, and the
 final beat coverage pass. In interview mode the rubric also reads the
 follow-up rounds, each labelled after the main answer, and the beat pass
-still reads the main answer alone. Both reuse the machinery Phase 4 already built, so
-the delimiters, the nonce, the schema rejection and the exemplar anchoring are
-the same ones a design answer gets rather than a second implementation that
-drifts.
+still reads the main answer alone. Both reuse the machinery Phase 4 already
+built, so the delimiters, the nonce, the schema rejection and the exemplar
+anchoring are the same ones a design answer gets rather than a second
+implementation that drifts.
 
 What this file does not do is the other half of the score. Structure and pace
 are deterministic and are computed in the application, in web/lib/voice/score.ts,
