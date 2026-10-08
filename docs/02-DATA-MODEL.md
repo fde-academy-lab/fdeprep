@@ -442,3 +442,11 @@ Log every persona change, cap override, problem publish and roster edit. The ops
 | Learner code bodies | Same as submissions |
 
 Traces are the largest object by volume. Cap a stored trace at 256KB and truncate the middle with a marker rather than storing an unbounded loop.
+
+---
+
+## 11. The reader role (amended 8 October 2026)
+
+Migration `026_reader_role.sql` creates `fdeprep_reader`, a role that cannot log in and holds SELECT on every table in the schema and no other privilege. It also sets the default privileges, so a table a later migration creates is readable by it too. `progress/` and `analytics/` only read, per `10-EVALUATION-PANEL.md` section 13, and this is the role a connection that only reads would run as. Nothing runs under it in this release.
+
+A role belongs to the whole cluster, and creating one needs CREATEROLE. Where the user running the migrations may not create roles, the migration changes nothing and prints a notice naming the statements an operator would run by hand.

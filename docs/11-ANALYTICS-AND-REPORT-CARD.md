@@ -135,7 +135,7 @@ Every export carries the date it was generated and the count of rows it covers. 
 | Never | Because |
 |---|---|
 | Compute a grade, a band or a competency state. | `eval/` owns those. Two writers produce two answers. |
-| Write to `evaluation`, `submission` or `competency_score`. | Reader only, enforced by the database role the analytics queries run under. |
+| Write to `evaluation`, `submission` or `competency_score`. | Reader only. `web/tests/writer-boundary.test.ts` fails when a grade is written from outside `eval/` and the two writers `10` section 13 names. Migration 026 also creates `fdeprep_reader`, a role with SELECT on every table and no write grant, where the user running the migrations may create roles. The analytics queries do not run under it in this release (amended 8 October 2026). |
 | Show a learner a number that `progress/` does not also show. | A learner seeing 62 on one screen and 58 on another stops believing both. |
 | Show one learner another learner's standing. | Cohort views are faculty and admin only, per the roles in `00-PRD.md` section 2. |
 | Surface panelist identity to a learner. | `10` section 7. The panel speaks with one voice to the learner and keeps provenance for faculty. |
@@ -147,7 +147,7 @@ Every export carries the date it was generated and the count of rows it covers. 
 1. A report card generated twice from unchanged data produces the same content hash.
 2. A report card generated after a new evaluation produces a different hash and a new row, and the old row is still readable.
 3. Every readiness number on a report card matches the number `progress/` shows for the same learner at the same moment, verified by a test that reads both.
-4. The analytics database role has no write grant on `evaluation`, `submission` or `competency_score`, verified by a test that attempts a write and expects a refusal.
+4. The reader role, `fdeprep_reader`, has no write grant on `evaluation`, `submission` or `competency_score`, verified by a test that attempts a write as that role and expects a refusal (`web/tests/reader-role.test.ts`).
 5. The stuck list finds a learner with three failed submissions and no pass, and excludes one who failed three times and then passed.
 6. Panel health reports a `partial` rate that matches the count of `partial` rows, with no double counting when a re-evaluation later completes.
 7. A cohort view requested by a learner account is refused, and the refusal names who can see it.
