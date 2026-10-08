@@ -29,16 +29,23 @@ saying nothing about thinking sends the one combination the model rejects. The
 judge states its thinking mode in every request and only sends temperature when
 it has turned thinking off.
 
-A call can carry its own read timeout and retry count, for the voice
+One retry layer. Checked on 8 October 2026 against the installed botocore
+1.43.99 and boto3 1.43.99: `botocore.config.Config` fixes `read_timeout`,
+`connect_timeout` and `retries` per client, and a client built without one
+retries in botocore's legacy mode, up to five attempts with a 60 second
+connect and a 60 second read timeout each. That ran underneath this module's
+own loop, so one model call could make fifteen attempts while `calls` counted
+three, and could outlast the judge Lambda's 300 seconds on its own. Every
+client here is built with `total_max_attempts` 1, which botocore's legacy
+translation turns into no retries, so this module's loop is the only retry
+and `calls` is every attempt sent. The worst one call can take is in
+`worst_case_s`, and a test holds it under the timeout in
+infra/lib/fdeprep-stack.ts.
+
+A call can also carry its own read timeout and retry count, for the voice
 interviewer's follow-up, which has a four second deadline and no time to
-retry. Checked on 8 October 2026 against the installed botocore 1.43.99 and
-boto3 1.43.99: `botocore.config.Config` fixes `read_timeout`,
-`connect_timeout` and `retries` per client, so a bounded call goes through a
-second client built with its own Config. Left alone, a client retries in
-botocore's legacy mode, up to five attempts in all with a 60 second read
-timeout each, underneath this module's own loop. The bounded client sets
-`total_max_attempts` to 1, which botocore's legacy translation turns into no
-retries, so this module's count is every attempt that happened.
+retry. botocore fixes the timeout per client, so the transport keeps one
+client per read timeout.
 
 Token usage comes from the Converse reply's `usage` block, whose
 `inputTokens`, `outputTokens` and `totalTokens` the installed service model
@@ -47,14 +54,22 @@ Token usage comes from the Converse reply's `usage` block, whose
 
 from __future__ import annotations
 
+import random
 import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
 from .config import JudgeConfig
 
-# Plan section 4.2: a bounded call opens its connection inside two seconds.
+# Every attempt opens its connection inside two seconds (plan section 4.2) and
+# starts reading a reply inside the read timeout: botocore's own 60 seconds,
+# stated here, unless a call bounds it lower.
 CONNECT_TIMEOUT_S = 2
+DEFAULT_READ_TIMEOUT_S = 60
+# The wait after a failed attempt doubles from config.backoff_s, jittered as
+# botocore's was, so judges throttled together do not retry together. Each
+# wait is capped.
+BACKOFF_CAP_S = 4
 
 
 class Transport(Protocol):
@@ -72,54 +87,47 @@ class BedrockTransport:
         self.config = config
         self.calls = 0
         self.last_usage: dict[str, int] | None = None
+        # A client handed in serves every call. Otherwise the transport builds
+        # one per read timeout, through client_factory when a test passes one
+        # to see the Config each client was built with.
         self._client = client
-        # Builds a client from a botocore Config, or from None for the default
-        # one. A test passes its own to see the Config a call asked for.
         self._factory = client_factory
-        self._bounded: dict[float | None, Any] = {}
+        self._clients: dict[float, Any] = {}
 
     @property
     def client(self) -> Any:
-        if self._client is None:
-            self._client = self._build(None)
-        return self._client
+        """The client for a call that sets no read timeout of its own."""
+        return self._client_for(None)
 
-    def _build(self, botocore_config: Any | None) -> Any:
-        if self._factory is not None:
-            return self._factory(botocore_config)
-        import boto3  # imported here so the package imports without AWS libraries
-
-        if botocore_config is None:
-            return boto3.client("bedrock-runtime", region_name=self.config.region)
-        return boto3.client("bedrock-runtime", region_name=self.config.region,
-                            config=botocore_config)
-
-    def _client_for(self, timeout_s: float | None, retries: int | None) -> Any:
-        """The default client for a call that sets neither bound, which is
-        every caller that existed before the follow-up, and otherwise a client
-        built for the bound and cached, one per timeout."""
-        if timeout_s is None and retries is None:
-            return self.client
-        if self._factory is None and self._client is not None:
-            # A client handed in directly stands in for every call.
+    def _client_for(self, timeout_s: float | None) -> Any:
+        if self._client is not None:
             return self._client
-        if timeout_s not in self._bounded:
-            # botocore's Config, taken from where boto3 imports it for its own
-            # use, so the judge names only boto3. The Lambda base image ships
-            # boto3 with botocore, and tests/test_requirements.py counts boto3.
-            from boto3.session import Config
+        read_timeout = read_timeout_for(timeout_s)
+        if read_timeout not in self._clients:
+            self._clients[read_timeout] = self._build(read_timeout)
+        return self._clients[read_timeout]
 
-            settings: dict[str, Any] = {"retries": {"total_max_attempts": 1}}
-            if timeout_s is not None:
-                settings.update(read_timeout=timeout_s, connect_timeout=CONNECT_TIMEOUT_S)
-            self._bounded[timeout_s] = self._build(Config(**settings))
-        return self._bounded[timeout_s]
+    def _build(self, read_timeout: float) -> Any:
+        # botocore's Config, taken from where boto3 imports it for its own
+        # use, so the judge names only boto3. The Lambda base image ships
+        # boto3 with botocore, and tests/test_requirements.py counts boto3.
+        # Imported here, as boto3 is, so the package imports without AWS
+        # libraries.
+        from boto3.session import Config
+
+        settings = Config(connect_timeout=CONNECT_TIMEOUT_S, read_timeout=read_timeout,
+                          retries={"total_max_attempts": 1})
+        if self._factory is not None:
+            return self._factory(settings)
+        import boto3
+
+        return boto3.client("bedrock-runtime", region_name=self.config.region, config=settings)
 
     def complete(self, *, system: str, user: str, max_tokens: int | None = None,
                  timeout_s: float | None = None, retries: int | None = None) -> str:
-        """`timeout_s` bounds each attempt's read and `retries` replaces the
-        configured count for this call. Either one moves the call onto a
-        client with botocore's own retries off."""
+        """`timeout_s` bounds each attempt's read, never past
+        DEFAULT_READ_TIMEOUT_S, and `retries` replaces the configured count
+        for this call."""
         inference: dict[str, Any] = {"maxTokens": max_tokens or self.config.max_tokens}
         # Temperature only where thinking is off. With thinking on there is no
         # legal sampling parameter to send, and the determinism the grading path
@@ -145,7 +153,7 @@ class BedrockTransport:
         for attempt in range(allowed + 1):
             self.calls += 1
             try:
-                response = self._client_for(timeout_s, retries).converse(**request)
+                response = self._client_for(timeout_s).converse(**request)
                 self.last_usage = _usage_of(response)
                 return _text_of(response)
             except Exception as error:  # noqa: BLE001 - retried, then re-raised as is
@@ -155,9 +163,38 @@ class BedrockTransport:
                 # caller stopped waiting, and would still be billed.
                 if timeout_s is not None and is_timeout(error):
                     break
-                if attempt < allowed and self.config.backoff_s:
-                    time.sleep(self.config.backoff_s * (2**attempt))
+                if attempt < allowed and self.config.backoff_s > 0:
+                    time.sleep(backoff_for(self.config.backoff_s, attempt))
         raise last  # type: ignore[misc]
+
+
+def read_timeout_for(timeout_s: float | None) -> float:
+    """A call's read timeout: its own bound when it sets one, never longer
+    than an unbounded call's."""
+    return DEFAULT_READ_TIMEOUT_S if timeout_s is None else min(timeout_s, DEFAULT_READ_TIMEOUT_S)
+
+
+def backoff_for(base_s: float, attempt: int) -> float:
+    """The wait after failed attempt `attempt`, counted from 0: doubling from
+    base_s, capped at BACKOFF_CAP_S, and jittered between half of that and
+    all of it."""
+    delay = min(BACKOFF_CAP_S, base_s * 2**attempt)
+    return random.uniform(delay / 2, delay)
+
+
+def worst_case_s(retries: int, backoff_s: float, timeout_s: float | None = None) -> float:
+    """The longest one complete() call can take: every attempt connecting and
+    then reading for its full timeouts, and every wait at its longest.
+
+    With the deployed defaults, two retries and a 0.5 second backoff, that is
+    three attempts of 62 seconds and waits of 0.5 and 1 second: 187.5
+    seconds, inside the judge Lambda's 300. With config.MAX_RETRIES and any
+    backoff it is 260. A bounded call is shorter: the follow-up's one attempt
+    is 5.5 seconds and the resume claims' two are 19.5.
+    """
+    waits = 0.0 if backoff_s <= 0 else sum(
+        min(BACKOFF_CAP_S, backoff_s * 2**attempt) for attempt in range(retries))
+    return (retries + 1) * (CONNECT_TIMEOUT_S + read_timeout_for(timeout_s)) + waits
 
 
 def _text_of(response: dict[str, Any]) -> str:

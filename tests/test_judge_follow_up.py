@@ -462,14 +462,15 @@ class TestTheBedrockTransport:
         assert result["reason"] == "error"
         assert len(client.requests) == 1 == result["model_calls"]
 
-    def test_a_call_with_no_bounds_keeps_the_default_client(self):
+    def test_a_call_with_no_bounds_shares_the_default_client(self):
         """Every caller from before the follow-up sends neither bound and
-        goes through the default client, built with no Config, exactly as
-        before."""
+        goes through one default client: botocore's 60 second read timeout,
+        and botocore's retries off like every other client."""
         transport, _, configs = bedrock(converse_reply("ok"), converse_reply("ok"))
         transport.complete(system="s", user="u")
         transport.complete(system="s", user="u")
-        assert configs == [None]
+        [config] = configs
+        assert (config.read_timeout, config.retries) == (60, {"total_max_attempts": 1})
 
     def test_the_bounded_client_is_built_once_per_timeout(self):
         transport, _, configs = bedrock(*[converse_reply("ok")] * 3)

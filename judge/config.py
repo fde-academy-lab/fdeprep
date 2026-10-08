@@ -45,6 +45,12 @@ ADAPTIVE_ONLY = ("claude-fable-", "claude-mythos-")
 DEFAULT_MAX_TOKENS = 1500
 DEFAULT_PROBE_MAX_TOKENS = 600
 
+# One model call is (retries + 1) attempts of up to 62 seconds each plus the
+# waits between them, judge/bedrock.py's worst_case_s. Three retries is 260
+# seconds at worst, inside the 300 the judge Lambda gets in
+# infra/lib/fdeprep-stack.ts; four would be 317.5.
+MAX_RETRIES = 3
+
 
 @dataclass(frozen=True)
 class JudgeConfig:
@@ -91,6 +97,16 @@ def validate_thinking(mode: str, model_id: str) -> str:
     return mode
 
 
+def validate_retries(raw: str) -> int:
+    retries = int(raw)
+    if not 0 <= retries <= MAX_RETRIES:
+        raise ValueError(
+            f"JUDGE_RETRIES {retries} is outside 0 to {MAX_RETRIES}. Each retry can add a "
+            "minute to a model call, and past three retries one call can outlast the judge "
+            "Lambda's 300 second timeout.")
+    return retries
+
+
 def load_config() -> JudgeConfig:
     model_id = validate_model_id(os.environ.get("JUDGE_MODEL_ID", "").strip())
     region = os.environ.get("JUDGE_REGION") or os.environ.get("AWS_REGION") or "us-east-1"
@@ -102,6 +118,6 @@ def load_config() -> JudgeConfig:
         thinking=thinking,
         max_tokens=int(os.environ.get("JUDGE_MAX_TOKENS", DEFAULT_MAX_TOKENS)),
         probe_max_tokens=int(os.environ.get("JUDGE_PROBE_MAX_TOKENS", DEFAULT_PROBE_MAX_TOKENS)),
-        retries=int(os.environ.get("JUDGE_RETRIES", 2)),
+        retries=validate_retries(os.environ.get("JUDGE_RETRIES", "2")),
         backoff_s=float(os.environ.get("JUDGE_BACKOFF_S", 0.5)),
     )

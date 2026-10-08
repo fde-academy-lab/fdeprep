@@ -374,7 +374,10 @@ class TestPing:
         monkeypatch.setenv("JUDGE_MODEL_ID", "us.m")
         monkeypatch.setenv("JUDGE_REGION", "eu-west-1")
         assert judge_event({"artefact_type": "ping"}) == {"status": "ok", "model_calls": 0}
-        assert built == [(("bedrock-runtime",), {"region_name": "eu-west-1"})]
+        [(args, kwargs)] = built
+        assert args == ("bedrock-runtime",)
+        assert kwargs["region_name"] == "eu-west-1"
+        assert kwargs["config"].retries == {"total_max_attempts": 1}
 
     def test_a_warm_up_that_fails_still_answers(self, monkeypatch):
         import boto3
