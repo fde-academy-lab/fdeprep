@@ -1,6 +1,6 @@
 slug: promote-a-pilot-only-when-every-gate-holds
 title: "Promote a pilot only when every gate holds"
-day: 27
+drill: true
 skill: Move a pilot up one stage only on evidence, and name every gate it still misses
 artefact_type: code
 difficulty: medium
@@ -473,7 +473,7 @@ reference_md: |
   measured. AWS draws the same line in its open-source AI-DLC workflows,
   whose proof-of-concept profile the documentation calls "evidence for a
   later decision; it is not the production-readiness profile" (version
-  2.10.0 of [aidlc-workflows](https://github.com/awslabs/aidlc-workflows),
+  2.11.0 of [aidlc-workflows](https://github.com/awslabs/aidlc-workflows),
   read 1 October 2026).
 
   A pilot never moves down in a review either. Code that works the stage

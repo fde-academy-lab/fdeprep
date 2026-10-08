@@ -1,0 +1,813 @@
+slug: fund-the-agent-3-trace-every-prd-requirement
+title: "Trace every PRD requirement to its source"
+day: 24
+skill: Trace each requirement to an answered question, a ledger row or an intent line
+artefact_type: code
+difficulty: medium
+complexity: C2
+track: agentic-pdlc
+concept:
+  topic: "Discovery and evidence"
+  question: "Which PRD requirements did somebody ask for, and which two promise different numbers?"
+est_minutes: 30
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: evaluation-design, weight: 0.5 }
+  - { slug: client-communication, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json]
+
+build: { id: fund-the-agent, title: "Fund a field-service agent", stage: 3, of: 7 }
+
+brief_md: |
+  Your client is an air-conditioner and appliance maker the size of Voltas,
+  with 9,000 technicians working through 1,100 franchise partners. On Friday
+  13 February the funding committee read the PR/FAQ and funded a four-week
+  POC of a field-service agent for AC-not-cooling (ACNC) requests, starting
+  on 23 February. The head of customer service sponsors it.
+
+  On Monday 16 February the vendor's construction agent, which drafts every
+  artefact in this engagement and approves none, turned the agreed intent,
+  the discovery questions and the evidence ledger into PRD v1: eleven
+  requirements, each listing the ids it rests on. The sponsor reads the
+  draft on Wednesday and decides what goes into the POC. She wants to know
+  first which requirements somebody actually asked for.
+
+  Two things in the draft already worry her. R-9 cancels a request
+  automatically when the customer does not reply within 24 hours, and in
+  the Nagpur trial 59 percent of customers never finished the diagnostic
+  chat. R-4 and R-8 both set the median time to a completed repair for the
+  week-6 review, one at 3.0 days and one at 2.5.
+
+  The sources sit in three places. INT-1 and INT-2 are the intent lines
+  agreed on 4 February. Of the twelve discovery questions, nine were
+  answered, by discovery or by the sponsor on 9 February. Q-9 is
+  unanswered, because nobody has measured how many customers finish a chat
+  today, and Q-7 and Q-12 were dropped. The ledger holds EV-1 to EV-16.
+
+  Write the check she reads first: which requirements stay in, which go
+  back to her as unasked and why, and every metric the draft sets to
+  different numbers.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the request to check a draft. Ask the construction agent
+  for the draft once, with `llm(PRD_PROMPT)` from the starter code. It
+  drafts the PRD only when asked with that prompt, and its reply is one
+  JSON object:
+
+      {"requirements": [
+        {"id": "R-4", "text": "Median request-to-completed-repair ...",
+         "metric": "median_days_acnc", "target": 3.0,
+         "traces_to": ["INT-1", "Q-1"]},
+        ...]}
+
+  `metric` and `target` are null on a requirement that sets no number.
+  `traces_to` lists the ids the requirement rests on, and may be empty.
+
+  `tools["questions"]()` returns every discovery question with its status
+  after the sponsor's replies, one of `answered`, `unanswered` or `dropped`:
+
+      [{"id": "Q-1", "status": "answered"}, ...]
+
+  `tools["ledger"]()` returns every row of the evidence ledger:
+
+      [{"id": "EV-1", "kind": "counted"}, ...]
+
+  The intent lines are INT-1 and INT-2, and no other id is one.
+
+  A requirement is in when every id in its `traces_to` is a source: an
+  answered question, a row the ledger holds, or an intent line. Otherwise it
+  goes to `unasked`, with `ref` set to the first id in `traces_to` that is
+  not a source, and a reason:
+
+  | `reason` | When |
+  |---|---|
+  | `no_trace` | `traces_to` is empty, and `ref` is null |
+  | `dropped` | `ref` is a question that was dropped |
+  | `unanswered` | `ref` is a question nobody has answered |
+  | `unknown` | `ref` is no question, no ledger row and no intent line |
+
+  Requirements that set the same `metric` to different targets are one
+  conflict, which names every requirement that sets that metric. Read
+  conflicts across the whole draft, in and unasked alike.
+
+  Return a JSON string:
+
+      {"in": ["R-1", "R-2"],
+       "unasked": [{"id": "R-3", "reason": "dropped", "ref": "Q-7"}],
+       "conflicts": [{"metric": "median_days_acnc", "ids": ["R-1", "R-2"]}]}
+
+  Every list keeps the draft's order, and `conflicts` follows the order in
+  which each metric first appears.
+
+  Budget: one model call and one call to each tool. Allowed imports: json.
+
+stub_code: |
+  import json
+
+  INTENT_LINES = ("INT-1", "INT-2")
+  PRD_PROMPT = (
+      "Draft the PRD for the field-service agent from INT-1, INT-2, the discovery "
+      "questions and the evidence ledger. Reply with one JSON object, "
+      '{"requirements": [...]}, giving each requirement its id, text, metric, '
+      "target and the ids it rests on."
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      accepted, unasked, conflicts = [], [], []
+
+      # TODO 1: ask the agent once with llm(PRD_PROMPT), read the
+      #         "requirements" list from its JSON reply, and keep the
+      #         agent's order
+      # TODO 2: a requirement whose traces_to is empty, or names a question
+      #         that was dropped or never answered, goes to unasked with the
+      #         reason and the first id that failed
+      # TODO 3: an evidence id counts only when the ledger holds that row,
+      #         and an intent id only when it is in INTENT_LINES; any other
+      #         id is unknown
+      # TODO 4: group the requirements that set a metric; a metric whose
+      #         targets differ is one conflict naming every requirement on it
+
+      return json.dumps({"in": accepted, "unasked": unasked, "conflicts": conflicts})
+
+steps:
+  - id: s1
+    text: Ask the agent for the draft once, and keep its requirements in the order it gave them.
+    check_id: s1
+  - id: s2
+    text: Send a requirement back when it traces to nothing, or to a question that was dropped or never answered.
+    check_id: s2
+  - id: s3
+    text: Count an evidence id only when the ledger holds that row, and an intent id only when it is INT-1 or INT-2.
+    check_id: s3
+  - id: s4
+    text: Report one conflict for each metric whose targets disagree, naming every requirement that sets it.
+    check_id: s4
+
+step_checks:
+  # PRD v2 rests every requirement on a source, so listing the agent's
+  # requirements in its order is all this check reads.
+  - step_id: s1
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [in]
+            properties:
+              in: { const: [R-1, R-2, R-3, R-4, R-5, R-6, R-7, R-10] }
+  # No public draft cites a question nobody answered, so this check runs a
+  # draft of its own: one requirement on the dropped cancel question and one
+  # on the unanswered chat question, next to R-9.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Check the draft the agent wrote for the callback flow." }
+      llm_script:
+        - match: { contains: "Draft the PRD" }
+          reply: |
+            {"requirements": [
+              {"id": "R-1", "text": "The agent reads an ACNC request and asks at most four diagnostic questions before naming a likely fault.", "metric": null, "target": null, "traces_to": ["Q-1", "EV-5"]},
+              {"id": "R-9", "text": "A request is cancelled automatically when the customer does not reply within 24 hours.", "metric": null, "target": null, "traces_to": []},
+              {"id": "R-13", "text": "When the chat stalls, the agent asks the customer to confirm the slot by phone.", "metric": null, "target": null, "traces_to": ["Q-12"]},
+              {"id": "R-14", "text": "Half of all ACNC customers finish the diagnostic chat.", "metric": "chat_finished", "target": 50, "traces_to": ["Q-9"]}
+            ]}
+        - { match: "*", reply: "Tell me which document to draft: the PRD, the spec or the tickets." }
+      tools:
+        questions:
+          returns: [
+            { id: Q-1, status: answered }, { id: Q-2, status: answered }, { id: Q-3, status: answered },
+            { id: Q-4, status: answered }, { id: Q-5, status: answered }, { id: Q-6, status: answered },
+            { id: Q-7, status: dropped }, { id: Q-8, status: answered }, { id: Q-9, status: unanswered },
+            { id: Q-10, status: answered }, { id: Q-11, status: answered }, { id: Q-12, status: dropped } ]
+        ledger:
+          returns: [
+            { id: EV-1, kind: counted }, { id: EV-2, kind: counted }, { id: EV-3, kind: counted },
+            { id: EV-4, kind: counted }, { id: EV-5, kind: typed }, { id: EV-6, kind: counted },
+            { id: EV-7, kind: counted }, { id: EV-8, kind: trial }, { id: EV-9, kind: typed },
+            { id: EV-10, kind: estimate }, { id: EV-11, kind: estimate }, { id: EV-12, kind: vendor },
+            { id: EV-13, kind: counted }, { id: EV-14, kind: trial }, { id: EV-15, kind: typed },
+            { id: EV-16, kind: estimate } ]
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [in, unasked]
+            properties:
+              in: { const: [R-1] }
+              unasked:
+                const:
+                  - { id: R-9, reason: no_trace, ref: null }
+                  - { id: R-13, reason: dropped, ref: Q-12 }
+                  - { id: R-14, reason: unanswered, ref: Q-9 }
+  # No public draft cites a row the ledger lacks or an id posing as intent,
+  # so this check runs its own: EV-21 is no row, and INT-9 is the intent
+  # line Q-7 cited, which nobody ever wrote.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Check the draft the agent wrote from the stock survey." }
+      llm_script:
+        - match: { contains: "Draft the PRD" }
+          reply: |
+            {"requirements": [
+              {"id": "R-2", "text": "The agent names the likely fault and the part from the close-code split.", "metric": null, "target": null, "traces_to": ["EV-5"]},
+              {"id": "R-15", "text": "Every partner refreshes its stock sheet every hour.", "metric": null, "target": null, "traces_to": ["EV-9", "EV-21"]},
+              {"id": "R-16", "text": "The agent books installation slots as well as repairs.", "metric": null, "target": null, "traces_to": ["INT-9"]}
+            ]}
+        - { match: "*", reply: "Tell me which document to draft: the PRD, the spec or the tickets." }
+      tools:
+        questions:
+          returns: [
+            { id: Q-1, status: answered }, { id: Q-2, status: answered }, { id: Q-3, status: answered },
+            { id: Q-4, status: answered }, { id: Q-5, status: answered }, { id: Q-6, status: answered },
+            { id: Q-7, status: dropped }, { id: Q-8, status: answered }, { id: Q-9, status: unanswered },
+            { id: Q-10, status: answered }, { id: Q-11, status: answered }, { id: Q-12, status: dropped } ]
+        ledger:
+          returns: [
+            { id: EV-1, kind: counted }, { id: EV-2, kind: counted }, { id: EV-3, kind: counted },
+            { id: EV-4, kind: counted }, { id: EV-5, kind: typed }, { id: EV-6, kind: counted },
+            { id: EV-7, kind: counted }, { id: EV-8, kind: trial }, { id: EV-9, kind: typed },
+            { id: EV-10, kind: estimate }, { id: EV-11, kind: estimate }, { id: EV-12, kind: vendor },
+            { id: EV-13, kind: counted }, { id: EV-14, kind: trial }, { id: EV-15, kind: typed },
+            { id: EV-16, kind: estimate } ]
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [in, unasked]
+            properties:
+              in: { const: [R-2] }
+              unasked:
+                const:
+                  - { id: R-15, reason: unknown, ref: EV-21 }
+                  - { id: R-16, reason: unknown, ref: INT-9 }
+  # The public conflict is one pair, so this check runs its own draft: three
+  # requirements on first-time fix, two of which agree, and two on the
+  # median that agree and so are no conflict at all.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "Check the draft the agent wrote for the dispatch targets." }
+      llm_script:
+        - match: { contains: "Draft the PRD" }
+          reply: |
+            {"requirements": [
+              {"id": "R-17", "text": "First-time fix on ACNC stays at or above 61 percent.", "metric": "ftf_acnc", "target": 61, "traces_to": ["INT-2"]},
+              {"id": "R-18", "text": "First-time fix rises to 74 percent, as the chat-completers' parts did in the Nagpur trial.", "metric": "ftf_acnc", "target": 74, "traces_to": ["EV-8"]},
+              {"id": "R-19", "text": "First-time fix holds at last summer's 61 percent.", "metric": "ftf_acnc", "target": 61, "traces_to": ["EV-2"]},
+              {"id": "R-20", "text": "The week-6 review reads a median of 3.0 days or less.", "metric": "median_days_acnc", "target": 3.0, "traces_to": ["INT-1"]},
+              {"id": "R-21", "text": "Median request-to-completed-repair in the three cities falls to 3.0 days.", "metric": "median_days_acnc", "target": 3.0, "traces_to": ["Q-1"]}
+            ]}
+        - { match: "*", reply: "Tell me which document to draft: the PRD, the spec or the tickets." }
+      tools:
+        questions:
+          returns: [
+            { id: Q-1, status: answered }, { id: Q-2, status: answered }, { id: Q-3, status: answered },
+            { id: Q-4, status: answered }, { id: Q-5, status: answered }, { id: Q-6, status: answered },
+            { id: Q-7, status: dropped }, { id: Q-8, status: answered }, { id: Q-9, status: unanswered },
+            { id: Q-10, status: answered }, { id: Q-11, status: answered }, { id: Q-12, status: dropped } ]
+        ledger:
+          returns: [
+            { id: EV-1, kind: counted }, { id: EV-2, kind: counted }, { id: EV-3, kind: counted },
+            { id: EV-4, kind: counted }, { id: EV-5, kind: typed }, { id: EV-6, kind: counted },
+            { id: EV-7, kind: counted }, { id: EV-8, kind: trial }, { id: EV-9, kind: typed },
+            { id: EV-10, kind: estimate }, { id: EV-11, kind: estimate }, { id: EV-12, kind: vendor },
+            { id: EV-13, kind: counted }, { id: EV-14, kind: trial }, { id: EV-15, kind: typed },
+            { id: EV-16, kind: estimate } ]
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [conflicts]
+            properties:
+              conflicts:
+                const:
+                  - { metric: ftf_acnc, ids: [R-17, R-18, R-19] }
+
+hints:
+  - Pick R-11 and follow each id in its `traces_to` to the list it belongs
+    in. Then do the same for R-4. What has to be true at the end of each
+    trail for the requirement to stay in?
+  - A question on the list is not yet an answer. Only `answered` means
+    somebody asked and somebody replied. An evidence id counts only when the
+    ledger holds that exact row, and only INT-1 and INT-2 are intent lines.
+  - Build one lookup of every source before you read the draft. Then walk
+    each requirement's ids in order and stop at the first one that is not a
+    source. That id and its reason are what the sponsor needs to read.
+  - For conflicts, collect the requirements by `metric` first and compare
+    afterwards. A metric whose targets are not all equal is one conflict,
+    and it names every requirement that sets it.
+
+scenario:
+  headline: "R-9 cancels a customer's request after 24 hours, and nobody asked for it"
+  who: The head of customer service at an AC maker the size of Voltas
+  situation: >-
+    The construction agent turned discovery into eleven requirements, each
+    citing the ids it rests on. She reads the draft on Wednesday and decides
+    what goes into the POC that starts on 23 February. First she wants to
+    know which of the eleven somebody asked for.
+  stakes: >-
+    A requirement nobody asked for becomes a ticket, then code. In the Nagpur
+    trial 59 percent of customers never finished the chat, and R-9 cancels a
+    request after a day without a reply.
+  metrics:
+    - { label: Requirements drafted, value: "11" }
+    - { label: Questions answered, value: 9 of 12 }
+    - { label: Trial chats never finished, value: "59%" }
+
+diagram:
+  title: Where a citation stops being a source
+  caption: >-
+    Every id a requirement cites has to lead to an answered question, a
+    ledger row or an intent line. R-9 cites nothing, and a check that reads
+    the text keeps it.
+  direction: lr
+  nodes:
+    - { id: intent, label: Intent lines, sub: "INT-1 and INT-2, agreed 4 February", kind: doc, tone: blue, at: [0, 0] }
+    - { id: questions, label: Discovery questions, sub: "answered, unanswered or dropped", kind: store, tone: blue, at: [0, 1] }
+    - { id: ledger, label: Evidence ledger, sub: EV-1 to EV-16, kind: store, tone: blue, at: [0, 2] }
+    - { id: agent, label: Construction agent, sub: "drafts PRD v1, R-1 to R-11", kind: agent, tone: purple, at: [1, 3] }
+    - { id: check, label: Trace check, sub: every id to a source, kind: guard, tone: teal, at: [2, 1] }
+    - { id: kept, label: In the PRD, sub: every id resolves, kind: output, tone: green, at: [3, 0] }
+    - { id: unasked, label: Unasked list, sub: with the id that failed, kind: output, tone: orange, at: [3, 1] }
+    - { id: conflicts, label: Conflicts, sub: one for each metric, kind: output, tone: orange, at: [3, 2] }
+    - { id: sponsor, label: Head of customer service, sub: reads it on 18 February, kind: actor, tone: blue, at: [4, 1] }
+    - { id: textonly, label: Kept for its text, sub: R-9 cites no id at all, kind: doc, tone: pink, at: [2, 3] }
+  edges:
+    - { from: agent, to: check, label: eleven requirements, step: 1 }
+    - { from: intent, to: check, label: agreed lines, step: 2 }
+    - { from: questions, to: check, label: status of each, step: 2 }
+    - { from: ledger, to: check, label: rows that exist, step: 2 }
+    - { from: check, to: kept, label: every id is a source, tone: success, step: 3 }
+    - { from: check, to: unasked, label: first id that fails, step: 3 }
+    - { from: check, to: conflicts, label: targets that disagree, step: 3 }
+    - { from: unasked, to: sponsor, label: to accept or reject, step: 4 }
+    - { from: conflicts, to: sponsor, label: one number to choose, step: 4 }
+    - { from: agent, to: textonly, label: reads as sensible, tone: muted }
+    - { from: textonly, to: kept, label: passed on its text, tone: danger }
+
+approach:
+  goal: Send the sponsor only what somebody asked for, and every number she must pick
+  branches:
+    - label: Follow every id to its source
+      leaves: [an answered question, a row the ledger holds, INT-1 or INT-2]
+    - label: Say why a requirement goes back
+      detail: The first id that leads nowhere is what the sponsor can act on.
+      leaves: [nothing cited, a question dropped or never answered, an id no list holds]
+    - label: Read the numbers by metric
+      leaves: [group before you compare, one conflict for each metric, every requirement on it]
+    - label: Ask the agent once
+      leaves: [one model call for the draft, the check itself is a lookup]
+
+coach:
+  opening: >-
+    Before you write a check, pick R-11 and follow each id it cites to the
+    list it belongs in. What has to be true at the end of that trail?
+  signals:
+    - id: no-trace-read
+      when:
+        code_matches: '\[\s*["'']id["'']\s*\]'
+        code_lacks: 'traces_to'
+      say: >-
+        Your check keeps requirements without reading `traces_to`. Which ids
+        does R-9 rest on, and who asked for it?
+    - id: own-prompt
+      when:
+        code_matches: '\bllm\s*\('
+        code_lacks: 'llm\s*\(\s*PRD_PROMPT\s*\)'
+      say: >-
+        The agent drafts the PRD only when it is asked with `PRD_PROMPT` as
+        the starter code has it. Send that prompt, once.
+    - id: dropped-only
+      when:
+        code_matches: '["'']dropped["'']'
+        code_lacks: '["'']answered["'']'
+      say: >-
+        Your check turns away a question that was dropped. What does it do
+        with a question the sponsor could not answer?
+    - id: ledger-unread
+      when:
+        code_matches: 'tools\s*\[\s*["'']questions["'']\s*\]'
+        code_lacks: 'tools\s*\[\s*["'']ledger["'']\s*\]'
+      say: >-
+        Nothing in your check reads the ledger. When a requirement cites an
+        evidence id, how do you know the row is there?
+    - id: id-by-prefix
+      when: { code_matches: 'startswith\s*\(' }
+      say: >-
+        An id that starts with EV- is a claim that a row exists. Which list
+        would tell you whether it does?
+    - id: pairs-not-metrics
+      when: { code_matches: '\[\s*["'']target["'']\s*\]\s*!=' }
+      say: >-
+        Comparing one requirement's target with another's reports pairs. How
+        many lines should the sponsor read when three requirements set the
+        same metric?
+    - id: hidden-unanswered
+      when: { test_failed: a_target_resting_on_the_unanswered_chat_question_goes_back }
+      say: >-
+        In that run a requirement cited a question that is neither answered
+        nor dropped. Which statuses does your check treat as a source?
+    - id: hidden-missing-row
+      when: { test_failed: a_requirement_citing_a_row_the_ledger_never_held_goes_back }
+      say: >-
+        In that run two requirements cited ids that look like sources, one
+        next to an answered question. Which list did your check look each id
+        up in, and which failing id did it report?
+    - id: hidden-third-number
+      when: { test_failed: a_third_median_joins_the_same_conflict }
+      say: >-
+        In that run three requirements set one metric to three numbers. How
+        many conflicts did your check report, and how many numbers does the
+        sponsor have to choose?
+    - id: hidden-agreement
+      when: { test_failed: two_requirements_that_agree_are_no_conflict }
+      say: >-
+        In that run two requirements set the same metric to the same number.
+        Is that a number the sponsor has to choose?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and the PRD v2 case. Every requirement there rests
+        on a source, so reading the draft in order answers that case.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and the
+        later ones get closer to the shape of the check.
+  wrap_up: >-
+    A citation is a claim that somebody asked. Follow every id to an answered
+    question, a ledger row or an intent line, send the rest back with the id
+    that failed, and give the sponsor one line for each number she has to
+    choose.
+
+tests:
+  - name: prd_v1_sends_two_back_and_names_one_conflict
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Check PRD v1 before the sponsor reads it on Wednesday." }
+      llm_script:
+        - match: { contains: "Draft the PRD" }
+          reply: |
+            {"requirements": [
+              {"id": "R-1", "text": "The agent reads an ACNC request and asks at most four diagnostic questions before naming a likely fault.", "metric": null, "target": null, "traces_to": ["Q-1", "EV-5"]},
+              {"id": "R-2", "text": "The agent names the likely fault and the part from the close-code split.", "metric": null, "target": null, "traces_to": ["EV-5"]},
+              {"id": "R-3", "text": "The agent reads the partner's stock before booking and books only a partner that has the part.", "metric": null, "target": null, "traces_to": ["Q-5", "EV-9"]},
+              {"id": "R-4", "text": "Median request-to-completed-repair for ACNC in the three cities is 3.0 days by the week-6 review.", "metric": "median_days_acnc", "target": 3.0, "traces_to": ["INT-1", "Q-1"]},
+              {"id": "R-5", "text": "A booking is refused when the partner's stock sheet is older than one day.", "metric": null, "target": null, "traces_to": ["Q-5"]},
+              {"id": "R-6", "text": "The technician receives a brief with fault, part and the customer's visit history before the visit.", "metric": null, "target": null, "traces_to": ["EV-5", "EV-15"]},
+              {"id": "R-7", "text": "The customer receives a WhatsApp confirmation with a reschedule option.", "metric": null, "target": null, "traces_to": ["EV-8", "Q-10"]},
+              {"id": "R-8", "text": "Median request-to-completed-repair is 2.5 days by the week-6 review.", "metric": "median_days_acnc", "target": 2.5, "traces_to": ["EV-14"]},
+              {"id": "R-9", "text": "A request is cancelled automatically when the customer does not reply within 24 hours.", "metric": null, "target": null, "traces_to": []},
+              {"id": "R-10", "text": "Franchise partners see the day's bookings and the parts to pull.", "metric": null, "target": null, "traces_to": ["Q-10"]},
+              {"id": "R-11", "text": "Installations are booked by the agent through the same flow.", "metric": null, "target": null, "traces_to": ["Q-7"]}
+            ]}
+        - { match: "*", reply: "Tell me which document to draft: the PRD, the spec or the tickets." }
+      tools:
+        questions:
+          returns: [
+            { id: Q-1, status: answered }, { id: Q-2, status: answered }, { id: Q-3, status: answered },
+            { id: Q-4, status: answered }, { id: Q-5, status: answered }, { id: Q-6, status: answered },
+            { id: Q-7, status: dropped }, { id: Q-8, status: answered }, { id: Q-9, status: unanswered },
+            { id: Q-10, status: answered }, { id: Q-11, status: answered }, { id: Q-12, status: dropped } ]
+        ledger:
+          returns: [
+            { id: EV-1, kind: counted }, { id: EV-2, kind: counted }, { id: EV-3, kind: counted },
+            { id: EV-4, kind: counted }, { id: EV-5, kind: typed }, { id: EV-6, kind: counted },
+            { id: EV-7, kind: counted }, { id: EV-8, kind: trial }, { id: EV-9, kind: typed },
+            { id: EV-10, kind: estimate }, { id: EV-11, kind: estimate }, { id: EV-12, kind: vendor },
+            { id: EV-13, kind: counted }, { id: EV-14, kind: trial }, { id: EV-15, kind: typed },
+            { id: EV-16, kind: estimate } ]
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: calls_tool, name: questions }
+        - { type: tool_calls_at_most, value: 2 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [in, unasked, conflicts]
+            properties:
+              in: { type: array, items: { type: string } }
+              unasked: { type: array }
+              conflicts: { type: array }
+        - type: valid_json_return
+          schema:
+            properties:
+              in: { const: [R-1, R-2, R-3, R-4, R-5, R-6, R-7, R-8, R-10] }
+        - type: valid_json_return
+          schema:
+            properties:
+              unasked:
+                const:
+                  - { id: R-9, reason: no_trace, ref: null }
+                  - { id: R-11, reason: dropped, ref: Q-7 }
+        - type: valid_json_return
+          schema:
+            properties:
+              conflicts:
+                const:
+                  - { metric: median_days_acnc, ids: [R-4, R-8] }
+
+  - name: prd_v2_keeps_every_requirement
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "The sponsor has ruled on the unasked list. Check PRD v2 before the POC." }
+      llm_script:
+        - match: { contains: "Draft the PRD" }
+          reply: |
+            {"requirements": [
+              {"id": "R-1", "text": "The agent reads an ACNC request and asks at most four diagnostic questions before naming a likely fault.", "metric": null, "target": null, "traces_to": ["Q-1", "EV-5"]},
+              {"id": "R-2", "text": "The agent names the likely fault and the part from the close-code split.", "metric": null, "target": null, "traces_to": ["EV-5"]},
+              {"id": "R-3", "text": "The agent reads the partner's stock before booking and books only a partner that has the part.", "metric": null, "target": null, "traces_to": ["Q-5", "EV-9"]},
+              {"id": "R-4", "text": "Median request-to-completed-repair for ACNC in the three cities is 3.0 days by the week-6 review.", "metric": "median_days_acnc", "target": 3.0, "traces_to": ["INT-1", "Q-1"]},
+              {"id": "R-5", "text": "A booking is refused when the partner's stock sheet is older than one day.", "metric": null, "target": null, "traces_to": ["Q-5"]},
+              {"id": "R-6", "text": "The technician receives a brief with fault, part and the customer's visit history before the visit.", "metric": null, "target": null, "traces_to": ["EV-5", "EV-15"]},
+              {"id": "R-7", "text": "The customer receives a WhatsApp confirmation with a reschedule option.", "metric": null, "target": null, "traces_to": ["EV-8", "Q-10"]},
+              {"id": "R-10", "text": "Franchise partners see the day's bookings and the parts to pull.", "metric": null, "target": null, "traces_to": ["Q-10"]}
+            ]}
+        - { match: "*", reply: "Tell me which document to draft: the PRD, the spec or the tickets." }
+      tools:
+        questions:
+          returns: [
+            { id: Q-1, status: answered }, { id: Q-2, status: answered }, { id: Q-3, status: answered },
+            { id: Q-4, status: answered }, { id: Q-5, status: answered }, { id: Q-6, status: answered },
+            { id: Q-7, status: dropped }, { id: Q-8, status: answered }, { id: Q-9, status: unanswered },
+            { id: Q-10, status: answered }, { id: Q-11, status: answered }, { id: Q-12, status: dropped } ]
+        ledger:
+          returns: [
+            { id: EV-1, kind: counted }, { id: EV-2, kind: counted }, { id: EV-3, kind: counted },
+            { id: EV-4, kind: counted }, { id: EV-5, kind: typed }, { id: EV-6, kind: counted },
+            { id: EV-7, kind: counted }, { id: EV-8, kind: trial }, { id: EV-9, kind: typed },
+            { id: EV-10, kind: estimate }, { id: EV-11, kind: estimate }, { id: EV-12, kind: vendor },
+            { id: EV-13, kind: counted }, { id: EV-14, kind: trial }, { id: EV-15, kind: typed },
+            { id: EV-16, kind: estimate } ]
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [in, unasked, conflicts]
+            properties:
+              in: { const: [R-1, R-2, R-3, R-4, R-5, R-6, R-7, R-10] }
+              unasked: { const: [] }
+              conflicts: { const: [] }
+
+  - name: a_target_resting_on_the_unanswered_chat_question_goes_back
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The agent redrafted after a call about the chat. Check the new draft." }
+      llm_script:
+        - match: { contains: "Draft the PRD" }
+          reply: |
+            {"requirements": [
+              {"id": "R-1", "text": "The agent reads an ACNC request and asks at most four diagnostic questions before naming a likely fault.", "metric": null, "target": null, "traces_to": ["Q-1", "EV-5"]},
+              {"id": "R-2", "text": "The agent names the likely fault and the part from the close-code split.", "metric": null, "target": null, "traces_to": ["EV-5"]},
+              {"id": "R-5", "text": "A booking is refused when the partner's stock sheet is older than one day.", "metric": null, "target": null, "traces_to": ["Q-5"]},
+              {"id": "R-12", "text": "At least 41 percent of ACNC customers complete the diagnostic chat, as in the Nagpur trial.", "metric": "chat_completion", "target": 41, "traces_to": ["EV-8", "Q-9"]}
+            ]}
+        - { match: "*", reply: "Tell me which document to draft: the PRD, the spec or the tickets." }
+      tools:
+        questions:
+          returns: [
+            { id: Q-1, status: answered }, { id: Q-2, status: answered }, { id: Q-3, status: answered },
+            { id: Q-4, status: answered }, { id: Q-5, status: answered }, { id: Q-6, status: answered },
+            { id: Q-7, status: dropped }, { id: Q-8, status: answered }, { id: Q-9, status: unanswered },
+            { id: Q-10, status: answered }, { id: Q-11, status: answered }, { id: Q-12, status: dropped } ]
+        ledger:
+          returns: [
+            { id: EV-1, kind: counted }, { id: EV-2, kind: counted }, { id: EV-3, kind: counted },
+            { id: EV-4, kind: counted }, { id: EV-5, kind: typed }, { id: EV-6, kind: counted },
+            { id: EV-7, kind: counted }, { id: EV-8, kind: trial }, { id: EV-9, kind: typed },
+            { id: EV-10, kind: estimate }, { id: EV-11, kind: estimate }, { id: EV-12, kind: vendor },
+            { id: EV-13, kind: counted }, { id: EV-14, kind: trial }, { id: EV-15, kind: typed },
+            { id: EV-16, kind: estimate } ]
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [in, unasked]
+            properties:
+              in: { const: [R-1, R-2, R-5] }
+              unasked:
+                const:
+                  - { id: R-12, reason: unanswered, ref: Q-9 }
+
+  - name: a_requirement_citing_a_row_the_ledger_never_held_goes_back
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The agent added a requirement for the partners. Check the new draft." }
+      llm_script:
+        - match: { contains: "Draft the PRD" }
+          reply: |
+            {"requirements": [
+              {"id": "R-3", "text": "The agent reads the partner's stock before booking and books only a partner that has the part.", "metric": null, "target": null, "traces_to": ["Q-5", "EV-9"]},
+              {"id": "R-10", "text": "Franchise partners see the day's bookings and the parts to pull.", "metric": null, "target": null, "traces_to": ["Q-10"]},
+              {"id": "R-12", "text": "Every franchise partner sees the day's bookings before the May peak.", "metric": null, "target": null, "traces_to": ["Q-10", "EV-17"]},
+              {"id": "R-13", "text": "The agent is live in every centre before summer, installations included.", "metric": null, "target": null, "traces_to": ["INT-0", "Q-7"]}
+            ]}
+        - { match: "*", reply: "Tell me which document to draft: the PRD, the spec or the tickets." }
+      tools:
+        questions:
+          returns: [
+            { id: Q-1, status: answered }, { id: Q-2, status: answered }, { id: Q-3, status: answered },
+            { id: Q-4, status: answered }, { id: Q-5, status: answered }, { id: Q-6, status: answered },
+            { id: Q-7, status: dropped }, { id: Q-8, status: answered }, { id: Q-9, status: unanswered },
+            { id: Q-10, status: answered }, { id: Q-11, status: answered }, { id: Q-12, status: dropped } ]
+        ledger:
+          returns: [
+            { id: EV-1, kind: counted }, { id: EV-2, kind: counted }, { id: EV-3, kind: counted },
+            { id: EV-4, kind: counted }, { id: EV-5, kind: typed }, { id: EV-6, kind: counted },
+            { id: EV-7, kind: counted }, { id: EV-8, kind: trial }, { id: EV-9, kind: typed },
+            { id: EV-10, kind: estimate }, { id: EV-11, kind: estimate }, { id: EV-12, kind: vendor },
+            { id: EV-13, kind: counted }, { id: EV-14, kind: trial }, { id: EV-15, kind: typed },
+            { id: EV-16, kind: estimate } ]
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [in, unasked]
+            properties:
+              in: { const: [R-3, R-10] }
+              unasked:
+                const:
+                  - { id: R-12, reason: unknown, ref: EV-17 }
+                  - { id: R-13, reason: unknown, ref: INT-0 }
+
+  - name: a_third_median_joins_the_same_conflict
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The agent added the trial's median as a requirement. Check the new draft." }
+      llm_script:
+        - match: { contains: "Draft the PRD" }
+          reply: |
+            {"requirements": [
+              {"id": "R-2", "text": "The agent names the likely fault and the part from the close-code split.", "metric": null, "target": null, "traces_to": ["EV-5"]},
+              {"id": "R-4", "text": "Median request-to-completed-repair for ACNC in the three cities is 3.0 days by the week-6 review.", "metric": "median_days_acnc", "target": 3.0, "traces_to": ["INT-1", "Q-1"]},
+              {"id": "R-8", "text": "Median request-to-completed-repair is 2.5 days by the week-6 review.", "metric": "median_days_acnc", "target": 2.5, "traces_to": ["EV-14"]},
+              {"id": "R-12", "text": "Median request-to-completed-repair is 2.9 days, as the Nagpur trial measured.", "metric": "median_days_acnc", "target": 2.9, "traces_to": ["EV-14"]}
+            ]}
+        - { match: "*", reply: "Tell me which document to draft: the PRD, the spec or the tickets." }
+      tools:
+        questions:
+          returns: [
+            { id: Q-1, status: answered }, { id: Q-2, status: answered }, { id: Q-3, status: answered },
+            { id: Q-4, status: answered }, { id: Q-5, status: answered }, { id: Q-6, status: answered },
+            { id: Q-7, status: dropped }, { id: Q-8, status: answered }, { id: Q-9, status: unanswered },
+            { id: Q-10, status: answered }, { id: Q-11, status: answered }, { id: Q-12, status: dropped } ]
+        ledger:
+          returns: [
+            { id: EV-1, kind: counted }, { id: EV-2, kind: counted }, { id: EV-3, kind: counted },
+            { id: EV-4, kind: counted }, { id: EV-5, kind: typed }, { id: EV-6, kind: counted },
+            { id: EV-7, kind: counted }, { id: EV-8, kind: trial }, { id: EV-9, kind: typed },
+            { id: EV-10, kind: estimate }, { id: EV-11, kind: estimate }, { id: EV-12, kind: vendor },
+            { id: EV-13, kind: counted }, { id: EV-14, kind: trial }, { id: EV-15, kind: typed },
+            { id: EV-16, kind: estimate } ]
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [conflicts]
+            properties:
+              conflicts:
+                const:
+                  - { metric: median_days_acnc, ids: [R-4, R-8, R-12] }
+
+  - name: two_requirements_that_agree_are_no_conflict
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The agent wrote today's same-day rate in twice. Check the new draft." }
+      llm_script:
+        - match: { contains: "Draft the PRD" }
+          reply: |
+            {"requirements": [
+              {"id": "R-4", "text": "Median request-to-completed-repair for ACNC in the three cities is 3.0 days by the week-6 review.", "metric": "median_days_acnc", "target": 3.0, "traces_to": ["INT-1", "Q-1"]},
+              {"id": "R-12", "text": "Same-day visits stay at or above today's 34 percent.", "metric": "same_day_visits", "target": 34, "traces_to": ["EV-7"]},
+              {"id": "R-13", "text": "At least 34 percent of ACNC requests get a technician the day they are raised.", "metric": "same_day_visits", "target": 34, "traces_to": ["Q-8"]}
+            ]}
+        - { match: "*", reply: "Tell me which document to draft: the PRD, the spec or the tickets." }
+      tools:
+        questions:
+          returns: [
+            { id: Q-1, status: answered }, { id: Q-2, status: answered }, { id: Q-3, status: answered },
+            { id: Q-4, status: answered }, { id: Q-5, status: answered }, { id: Q-6, status: answered },
+            { id: Q-7, status: dropped }, { id: Q-8, status: answered }, { id: Q-9, status: unanswered },
+            { id: Q-10, status: answered }, { id: Q-11, status: answered }, { id: Q-12, status: dropped } ]
+        ledger:
+          returns: [
+            { id: EV-1, kind: counted }, { id: EV-2, kind: counted }, { id: EV-3, kind: counted },
+            { id: EV-4, kind: counted }, { id: EV-5, kind: typed }, { id: EV-6, kind: counted },
+            { id: EV-7, kind: counted }, { id: EV-8, kind: trial }, { id: EV-9, kind: typed },
+            { id: EV-10, kind: estimate }, { id: EV-11, kind: estimate }, { id: EV-12, kind: vendor },
+            { id: EV-13, kind: counted }, { id: EV-14, kind: trial }, { id: EV-15, kind: typed },
+            { id: EV-16, kind: estimate } ]
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [in, conflicts]
+            properties:
+              in: { const: [R-4, R-12, R-13] }
+              conflicts: { const: [] }
+
+reference_md: |
+  The construction agent wrote eleven fluent requirements and cited
+  something for ten of them, so the draft reads as if every line was asked
+  for. A citation is a claim that somebody asked, and this check is where
+  the claim gets tested.
+
+  Each source answers a different question. An answered question is
+  somebody's ask, met by discovery's numbers or by the sponsor's reply. A
+  row in the ledger is something somebody counted, typed or estimated. An
+  intent line is what the sponsor agreed on 4 February; her opening sentence
+  of 2 February, logged as INT-0, is not one, and nothing may rest on it.
+  Everything else is a citation of nothing, and it comes in several shapes.
+  R-9 cites no id at all. It is the easiest to see and the one that would
+  have hurt most: a request cancelled after a day without a reply lands on
+  the customers who do not answer chats, and in the Nagpur trial 59 percent
+  never finished one. R-11 cites Q-7, the installations question the
+  elaboration check dropped because it traced to no intent line, so the
+  requirement carries the drop forward. A target resting on Q-9 rests on a
+  number nobody has, since the sponsor could not say how many customers
+  finish a chat today. An id the ledger never held, such as EV-17, is the
+  hole claim C-13 fell into in the PR/FAQ draft.
+
+  Every id has to resolve. A requirement that cites an answered question and
+  a missing row is half asked for, and the half nobody asked for is usually
+  the part that costs money. The first id that fails goes back to the
+  sponsor with its reason, because she can act on "EV-17 is not in the
+  ledger" and can do nothing with "this one looks wrong".
+
+  Conflicts are a separate failure, and good sources do not prevent them.
+  R-4 rests on the intent line and on Q-1, the baseline discovery measured,
+  and R-8 rests on one city's chat-completers. Both are in, and they promise
+  the week-6 review two different medians. Grouping by metric gives the
+  sponsor one line for each number she has to choose. Reporting pairs gives
+  her two lines when a third requirement joins, and she settles one and
+  misses the other. Flagging two requirements that state the same number
+  hands her a choice that does not exist. On 18 February she withdrew R-8,
+  rejected R-9 and deferred R-11 to the MVP gate.
+
+  The model stays out of the check. The agent drafts, the check is a lookup
+  anyone can rerun, and the decision is hers. AWS describes this step of its
+  AI-Driven Development Life Cycle as the one "where the entire team
+  actively validates AI's questions and proposals"
+  ([AWS DevOps blog](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/),
+  Raja SP, 31 July 2025, read 8 October 2026), and BMAD names "PRD
+  validate" among its "five moments where a human decision is expected"
+  ([BMAD, plan inside an organization](https://docs.bmad-method.org/plan/plan-inside-an-organization/),
+  with `bmad-method` at release 6.12.1, read 8 October 2026). The reasons,
+  the every-id rule and the conflict rule are this problem's own
+  construction, and so are the client and its numbers.
+
+interview_evidence:
+  round: written
+  asked_as: |
+    An agent drafted your PRD from the discovery notes. Before the sponsor signs it, how do you check that every requirement is something somebody actually asked for?
+  source: |
+    Author judgement. No employer frequency data stands behind it. The step it practises, people
+    validating what an agent proposed, follows the AWS DevOps blog post "AI-Driven Development Life
+    Cycle: Reimagining Software Engineering" (Raja SP, 31 July 2025,
+    https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/), read 8 October 2026.
+
+tools:
+  - name: questions
+    args: ""
+    returns: Every discovery question as `{id, status}`, where the status after the sponsor's replies is
+      `answered`, `unanswered` or `dropped`.
+  - name: ledger
+    args: ""
+    returns: Every row of the evidence ledger as `{id, kind}`, from EV-1 to EV-16.
+example:
+  case: prd_v1_sends_two_back_and_names_one_conflict
+  expect: R-9 cites nothing and R-11 cites the dropped Q-7, so both go back as unasked. R-4 and R-8 set
+    the median at 3.0 and 2.5 days, which is one conflict naming both. Nine stay in, R-4 and R-8 among them.
+traps:
+  - Treating every question on the list as a source, when a requirement resting on an unanswered question
+    rests on a number nobody has.
+  - Taking an evidence or intent id at face value, when the ledger never held the row or the id is no
+    agreed intent line.
+  - Keeping a requirement because one of its ids resolves, when every id it rests on has to.
+  - Reporting conflicts pair by pair, or flagging requirements that agree, when the sponsor needs one line
+    for each number she has to choose.

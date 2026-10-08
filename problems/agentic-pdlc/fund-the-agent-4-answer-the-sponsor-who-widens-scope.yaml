@@ -1,0 +1,420 @@
+slug: fund-the-agent-4-answer-the-sponsor-who-widens-scope
+title: "Answer the sponsor who widens the scope"
+day: 24
+skill: Answer a scope change two days before a POC without losing what it measures
+artefact_type: design
+difficulty: hard
+complexity: C4
+track: agentic-pdlc
+concept:
+  topic: "Problem framing"
+  question: "What does adding installs two days before the POC do to the baseline, the metric and the date?"
+est_minutes: 45
+competencies:
+  - { slug: client-communication, weight: 1.0 }
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+
+build: { id: fund-the-agent, title: "Fund a field-service agent", stage: 4, of: 7 }
+
+panel: { static: true, pretrained: true, llm: true }
+
+constraints: ["23 February", "baseline", "held back", "12 percent", "week-6"]
+
+brief_md: |
+  Thursday 19 February, 17:40. The POC starts on Monday 23 February: four
+  weeks of AC-not-cooling (ACNC) requests in Nagpur and Indore, each one
+  assigned at random at intake either to the agent or to a held-back group
+  handled as today. The week-6 review on 25 March compares the two groups,
+  and the board meets two days later.
+
+  The head of customer service has just written:
+
+  > Add AC installations. Summer is coming and installs are where the
+  > complaints are. Same date.
+
+  | What you have | Where it comes from |
+  |---|---|
+  | INT-1: for ACNC requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review | Agreed on 4 February |
+  | ACNC is 44 percent of summer requests | EV-3, counted in the service system |
+  | Installations are 12 percent of summer requests. They have no diagnostic step, and their request-to-completion time has never been measured | EV-16, an estimate from Sales |
+  | The ledger's one complaints row: 31 percent of ACNC complaints mention a second visit. No row counts complaints about installations | EV-15, typed by the complaints desk |
+  | The agent's flow: diagnostic questions, likely fault and part, stock check, booking, technician brief | PRD v2, 18 February |
+  | R-11, installations booked through the same flow, deferred to the MVP gate on 28 April | PRD v2, 18 February |
+  | An installs baseline takes two weeks of requests to measure | The data lead |
+
+  Write the note you send her tonight.
+
+contract_md: |
+  Write the note as you would send it tonight. She reads one page, on her
+  phone, and answers this evening or first thing tomorrow.
+
+  Between 250 and 450 words. There is no template and no required structure.
+
+  Say what adding installs on Monday would do to what the POC measures,
+  which options she has and what each costs her, what you recommend, and
+  the one decision you need from her.
+
+word_range: [250, 450]
+required_headings: []
+
+rubric:
+  - label: Says what installs do to the baseline and the metric
+    weight: 25
+    descriptor_md: |
+      INT-1 is an ACNC number, and its 3.0-day target was set against ACNC's
+      4.3 days. Installs have no starting number, since EV-16 is a Sales
+      estimate of their share and nobody has timed one, and they have no
+      diagnostic step for the agent to shorten. Strong answers work out that,
+      if winter keeps the summer mix, installs would be about one request in
+      five at intake (12 against 44), so the comparison with the held-back
+      group would read a diluted effect on a pooled median nobody set a
+      target for. The random split keeps the two groups comparable; it gives
+      installs neither a baseline nor a target. Answers that only call
+      installs out of scope have not said what they would do to the test.
+  - label: Keeps the date and moves the scope, or moves the date and says what it buys
+    weight: 25
+    descriptor_md: |
+      Either can score. Keeping 23 February means installs leave the POC on
+      a measured path: the data lead times installs through the same four
+      weeks, so the week-6 review brings an installs baseline next to the
+      ACNC result, and the MVP gate on 28 April, where R-11 already waits,
+      can decide installs with a number. Moving the date has to say what the
+      two weeks buy, a baseline before installs enter, and what they cost:
+      the review lands on 8 April, after the 27 March board, and the install
+      flow still has to be built. Yes to installs and the date together, or
+      no to both with no path for installs, scores low here.
+  - label: Weighs the three options in what each costs her
+    weight: 20
+    descriptor_md: |
+      Swapping installs in for ACNC drops the question the committee funded
+      and starts a flow nobody has built or measured. Adding installs and
+      moving the date costs two weeks and the board slide. Deferring costs
+      installs in the POC and buys a baseline. Strong answers price each in
+      her terms, weeks and what she can say on 25 and 27 March, and
+      recommend one. An answer that offers only its own plan has not shown
+      her what she gives up.
+  - label: Asks one decision she can give in one reply
+    weight: 15
+    descriptor_md: |
+      The POC starts on Monday, so the note ends with one question she can
+      answer yes or no tonight, such as confirming that the POC measures
+      ACNC only, and says what happens on Monday once she replies. A list of
+      questions or a request for a meeting leaves Monday's intake undecided
+      over a weekend.
+  - label: Reads as one page for a sponsor
+    weight: 15
+    descriptor_md: |
+      It leads with the recommendation, uses her numbers and her words, and
+      fits on a phone screen or two. Method words such as control groups or
+      statistical power become what she sees: a fair comparison, a starting
+      number, a date. Her point about complaints is taken seriously, and the
+      note says what happens to it.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      My recommendation: run the POC from Monday on AC-not-cooling requests
+      only, as planned, and give installs a measured start of their own. I
+      need one reply from you, at the end of this note.
+
+      Installs cannot join on Monday without changing what the review
+      measures. The week-6 review reads INT-1, the ACNC median, and its
+      3.0-day target was set against ACNC's 4.3 days. Nobody has timed an
+      install. The 12 percent is a Sales estimate of their share, so we have
+      no baseline for installs and no target to hold them to. The agent cuts
+      a repair's wait by asking the right questions, so the technician
+      arrives with the right part. An install has nothing to diagnose, so
+      the step that shortens a repair would not touch it. If winter keeps
+      the summer mix, installs would be about one request in five at
+      intake. The comparison with the requests held back would stay fair,
+      and what it measured would be a diluted ACNC result on a pooled number
+      nobody set a target for. That is the number you would carry to the
+      board on 27 March.
+
+      The options, and what each costs you:
+
+      1. Swap installs in for ACNC. This drops the question the committee
+         funded and starts a flow nobody has built, with nothing to judge it
+         against.
+      2. Add installs and move the date. Two weeks to measure an installs
+         baseline first moves the review from 25 March to 8 April, after the
+         board, and the install flow still has to be built.
+      3. Keep 23 February and defer installs to the MVP gate on 28 April,
+         where R-11 already sits. The data lead times every install request
+         over the same four weeks, so the week-6 review brings you an
+         installs baseline next to the ACNC result.
+
+      I recommend the third. You give up installs in the POC, in exchange
+      for the date, a clean ACNC answer for the board and a real starting
+      number for installs before anyone sets them a target.
+
+      On complaints: the ledger has no row that counts complaints about
+      installs. If the complaints desk can split last summer's complaints by
+      request type, that count goes to the MVP gate with the baseline, and
+      installs arrive there with evidence behind your concern.
+
+      What I need tonight: reply "ACNC only". Monday's intake then starts as
+      designed, and the installs measurement starts beside it.
+  - band: adequate
+    score: 61
+    body_md: |
+      Thank you for flagging installs. You are right that they matter for
+      the summer, and I would rather bring them in properly than leave them
+      out.
+
+      The difficulty with adding them on Monday is the baseline. Nobody has
+      measured how long an install takes from request to completion today,
+      and the 12 percent share is an estimate from Sales. Without a starting
+      number, the week-6 review could not tell you whether the agent made
+      installs faster or slower.
+
+      My proposal is to add installs and move the start by two weeks. The
+      data lead needs two weeks of requests to measure an installs baseline,
+      so we would spend 23 February to 6 March timing installs as they run
+      today, and start the POC on 9 March with both ACNC and installs in it,
+      split at random between the agent and the held-back group exactly as
+      planned. The review would move from 25 March to 8 April.
+
+      What this buys you is a POC that covers both of the request types you
+      care about, each with a measured starting point, so the result speaks
+      to the complaints you are hearing about installs as well as to the
+      ACNC repairs.
+
+      The cost is two weeks. The review would come after the board meets on
+      27 March, so the board would hear a progress update with the first
+      numbers from the new design. I think that is a fair price for a test
+      that answers both of your questions at once.
+
+      We would also need to extend the agent for installs. Since installs
+      have no diagnostic step, the agent would skip the questions and go
+      straight to booking a slot, which should be a small change to make
+      before 9 March.
+
+      Could we talk this through tomorrow morning? If you agree with the
+      plan, I will ask the data lead to start timing installs on Monday so
+      that nothing is lost while we decide.
+  - band: weak
+    score: 28
+    body_md: |
+      Great idea, and thank you for the quick steer. Installs are a big part
+      of the summer load and it makes sense to bring them into the POC from
+      the very start rather than waiting.
+
+      We can add installations on Monday without moving anything. The agent
+      already books slots in the service system, so it can book installs
+      through the same flow, and the technicians and franchise partners are
+      the same people. Installs are only 12 percent of summer requests, so
+      they will not change the workload much, and both groups in the POC
+      will include them, which keeps things simple.
+
+      At the week-6 review on 25 March we will report one combined figure
+      for request to completion across AC repairs and installs. That gives
+      you a simpler story for the board on 27 March, with a single number
+      covering everything the agent touches. If installs complaints come
+      down over the four weeks, that will show up in the same figure, and we
+      can split it out later if anyone asks.
+
+      I will ask the team to set this up over the weekend so that everything
+      is ready for intake on 23 February. The PRD already has a requirement
+      for installs, R-11, so the work is mostly switching it back on. The
+      scope grows a little, but the plan stays the same and the date holds.
+
+      Summer is close and the complaints are real, so I would rather move
+      fast than wait for perfect data. We can always refine the measurement
+      once the agent is live and we see how installs behave.
+
+      I will send you an update on Monday morning once intake is live and
+      the first installs are flowing through the agent.
+
+hints:
+  - Start with the number the week-6 review reads, which requests it covers,
+    and what its target was set against. Then put one install through the
+    same reading.
+  - Look for what anybody knows about installs today, and who wrote it down.
+    A target needs a starting number, and so does a comparison.
+  - The agent cuts a wait at one step of its flow. Find that step, then ask
+    what share of Monday's intake would never reach it, and what that does
+    to the difference the review reads.
+  - Price each option in her terms, the weeks to the review and what she can
+    say at the board on 27 March. Then say when installs get an answer of
+    their own.
+  - End with one thing she can answer yes or no tonight, and say what
+    happens on Monday once she does.
+
+scenario:
+  headline: "Add installs, same date, two days before the POC starts"
+  who: The head of customer service at an AC maker the size of Voltas
+  situation: >-
+    The POC starts on Monday 23 February: ACNC requests in Nagpur and Indore,
+    split at random between the agent and a held-back group. At 17:40 on
+    Thursday she wrote: add installations, same date. Installs are 12 percent
+    of summer requests, and nobody has timed one.
+  stakes: >-
+    The week-6 review on 25 March feeds the board on 27 March. Whatever the
+    POC measures from Monday is the number she will stand behind in that
+    room.
+  metrics:
+    - { label: POC starts, value: Mon 23 Feb }
+    - { label: Installs share, value: "12% (estimate)" }
+    - { label: Installs baseline, value: never measured }
+
+diagram:
+  title: Where a late scope change lands in the POC
+  caption: >-
+    The review compares two groups on one number, set for ACNC on 4 February.
+    Her message would change what enters both groups on Monday.
+  direction: lr
+  nodes:
+    - { id: sponsor, label: Head of customer service, sub: "Thursday 19 February, 17:40", kind: actor, tone: blue, at: [0, 0] }
+    - { id: message, label: Her message, sub: "add installs, same date", kind: doc, tone: pink, at: [1, 0] }
+    - { id: installs, label: Installations, sub: "12% estimate, never timed", kind: doc, tone: pink, at: [0, 2] }
+    - { id: intake, label: Intake from 23 February, sub: ACNC requests split at random, kind: service, tone: purple, at: [1, 1] }
+    - { id: agent, label: Agent group, sub: "questions, part, stock, booking", kind: agent, tone: teal, at: [2, 0] }
+    - { id: held, label: Held-back group, sub: handled as today, kind: queue, tone: neutral, at: [2, 2] }
+    - { id: review, label: Week-6 review, sub: "25 March, read against INT-1", kind: decision, tone: orange, at: [3, 1] }
+    - { id: board, label: Board, sub: 27 March, kind: actor, tone: blue, at: [4, 1] }
+    - { id: mvp, label: MVP gate, sub: "28 April, where R-11 waits", kind: decision, tone: green, at: [3, 3] }
+  edges:
+    - { from: sponsor, to: message, label: two days before the start }
+    - { from: message, to: intake, label: same date, tone: danger }
+    - { from: installs, to: intake, label: would enter on Monday, tone: danger }
+    - { from: intake, to: agent, label: at random, step: 1 }
+    - { from: intake, to: held, label: at random, step: 1 }
+    - { from: agent, to: review, label: one number, step: 2 }
+    - { from: held, to: review, label: the same number, step: 2 }
+    - { from: review, to: board, label: two days later, step: 3 }
+    - { from: installs, to: mvp, label: deferred on 18 February, tone: muted }
+
+approach:
+  goal: A reply she can act on tonight, priced in what each choice costs her
+  branches:
+    - label: Read what the review compares
+      leaves: ["which requests INT-1 names", "what the 3.0 was set against", "what the random split protects"]
+    - label: Put an install through the same reading
+      detail: Ask what anybody knows about installs today, and which step of the agent's flow an install would use.
+      leaves: ["a starting number?", "a step the agent shortens?", "a flow somebody built?"]
+    - label: Price every option
+      leaves: ["weeks to the review", "what she can tell the board", "when installs get their own answer"]
+    - label: End on one decision
+      leaves: ["a yes or no she can send tonight", "what happens on Monday after it"]
+
+coach:
+  opening: >-
+    Before you answer her, write down which requests the week-6 review
+    compares and what its 3.0-day target was set against.
+  signals:
+    - id: no-baseline
+      when: { code_lacks: '(?i)baseline|never (been )?(timed|measured)|nobody has (timed|measured)|starting number' }
+      say: >-
+        Your note never says what installs would be measured against. How
+        long does an install take today, and who has counted it?
+    - id: no-metric
+      when: { code_lacks: '(?i)INT-1|4\.3|3\.0|target' }
+      say: >-
+        Your note does not say which number the week-6 review reads. What was
+        the 3.0 set against, and where would an install fit in it?
+    - id: no-mechanism
+      when: { code_lacks: '(?i)diagnos|one (request )?in five|dilut|nothing to ask' }
+      say: >-
+        What does the agent do for a request with nothing to diagnose, and
+        what would those requests do to the difference the review reads?
+    - id: no-comparison
+      when: { code_lacks: '(?i)held[-\s]back|held back|at random|comparison|compar' }
+      say: >-
+        The POC compares the agent with requests handled as today. What
+        would installs do to that comparison?
+    - id: one-option
+      when: { code_lacks: '(?i)option|swap|defer|instead of|alternativ' }
+      say: >-
+        Your note offers one path. What else could she choose, and what would
+        each choice cost her?
+    - id: no-decision
+      when: { code_lacks: '(?i)\breply\b|confirm|yes or no|your decision|need from you' }
+      say: >-
+        What do you need from her, and can she give it in one reply tonight?
+    - id: meeting-for-a-decision
+      when:
+        code_matches: '(?i)\b(call|meeting|talk (this )?through|discuss)\b'
+        code_lacks: '(?i)\breply\b|confirm'
+      say: >-
+        The POC starts on Monday. What would she have to answer in that
+        meeting, and could she answer it in one line tonight?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with two lines: what the week-6 review measures, and what
+        anybody knows about installs today. The note hangs off those.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three tries without a pass. The third hint looks at the one step of
+        the agent's flow that an install has no use for.
+  wrap_up: >-
+    A scope change two days before a POC changes what it measures. Keep the
+    question the POC was funded to answer, give the new ask a starting number
+    of its own, and end on one decision she can send tonight.
+
+reference_md: |
+  Her message reads as a scope request, and it is also a change to what the
+  POC measures. The date matters to her because of the board. The scope
+  matters to the review, which compares two groups on one number, and that
+  number was chosen for AC-not-cooling requests before anyone mentioned
+  installs.
+
+  Start with the target. INT-1 asks the ACNC median to fall from 4.3 days to
+  3.0, and both figures belong to ACNC. Installs have no starting figure at
+  all: EV-16 estimates their share, and nobody has timed one. Then look at
+  how the agent works. It shortens a repair by diagnosing it, so the
+  technician arrives with the part, and an install has nothing to diagnose.
+  The random split still makes the groups comparable, but it compares a mix
+  in which perhaps one request in five never reaches the step the agent
+  improves: 12 against 44, if winter keeps the summer shares. The review
+  would read a smaller effect on a pooled median with no target behind it.
+  Yes to both buys her installs on paper at the cost of the one result the
+  committee paid for.
+
+  No to both fails her differently. Installs are where she hears complaints,
+  and a refusal leaves her holding the complaint with nothing to take to the
+  next gate. The ledger has no complaints row for installs, so her concern
+  is real and unmeasured. R-11 already waits at the MVP gate, which makes
+  deferral a date she has seen, and timing installs during the four weeks
+  the POC runs anyway means the week-6 review hands her a baseline instead
+  of an estimate. Moving the date is defensible when it says what the two
+  weeks buy, a baseline before installs enter, and what they cost: a review
+  on 8 April, after the board, and an install flow that still has to be
+  built.
+
+  The one decision matters because the POC starts on Monday. A note that
+  ends in three questions or a meeting request leaves the intake rules open
+  over a weekend. BMAD names "five moments where a human decision is
+  expected", PRD validation among them, and says of them: "Every one of
+  these produces a written result, so the approval has something to attach
+  to" ([BMAD, plan inside an organization](https://docs.bmad-method.org/plan/plan-inside-an-organization/),
+  with `bmad-method` at release 6.12.1, read 8 October 2026). Her one-line
+  reply is that written result for a change to a PRD she validated the day
+  before.
+
+  The client, the dates and every number here are this problem's own
+  construction. The one-in-five share is derived from the ledger's two
+  summer figures, and 8 April is the review moved by the two weeks the
+  baseline needs.
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Two days before your POC starts, the sponsor asks you to add a second kind of request and keep the date. What do you send back, and why?
+  source: |
+    Author judgement. No employer frequency data stands behind it. The one written decision the
+    note asks for follows BMAD's guidance that human sign-off sits at named moments, each of which
+    "produces a written result, so the approval has something to attach to"
+    (https://docs.bmad-method.org/plan/plan-inside-an-organization/, with bmad-method at release
+    6.12.1 on the npm registry, read 8 October 2026).
+
+traps:
+  - Saying yes to installs and the date together, so the review reads a pooled number with no baseline
+    and no target behind it.
+  - Saying no to both, which leaves her with the complaint and no path for installs to the MVP gate.
+  - Moving the date without saying what the two weeks buy, or that the review then lands after the board.
+  - Ending with a list of questions or a meeting, when Monday's intake needs one answer.

@@ -1,6 +1,6 @@
 slug: run-inception-for-a-dealer-ordering-agent
 title: "Run inception for a dealer-ordering agent"
-day: 24
+drill: true
 skill: Turn a two-line intent into questions that move scope, and units that fit eight weeks
 artefact_type: design
 difficulty: hard
@@ -32,7 +32,7 @@ brief_md: |
   replaced by Units of Work", and sprints by bolts, "shorter, more intense
   work cycles measured in hours or days rather than weeks". The AI "defers
   critical decisions to humans". The README of awslabs/aidlc-workflows,
-  version 2.10.0, adds that a run "asks for missing decisions, and stops at
+  version 2.11.0, adds that a run "asks for missing decisions, and stops at
   approval gates before moving forward". Both were read on 8 October 2026.
 
   | What you know | Where it comes from |
@@ -238,7 +238,7 @@ exemplars:
       - Automatic booking: the sales director switches it on once corrections
         stay below 14 percent for two weeks of confirmed orders.
       - Each bolt's exit: the tech lead signs it, since the aidlc-workflows
-        README (version 2.10.0, read 8 October 2026) says a run "stops at
+        README (version 2.11.0, read 8 October 2026) says a run "stops at
         approval gates before moving forward".
   - band: adequate
     score: 60
@@ -567,7 +567,7 @@ reference_md: |
   by Raja SP, published 31 July 2025, for Inception, Mob Elaboration, Units
   of Work, bolts and the AI deferring critical decisions; and the
   [aidlc-workflows README](https://github.com/awslabs/aidlc-workflows),
-  version 2.10.0, for missing decisions and approval gates. The distributor,
+  version 2.11.0, for missing decisions and approval gates. The distributor,
   its numbers, the units and the schedule are this problem's own
   construction, and so is the rule that each SAP unit waits for a
   consultant day.
@@ -580,7 +580,7 @@ interview_evidence:
     A sales director hands you a two-sentence intent and an eight-week deadline. How would you run the first week, what would you ask before anyone writes code, and who would you want in the room?
   source: |
     Author judgement. No employer frequency data stands behind it. AI-DLC facts from the AWS
-    DevOps blog post of 31 July 2025 by Raja SP and the aidlc-workflows README, version 2.10.0,
+    DevOps blog post of 31 July 2025 by Raja SP and the aidlc-workflows README, version 2.11.0,
     both read 8 October 2026.
 
 traps:

@@ -1,6 +1,6 @@
 slug: gate-a-bolt-on-approval-evidence
 title: "Gate a bolt on approval evidence"
-day: 25
+drill: true
 skill: Count an approval only for the version it saw, from someone independent, with its evidence
 artefact_type: code
 difficulty: hard
@@ -29,7 +29,7 @@ brief_md: |
   The approval is the part of AI-DLC this rests on. The AWS post that
   introduced the method (Raja SP, 31 July 2025) says AI "implements
   solutions only after receiving human validation", and the README of
-  awslabs/aidlc-workflows (version 2.10.0) says a run "stops at approval
+  awslabs/aidlc-workflows (version 2.11.0) says a run "stops at approval
   gates before moving forward" and lists "Human approval gates and
   source-bound review evidence". Neither says what the evidence has to
   contain, so the team wrote its own rules, which the contract sets out.
@@ -657,7 +657,7 @@ reference_md: |
   and an auditor who reruns the gate on the same log gets the same answer.
 
   The sources say approvals and evidence matter and leave their content
-  open. The aidlc-workflows README, version 2.10.0, read 8 October 2026,
+  open. The aidlc-workflows README, version 2.11.0, read 8 October 2026,
   says a run "asks for missing decisions, and stops at approval gates
   before moving forward" and lists "Human approval gates and source-bound
   review evidence". The AWS DevOps post by Raja SP, 31 July 2025, read the
@@ -677,7 +677,7 @@ interview_evidence:
     An agent writes the change and a person approves it before release. What has to be true for that approval to count, and how would your pipeline check it without a person reading the log?
   source: |
     Author judgement. No employer frequency data stands behind it. AI-DLC facts from the
-    aidlc-workflows README, version 2.10.0, and the AWS DevOps blog post of 31 July 2025 by
+    aidlc-workflows README, version 2.11.0, and the AWS DevOps blog post of 31 July 2025 by
     Raja SP, both read 8 October 2026.
 
 tools:

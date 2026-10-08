@@ -526,6 +526,8 @@ Twelve questions for the first cohort, each with beats, anchors, a rubric and th
 
 The client-communication questions matter most and are the ones no coding platform covers.
 
+Amended 8 October 2026: the PDLC and SDLC simulations (docs/04 section 2.0) each close on a client-communication question, explaining to the sponsor why the POC's number for the board is 58 and not 81, and defending the bolt 2 plan to a sponsor who wants dates. The set is fourteen questions, and client-communication holds five.
+
 ---
 
 ## 12. Acceptance

@@ -19,6 +19,7 @@ import {
   QuestionNotFound, VOICE_TRACK_ORDER, publishedQuestions, resolvePublishedQuestion,
 } from "../lib/voice/question.ts";
 import { fixtureQuestionId } from "../lib/voice/fixture.ts";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { importAllContent } from "../scripts/import-content.ts";
 import { publishableYamlFiles } from "../lib/problems/source.ts";
@@ -51,25 +52,29 @@ async function count(table: string): Promise<number> {
 }
 
 describe("importing everything", WHOLE_CATALOGUE, () => {
-  it("loads every catalogue problem and the twelve voice questions", async () => {
+  it("loads every catalogue problem and the fourteen voice questions", async () => {
     const report = await importAllContent(quiet);
     const catalogue = (await publishableYamlFiles(PROBLEMS)).length;
 
     expect(catalogue).toBeGreaterThanOrEqual(25);
     expect(report.problems).toBe(catalogue);
-    expect(report.voiceQuestions).toBe(12);
+    expect(report.voiceQuestions).toBe(14);
     expect(await count("problem")).toBe(catalogue);
-    expect(await count("voice_question")).toBe(12);
+    expect(await count("voice_question")).toBe(14);
   });
 
   it("stores each problem's day, skill line and interview question for the page", async () => {
     await importAllContent(quiet);
-    const { rows } = await db().query<{ missing: string; asked: string }>(
-      `select count(*) filter (where p.day is null or p.skill is null) as missing,
+    const { rows } = await db().query<{ no_day: string; no_skill: string; asked: string }>(
+      `select count(*) filter (where p.day is null) as no_day,
+              count(*) filter (where p.skill is null) as no_skill,
               count(*) filter (where v.interview->>'asked_as' <> '') as asked
          from problem p
          join problem_version v on v.problem_id = p.id and v.version = p.current_version`);
-    expect(Number(rows[0]!.missing)).toBe(0);
+    // A drill has no day (docs/04 section 2.0); every other problem has one.
+    const sources = await Promise.all((await publishableYamlFiles(PROBLEMS)).map((f) => readFile(f, "utf8")));
+    expect(Number(rows[0]!.no_day)).toBe(sources.filter((s) => /^drill: true$/m.test(s)).length);
+    expect(Number(rows[0]!.no_skill)).toBe(0);
     expect(Number(rows[0]!.asked)).toBe(await count("problem"));
   });
 
@@ -86,9 +91,9 @@ describe("importing everything", WHOLE_CATALOGUE, () => {
     await importAllContent(quiet);
     const second = await importAllContent(quiet);
 
-    expect(second.voiceQuestions).toBe(12);
+    expect(second.voiceQuestions).toBe(14);
     expect(await count("problem")).toBe((await publishableYamlFiles(PROBLEMS)).length);
-    expect(await count("voice_question")).toBe(12);
+    expect(await count("voice_question")).toBe(14);
   });
 });
 
@@ -225,10 +230,10 @@ describe("which question a learner gets", WHOLE_CATALOGUE, () => {
     expect((await publishedQuestions()).map((q) => q.slug)).toEqual(first);
   });
 
-  it("lists all twelve for a picker, by track and then by slug", async () => {
+  it("lists all fourteen for a picker, by track and then by slug", async () => {
     await importAllContent(quiet);
     const all = await publishedQuestions();
-    expect(all).toHaveLength(12);
+    expect(all).toHaveLength(14);
     const rank = (q: { track: string; slug: string }) =>
       `${VOICE_TRACK_ORDER.indexOf(q.track as never)}:${q.slug}`;
     expect(all.map(rank)).toEqual([...all.map(rank)].sort());

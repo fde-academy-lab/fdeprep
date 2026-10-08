@@ -82,7 +82,7 @@ describe("the storyline rule", () => {
   };
 
   it("refuses a catalogue problem with no day, and one past day 30", async () => {
-    const { source, file } = (await catalogue())[0]!;
+    const { source, file } = (await catalogue()).find(({ source }) => !/^drill: true$/m.test(source))!;
     for (const day of [null, "0", "31", "2.5"]) {
       const report = validateProblemYaml(withField(source, "day", day), file, { requireKit: true });
       expect(report.errors.map((e) => e.rule)).toContain("no_storyline");
@@ -90,7 +90,7 @@ describe("the storyline rule", () => {
   });
 
   it("lets a drill sit off the path, and refuses a drill that names a day", async () => {
-    const { source, file } = (await catalogue())[0]!;
+    const { source, file } = (await catalogue()).find(({ source }) => !/^drill: true$/m.test(source))!;
     const rules = (yaml: string) =>
       validateProblemYaml(yaml, file, { requireKit: true }).errors.map((e) => e.rule);
     const drill = withField(withField(source, "day", null), "drill", "true");

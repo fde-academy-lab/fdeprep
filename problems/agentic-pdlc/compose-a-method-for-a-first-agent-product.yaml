@@ -1,6 +1,6 @@
 slug: compose-a-method-for-a-first-agent-product
 title: "Compose a method for a first agent product"
-day: 28
+drill: true
 skill: Build a delivery method from parts, keeping each one for the failure it prevents
 artefact_type: design
 difficulty: extreme
@@ -52,7 +52,7 @@ brief_md: |
   [AI-Driven Development Life Cycle: Reimagining Software Engineering](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/),
   by Raja SP, published 31 July 2025; and the README of
   [aidlc-workflows](https://github.com/awslabs/aidlc-workflows), version
-  2.10.0.
+  2.11.0.
 
 contract_md: |
   Write the method you would put to the board. It has four parts, each under
@@ -198,7 +198,7 @@ exemplars:
       - Keeping the spec, the prompt, the pinned model version and the
         evaluation set in the repository prevents another pilot two, whose
         prompt left with its author. The aidlc-workflows README (version
-        2.10.0, read 8 October 2026) lists "Human approval gates and
+        2.11.0, read 8 October 2026) lists "Human approval gates and
         source-bound review evidence"; here, a bolt whose result only its
         author can run fails review.
       - `bmad-build`, with a person reviewing the first stories of each epic,
@@ -619,7 +619,7 @@ reference_md: |
   [AI-Driven Development Life Cycle: Reimagining Software Engineering](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/),
   Raja SP, 31 July 2025; and the
   [aidlc-workflows README](https://github.com/awslabs/aidlc-workflows),
-  version 2.10.0. The same day, BMAD's Skills and Agents page described five
+  version 2.11.0. The same day, BMAD's Skills and Agents page described five
   named agents that start its workflows, and the aidlc-workflows Workflow
   Profiles guide named all 11 profiles. Neither is needed to compose this
   method, so an answer that cites them with their source is accurate, and
@@ -637,7 +637,7 @@ interview_evidence:
   source: |
     Author judgement. No employer frequency data stands behind it. Method facts from BMAD's
     Choose a Planning Path page and README, the AWS DevOps blog post of 31 July 2025 by Raja SP,
-    and the aidlc-workflows README, version 2.10.0, all read 8 October 2026.
+    and the aidlc-workflows README, version 2.11.0, all read 8 October 2026.
 
 traps:
   - Adopting BMAD or AI-DLC whole, by name, without saying which failure each part prevents.

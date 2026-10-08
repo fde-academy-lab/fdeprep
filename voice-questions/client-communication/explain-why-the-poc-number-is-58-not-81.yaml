@@ -1,0 +1,167 @@
+slug: explain-why-the-poc-number-is-58-not-81
+title: Explain why the POC scored 58, not 81
+track: client-communication
+difficulty: hard
+total_seconds: 240
+competencies: [client-communication, evaluation-design, failure-mode-analysis]
+
+prompt_text: |
+  The head of customer service has put the POC's 81 percent on Friday's
+  board slide. You have the whole-group numbers: 58 against 49. She is on the
+  call now. Tell her what the board should hear.
+
+beats:
+  - id: b1
+    label: Say what the 81 measures
+    seconds: 30
+    anchors: ["eighty-one", "answered the questions", "only counts"]
+  - id: b2
+    label: Give the whole-group number and the comparison
+    seconds: 50
+    anchors: ["fifty-eight", "forty-nine", "held back", "every request"]
+  - id: b3
+    label: Say why the held-back group is the comparison and not last summer
+    seconds: 40
+    anchors: ["March", "faster", "same weeks"]
+  - id: b4
+    label: Answer the people who did not reply
+    seconds: 60
+    anchors: ["did not reply", "not the same people", "the phone"]
+  - id: b5
+    label: Give her the sentence for the board
+    seconds: 60
+    anchors: ["what you can say", "nine points", "measured"]
+
+follow_ups:
+  - trigger_after_beat: b2
+    text: I have already put 81 on the slide. Are you asking me to stand up and say I was wrong?
+  - trigger_after_beat: b4
+    text: So the agent made things worse for the people who did not reply?
+
+rubric:
+  - criterion_key: c1
+    label: Separates what the 81 measures from what the slide claims
+    weight: 30
+    descriptor_md: |
+      The 81 is 907 of the 1,120 customers who finished the diagnostic chat.
+      It is true, and it describes the customers who answered the agent. The
+      slide presents it as the POC's result. Strong answers say what the 81
+      counts before they say what the slide gets wrong, and keep it as a true
+      statement about part of the group.
+  - criterion_key: c2
+    label: Gives the whole-group comparison and why the held-back group makes it fair
+    weight: 30
+    descriptor_md: |
+      Every request sent to the agent: 1,067 of 1,840, 58 percent repaired
+      within three days, against 877 of 1,790 held back, 49 percent, nine
+      points. Strong answers say why the held-back group is the comparison.
+      Requests were split at random as they came in, so the two groups differ
+      only by the agent, in the same weeks and the same cities. Last summer's
+      4.3 days is the wrong comparison: the POC ran in late winter, the
+      held-back median was 3.1 days, and that gap is the season.
+  - criterion_key: c3
+    label: Handles the people who did not reply without conceding harm or hiding the 22
+    weight: 20
+    descriptor_md: |
+      160 of the 720 customers who never finished the chat were repaired
+      within three days, 22 percent. Strong answers give the number and say
+      what it shows: who those customers are. People who do not answer a
+      chat tend not to answer the phone either, the held-back group holds
+      people like them whom nobody can pick out, and that is why only whole
+      groups compare. Saying the agent failed them concedes a harm the data
+      does not show, and leaving the 22 out hides a number she will be asked
+      about.
+  - criterion_key: c4
+    label: Hands her a true sentence that replaces the slide
+    weight: 20
+    descriptor_md: |
+      The deliverable is a sentence she can say on Friday: of every request
+      the agent handled, 58 percent were repaired within three days, against
+      49 percent handled the old way in the same weeks and cities, and the
+      81 is the customers who answered the agent's questions, which says what
+      the agent can do when a customer talks to it. Strong answers give her
+      that sentence in her words, true when checked, without asking her to
+      tell the board she was wrong.
+
+exemplars:
+  - band: strong
+    score: 90
+    transcript: |
+      Okay. So the eighty-one is a real number, and I want to say exactly
+      what it is before we touch the slide. It only counts the customers who
+      answered the questions in the WhatsApp chat, about eleven hundred of
+      them, and eighty-one percent of those had the repair done inside three
+      days. That's what the agent does when a customer talks to it.
+
+      What the board is deciding, though, is the agent across every request
+      we gave it. In the POC we split the requests at random as they came in.
+      Eighteen hundred and forty went to the agent, and seventeen hundred and
+      ninety were held back and handled the way we do it today. Across every
+      request in the agent group, fifty-eight percent were repaired inside
+      three days. In the held-back group it was forty-nine. That includes the
+      customers who never finished the chat and the ones whose repair never
+      got done, all of them, in both groups.
+
+      And the comparison has to be the held-back group. The POC ran through
+      late February and March, and repairs are faster in winter anyway. The
+      held-back requests took about three point one days at the median,
+      against four point three last summer, and that gap is the season. The
+      held-back requests came in the same weeks, in the same two cities, to
+      the same technicians, so the agent is the only thing that differs.
+
+      Now, the people who did not reply. Seven hundred and twenty customers
+      in the agent group never finished the chat, and only twenty-two
+      percent of them were repaired in three days. You'll get asked about
+      that number, so I'd rather you hear it from me. It doesn't show the
+      agent hurt them. They're not the same people as the ones who answered.
+      Someone who doesn't finish a chat is usually someone who doesn't pick
+      up the phone either, so they're slow to reach whatever we do. The
+      held-back group has people exactly like them in it, we just can't see
+      which ones, because nobody there was offered a chat. That's why they
+      stay in the agent's number, and why we only compare whole groups.
+
+      So here's what you can say on Friday, and it holds up better than the
+      eighty-one because nobody can pull it apart. Of every request the
+      agent handled, fifty-eight percent were repaired within three days,
+      against forty-nine percent handled the old way, in the same weeks and
+      cities. That's nine points, measured against a group we held back on
+      purpose. If you want the eighty-one on the slide as well, keep it as
+      the second line and say what it is, the customers who answered the
+      agent's questions, which shows what the agent can do when a customer
+      talks to it. Nobody has to hear that anything was wrong. You'd be
+      giving the board the number that's still true when somebody checks it.
+  - band: adequate
+    score: 62
+    transcript: |
+      Right, so I think we need to change the slide. The eighty-one percent
+      is only the customers who completed the chat with the agent, so it's
+      not really the POC result.
+
+      If you look at all the requests that went to the agent, it's
+      fifty-eight percent repaired within three days, and the group we held
+      back was forty-nine. So the agent is still clearly better, by about
+      nine points, which is a good result. I know it's less exciting than
+      eighty-one, but it's the honest number.
+
+      On the customers who didn't finish the chat, yeah, their numbers are
+      low, around twenty-two percent, so the agent didn't really help them
+      much. That's something we should work on in the MVP, maybe with
+      reminders or a phone call when the chat stalls.
+
+      For the board I'd just say fifty-eight versus forty-nine and leave the
+      eighty-one off, so nobody asks where it came from.
+  - band: weak
+    score: 30
+    transcript: |
+      Honestly I think eighty-one is fine to use. It's the agent's success
+      rate, it's what the agent reports, and maybe we add a footnote that
+      it's based on the customers who used the chat.
+
+      The overall number is lower, I think around fifty-eight, but that
+      includes a lot of people who never really engaged with the agent, so
+      it's not a fair measure of what the agent does. Some customers just
+      don't reply, and there's not much any system can do about that.
+
+      For the board I'd say the agent is showing very strong results, around
+      eighty percent success for engaged customers, and we're confident it'll
+      hold up in the MVP.

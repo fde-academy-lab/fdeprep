@@ -1,0 +1,198 @@
+slug: defend-the-bolt-2-plan-to-the-sponsor
+title: Defend the bolt 2 plan to a sponsor who wants dates
+track: client-communication
+difficulty: hard
+total_seconds: 270
+competencies: [client-communication, system-design, failure-mode-analysis]
+
+prompt_text: |
+  The head of customer service has read the retrospective. She opens with:
+  bolt 1 overran, you rolled back, and you want two more bolts before
+  installs. Why not a sprint plan with dates I can show the board? Answer
+  her.
+
+beats:
+  - id: b1
+    label: Say what a bolt is in her terms
+    seconds: 35
+    anchors: ["two days", "something you can see", "review"]
+  - id: b2
+    label: Own the overrun and say what changed
+    seconds: 75
+    anchors: ["eleven hours", "the review caught", "estimates", "before a ticket starts"]
+  - id: b3
+    label: Commit bolts 2 and 3 to a date
+    seconds: 50
+    anchors: ["technician brief", "second of June", "three centres"]
+  - id: b4
+    label: Put installs where it belongs
+    seconds: 55
+    anchors: ["installs", "baseline", "elaboration", "sixteenth"]
+  - id: b5
+    label: Give her the sentence for the board
+    seconds: 55
+    anchors: ["what you can say", "first-time fix", "before anything widens"]
+
+follow_ups:
+  - trigger_after_beat: b2
+    text: And if bolt 2 overruns too?
+  - trigger_after_beat: b4
+    text: The platform team says a two-week sprint plan would have had everything built by the twelfth of June, and you are telling me installs are the sixteenth. Why should I let you run differently?
+
+rubric:
+  - criterion_key: c1
+    label: Translates bolts into what she sees and when
+    weight: 25
+    descriptor_md: |
+      She asked for dates she can show the board. Strong answers say a bolt
+      is two days that end in something she can see, reviewed against a
+      check written before the work started, so the plan is a date every two
+      days. Calling bolts the method's vocabulary, or a short sprint, leaves
+      her with a word and no date.
+  - criterion_key: c2
+    label: Owns the overrun with its causes ranked and the change that follows each
+    weight: 30
+    descriptor_md: |
+      Strong answers say eleven hours and rank the causes the way the
+      retrospective did: rework after review 6, estimates 5, the installs
+      ticket 2. Each comes with the change that answers it: the check read
+      before a ticket starts, estimates at bolt 1's ratio, a mid-bolt message
+      sent to planning. They own the rollback with its cause, a one-line
+      contract change that skipped its planning, and do not call it noise.
+      Putting her installs message first ranks the causes by who sent them.
+  - criterion_key: c3
+    label: Commits to a checkable deliverable and a date she can repeat
+    weight: 25
+    descriptor_md: |
+      Strong answers name what goes live (slot booking that waits for the
+      parts check, and the technician brief), where (the same three
+      centres) and when (the 2 June window), and what happens if a bolt runs
+      long: a unit waits for the next window and the date holds. "Early
+      June" or "once bolt 2 is done" is not a date she can put on a slide.
+  - criterion_key: c4
+    label: Holds installs in elaboration without refusing her
+    weight: 20
+    descriptor_md: |
+      Installs have no diagnostic step and no measured baseline. Strong
+      answers give them a place and a date: elaboration in the week of 1
+      June, bolt 4, the 16 June window. Squeezing a basic version into bolt 2
+      repeats bolt 1's overrun, and a refusal with no date loses her.
+
+exemplars:
+  - band: strong
+    score: 90
+    transcript: |
+      Okay. Fair question, and I'll answer it in dates. A bolt is two days of
+      work that ends in something you can see. Each piece of the agent gets
+      built, then someone on your platform team checks it in a review against a
+      test we wrote before we started, and only then does it count as done. A
+      sprint plan gives you a date every two weeks. A bolt gives you a date
+      every two days, and something you can open on that date.
+
+      Now, bolt 1. It ran eleven hours over a sixteen-hour bolt, and that's
+      mine. Six of those hours were rework. The review caught two things we
+      hadn't built to: the order of the diagnostic questions, and the rule that
+      a stock sheet older than a day can't be booked. Both checks were written a
+      week before we started, so the change is cheap. The team reads each check
+      out loud before a ticket starts. Five hours were estimates. The agent
+      priced the easy path, and the real work ran about one and a half times its
+      figure, so estimates now carry that ratio. That's why the next bolt
+      carries two units, not three. Two hours went on a ticket somebody opened
+      the minute your message arrived, and a message like that now goes to
+      planning, not into the bolt. And the rollback, which I know is the part
+      you heard about. A one-line threshold change skipped the planning a
+      partner contract needs, so bookings went out before the parts check
+      answered. We caught it on the third bad day and rolled back that evening,
+      which is what the rule is there for. A change that touches a partner
+      contract now gets the full path, however small it looks.
+
+      So, dates. Bolt 2 is Tuesday and Wednesday, the twenty-sixth and
+      twenty-seventh: slot booking that waits for the parts check, and the
+      technician brief, so the technician knows the fault and the part before
+      leaving. Bolt 3 is Thursday and Friday: the WhatsApp confirmation, the
+      partner dashboard, and the threshold change done properly with the partner
+      team. The bolt 2 work goes live in the change window on the second of
+      June, in the same three centres that run the agent today. The bolt 3 work
+      goes in the same window if the partner team signs off the threshold, and
+      if they don't, that one change waits and nothing else does.
+
+      Installs. You'll get them, and here's where they can actually win.
+      Installs have no diagnostic step, and nobody has measured how long one
+      takes today, so there's no baseline to show the board an improvement
+      against. In the week of the first of June we take installs into
+      elaboration: we measure that baseline, cut the units, and estimate them at
+      the new ratio. They build in bolt 4, along with the agent writing its own
+      daily numbers, and they go out in the window on the sixteenth. That's a
+      date I can hold, because by then the baseline is measured.
+
+      So what you can say to the board is this. By the second of June the agent
+      books the part before the technician goes out and briefs the technician,
+      in three centres, and the board sees the first-time fix read before
+      anything widens. Every sentence in that is something they can check. If
+      bolt 2 runs long, what slips is a unit and not the date, and the unit
+      waits for the next window. That's the difference from a sprint plan: you
+      get a smaller promise, kept every two days, and the board gets a number it
+      can watch. The platform team's plan spends two weeks on a forty-page PRD
+      and reaches the nineteenth of May with nothing to deploy. Its last sprint
+      ends on the twelfth of June, after the last change window before
+      construction ends, so what it builds last goes out on the sixteenth as
+      well. We reached the nineteenth with two reviewed units live, and the
+      rollback worked when first-time fix fell.
+  - band: adequate
+    score: 62
+    transcript: |
+      So, a bolt is basically a short sprint, a couple of days instead of two
+      weeks, and at the end of each one somebody reviews what was built before
+      we move on. The idea is that you see progress more often.
+
+      On bolt 1, yes, it ran about eleven hours over. Some of that was rework
+      after the review caught things we'd missed, some of it was estimates that
+      were too low, and some of it was the installs request coming in halfway
+      through. We've learned from it. We'll be more careful with estimates and
+      we'll protect the bolt from changes once it starts.
+
+      The rollback was disappointing, but it shows the safety net works. A small
+      change to a threshold had a bigger effect than we expected, so we put the
+      old version back while we look at it properly.
+
+      For dates, bolt 2 runs this week, and the plan is the slot booking and the
+      technician brief, with the rest in bolt 3 straight after. If everything
+      goes to plan, that goes out in the change window on the second of June in
+      the three centres.
+
+      On installs, I'd like to hold them back a little. We don't have a baseline
+      for installs yet, so I'd want to do some elaboration first and work out
+      what good looks like. Realistically that's a few weeks, so maybe around
+      the middle of June, the sixteenth if the window lines up.
+
+      For the board, I think what you can say is that the agent is on track, the
+      first part of the build is done, and we're adding the next pieces over the
+      next couple of weeks, with first-time fix monitored before anything
+      widens.
+  - band: weak
+    score: 30
+    transcript: |
+      I understand the frustration, but bolts are just how the AI-DLC method
+      works, it's a different way of running delivery and it's been designed for
+      exactly this kind of project. The two days thing takes a bit of getting
+      used to.
+
+      The overrun wasn't really a planning problem. The biggest disruption was
+      the installs request coming in halfway through the bolt, which pulled
+      people off the planned work. If scope stays frozen, bolts run on time. The
+      review also took a while because the platform team asked for quite a lot
+      of changes.
+
+      The rollback was a precaution. The numbers dipped for a few days after the
+      release, so we played it safe. It's probably noise, honestly, and we can
+      redeploy once things settle.
+
+      I'd rather not give the board dates right now. Software estimates are
+      always uncertain, and putting dates on a slide just creates pressure. Once
+      bolt 2 is done we'll have a much better sense of the pace.
+
+      On installs, if it's that important we can try to squeeze them into bolt
+      2, maybe a basic version, and see how it goes.
+
+      For the board I'd just say the project is progressing and the team is
+      working through the plan.

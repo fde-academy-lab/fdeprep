@@ -1,0 +1,409 @@
+slug: deliver-in-bolts-9-write-the-retrospective
+title: "Write the retrospective for bolt 1"
+day: 28
+skill: Rank a bolt's overrun by hours and change the next bolt to answer each cause
+artefact_type: design
+difficulty: hard
+complexity: C4
+track: agentic-sdlc
+concept:
+  topic: "Units of work and bolts"
+  question: "What cost bolt 1 its eleven hours, and what changes in bolt 2?"
+est_minutes: 45
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: client-communication, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+
+build: { id: deliver-in-bolts, title: "Deliver the field-service agent in bolts", stage: 9, of: 9 }
+
+panel: { static: true, pretrained: true, llm: true }
+
+constraints: ["eleven", "review", "estimate", "installs", "rolled back"]
+
+brief_md: |
+  Stage 9 of 9. It is Monday 25 May at the air-conditioner maker the size of
+  Voltas. Bolt 1 is over, r2 has been rolled back, and bolt 2 starts
+  tomorrow. Before it does, you write the retrospective. The head of
+  customer service, the sponsor, reads its first section before anything
+  else, and she will want to know when installs come.
+
+  The team closes every bolt with BMAD's retrospective. Its page Finish an
+  Epic (bmad-method 6.12.1, read 8 October 2026) says: "Every finding
+  carries a source reference: a file, a line, a commit, a log. A claim it
+  can't point at doesn't make the report." It records "A verdict of
+  accepted, accepted-with-open-items, or rejected", and "The verdict is the
+  gate."
+
+  Stage 6's report on bolt 1 follows. A bolt is 16 hours, and a unit's plan
+  is its estimate plus a 1-hour review.
+
+  | Unit | Estimate | Planned | Actual | Where the hours went |
+  |---|---|---|---|---|
+  | UoW-1 | 6 | 7.0 | 12.5 | build 8.5 (T-1 to T-6 and T-17), rework 2.5 (T-3 again), reviews 1.5 (RV-1 0.5, RV-2 1.0) |
+  | UoW-2 | 5 | 6.0 | 12.5 | build 7.5 (T-7 to T-11), rework 2.0 (T-9 again), reviews 2.0 (RV-3 1.0, RV-4 1.0), T-19 1.0 |
+  | UoW-9 | none | 0.0 | 2.0 | T-18 |
+  | Bolt | | 13.0 of 16.0 | 27.0 | Ended Tuesday 19 May at 12:00. The projection first passed 16.0 at EVT-20 |
+
+  From the trail, on the bolt clock:
+
+  | Event | Hour | Note |
+  |---|---|---|
+  | EVT-17, RV-1 | 9.0 | Changes requested on uow-1 v1: "S-3 unmet: the symptom is asked after the model number" |
+  | EVT-18, MSG-1 | 9.0 | The sponsor: "Add installs to this bolt. Same window." |
+  | EVT-19, T-18 | 9.0 | Started on UoW-9: "unplanned: installs intake stub". No UoW-9 was ever accepted |
+  | EVT-20, T-18 | 11.0 | Parked by you, to bolt 2 elaboration |
+  | EVT-36, RV-3 | 23.0 | Changes requested on uow-2 v1: "S-9 unmet: a sheet older than a day was booked as in stock" |
+  | EVT-41, T-19 | 26.0 | "unplanned: partner sandbox credentials rotated, stock-call suite re-run" |
+
+  At 10:20 on Tuesday 19 May the platform engineer applied CR-5,
+  `dispatch_threshold_minutes` from 45 to 30, to uow-1 as a one-line edit
+  with no review. Stage 3 had put CR-5 on the project-sized path, because
+  the partner stock API reads that field. At 10:30 the approval gate
+  refused APR-1, which approved uow-1 v3 while v4 was current. APR-2 merged
+  v4 at 14:35 on RUN-42 and RV-6, "threshold change read against the
+  partner API doc", and APR-6 merged uow-2 v2 at 14:45. Release r2 reached
+  the three centres at 18:05. First-time fix read 57, 56 and 55 on the
+  next three days against a floor of 58 while same-day visits rose, and r2
+  was rolled back to r1 at 18:10 on Friday 22 May. The cause, found after
+  the rollback: with the threshold at 30 minutes, a booking was dispatched
+  before the stock read returned on a slow partner sheet, and about one
+  visit in six went out without the part.
+
+  Bolt 2 runs 26 to 27 May for the 2 June change window. Its draft, made
+  after mob elaboration sized UoW-3 on 13 May: UoW-4 (3 + 1), UoW-8
+  (4 + 1) and UoW-3 (5 + 1), 15 hours. Installs have no estimate, no
+  measured baseline and no accepted unit.
+
+  Write the retrospective for bolt 1.
+
+contract_md: |
+  Write the retrospective as the team will file it, between 350 and 550
+  words, under four headings in this order: For the sponsor, Planned and
+  actual, Causes, Changes for bolt 2.
+
+  The sponsor reads the first section before anything else and may read
+  nothing else. Every finding names the event, review or record it rests
+  on, and the retrospective records a verdict in BMAD's words.
+
+word_range: [350, 550]
+required_headings: ["For the sponsor", "Planned and actual", "Causes", "Changes for bolt 2"]
+
+rubric:
+  - label: States planned against actual in hours, with the overrun
+    weight: 15
+    descriptor_md: |
+      Strong answers give the plan, 13.0 hours of a 16.0-hour bolt for
+      UoW-1 and UoW-2, the actual, 27.0, and both gaps: 11.0 over the bolt
+      and 14.0 over the plan. They say both units met their done-when
+      checks and record the verdict in BMAD's vocabulary,
+      accepted-with-open-items. "The bolt ran over" with no hours gives the
+      next plan nothing to be checked against.
+  - label: Ranks the causes by hours and ties each to an event
+    weight: 30
+    descriptor_md: |
+      Strong answers account for all 14 hours over the plan: review rework
+      6.0 (the rebuilds of T-3 and T-9, 2.5 and 2.0, and 1.5 of review time
+      over the 2 hours planned), builds over estimate 5.0, the installs
+      message 2.0, the credential rotation 1.0. Each cause cites the event
+      or review it rests on, such as RV-1 at EVT-17 or T-18 at EVT-19, and
+      says why it happened: both failed checks were in the spec before the
+      first ticket, and the agent estimated the happy path. The installs
+      message is the loudest cause and the third largest, so an answer
+      that ranks it first has ranked by noise.
+  - label: Changes bolt 2 so each change answers a ranked cause
+    weight: 20
+    descriptor_md: |
+      One checkable change per cause: the mob reads each spec check before
+      its ticket starts; estimates carry bolt 1's ratio of about 1.5, which
+      turns the 15-hour draft into 21 hours, so bolt 2 drops a unit and
+      says which; a message that arrives mid-bolt goes to elaboration
+      without a ticket; a change that touches a contract takes the
+      project-sized path whatever its line count. The bolt stays 16 hours.
+      An answer that meets an overrun with a longer bolt, or keeps a draft
+      its own ratio says will not fit, has changed nothing.
+  - label: Keeps the refusal and the rollback as facts with their cause
+    weight: 15
+    descriptor_md: |
+      The gate refused APR-1 because it approved v3 while v4 was current,
+      which cost calendar and no bolt hours. v4 carried CR-5, a one-line
+      edit to a contract field that stage 3 had put on the project-sized
+      path, and RV-6 read the threshold against the partner API document
+      only. r2 was rolled back on 22 May after 57, 56 and 55. Strong
+      answers keep these as facts with their sources and do not blame the
+      gate for a change it refused.
+  - label: Opens with a sponsor paragraph that is true and names every cause
+    weight: 20
+    descriptor_md: |
+      The sponsor reads the first section and may read nothing else.
+      Strong answers put it first and keep every sentence true: the hours,
+      each cause with its share, the rollback and its cause in plain words,
+      and what bolt 2 delivers by when. A paragraph that reports the
+      overrun and leaves out the rollback, or calls r2 live, is one she
+      would repeat to the board.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      ## For the sponsor
+
+      Bolt 1 planned 13 hours of a 16-hour bolt and took 27: 14 hours over the plan, and eleven past the end of the bolt, at noon on Tuesday 19 May. Both units were approved. Six of those 14 hours went on work review sent back, five on estimates that priced only the easy path, two on the installs request, which became a ticket mid-bolt, and one on a partner credential change. Release r2 reached the three centres that evening and was rolled back to r1 on Friday 22 May, after first-time fix read 57, 56 and 55 against a floor of 58. A one-line change to the partner dispatch threshold had skipped the planning a contract change needs, and about one visit in six went out without the part. Bolt 2 keeps the 16-hour bolt and carries less: slot booking and the technician brief, for the 2 June window. Installs go to elaboration first.
+
+      ## Planned and actual
+
+      Planned: UoW-1 and UoW-2, 11 hours of estimates and 2 of review, 13.0 of 16.0. Actual: 27.0, 14.0 over the plan and 11.0 over the bolt. UoW-1 took 12.5 against 7.0, UoW-2 12.5 against 6.0, and T-18 spent 2.0 on a unit nobody accepted. Both units met their done-when checks. Verdict, in BMAD's words: accepted-with-open-items. The open items are the guard and the installs elaboration.
+
+      ## Causes
+
+      1. Review rework, 6.0 hours. RV-1 (EVT-17) found S-3 unmet and RV-3 (EVT-36) found S-9 unmet. T-3 and T-9 were rebuilt (2.5 and 2.0), and review time ran 1.5 over the 2 hours planned. Both checks were written on 7 May, and reading them first would have caught both.
+      2. Estimates, 5.0 hours. Builds ran 8.5 against 6 and 7.5 against 5, about 1.5 to 1. The agent priced the happy path; T-17 and T-11 handle the unhappy one.
+      3. The installs message, 2.0 hours. MSG-1 (EVT-18) became T-18 within the minute. I parked it at EVT-20, when the overrun became knowable.
+      4. Partner sandbox credentials, 1.0 hour (T-19, EVT-41).
+
+      The approval gate did its job. It refused APR-1 because it approved v3 while v4 was current, which cost four hours of calendar and no bolt hours. v4 carried CR-5, a one-line edit to a field the partner API reads, which stage 3 had put on the project-sized path. RV-6 checked the threshold against the API document, never against the parts check, and APR-2 merged it.
+
+      ## Changes for bolt 2
+
+      - The mob reads each spec item's check aloud before its ticket starts (cause 1).
+      - Estimates carry bolt 1's ratio. At 1.5 the 15-hour draft needs 21, so bolt 2 takes UoW-3 and UoW-4, 12 hours of estimates and 2 of review, instead of adding hours to the bolt. UoW-3 goes first because UoW-5 and UoW-6 wait on it. UoW-8 waits for bolt 4: the data lead already reads first-time fix daily (cause 2).
+      - A message that arrives mid-bolt goes to elaboration, never to a ticket (cause 3).
+      - A change that touches a contract takes the project-sized path whatever its line count, as CR-5 will in bolt 3.
+      - Nothing widens past the three centres until first-time fix has held three days, and then one centre at a time.
+  - band: adequate
+    score: 61
+    body_md: |
+      ## Planned and actual
+
+      Bolt 1 was planned at 13 hours inside a 16-hour bolt and covered UoW-1 and UoW-2. It took 27 hours and finished on Tuesday 19 May, eleven hours over the bolt. Both units were approved in the end, so the bolt delivered what it set out to deliver, only later than planned.
+
+      ## Causes
+
+      The biggest disruption was the installs request on Friday morning. The sponsor asked for installs to be added to the same window, a ticket was started for it, and the team lost its focus on the planned units until the ticket was parked later that day.
+
+      Review also took longer than planned. Both units came back from their first review with changes requested, and the rework took several hours on each unit before the second review approved them.
+
+      The estimates were too low. UoW-1 was estimated at 6 hours and UoW-2 at 5, and both took a good deal longer to build than that, partly because of edge cases the agent had not thought about.
+
+      A credential rotation on the partner sandbox cost another hour near the end.
+
+      APR-1 was refused because it approved an old version of uow-1, and the release went out that evening with v4. First-time fix then fell for three days in a row and the release was rolled back to r1 on 22 May. The threshold change in v4 looks like the cause, since it was the only change to the booking timing.
+
+      ## Changes for bolt 2
+
+      - Requests that arrive during a bolt will go to elaboration rather than straight into the bolt.
+      - Reviews will be booked earlier in the bolt so that rework can start sooner.
+      - Estimates will be made more carefully, with the whole mob in the room.
+      - Threshold changes will get a review before they merge.
+
+      Bolt 2 keeps its current plan: UoW-4, UoW-8 and UoW-3, 15 hours, for the 2 June window.
+
+      ## For the sponsor
+
+      Bolt 1 took 27 hours against 13 planned. The main causes were the installs request, review rework and low estimates. The release was rolled back after first-time fix dipped, and bolt 2 will deliver the technician brief, the daily measurement and slot booking on 2 June.
+  - band: weak
+    score: 27
+    body_md: |
+      ## Planned and actual
+
+      Bolt 1 ran over. It was meant to finish on Friday 15 May and it finished on Tuesday 19 May instead, which put pressure on the change window that evening. Both planned units were finished in the end, so nothing was lost apart from time.
+
+      ## Causes
+
+      The main cause was the sponsor's request on Friday to add installs to the bolt in the same window. Changing scope in the middle of a bolt is the classic way to derail delivery, and the team had to stop work on the planned units to look at installs. Until scope is frozen for the whole bolt, overruns like this will keep happening, whatever else we change.
+
+      Reviews were also slow. The platform team lead asked for changes on both units, which meant going back over work that was already done and waiting for a second review each time. Some of the comments were small and could have been fixed after the merge.
+
+      The agent's estimates were optimistic, which is normal for a first bolt on a new codebase and should settle down as the team learns the system and the partner's stock API.
+
+      The approval gate failed to catch the threshold change in v4, which the platform engineer had made as a small edit. The gate should have stopped it, and instead the change went out with the release.
+
+      ## Changes for bolt 2
+
+      - Freeze scope at the start of each bolt and push back on new requests until the bolt ends.
+      - Move to three-day bolts so there is room for review and rework inside the bolt.
+      - Ask reviewers to approve small changes without a full review so that they move faster.
+      - Add a second approver to the gate so that edits like the threshold change are caught.
+
+      ## For the sponsor
+
+      Bolt 1 overran because of the installs request, but both units are now built and r2 is live in the three centres, where same-day visits went up from 55 to 59 percent over its first three days. Bolt 2 will move faster with longer bolts and frozen scope, and installs can come in once the core flow is stable.
+
+hints:
+  - Before you rank anything, account for the 14 hours bolt 1 spent over
+    its plan. Every hour in the report belongs to exactly one cause.
+  - A review that asks for changes costs twice, once for the rebuild and
+    once for the second review. Add both, then ask when the check that
+    failed was written.
+  - Divide each unit's build hours by its estimate, then run bolt 2's draft
+    through that ratio before you promise anything from it.
+  - The approval gate refused APR-1. Ask what reached r2 anyway, and which
+    path stage 3 had given it.
+  - Write the sponsor's section last and put it first. It needs the hours,
+    each cause with its share, the rollback with its cause, and what bolt 2
+    delivers by when.
+
+scenario:
+  headline: "Eleven hours late, one rollback, and the sponsor reads the summary first"
+  who: The FDE closing bolt 1 for an air-conditioner maker the size of Voltas
+  situation: >-
+    Bolt 1 planned 13 hours of a 16-hour bolt and took 27. Release r2 went
+    to three service centres on 19 May and was rolled back on 22 May. On
+    Monday 25 May the head of customer service reads the retrospective,
+    first section first.
+  stakes: >-
+    Bolt 2 starts the next morning. A retrospective that ranks the wrong
+    cause changes the wrong thing, and the sponsor decides what she says
+    about installs from its first section.
+  metrics:
+    - { label: Planned, value: 13 of 16 h }
+    - { label: Actual, value: 27 h }
+    - { label: First-time fix after r2, value: "57, 56, 55" }
+
+diagram:
+  title: Where bolt 1's hours and the release went
+  caption: >-
+    The report holds the hours and the trail the events. The retrospective
+    ranks the causes, keeps the rollback with its cause, and speaks to the
+    sponsor first.
+  direction: lr
+  nodes:
+    - { id: report, label: Bolt 1 report, sub: "13 h planned, 27 h actual", kind: doc, tone: blue, at: [0, 0] }
+    - { id: reviews, label: RV-1 and RV-3, sub: changes requested, kind: guard, tone: green, at: [0, 1] }
+    - { id: message, label: MSG-1, sub: installs at hour 9, kind: actor, tone: pink, at: [0, 2] }
+    - { id: gate, label: Approval gate, sub: "refused APR-1, merged v4", kind: guard, tone: green, at: [1, 2] }
+    - { id: release, label: Release r2, sub: three centres from 19 May, kind: service, tone: orange, at: [2, 2] }
+    - { id: rollback, label: Rollback to r1, sub: "22 May, after 57, 56, 55", kind: output, tone: orange, at: [3, 2] }
+    - { id: retro, label: Retrospective, sub: "causes, changes, verdict", kind: doc, tone: purple, at: [2, 0] }
+    - { id: bolt2, label: Bolt 2 draft, sub: 15 h for the 2 June window, kind: doc, tone: teal, at: [3, 0] }
+    - { id: sponsor, label: Sponsor, sub: reads the first section, kind: actor, tone: pink, at: [3, 1] }
+  edges:
+    - { from: report, to: retro, label: hours per unit, step: 1 }
+    - { from: reviews, to: retro, label: what review sent back, step: 2 }
+    - { from: message, to: retro, label: a ticket mid-bolt, step: 3 }
+    - { from: gate, to: release, label: v4 with CR-5 }
+    - { from: release, to: rollback, label: first-time fix fell, tone: danger }
+    - { from: rollback, to: retro, label: with its cause, step: 4 }
+    - { from: retro, to: bolt2, label: a change per cause, step: 5 }
+    - { from: retro, to: sponsor, label: true and first, step: 6, tone: success }
+
+approach:
+  goal: A retrospective the sponsor can read first and bolt 2 can act on
+  branches:
+    - label: Account for every hour
+      leaves: [planned against actual, the bolt's 16 hours and the plan's 13, each hour to one cause]
+    - label: Rank by hours, with a source
+      detail: A finding the trail cannot point at does not make the report.
+      leaves: [an event for each cause, the loudest cause is not the largest]
+    - label: Answer each cause in bolt 2
+      leaves: [one change per cause, the same 16-hour bolt, "the draft, at bolt 1's ratio"]
+    - label: Keep the release facts straight
+      leaves: [what the gate refused, what reached r2 anyway, why r2 was rolled back]
+    - label: Write the sponsor's section
+      leaves: [true and first, "every cause, the rollback included"]
+
+coach:
+  opening: >-
+    Before you write a word for the sponsor, account for the 14 hours bolt 1
+    spent over its plan, one cause at a time, each with the event it rests
+    on.
+  signals:
+    - id: rework-hours
+      when: { code_lacks: '(?i)\b6(\.0)?\s*(h\b|hours?)|six hours' }
+      say: >-
+        Your causes put no hours on the review rework. Add the rebuilds and
+        the review time over plan. Where does that cause rank against the
+        installs message?
+    - id: no-rollback
+      when: { code_lacks: '(?i)roll(ed|ing)?[ -]?back' }
+      say: >-
+        Your retrospective never says r2 was rolled back. The sponsor will
+        hear it from someone. What should your first section say about it?
+    - id: blames-gate
+      when: { code_matches: '(?i)gate (failed|missed|should have|let)|gate did ?n.t (catch|stop)' }
+      say: >-
+        The approval gate refused APR-1. What reached r2 anyway, and which
+        path had stage 3 given it?
+    - id: longer-bolt
+      when: { code_matches: '(?i)\b(longer|bigger|three-day|3-day|24-hour) bolts?\b|\bextend(ing)? (the |each )?bolts?\b|\bbolts? of (three|3) days' }
+      say: >-
+        Your change makes the bolt longer. Bolt 1 overran a 16-hour bolt.
+        What would a longer one have shown you at noon on Friday, when the
+        overrun was already knowable?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the report: subtract the plan from the actual, then give
+        every hour of the difference to one cause.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        The hints are open. The first one starts from the 14 hours, which is
+        where a ranking has to come from.
+  wrap_up: >-
+    A retrospective ranks causes by the hours they cost and changes the next
+    bolt so each cause has an answer. The sponsor's section goes first and
+    stays true when she repeats it.
+
+reference_md: |
+  A retrospective is the record the next bolt plans from, and BMAD's page
+  Finish an Epic sets its rule: "Every finding carries a source reference: a
+  file, a line, a commit, a log. A claim it can't point at doesn't make the
+  report." (bmad-method 6.12.1, read 8 October 2026.) Each cause below cites
+  the event that shows it, and the verdict uses the page's words.
+
+  Start with the arithmetic. Bolt 1 planned 13.0 hours and took 27.0, which
+  is 11.0 over the 16-hour bolt and 14.0 over the plan, because the plan left
+  3 hours spare. Every one of the 14 belongs to a cause. Review rework is
+  6.0: the rebuilds of T-3 and T-9, 2.5 and 2.0, and 1.5 of review time over
+  the 2 hours planned. Builds over estimate are 5.0, 2.5 on each unit. The
+  installs message is 2.0 and the credential rotation 1.0.
+
+  Ranked by hours, the installs message is third. It is the cause the
+  sponsor will ask about, and the only one a person sent, which is why a
+  weak retrospective puts it first. Rework comes first, and both
+  checks that failed, S-3 and S-9, were in the spec a week before the first
+  ticket. The review did its job twice, and the change that answers it is
+  cheap: the mob reads the check aloud before the ticket starts.
+
+  The estimate ratio, 16 hours of build against 11 estimated, about 1.5 to
+  1, has to reach bolt 2's draft before anyone promises its date. At that
+  ratio the draft's 12 hours of estimates become 18, plus 3 review hours, in
+  a 16-hour bolt. The trade is to keep the bolt at 16 hours at the cost of a
+  unit: UoW-3 and UoW-4 fit with 2 hours spare, and UoW-8 moves on. A
+  longer bolt hides the next overrun until later, and a draft kept at 15
+  hours has the overrun built in.
+
+  The approval and the rollback are facts with causes. The gate refused
+  APR-1 because it approved v3 while v4 was current, which cost calendar and
+  no bolt hours. v4 held CR-5, a one-line edit to a field the partner API
+  reads, which stage 3 had put on the project-sized path. The edit took the
+  path a one-line change looks as if it deserves, and RV-6 read the new
+  threshold against the API document and never against what it does to the
+  parts check. That gap is why r2 was rolled back, and it is closed by the
+  contract rule in bolt 2's changes.
+
+  The sponsor reads the first section and may read nothing else, so it
+  goes first and has to stay true when she repeats it: the hours, each cause
+  with its share, the rollback with its cause in plain words, and what bolt 2
+  delivers by when. The verdict is accepted-with-open-items: both units met
+  their done-when checks, and the guard and the installs elaboration stay
+  open.
+
+  The voice question Defend the bolt 2 plan to a sponsor who wants dates is
+  the conversation that follows. The cause categories, the ratio rule and the
+  bolt 2 plan are this stage's own construction after BMAD's page.
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your first two-day iteration took more than twice its planned hours, and the release was rolled back. Walk me through the retrospective you would write and what changes in the next iteration.
+  source: |
+    Author judgement. No employer frequency data stands behind it. BMAD facts from
+    docs.bmad-method.org, the page Finish an Epic, bmad-method 6.12.1, read 8 October 2026.
+
+traps:
+  - Ranking the cause the sponsor will ask about above the causes that cost the most hours.
+  - A sponsor section that reports the overrun and leaves out the rollback, or gives the rollback no cause.
+  - Answering an overrun with a longer bolt, or keeping a bolt 2 plan that bolt 1's own estimates say will not fit.
+  - Blaming the approval gate for a change it refused to approve.

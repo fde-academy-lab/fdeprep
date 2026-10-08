@@ -164,7 +164,7 @@ Amended 1 October 2026. The eleven topic tracks became twelve chapters, each one
 
 Each chapter has a closed list of topics in `CHAPTER_TOPICS`, and every catalogue problem names one in `concept.topic` with the question it answers in `concept.question`. `tools/chapters.py` records where each problem that existed on 1 October 2026 came from. `python -m tools.storyline` lays the catalogue on the 30-day path after any change, and a test fails when a day is off it.
 
-Amended 8 October 2026: drills. The path holds five problems a day at most, so a problem past the cap is a drill, marked `drill: true` with no `day`. A drill sits in its chapter page and the catalogue, labelled Drill, and Home's next action and a chapter's next problem reach it only after every problem on the path. Being a drill changes nothing in eval/ or in readiness. Every build stage stays on the path. A drill is a standalone problem that a build stage practises in context, or the second of two problems that teach the same skill at the same tier, and the list of drills changes in one commit so a reviewer reads it whole.
+Amended 8 October 2026: drills. The path holds five problems a day at most, so a problem past the cap is a drill, marked `drill: true` with no `day`. A drill sits in its chapter page and the catalogue, labelled Drill, and Home's next action and a chapter's next problem reach it only after every problem on the path. Being a drill changes nothing in eval/ or in readiness. Every build stage stays on the path. A drill is a standalone problem that a build stage practises in context, or one of two problems that teach the same skill, chosen so the path keeps the fuller one, and the list of drills changes in one commit so a reviewer reads it whole.
 
 ### 2.1 The kit
 

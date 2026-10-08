@@ -1,0 +1,498 @@
+slug: fund-the-agent-7-choose-the-delivery-method
+title: "Choose the delivery method and record it"
+day: 25
+skill: Choose a delivery method by what can reach production, and record what it gives up
+artefact_type: design
+difficulty: hard
+complexity: C4
+track: agentic-pdlc
+concept:
+  topic: "Choosing a method"
+  question: "Which delivery method fits six weeks, a change window every second Tuesday and a one-page sponsor?"
+est_minutes: 45
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: client-communication, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+
+build: { id: fund-the-agent, title: "Fund a field-service agent", stage: 7, of: 7 }
+
+panel: { static: true, pretrained: true, llm: true }
+
+constraints: ["Tuesday", "19 May", "window", "one page", "partner"]
+
+brief_md: |
+  Wednesday 29 April. Yesterday the head of customer service, who sponsors
+  the work, signed the production gate table: production widens one centre
+  at a time, and only while first-time fix reads 58 or better and bookings
+  on stock sheets older than a day stay at or under 5 percent. Today she
+  funds construction, six weeks from Monday 4 May to Friday 12 June, to
+  rebuild the agent on the company's own platform. She reads one page, and
+  before she signs she wants to know how the six weeks will run.
+
+  | What you have | Where it comes from |
+  |---|---|
+  | PRD v2's eight accepted requirements, rebuilt on the platform from the MVP prototype: 110 to 140 engineer hours | The platform team's estimate |
+  | The platform team is four people. Code reaches production only in their change window, every second Tuesday from 18:00 to 20:00, and the next one is Tuesday 5 May | The platform team lead |
+  | Only the platform team lead may approve a merge into the platform | The platform's review rules |
+  | The parts check reads the partner stock API, and every booking goes through the service system's booking API. Other teams own both | The platform team lead |
+  | The gates wait on R-5, which refuses a booking when the partner's stock sheet is older than a day. The MVP prototype never refused one | The gate table, 28 April |
+  | Last year's summer peak began in the week of 18 May | The service system |
+
+  The platform team lead sent a proposal this morning: a 40-page PRD before
+  anyone writes code, two weeks to write, then two-week sprints.
+
+  | Source, each read on 8 October 2026 | What it says |
+  |---|---|
+  | AWS DevOps blog, "AI-Driven Development Life Cycle: Reimagining Software Engineering", Raja SP, 31 July 2025 | "Traditional 'sprints' are replaced by 'bolts' – shorter, more intense work cycles measured in hours or days rather than weeks; Epics are replaced by Units of Work." |
+  | aidlc-workflows release 2.11.0, Workflow Profiles guide | Classic is "V1-style ceremony through Inception and Construction, ending at Build and Test", 18 of 33 stages. Express is "The lightest requirements-to-code-and-test path", 10 of 33. "Express skips Ideation, the design pass, Unit decomposition, Delivery Planning, and CI Pipeline." "Do not choose Express for ambiguous, cross-team, regulated, or architecture-heavy work." |
+  | aidlc-workflows, Interaction Modes guide | "Every stage (except the 3 Initialization stages) ends with an approval gate." |
+  | BMAD, Choose a Planning Path, with `bmad-method` at release 6.12.1 | "One coherent outcome that needs several sessions is an epic. Work that spans several epics, or likely needs roughly 20 or more sessions, is a project. Scope is only one signal: use more planning when the work has high risk, unclear requirements, broad architectural reach, cross-system effects, or coordination between people or teams." The project-sized path starts by preparing planning documents, such as a PRD or an architecture, before each epic's spec. |
+  | BMAD, Define Requirements and a Specification | "Run `bmad-spec` to turn an intent into a short contract that Build reads." |
+  | BMAD, Plan Inside an Organization | "The skills give you five moments where a human decision is expected, and each one blocks something specific. Put approvals there rather than inventing new gates." The five are the PRFAQ verdict, PRD validate, the Architecture spine review, the Ticket-breakdown approval and the Retrospective verdict. |
+  | BMAD, Build a Change | "Human attention is by far the most expensive resource, and the productivity bottleneck in AI-backed software development." |
+
+  Write ADR-1, the record of how construction will run, as the page she
+  reads before she signs.
+
+contract_md: |
+  Write ADR-1 as the page she reads. It has four parts, each under its own
+  heading, written exactly as `## Context`, `## Options`, `## Decision` and
+  `## Consequences`.
+
+  Under Context, say what fixes the six weeks before any method is chosen.
+  Under Options, cost every option, the platform team's included, in weeks
+  to its first deploy and in the decisions it asks of her, and give each
+  fact about a method its source and the date it was read. Under Decision,
+  name what construction runs and what the first deploy carries. Under
+  Consequences, say what the decision gives up and who owns what from
+  Monday 4 May.
+
+  Between 300 and 500 words.
+
+word_range: [300, 500]
+required_headings: [Context, Options, Decision, Consequences]
+
+rubric:
+  - label: Counts the windows and plans the first deploy against 19 May
+    weight: 25
+    descriptor_md: |
+      The window opens every second Tuesday: 5 May, 19 May, 2 June and 16
+      June. Construction holds the first three, and 5 May is its second day,
+      when nothing is built, while 16 June falls after it ends. Whatever the
+      method, six weeks hold two deploys, 19 May and 2 June. Strong answers
+      count them before naming a method, plan the first deploy against 19
+      May, in the week the peak began last year, and put in it what the gates
+      wait on: the parts check with R-5's refusal. Answers that read six
+      weeks as three releases, or promise a deploy at the end of every bolt,
+      have not counted.
+  - label: Costs every option in weeks and in her decisions, with source and date
+    weight: 25
+    descriptor_md: |
+      On that calendar the platform team's plan spends the first two weeks on
+      the PRD, so 19 May ships nothing, the first deploy is 2 June, and
+      sprint 3's work, finished on 12 June, waits for 16 June. Classic runs 18 of 33
+      stages, and with every stage but the three Initialization stages
+      ending in an approval gate it asks for at least fifteen approvals.
+      Express runs 10 stages and skips Unit decomposition and Delivery
+      Planning. BMAD's project-sized path prepares planning documents before
+      the first spec, and its epic-sized path asks a ticket-breakdown approval
+      and a retrospective verdict per epic. Strong answers price each option
+      in weeks to its first deploy and in the decisions that reach her, name
+      the source of every method fact and the date it was read, and keep her
+      decisions few, since BMAD calls human attention "by far the most
+      expensive resource".
+  - label: Keeps the partner API out of Express, from the source
+    weight: 15
+    descriptor_md: |
+      Express's own guide says "Do not choose Express for ambiguous,
+      cross-team, regulated, or architecture-heavy work". The parts check
+      reads the partner stock API and every booking goes through the booking
+      API, both owned by other teams, so the work is cross-team by the
+      guide's own words. BMAD's scope signal points the same way for
+      "cross-system effects, or coordination between people or teams".
+      Strong answers quote the line and say which work it rules out. Picking
+      Express because it is the lightest misses the line that rules it out.
+  - label: Decides, and says what the decision gives up
+    weight: 20
+    descriptor_md: |
+      A strong decision: bolts of two working days with a human review after
+      every unit of work, BMAD's epic-sized path for each unit (a spec, then
+      tickets), the project-sized path for any change to a contract another
+      team owns, and the first deploy aimed at 19 May. It gives up the
+      platform team's 40-page PRD and its sprint rhythm, Classic's full
+      ceremony and Express's speed, and it spends review hours inside every
+      bolt. Another decision can score here when it fits the two windows and
+      names what it costs. A decision that names no cost scores low, however
+      sound it is.
+  - label: Reads as one page for a sponsor
+    weight: 15
+    descriptor_md: |
+      She reads one page and repeats dates. Strong answers open with the
+      count of deploys, give her dates she can say, name the few decisions
+      that come to her and send the rest to the platform team lead, who
+      approves every merge. Method words such as bolt, unit of work or
+      approval gate arrive with what she will see because of them.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      ## Context
+
+      The platform team releases code only in its fortnightly window,
+      Tuesday evenings from 18:00. Our six weeks, 4 May to 12 June, contain
+      three: 5 May, 19 May and 2 June. The first lands on day two, before
+      anything exists, and 16 June arrives after we finish, so any method
+      gets two releases, 19 May and 2 June. Last year the peak began in the
+      week of 18 May, and yesterday's gates cannot start counting until R-5's
+      refusal of out-of-date stock sheets is live, so the 19 May release must
+      contain it.
+
+      The rebuild is eight requirements, 110 to 140 engineer hours, and it
+      calls two APIs that other teams own: partner stock and booking.
+
+      ## Options
+
+      - The platform team's proposal: writing the 40-page PRD occupies weeks
+        one and two, so 19 May ships nothing and the first release is 2 June.
+        The third sprint finishes 12 June and slips to 16 June. You would
+        approve a long document plus three sprint reviews.
+      - AI-DLC's Classic profile (aidlc-workflows 2.11.0, read 8 October
+        2026): 18 of 33 stages, all except the three Initialization stages
+        closing with an approval gate, so it can hit 19 May at the cost of at
+        least fifteen sign-offs.
+      - Express: the fewest approvals, but it skips Unit decomposition and
+        Delivery Planning, and its guide rules it out for "cross-team" work.
+        Our parts check depends on another team's API.
+      - BMAD's project-sized path everywhere (`bmad-method` 6.12.1, pages
+        read 8 October 2026): an architecture document and its review
+        first, which endangers 19 May.
+      - BMAD's epic-sized path per unit: a spec, then tickets, with a
+        ticket-breakdown approval and a retrospective verdict the platform
+        team lead can give.
+
+      ## Decision
+
+      We build in bolts: two working days each, ending in reviewed work you
+      could be shown, the AWS post's cycles "measured in hours or days rather
+      than weeks" (Raja SP, 31 July 2025, read 8 October 2026). A person
+      reviews every unit of work before it merges. Each unit follows BMAD's
+      epic-sized path. Anything touching the partner stock API or the
+      booking API takes the project-sized path, because BMAD's sizing page
+      wants extra planning wherever another team is involved. The 19 May
+      release carries intake plus the parts check with R-5's refusal;
+      everything else targets 2 June.
+
+      ## Consequences
+
+      You make one recurring call: whether the next centre goes live, judged
+      on the gates you already signed, and each window's result reaches you
+      on one page. The platform team lead approves
+      merges, ticket breakdowns and retrospective verdicts. We give up the
+      40-page PRD and the sprint rhythm the platform team trusts; PRD v2 plus
+      one spec per unit hold the same contracts. Reviews cost an hour per
+      unit inside every bolt. Contract changes move slower than their size
+      suggests. Whatever misses 2 June waits until 16 June, after we finish.
+  - band: adequate
+    score: 61
+    body_md: |
+      ## Context
+
+      We have six weeks, from 4 May to 12 June, and the platform team only
+      deploys in its change window on alternate Tuesdays. That gives us
+      three chances to release, 5 May, 19 May and 2 June, so the plan is one
+      release roughly every fortnight. She wants the agent working before
+      the summer rush, and the gates she agreed depend on the stock sheet
+      refusal in R-5.
+
+      ## Options
+
+      The platform team wants a 40-page PRD and two-week sprints. That is the
+      safest choice for them, because it is how they always work, but the
+      document alone eats a fortnight and repeats what PRD v2 already says.
+
+      AI-DLC, from the AWS blog, swaps sprints for bolts, cycles lasting
+      hours or days, and swaps epics for units of work. Its tooling offers
+      profiles, and Classic covers 18 of the 33 stages, pausing for approval
+      along the way. Express is the lightest profile, but it leaves out
+      several planning stages, which this rebuild cannot afford to skip.
+
+      BMAD scales planning to the size of the job. One outcome needing
+      several sessions is an epic, and bigger jobs become projects. Each
+      epic gets a spec and then tickets.
+
+      ## Decision
+
+      We will run bolts of two working days, with BMAD's epic-sized path for
+      each unit of work: a spec first, then tickets, then the build. The
+      first release goes out in the 19 May window with the parts check and
+      R-5's refusal, and the second in the 2 June window. We will skip the
+      40-page PRD, since PRD v2 already holds the eight accepted
+      requirements.
+
+      ## Consequences
+
+      She reviews progress at the end of every bolt, so she always knows
+      where things stand, and she signs each release before it goes out.
+      The platform team lead reviews every unit before it merges. The team
+      spends more time on reviews than it would in sprints, though problems
+      surface within two days instead of two weeks.
+  - band: weak
+    score: 28
+    body_md: |
+      ## Context
+
+      The sponsor has funded six weeks of construction and the platform team
+      has proposed how to run it. The agent has to be rebuilt on the
+      company's platform, which the team estimates at 110 to 140 hours, so
+      there is plenty of time if we organise the work well. Six weeks is
+      three two-week sprints, which gives the team a natural rhythm of plan,
+      build and release, and keeps the sponsor informed at regular points.
+
+      ## Options
+
+      The best-known options are AI-DLC from AWS and BMAD. AI-DLC is Amazon's
+      method for AI-driven development, and its Express profile is the
+      lightest and fastest way from requirements to code, which suits a team
+      that is short of time. BMAD is a popular open-source method with
+      planning paths for different sizes of work. Both methods use AI agents
+      to draft documents and code, which should save the team a great deal of
+      time compared with writing everything by hand.
+
+      The platform team's proposal is a 40-page PRD followed by two-week
+      sprints. The PRD gives everyone a clear, shared picture of the
+      requirements before any code is written, which avoids rework later.
+
+      ## Decision
+
+      We will combine the platform team's proposal with AI-DLC Express. The
+      PRD is written in the first sprint, and the agent is then built in
+      sprints two and three using the Express profile to move quickly. Each
+      sprint ends with a release, so the sponsor gets three releases in six
+      weeks: on 15 May, on 29 May and on 12 June.
+
+      ## Consequences
+
+      The sponsor approves the PRD at the end of sprint one and attends a
+      review at the end of every sprint. The platform team keeps the way of
+      working it knows, which means less change for everyone, and AI-DLC
+      brings the speed of AI agents into the build. If the work runs late,
+      the third release can move by a week without affecting her plans. We
+      get the best of both methods, with nothing important left out.
+
+hints:
+  - Before comparing methods, list the dates in the six weeks on which code
+    can reach production at all. Then ask which of those dates anything
+    could be ready for.
+  - Lay the platform team's plan on that list, two weeks of PRD and then
+    two-week sprints, and find the first date it can use.
+  - Every source says somewhere where its method does not fit. Read the
+    Express line against who owns the APIs the parts check and the booking
+    depend on.
+  - Price each option twice, in weeks to its first deploy and in the
+    decisions that reach her, and give each method fact its source and the
+    date it was read.
+  - Under Consequences, say what your choice gives up, what the first deploy
+    carries, and who approves what from Monday 4 May.
+
+scenario:
+  headline: "The platform team wants a 40-page PRD and two-week sprints; the sponsor wants six weeks"
+  who: The head of customer service at an AC maker the size of Voltas
+  situation: >-
+    Production is funded behind gates that wait on one fix: refusing bookings
+    on stale stock sheets. Construction runs six weeks on the company's own
+    platform, and the platform team ships only in a change window every
+    second Tuesday.
+  stakes: >-
+    Last year's summer peak began in the week of 18 May. A method that ships
+    nothing before June leaves the gates with nothing to read through the
+    first weeks of the peak.
+  metrics:
+    - { label: Construction, value: 6 weeks }
+    - { label: Rebuild estimate, value: 110 to 140 hours }
+    - { label: "Change window, Tuesdays", value: every 2 weeks }
+
+diagram:
+  title: Six weeks, and code leaves only through the change window
+  caption: >-
+    Whatever the method, code reaches the three centres only when the window
+    opens. The method decides what is ready when it does.
+  direction: lr
+  nodes:
+    - { id: sponsor, label: Head of customer service, sub: reads one page, kind: actor, tone: blue, at: [0, 0] }
+    - { id: platform, label: Platform team of four, sub: "a 40-page PRD, then sprints", kind: actor, tone: pink, at: [0, 2] }
+    - { id: adr, label: ADR-1, sub: how construction will run, kind: doc, tone: purple, at: [1, 1] }
+    - { id: build, label: Six weeks of construction, sub: 4 May to 12 June, kind: service, tone: teal, at: [2, 1] }
+    - { id: apis, label: Partner and booking APIs, sub: owned by other teams, kind: tool, tone: neutral, at: [2, 2] }
+    - { id: window, label: Change window, sub: "every second Tuesday, 18:00 to 20:00", kind: guard, tone: orange, at: [3, 1] }
+    - { id: centres, label: Three centres, sub: where the first release lands, kind: service, tone: green, at: [4, 1] }
+    - { id: gates, label: Production gates, sub: "signed 28 April, wait on R-5", kind: decision, tone: orange, at: [5, 1] }
+  edges:
+    - { from: sponsor, to: adr, label: reads it before she signs, step: 1 }
+    - { from: platform, to: adr, label: proposes sprints, tone: muted }
+    - { from: adr, to: build, label: sets how it runs, step: 2 }
+    - { from: apis, to: build, label: contracts it must keep, tone: danger }
+    - { from: build, to: window, label: the only way out, step: 3 }
+    - { from: window, to: centres, label: deploy, step: 4 }
+    - { from: centres, to: gates, label: "first-time fix, stale sheets" }
+
+approach:
+  goal: A method chosen by what can reach production and when, recorded on one page
+  branches:
+    - label: Count the deploys before naming a method
+      leaves: ["which Tuesdays fall inside 4 May to 12 June?", "which of them can carry anything?", "what must the first one carry?"]
+    - label: Cost every option in her terms
+      detail: Weeks to a first deploy, and the decisions it sends to a sponsor who reads one page.
+      leaves: [the platform team's plan as well, a source and a date for every method fact]
+    - label: Read each source for what it rules out
+      leaves: ["who owns the APIs the agent calls?", "what does each profile skip?"]
+    - label: Decide, then say what it costs
+      leaves: [what the decision gives up, who approves what from 4 May]
+
+coach:
+  opening: >-
+    Before you compare methods, write down every date in the six weeks on
+    which code can reach production, and which of them anything could be
+    ready for.
+  signals:
+    - id: windows-not-counted
+      when: { code_lacks: '(?i)\b19(th)?\s+may\b|\bmay\s+19' }
+      say: >-
+        Your record never says when code first reaches production. Which
+        Tuesdays between 4 May and 12 June can carry anything?
+    - id: three-releases
+      when:
+        code_matches: '(?i)three\s+(releases|deploys|deployments)|(release|deploy|ship)\w*\s+at\s+the\s+end\s+of\s+(each|every)\s+(sprint|bolt|two)'
+        code_lacks: '(?i)two\s+deploys|16\s+june'
+      say: >-
+        Put each release you plan on the platform team's calendar. How many
+        of them land in a window inside the six weeks?
+    - id: prd-before-window
+      when:
+        code_matches: '(?i)40[-\s]page'
+        code_lacks: '(?i)ships\s+nothing|nothing\s+(ships|reaches|is\s+ready|to\s+deploy)|carries\s+nothing'
+      say: >-
+        The 40-page PRD takes two weeks before any code. Which window does the
+        first code then reach?
+    - id: express-cross-team
+      when:
+        code_matches: '(?i)\bexpress\b'
+        code_lacks: '(?i)cross[-\s]team|other\s+teams?|another\s+team'
+      say: >-
+        Express's own guide names the work it should not be chosen for. Read
+        that line against who owns the APIs the agent calls.
+    - id: her-decisions
+      when: { code_lacks: '(?i)you\s+(make|decide|sign|approve)|your\s+decisions?' }
+      say: >-
+        She reads one page. Which decisions does your method send to her in
+        six weeks, and which go to the platform team lead?
+    - id: nothing-given-up
+      when: { code_lacks: '(?i)\bgives?\s+up\b|at\s+the\s+cost\s+of|in\s+exchange\s+for|we\s+lose' }
+      say: >-
+        What does your decision give up? Name what the option you turned down
+        would have given her.
+    - id: unsourced
+      when: { code_lacks: '(?i)\b8(th)?\s+oct(ober)?\b|\boct(ober)?\s+8\b' }
+      say: >-
+        Every fact about a method needs its source and the date it was read.
+        Which page, read when, says each thing in your options?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the Tuesdays. List the windows from 4 May to 12 June, then
+        cross out the ones nothing could use.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three tries without a pass. The second hint puts the platform team's
+        plan on the same calendar as the windows.
+  wrap_up: >-
+    A method is chosen against the calendar the client already has. Count
+    what can reach production first, cost every option in weeks and in the
+    sponsor's decisions, and write down what the choice gives up.
+
+reference_md: |
+  The decision turns on a count, and the count comes before any method has a
+  name. The window opens every second Tuesday: 5 May, 19 May, 2 June and 16
+  June. Construction holds the first three, but 5 May is its second day,
+  when nothing exists to ship, and 16 June falls after it ends. So six weeks
+  hold two deploys, 19 May and 2 June, whatever method runs, and the method
+  only decides what is ready when each window opens. The 19 May window
+  matters twice over. It falls in the week the peak began last year, and it
+  is the first chance to put R-5's refusal in front of the gates she signed
+  the day before, which cannot start reading until the refusal is live.
+
+  On that calendar the platform team's plan has one deploy inside
+  construction. Two weeks of PRD take it to 15 May, so 19 May carries
+  nothing; the first sprint of code ends on 29 May and ships on 2 June; the
+  last ends on 12 June and waits for 16 June. The 40-page PRD would also
+  restate PRD v2, whose eight requirements the sponsor validated in
+  February. The platform team still has a real reason for its proposal: it
+  owns the platform and answers for every merge. The record keeps its lead
+  as the approver of every merge, and moves the detail the team wants into a
+  spec per unit, written as each unit starts instead of before anyone learns
+  what the rebuild gets wrong.
+
+  The sources rule options out in their own words. The aidlc-workflows
+  guide says "Do not choose Express for ambiguous, cross-team, regulated, or
+  architecture-heavy work", and the parts check reads a stock API another
+  team owns. Express also skips Unit decomposition and Delivery Planning,
+  the stages that cut units and plan bolts. Classic fits the work, but 18
+  stages that each end in an approval gate, except the three Initialization
+  stages, are at least fifteen approvals in six weeks, and BMAD's Build a
+  Change page calls human attention "by far the most expensive resource".
+  BMAD's answer is to "Put approvals there rather than inventing new gates":
+  a ticket-breakdown approval and a retrospective verdict per epic, which the
+  platform team lead can give, leaving the sponsor one kind of decision, the
+  one her gate table already defines. Its sizing page sends cross-team work
+  to more planning, which is the rule that puts every change to the partner
+  stock API or the booking API on the project-sized path, however few lines
+  it touches.
+
+  The decision composes parts, and its cost has to be on the page. It gives
+  up the document and the sprint rhythm the platform team trusts, Classic's
+  full ceremony and Express's speed, and it spends an hour of review per
+  unit inside every bolt. In exchange the first deploy lands in the first
+  window that can carry anything.
+
+  The build that follows, Deliver the field-service agent in bolts, starts
+  from ADR-1 on 4 May: Inception cuts the units, bolt 1 is planned against 19
+  May, and every change request gets its planning path. Another problem in
+  this chapter, Compose a method for a first agent product, asks the same
+  question when the constraint is a compliance officer's calendar in place
+  of a change window.
+
+  Sources, each read on 8 October 2026: the AWS DevOps blog post
+  [AI-Driven Development Life Cycle: Reimagining Software Engineering](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/),
+  Raja SP, 31 July 2025; the
+  [Workflow Profiles](https://github.com/awslabs/aidlc-workflows/blob/main/docs/guide/workflow-profiles.md)
+  and [Interaction Modes](https://github.com/awslabs/aidlc-workflows/blob/main/docs/guide/07-interaction-modes.md)
+  guides of aidlc-workflows, release 2.11.0; and BMAD's
+  [Choose a Planning Path](https://docs.bmad-method.org/plan/choose-a-planning-path/),
+  [Define Requirements and a Specification](https://docs.bmad-method.org/plan/define-requirements-and-a-specification/),
+  [Plan Inside an Organization](https://docs.bmad-method.org/plan/plan-inside-an-organization/)
+  and [Build a Change](https://docs.bmad-method.org/build/build-a-change/)
+  pages, with `bmad-method` at release 6.12.1. The client, the change window,
+  the 110 to 140 hours and the two-day bolt are this problem's own
+  construction.
+
+interview_evidence:
+  round: both
+  asked_as: |
+    The client's platform team wants a 40-page PRD and two-week sprints, the sponsor wants the agent rebuilt in six weeks, and production changes only go out every second Tuesday. Which delivery method do you choose, and how do you record the decision?
+  source: |
+    Author judgement. No employer frequency data stands behind it. Method facts from the AWS
+    DevOps blog post "AI-Driven Development Life Cycle: Reimagining Software Engineering" by
+    Raja SP, 31 July 2025 (https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/);
+    the Workflow Profiles and Interaction Modes guides of awslabs/aidlc-workflows
+    (https://github.com/awslabs/aidlc-workflows), release 2.11.0; and BMAD's Choose a Planning
+    Path, Define Requirements and a Specification, Plan Inside an Organization and Build a Change
+    pages (https://docs.bmad-method.org), with bmad-method at release 6.12.1 on the npm registry.
+    All read 8 October 2026.
+
+traps:
+  - Reading six weeks as three deploys, when the change window decides how many releases six weeks can hold.
+  - Adopting a method by its name, with no cost in weeks or in her decisions set against the other options.
+  - Choosing Express for work that calls APIs other teams own, which its own guide says not to do.
+  - Writing the 40-page PRD before any code, so the first deploy waits for June.

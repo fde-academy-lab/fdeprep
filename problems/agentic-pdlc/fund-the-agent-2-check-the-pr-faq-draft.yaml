@@ -1,0 +1,686 @@
+slug: fund-the-agent-2-check-the-pr-faq-draft
+title: "Check the PR/FAQ draft against the ledger"
+day: 24
+skill: Grade each claim by the weakest row it cites, and fail it on a row nobody logged
+artefact_type: code
+difficulty: medium
+complexity: C2
+track: agentic-pdlc
+concept:
+  topic: "Discovery and evidence"
+  question: "Which claims in the agent's PR/FAQ can the evidence ledger carry, and how strongly?"
+est_minutes: 30
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: client-communication, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json]
+
+build: { id: fund-the-agent, title: "Fund a field-service agent", stage: 2, of: 7 }
+
+brief_md: |
+  An air-conditioner maker the size of Voltas is deciding whether to fund an
+  agent for its AC-not-cooling (ACNC) requests, 44 percent of the 38,000
+  service requests it takes a day at the summer peak. Discovery closed on
+  Tuesday 10 February. The data lead answered five of the elaboration agent's
+  questions from the service system, the sponsor answered four more on Monday
+  9 February and could not answer Q-9, and the evidence ledger holds sixteen
+  rows, every one carrying a kind that says how it was produced:
+
+  | Kind | How the row was produced |
+  |---|---|
+  | counted | Read from a system of record |
+  | trial | Measured in a trial that was not randomised |
+  | typed | Entered by a person into a code list |
+  | estimate | Somebody's arithmetic |
+  | vendor | A seller's claim |
+
+  | Row | Kind | What it says |
+  |---|---|---|
+  | EV-1 | counted | Median time from request to completed repair for ACNC in the three cities last summer: 4.3 days, over 61,400 requests |
+  | EV-2 | counted | First-time fix for ACNC last summer: 61 percent, the median of 13 weekly reads |
+  | EV-3 | counted | 44 percent of summer requests are coded ACNC |
+  | EV-4 | counted | 38,000 requests a day at the summer peak, 11,000 a day in December and January |
+  | EV-5 | typed | Technicians' close codes on ACNC visits: gas leak 38, control board 21, capacitor 17, sensor 9, other 15 percent |
+  | EV-6 | counted | 23 percent of ACNC visits end without the part |
+  | EV-7 | counted | 34 percent of ACNC requests get a technician the day they are raised |
+  | EV-8 | trial | Nagpur diagnostic chat, three weeks: 41 percent completed it, and 74 percent of those got the right part on the first visit |
+  | EV-9 | typed | Partners' stock sheets: 63 percent upload daily, the rest weekly |
+  | EV-10 | estimate | About ₹4 a request in model and messaging calls |
+  | EV-11 | estimate | ₹640 in technician time and travel for a no-part visit |
+  | EV-12 | vendor | "Resolves 65 percent of service requests without a visit." |
+  | EV-13 | counted | 9,000 technicians through 1,100 franchise partners |
+  | EV-14 | trial | The same Nagpur trial: 2.9 days median for customers who completed the chat |
+  | EV-15 | typed | 31 percent of ACNC complaints mention a second visit |
+  | EV-16 | estimate | Installations are 12 percent of summer requests |
+
+  On Wednesday 11 February the vendor's construction agent, the same tooling
+  whose elaboration step proposed the twelve discovery questions, drafted the
+  PR/FAQ for Friday's funding committee: the press release and the questions
+  and answers that describe the agent as if it had launched. It writes every
+  artefact in this engagement and approves none. The draft holds fourteen
+  claims, C-1 to C-14. Each cites the ledger rows it rests on and says how
+  strongly the draft states it, as counted or as an assumption.
+
+  C-9 reads "The agent resolves 65 percent of requests without a visit." The
+  draft states it as counted and cites EV-12, which is in the ledger. EV-12 is a
+  line from a vendor's sales deck. A check that only looks the id up passes
+  C-9, and the committee would fund a POC to be judged against a seller's
+  number.
+
+  Write the check the committee reads before it votes on Friday 13 February:
+  what each claim can carry, beside what the draft says it carries.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the committee's request. Call `tools["ledger"]()` and
+  `tools["draft"]()` once each. `llm` is passed in and must not be called: the
+  check is a lookup against the ledger, and anyone on the committee can rerun
+  it.
+
+  `ledger()` returns every row:
+
+      [{"id": "EV-12", "kind": "vendor", "source": "A vendor's sales deck"}, ...]
+
+  `draft()` returns the claims in the draft's order:
+
+      [{"id": "C-9",
+        "text": "The agent resolves 65 percent of requests without a visit.",
+        "rests_on": ["EV-12"], "stated_as": "counted"}, ...]
+
+  Give each claim one status. Read the table from the top, and the first row
+  that fits decides:
+
+  | The rows a claim rests on | Status |
+  |---|---|
+  | None at all, or any id the ledger does not have | `unsupported` |
+  | Any row whose kind is `typed`, `estimate` or `vendor` | `assumption` |
+  | Every row `counted` or `trial` | `carried` |
+
+  The status comes from the ledger, whatever the draft's `stated_as` says.
+
+  Return a JSON string with one entry per claim, in the draft's order, carrying
+  the draft's own `stated_as` beside the status:
+
+      {"claims": [{"id": "C-9", "status": "assumption", "stated_as": "counted"}, ...]}
+
+  Budget: one call to each tool and no model calls. Allowed imports: json.
+
+stub_code: |
+  import json
+
+
+  def grade(claim: dict, ledger: dict) -> str:
+      """carried, assumption or unsupported, from the rows the claim rests on."""
+      # TODO 1: look up each id in rests_on and turn its row's kind into what
+      #         the row can carry, using the table in the contract
+      # TODO 2: a claim that rests on several rows is only as strong as the
+      #         weakest of them
+      # TODO 3: a claim that rests on no row, or on any id the ledger does not
+      #         have, is unsupported
+      return "carried"
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      ledger = {row["id"]: row for row in tools["ledger"]()}
+      claims = [
+          {"id": claim["id"], "status": grade(claim, ledger), "stated_as": claim["stated_as"]}
+          for claim in tools["draft"]()
+      ]
+      return json.dumps({"claims": claims})
+
+steps:
+  - id: s1
+    text: Turn each cited row's kind into what it can carry, using the contract's table.
+    check_id: s1
+  - id: s2
+    text: Grade a claim on several rows by the weakest of them, wherever it sits in the list.
+    check_id: s2
+  - id: s3
+    text: Mark a claim unsupported when it rests on no row, or on any id the ledger lacks.
+    check_id: s3
+
+step_checks:
+  # Reads the fourteen claims in the first public case, where a vendor row, a
+  # typed row and an estimate each make a claim an assumption, and a trial row
+  # carries. The stub calls every claim carried.
+  - step_id: s1
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [claims]
+            properties:
+              claims:
+                type: array
+                allOf:
+                  - { contains: { type: object, required: [id, status], properties: { id: { const: C-9 }, status: { const: assumption } } } }
+                  - { contains: { type: object, required: [id, status], properties: { id: { const: C-7 }, status: { const: assumption } } } }
+                  - { contains: { type: object, required: [id, status], properties: { id: { const: C-5 }, status: { const: assumption } } } }
+                  - { contains: { type: object, required: [id, status], properties: { id: { const: C-10 }, status: { const: carried } } } }
+  # In the public draft the weaker row of C-8 comes first, so reading only
+  # the first row passes there. This case of its own cites the counted row
+  # first and the typed row second.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Can the committee rely on C-3 as the agent re-drafted it?" }
+      llm_script:
+        - { match: "*", reply: "C-3 cites two rows of the ledger, so it is carried." }
+      tools:
+        ledger:
+          returns:
+            - { id: EV-1, kind: counted, source: Service system }
+            - { id: EV-2, kind: counted, source: Service system }
+            - { id: EV-3, kind: counted, source: Service system }
+            - { id: EV-4, kind: counted, source: Service system }
+            - { id: EV-5, kind: typed, source: "Close-code list, typed by technicians" }
+            - { id: EV-6, kind: counted, source: Service system }
+            - { id: EV-7, kind: counted, source: Service system }
+            - { id: EV-8, kind: trial, source: "Trial, one city" }
+            - { id: EV-9, kind: typed, source: Partner operations survey }
+            - { id: EV-10, kind: estimate, source: Engineering }
+            - { id: EV-11, kind: estimate, source: Finance }
+            - { id: EV-12, kind: vendor, source: "A vendor's sales deck" }
+            - { id: EV-13, kind: counted, source: Partner register }
+            - { id: EV-14, kind: trial, source: "Trial, one city" }
+            - { id: EV-15, kind: typed, source: Complaints desk categories }
+            - { id: EV-16, kind: estimate, source: Sales }
+        draft:
+          returns:
+            - { id: C-3, text: "Nearly one visit in four ends without the part.", rests_on: [EV-6, EV-15], stated_as: counted }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [claims]
+            properties:
+              claims:
+                const:
+                  - { id: C-3, status: assumption, stated_as: counted }
+  # In the public draft the only missing id is cited alone, so skipping it
+  # leaves nothing and the claim comes out unsupported anyway. This case of
+  # its own cites a missing id beside a counted row.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Which of the re-drafted claims rest on nothing the ledger holds?" }
+      llm_script:
+        - { match: "*", reply: "Every claim cites at least one real row, so none is unsupported." }
+      tools:
+        ledger:
+          returns:
+            - { id: EV-1, kind: counted, source: Service system }
+            - { id: EV-2, kind: counted, source: Service system }
+            - { id: EV-3, kind: counted, source: Service system }
+            - { id: EV-4, kind: counted, source: Service system }
+            - { id: EV-5, kind: typed, source: "Close-code list, typed by technicians" }
+            - { id: EV-6, kind: counted, source: Service system }
+            - { id: EV-7, kind: counted, source: Service system }
+            - { id: EV-8, kind: trial, source: "Trial, one city" }
+            - { id: EV-9, kind: typed, source: Partner operations survey }
+            - { id: EV-10, kind: estimate, source: Engineering }
+            - { id: EV-11, kind: estimate, source: Finance }
+            - { id: EV-12, kind: vendor, source: "A vendor's sales deck" }
+            - { id: EV-13, kind: counted, source: Partner register }
+            - { id: EV-14, kind: trial, source: "Trial, one city" }
+            - { id: EV-15, kind: typed, source: Complaints desk categories }
+            - { id: EV-16, kind: estimate, source: Sales }
+        draft:
+          returns:
+            - { id: C-2, text: "Today the median customer waits 4.3 days for a completed repair.", rests_on: [EV-1, EV-18], stated_as: counted }
+            - { id: C-11, text: "Installations are booked the same way.", rests_on: [], stated_as: counted }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [claims]
+            properties:
+              claims:
+                const:
+                  - { id: C-2, status: unsupported, stated_as: counted }
+                  - { id: C-11, status: unsupported, stated_as: counted }
+
+hints:
+  - "The id a claim cites tells you which row to read. The row's `kind` tells you what that row can carry."
+  - "Rank what a row can carry, with carried above assumption. A claim gets the lowest rank among all its rows, wherever each one sits in `rests_on`."
+  - Check every cited id before you grade anything. One id the ledger does not
+    have makes the whole claim unsupported, whatever else it cites.
+  - "Read `stated_as` only to copy it into the answer. The status comes from the rows."
+
+scenario:
+  headline: "Claim 9's 65 percent is the vendor's deck, written as if somebody counted it"
+  who: The head of customer service at an AC maker the size of Voltas
+  situation: >-
+    The construction agent drafted the PR/FAQ for Friday's funding committee:
+    fourteen claims, each citing rows of the evidence ledger. C-9 says the
+    agent resolves 65 percent of requests without a visit. The draft states it
+    as counted and cites EV-12, a line from a vendor's sales deck.
+  stakes: >-
+    The committee decides on Friday whether to fund a four-week POC. A sales
+    claim read as a measurement becomes the number the POC is judged against.
+  metrics:
+    - { label: Claims in the draft, value: "14" }
+    - { label: Rows in the ledger, value: "16" }
+    - { label: "The vendor's figure", value: 65% }
+
+diagram:
+  title: Where a claim meets the rows it cites
+  caption: >-
+    The draft says how strongly it states each claim. The ledger says what each
+    cited row can carry, and the weakest row decides.
+  direction: lr
+  nodes:
+    - { id: agent, label: Construction agent, sub: writes every artefact and approves none, kind: agent, tone: teal, at: [0, 0] }
+    - { id: draft, label: PR/FAQ draft, sub: fourteen claims citing ledger rows, kind: doc, tone: purple, at: [1, 0] }
+    - { id: deck, label: EV-12, sub: "a line from a vendor's sales deck", kind: doc, tone: pink, at: [0, 2] }
+    - { id: ledger, label: Evidence ledger, sub: sixteen rows each with a kind, kind: store, tone: blue, at: [1, 2] }
+    - { id: check, label: Your check, sub: the weakest cited row decides, kind: guard, tone: green, at: [2, 1] }
+    - { id: committee, label: Funding committee, sub: votes on Friday 13 February, kind: actor, tone: orange, at: [3, 1] }
+  edges:
+    - { from: agent, to: draft, label: drafted on 11 February, step: 1 }
+    - { from: draft, to: check, label: "`rests_on` and `stated_as`", step: 2 }
+    - { from: deck, to: ledger, label: logged as vendor, tone: muted }
+    - { from: ledger, to: check, label: the kind of each row, step: 2 }
+    - { from: check, to: committee, label: "status beside `stated_as`", tone: success, step: 3 }
+    - { from: draft, to: committee, label: C-9 as if counted, tone: danger }
+
+approach:
+  goal: Tell the committee what each claim can carry, from the rows it cites
+  branches:
+    - label: Read what each row is
+      leaves: [counted and trial carry their number, "typed, estimate and vendor carry an assumption"]
+    - label: Let the weakest row decide
+      detail: A claim is as strong as the weakest row under it, wherever that row sits in the list.
+      leaves: [two rows of different kinds]
+    - label: Fail a claim on a missing row
+      leaves: [no rows at all, an id the ledger never had]
+    - label: Put the draft's word beside the status
+      leaves: ["`stated_as` copied as written", the gap is the committee's to see]
+
+coach:
+  opening: >-
+    Before you grade a claim, find out what each row it cites is. A row that
+    exists can still carry very little.
+  signals:
+    - id: calls-model
+      when: { code_matches: '\bllm\s*\(' }
+      say: >-
+        The ledger already says what each row is. What could the agent that
+        wrote the draft add to a check of its own draft?
+    - id: kind-never-read
+      when: { code_lacks: '\[\s*["'']kind["'']\s*\]|\.get\(\s*["'']kind["'']' }
+      say: >-
+        Your check never reads a row's `kind`. EV-12 is in the ledger. What kind
+        of row is it?
+    - id: first-row-only
+      when: { code_matches: '\[\s*0\s*\]' }
+      say: >-
+        Your code grades a claim on one of its rows. When a claim cites a
+        counted row and a typed one, which of the two decides?
+    - id: missing-row-skipped
+      when: { code_matches: 'for\s+\w+\s+in\s+[^\n]*\bif\s+\w+\s+in\s+' }
+      say: >-
+        Your code keeps the cited ids the ledger has and drops the rest. What
+        does a claim that cites a row nobody logged deserve?
+    - id: draft-word-as-status
+      when: { code_matches: '["'']stated_as["'']\s*\]\s*(==|!=|in\b)' }
+      say: >-
+        Your status reads the draft's own `stated_as`. Whose word is that, and
+        what does the ledger say about the same claim?
+    - id: hidden-strong-row-first
+      when: { test_failed: the_weaker_row_decides_whichever_comes_first }
+      say: >-
+        In that run a claim cited a counted row first and a typed row second.
+        Which of its rows decides what the claim can carry?
+    - id: hidden-missing-row
+      when: { test_failed: a_claim_citing_a_missing_row_is_unsupported }
+      say: >-
+        In that run a claim cited one row the ledger has and one it never had.
+        What does your check do with the id it cannot find?
+    - id: hidden-hedged-claim
+      when: { test_failed: a_hedged_claim_on_a_counted_row_is_carried }
+      say: >-
+        In that run the draft hedged a claim that rests on a counted row. Does
+        your status come from the draft or from the ledger?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 for a claim that cites one row, then press Run and
+        read the line for C-9 in the result.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints narrow this one step at a time, and
+        the first says where to look.
+  wrap_up: >-
+    A citation says where a claim came from, and the row's kind says how far it
+    can be trusted. The weakest cited row sets the claim's strength, and a row
+    nobody logged leaves the claim unsupported.
+
+tests:
+  - name: checks_the_fourteen_claims_in_the_draft
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Which claims in the PR/FAQ can the committee rely on before Friday's vote?" }
+      llm_script:
+        - { match: "*", reply: "Every claim in the draft cites a row of the ledger, so all fourteen are carried." }
+      tools:
+        ledger:
+          returns:
+            - { id: EV-1, kind: counted, source: Service system }
+            - { id: EV-2, kind: counted, source: Service system }
+            - { id: EV-3, kind: counted, source: Service system }
+            - { id: EV-4, kind: counted, source: Service system }
+            - { id: EV-5, kind: typed, source: "Close-code list, typed by technicians" }
+            - { id: EV-6, kind: counted, source: Service system }
+            - { id: EV-7, kind: counted, source: Service system }
+            - { id: EV-8, kind: trial, source: "Trial, one city" }
+            - { id: EV-9, kind: typed, source: Partner operations survey }
+            - { id: EV-10, kind: estimate, source: Engineering }
+            - { id: EV-11, kind: estimate, source: Finance }
+            - { id: EV-12, kind: vendor, source: "A vendor's sales deck" }
+            - { id: EV-13, kind: counted, source: Partner register }
+            - { id: EV-14, kind: trial, source: "Trial, one city" }
+            - { id: EV-15, kind: typed, source: Complaints desk categories }
+            - { id: EV-16, kind: estimate, source: Sales }
+        draft:
+          returns:
+            - { id: C-1, text: "44 percent of summer requests are \"AC not cooling\".", rests_on: [EV-3], stated_as: counted }
+            - { id: C-2, text: "Today the median customer waits 4.3 days for a completed repair.", rests_on: [EV-1], stated_as: counted }
+            - { id: C-3, text: "Nearly one visit in four ends without the part.", rests_on: [EV-6], stated_as: counted }
+            - { id: C-4, text: "Customers who answer the agent's questions have their repair completed in under three days.", rests_on: [EV-14, EV-8], stated_as: counted }
+            - { id: C-5, text: "A no-part visit costs ₹640.", rests_on: [EV-11], stated_as: counted }
+            - { id: C-6, text: "The agent costs about ₹4 a request.", rests_on: [EV-10], stated_as: assumption }
+            - { id: C-7, text: "The technician sees the likely fault before leaving.", rests_on: [EV-5], stated_as: counted }
+            - { id: C-8, text: "Partner stock is checked before a slot is booked.", rests_on: [EV-9, EV-6], stated_as: counted }
+            - { id: C-9, text: "The agent resolves 65 percent of requests without a visit.", rests_on: [EV-12], stated_as: counted }
+            - { id: C-10, text: "41 percent of customers complete the diagnostic chat.", rests_on: [EV-8], stated_as: counted }
+            - { id: C-11, text: "Installations are booked the same way.", rests_on: [], stated_as: counted }
+            - { id: C-12, text: "First-time fix rises above 61 percent.", rests_on: [EV-8, EV-2], stated_as: counted }
+            - { id: C-13, text: "Every franchise partner is live before the May peak.", rests_on: [EV-17], stated_as: counted }
+            - { id: C-14, text: "9,000 technicians serve 1,100 partners.", rests_on: [EV-13], stated_as: counted }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 0 }
+        - { type: tool_calls_at_most, value: 2 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [claims]
+            properties:
+              claims:
+                const:
+                  - { id: C-1, status: carried, stated_as: counted }
+                  - { id: C-2, status: carried, stated_as: counted }
+                  - { id: C-3, status: carried, stated_as: counted }
+                  - { id: C-4, status: carried, stated_as: counted }
+                  - { id: C-5, status: assumption, stated_as: counted }
+                  - { id: C-6, status: assumption, stated_as: assumption }
+                  - { id: C-7, status: assumption, stated_as: counted }
+                  - { id: C-8, status: assumption, stated_as: counted }
+                  - { id: C-9, status: assumption, stated_as: counted }
+                  - { id: C-10, status: carried, stated_as: counted }
+                  - { id: C-11, status: unsupported, stated_as: counted }
+                  - { id: C-12, status: carried, stated_as: counted }
+                  - { id: C-13, status: unsupported, stated_as: counted }
+                  - { id: C-14, status: carried, stated_as: counted }
+
+  - name: a_trial_carries_its_number_and_a_sales_deck_does_not
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Which of the agent's outcome claims can go in front of the committee?" }
+      llm_script:
+        - { match: "*", reply: "All three claims cite the ledger, so all three are carried." }
+      tools:
+        ledger:
+          returns:
+            - { id: EV-1, kind: counted, source: Service system }
+            - { id: EV-2, kind: counted, source: Service system }
+            - { id: EV-3, kind: counted, source: Service system }
+            - { id: EV-4, kind: counted, source: Service system }
+            - { id: EV-5, kind: typed, source: "Close-code list, typed by technicians" }
+            - { id: EV-6, kind: counted, source: Service system }
+            - { id: EV-7, kind: counted, source: Service system }
+            - { id: EV-8, kind: trial, source: "Trial, one city" }
+            - { id: EV-9, kind: typed, source: Partner operations survey }
+            - { id: EV-10, kind: estimate, source: Engineering }
+            - { id: EV-11, kind: estimate, source: Finance }
+            - { id: EV-12, kind: vendor, source: "A vendor's sales deck" }
+            - { id: EV-13, kind: counted, source: Partner register }
+            - { id: EV-14, kind: trial, source: "Trial, one city" }
+            - { id: EV-15, kind: typed, source: Complaints desk categories }
+            - { id: EV-16, kind: estimate, source: Sales }
+        draft:
+          returns:
+            - { id: C-4, text: "Customers who answer the agent's questions have their repair completed in under three days.", rests_on: [EV-14, EV-8], stated_as: counted }
+            - { id: C-9, text: "The agent resolves 65 percent of requests without a visit.", rests_on: [EV-12], stated_as: counted }
+            - { id: C-10, text: "41 percent of customers complete the diagnostic chat.", rests_on: [EV-8], stated_as: counted }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [claims]
+            properties:
+              claims:
+                const:
+                  - { id: C-4, status: carried, stated_as: counted }
+                  - { id: C-9, status: assumption, stated_as: counted }
+                  - { id: C-10, status: carried, stated_as: counted }
+
+  # Derived from C-8: the agent re-drafted it citing the counted row first.
+  - name: the_weaker_row_decides_whichever_comes_first
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The agent re-ordered its citations. Does the committee's view of C-8 change?" }
+      llm_script:
+        - { match: "*", reply: "C-8 now leads with a counted row, so it is carried." }
+      tools:
+        ledger:
+          returns:
+            - { id: EV-1, kind: counted, source: Service system }
+            - { id: EV-2, kind: counted, source: Service system }
+            - { id: EV-3, kind: counted, source: Service system }
+            - { id: EV-4, kind: counted, source: Service system }
+            - { id: EV-5, kind: typed, source: "Close-code list, typed by technicians" }
+            - { id: EV-6, kind: counted, source: Service system }
+            - { id: EV-7, kind: counted, source: Service system }
+            - { id: EV-8, kind: trial, source: "Trial, one city" }
+            - { id: EV-9, kind: typed, source: Partner operations survey }
+            - { id: EV-10, kind: estimate, source: Engineering }
+            - { id: EV-11, kind: estimate, source: Finance }
+            - { id: EV-12, kind: vendor, source: "A vendor's sales deck" }
+            - { id: EV-13, kind: counted, source: Partner register }
+            - { id: EV-14, kind: trial, source: "Trial, one city" }
+            - { id: EV-15, kind: typed, source: Complaints desk categories }
+            - { id: EV-16, kind: estimate, source: Sales }
+        draft:
+          returns:
+            - { id: C-8, text: "Partner stock is checked before a slot is booked.", rests_on: [EV-6, EV-9], stated_as: counted }
+            - { id: C-12, text: "First-time fix rises above 61 percent.", rests_on: [EV-8, EV-2], stated_as: counted }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [claims]
+            properties:
+              claims:
+                const:
+                  - { id: C-8, status: assumption, stated_as: counted }
+                  - { id: C-12, status: carried, stated_as: counted }
+
+  # Derived from C-13: the agent cites the partner register beside EV-17,
+  # which nobody ever logged.
+  - name: a_claim_citing_a_missing_row_is_unsupported
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The agent added a source to C-13. Can the committee rely on it now?" }
+      llm_script:
+        - { match: "*", reply: "C-13 now cites the partner register, so it is carried." }
+      tools:
+        ledger:
+          returns:
+            - { id: EV-1, kind: counted, source: Service system }
+            - { id: EV-2, kind: counted, source: Service system }
+            - { id: EV-3, kind: counted, source: Service system }
+            - { id: EV-4, kind: counted, source: Service system }
+            - { id: EV-5, kind: typed, source: "Close-code list, typed by technicians" }
+            - { id: EV-6, kind: counted, source: Service system }
+            - { id: EV-7, kind: counted, source: Service system }
+            - { id: EV-8, kind: trial, source: "Trial, one city" }
+            - { id: EV-9, kind: typed, source: Partner operations survey }
+            - { id: EV-10, kind: estimate, source: Engineering }
+            - { id: EV-11, kind: estimate, source: Finance }
+            - { id: EV-12, kind: vendor, source: "A vendor's sales deck" }
+            - { id: EV-13, kind: counted, source: Partner register }
+            - { id: EV-14, kind: trial, source: "Trial, one city" }
+            - { id: EV-15, kind: typed, source: Complaints desk categories }
+            - { id: EV-16, kind: estimate, source: Sales }
+        draft:
+          returns:
+            - { id: C-13, text: "Every franchise partner is live before the May peak.", rests_on: [EV-13, EV-17], stated_as: counted }
+            - { id: C-14, text: "9,000 technicians serve 1,100 partners.", rests_on: [EV-13], stated_as: counted }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [claims]
+            properties:
+              claims:
+                const:
+                  - { id: C-13, status: unsupported, stated_as: counted }
+                  - { id: C-14, status: carried, stated_as: counted }
+
+  # Derived from C-3: the agent hedged a claim that rests on a counted row.
+  - name: a_hedged_claim_on_a_counted_row_is_carried
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The agent softened two claims. What can the committee rely on?" }
+      llm_script:
+        - { match: "*", reply: "Both claims are stated as assumptions, so both are assumptions." }
+      tools:
+        ledger:
+          returns:
+            - { id: EV-1, kind: counted, source: Service system }
+            - { id: EV-2, kind: counted, source: Service system }
+            - { id: EV-3, kind: counted, source: Service system }
+            - { id: EV-4, kind: counted, source: Service system }
+            - { id: EV-5, kind: typed, source: "Close-code list, typed by technicians" }
+            - { id: EV-6, kind: counted, source: Service system }
+            - { id: EV-7, kind: counted, source: Service system }
+            - { id: EV-8, kind: trial, source: "Trial, one city" }
+            - { id: EV-9, kind: typed, source: Partner operations survey }
+            - { id: EV-10, kind: estimate, source: Engineering }
+            - { id: EV-11, kind: estimate, source: Finance }
+            - { id: EV-12, kind: vendor, source: "A vendor's sales deck" }
+            - { id: EV-13, kind: counted, source: Partner register }
+            - { id: EV-14, kind: trial, source: "Trial, one city" }
+            - { id: EV-15, kind: typed, source: Complaints desk categories }
+            - { id: EV-16, kind: estimate, source: Sales }
+        draft:
+          returns:
+            - { id: C-3, text: "Nearly one visit in four ends without the part.", rests_on: [EV-6], stated_as: assumption }
+            - { id: C-6, text: "The agent costs about ₹4 a request.", rests_on: [EV-10], stated_as: assumption }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [claims]
+            properties:
+              claims:
+                const:
+                  - { id: C-3, status: carried, stated_as: assumption }
+                  - { id: C-6, status: assumption, stated_as: assumption }
+
+reference_md: |
+  Twelve of the draft's fourteen claims cite rows that exist, so the committee
+  sees numbered claims with their sources and has every reason to trust them.
+  C-9, "The agent resolves 65 percent of requests without a visit", is stated
+  as counted and cites EV-12. EV-12 is in the ledger, and it is a line from a
+  vendor's sales deck. A check that only resolves the id passes C-9, and the
+  POC gets judged against a seller's number.
+
+  A row's kind decides what it can carry. A counted row was read from a system
+  of record, and a trial row was measured, if only in one city and without
+  randomising; both carry the number they hold. A typed row is a person's pick
+  from a code list, an estimate is somebody's arithmetic, and a vendor row comes
+  from someone selling; each carries an assumption at most.
+
+  A claim is as strong as the weakest row under it. C-8, which says partner
+  stock is checked before a slot is booked, cites the partner survey of stock
+  sheets (typed) and the 23 percent of visits that end without the part
+  (counted). The counted row shows the problem is real, and only the survey
+  speaks to the stock sheets the agent would read, so the claim is an
+  assumption whichever row the draft lists first.
+
+  A cited id the ledger does not have fails the whole claim. C-13 cites EV-17,
+  which nobody ever logged. Skipping the missing id and grading the rows that
+  are left would carry a claim the draft half invented, and the check would
+  repeat the draft's mistake.
+
+  The status comes from the ledger, and `stated_as` is reported beside it.
+  Where the draft says counted and the ledger says assumption, the committee
+  sees the overstatement on one line. Where the draft hedges a claim on a
+  counted row, the claim is still carried, and the committee learns the
+  evidence is stronger than the draft let on.
+
+  BMAD puts a human decision at this point. Its guide to planning inside an
+  organization says "The skills give you five moments where a human decision is
+  expected, and each one blocks something specific." The first of the five is
+  the PRFAQ verdict, which blocks writing the PRD, and "Every one of these
+  produces a written result, so the approval has something to attach to."
+  ([Plan inside an organization](https://docs.bmad-method.org/plan/plan-inside-an-organization/),
+  read 8 October 2026, when the current BMAD release was 6.12.1.) Friday's vote
+  is that verdict, and this check is the written part of what it attaches to.
+  On Friday 13 February the committee funded a four-week POC from 23 February.
+
+  Writing a PR/FAQ yourself is another problem in this chapter, Write a PR/FAQ
+  with evidence for each claim. The five kinds and the weakest-row rule are this
+  problem's own construction.
+
+interview_evidence:
+  round: written
+  asked_as: |
+    An agent drafted your client's PR/FAQ, and every claim cites the evidence log. Before the funding committee reads it, how do you check which claims the evidence can actually carry?
+  source: |
+    Author judgement. No employer frequency data stands behind it. BMAD's Plan inside an
+    organization page, https://docs.bmad-method.org/plan/plan-inside-an-organization/, names
+    the PRFAQ verdict as the first of five moments where a human decision is expected. Read
+    8 October 2026, when the current release of bmad-method on npm was 6.12.1, published
+    4 October 2026.
+
+tools:
+  - name: ledger
+    args: ""
+    returns: Every row of the evidence ledger, each with its `id`, `kind` and `source`.
+  - name: draft
+    args: ""
+    returns: The draft's claims in order, each with its `id`, `text`, `rests_on` and `stated_as`.
+example:
+  case: checks_the_fourteen_claims_in_the_draft
+  expect: C-9 cites EV-12, a vendor's sales deck, so it is an assumption although the draft states it
+    as counted. Seven claims are carried, five are assumptions and two are unsupported.
+traps:
+  - Passing a claim because the id it cites is in the ledger, when the row's kind decides what the claim
+    can carry.
+  - Grading a claim on the first row it cites, when the weakest of its rows decides.
+  - Skipping a cited id the ledger does not have, and grading the claim on the rows that are left.
+  - Letting the draft's own `stated_as` set the status, when the status comes from the ledger.

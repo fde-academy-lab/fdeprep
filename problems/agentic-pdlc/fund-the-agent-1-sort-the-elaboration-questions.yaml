@@ -1,0 +1,713 @@
+slug: fund-the-agent-1-sort-the-elaboration-questions
+title: "Sort the elaboration agent's questions"
+day: 24
+skill: Ask the sponsor only what serves agreed intent, and never pass a null on as an answer
+artefact_type: code
+difficulty: easy
+complexity: C2
+track: agentic-pdlc
+concept:
+  topic: "Problem framing"
+  question: "Which of the agent's questions can discovery answer, and which trace to nothing?"
+est_minutes: 20
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: client-communication, weight: 0.5 }
+  - { slug: context-assembly, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json]
+
+build: { id: fund-the-agent, title: "Fund a field-service agent", stage: 1, of: 7 }
+
+brief_md: |
+  An air-conditioner and appliance maker the size of Voltas runs its service
+  through 1,100 franchise partners and 9,000 technicians. At the summer peak it
+  takes 38,000 service requests a day, and 44 percent of them say the AC is not
+  cooling. On Monday 2 February its head of customer service, who sponsors this
+  work, opened with one sentence: "Summer is six weeks away. Cut service cost
+  with AI." The sentence is on file as INT-0. It is her ask, and nothing may
+  trace to it.
+
+  Two days later she agreed the intent the work serves, and these two lines are
+  all of it:
+
+  | Id | Intent line |
+  |---|---|
+  | INT-1 | For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review. |
+  | INT-2 | First-time fix on those requests stays at or above 61 percent while INT-1 is pursued. |
+
+  On Thursday 5 February the vendor's elaboration agent, which turns agreed
+  intent into the questions discovery has to answer, proposed twelve of them.
+  Each one cites the intent lines it serves. The client's data lead can answer
+  some from the service system. The rest go to the sponsor, who answers once,
+  on Monday 9 February.
+
+  Two of the twelve should never reach her. Q-7 asks how installations should
+  be scheduled when the agent books a slot, and cites INT-9, a line nobody
+  wrote. Q-12 asks whether the agent should cancel a request when the customer
+  does not reply, and cites nothing. Q-9 needs care of another kind: nobody has
+  measured how many customers complete a diagnostic chat today, so the data
+  lead's read for it is null.
+
+  Write the sort that runs before anything reaches the sponsor.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the sponsor's opening sentence. Nothing in the sort depends on
+  it.
+
+  Call `tools["intent"]()` once. It returns the agreed intent lines:
+
+      [{"id": "INT-1", "text": "For AC-not-cooling requests in ..."},
+       {"id": "INT-2", "text": "First-time fix on those requests ..."}]
+
+  Ask the elaboration agent once with `llm(prompt)`, and put every intent line
+  in the prompt with its id. The agent proposes questions only for intent it
+  can see. It replies with one JSON object:
+
+      {"questions": [{"id": "Q-1", "text": "What is the median ...",
+                      "traces_to": ["INT-1"], "metric": "median_days_acnc"},
+                     ...]}
+
+  `traces_to` lists the intent lines a question serves. `metric` names what the
+  data lead would read to answer it, or is null.
+
+  `tools["discovery"](metric=...)` returns the data lead's read for a metric:
+  a number, or null when nobody has measured it.
+
+  Sort every question, in the agent's order:
+
+  | The question | Goes to |
+  |---|---|
+  | `traces_to` is empty, or names an id `intent()` does not return | `dropped`, with a reason that names the first such id or says the question traces to nothing |
+  | Its metric reads as a number | `answered`, with that number |
+  | It has no metric, or its read is null | `ask_sponsor` |
+
+  Any number is an answer, 0 included. Null is never an answer.
+
+  Return a JSON string:
+
+      {"answered": [{"id": "Q-1", "answer": 4.3}, ...],
+       "ask_sponsor": ["Q-3", ...],
+       "dropped": [{"id": "Q-7", "reason": "INT-9 is not an intent line"}, ...]}
+
+  Budget: one model call. Allowed imports: json.
+
+stub_code: |
+  import json
+
+  ASK = (
+      "You are the elaboration agent for a field-service agent at an AC maker.\n"
+      "Propose the discovery questions this work needs. Reply with one JSON object:\n"
+      '{"questions": [{"id": "Q-1", "text": "...", "traces_to": ["..."], "metric": "..."}]}\n'
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      # TODO 1: read tools["intent"]() and add every line to the prompt with
+      #         its id, so each question the agent proposes can cite one
+      reply = llm(ASK)
+
+      # TODO 2: parse the reply and take its list of questions
+      questions = []
+
+      answered, ask_sponsor, dropped = [], [], []
+      for q in questions:
+          # TODO 3: a question whose traces_to is empty, or names an id that is
+          #         not an intent line, goes to dropped with a reason naming it
+          # TODO 4: look the metric up with tools["discovery"](metric=...). A
+          #         number is an answer, 0 included; null goes to the sponsor
+          pass
+
+      return json.dumps({"answered": answered, "ask_sponsor": ask_sponsor, "dropped": dropped})
+
+steps:
+  - id: s1
+    text: Read the intent lines and put each one in the prompt with its id.
+    check_id: s1
+  - id: s2
+    text: Ask the agent once, parse its questions, and look each metric up in `discovery`.
+    check_id: s2
+  - id: s3
+    text: Drop a question that cites nothing, or cites an id that is not an intent line.
+    check_id: s3
+  - id: s4
+    text: Answer only with a number the data lead read, and send the rest to the sponsor.
+    check_id: s4
+
+step_checks:
+  # The stub sends the agent a prompt with no intent in it, so the agent asks
+  # for the lines and the stub never reads them.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: intent }
+        - { type: prompt_contains, value: 'INT-1' }
+        - { type: prompt_contains, value: 'INT-2' }
+  # The stub parses nothing, so it never asks discovery about Q-1's metric.
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: calls_tool_with, name: discovery, args: { metric: median_days_acnc } }
+  # Reads the twelve questions in either public case. Only a sort that checks
+  # every citation against intent() drops these two, and the stub drops none.
+  - step_id: s3
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [dropped]
+            properties:
+              dropped:
+                type: array
+                minItems: 2
+                maxItems: 2
+                prefixItems:
+                  - { type: object, required: [id, reason],
+                      properties: { id: { const: Q-7 }, reason: { type: string, pattern: "INT-9" } } }
+                  - { type: object, required: [id, reason],
+                      properties: { id: { const: Q-12 }, reason: { type: string, minLength: 1 } } }
+  # Reads the first public case, where five metrics read as numbers and Q-9's
+  # reads as null. The stub answers nothing.
+  - step_id: s4
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answered, ask_sponsor]
+            properties:
+              answered:
+                const:
+                  - { id: Q-1, answer: 4.3 }
+                  - { id: Q-2, answer: 61 }
+                  - { id: Q-4, answer: 23 }
+                  - { id: Q-8, answer: 34 }
+                  - { id: Q-11, answer: 38000 }
+              ask_sponsor: { type: array, contains: { const: Q-9 } }
+        - { type: returns_lacks, value: '"answer":\s*null' }
+
+hints:
+  - Each question says which intent line it serves. Before the question goes
+    anywhere, check that claim against the lines the sponsor agreed.
+  - "`intent()` returns every line she agreed. An id it does not return was never agreed, and an empty `traces_to` cites nothing at all."
+  - "Sort in one pass, in the agent's order: drop first, then read the metric, then choose between an answer and the sponsor."
+  - Compare the read with `None` instead of testing whether it is truthy, so a
+    measured 0 stays an answer and a null never becomes one.
+
+scenario:
+  headline: "Q-7 asked how to schedule installs, and no intent line says installs"
+  who: The head of customer service at an AC maker the size of Voltas
+  situation: >-
+    Two intent lines were agreed on Wednesday 4 February. The next day the
+    elaboration agent proposed twelve discovery questions, each citing the line
+    it serves. Q-7 asks how to schedule installations and cites INT-9, which
+    nobody wrote. Q-12 asks whether to cancel a request when the customer goes
+    quiet, and cites nothing.
+  stakes: >-
+    The sponsor answers once. On her list, a question about installs reads as
+    installs being in scope, and a null passed on as an answer reads as a
+    number somebody measured.
+  metrics:
+    - { label: Questions proposed, value: "12" }
+    - { label: Agreed intent lines, value: "2" }
+    - { label: Citing no agreed line, value: "2" }
+
+diagram:
+  title: Where the agent's questions are sorted
+  caption: >-
+    Every question cites the intent it serves. The sort checks each citation
+    against the agreed lines before discovery or the sponsor sees the question.
+  direction: lr
+  nodes:
+    - { id: sponsor, label: Sponsor, sub: agreed INT-1 and INT-2, kind: actor, tone: blue, at: [0, 0] }
+    - { id: intent, label: "`intent()`", sub: the agreed lines with their ids, kind: doc, tone: purple, at: [0, 1] }
+    - { id: agent, label: Elaboration agent, sub: proposes twelve questions, kind: agent, tone: teal, at: [1, 1] }
+    - { id: sort, label: Your sort, sub: checks every citation, kind: guard, tone: green, at: [2, 1] }
+    - { id: discovery, label: "`discovery`", sub: "the data lead's read, or null", kind: store, tone: blue, at: [2, 2] }
+    - { id: answered, label: Answered, sub: a number the data lead read, kind: output, tone: green, at: [3, 0] }
+    - { id: ask, label: Ask the sponsor, sub: no metric or a null read, kind: queue, tone: orange, at: [3, 1] }
+    - { id: dropped, label: Dropped, sub: cites no agreed intent line, kind: output, tone: pink, at: [3, 2] }
+  edges:
+    - { from: sponsor, to: intent, label: agreed on 4 February }
+    - { from: intent, to: agent, label: every line with its id, step: 1 }
+    - { from: agent, to: sort, label: questions and their citations, step: 2 }
+    - { from: sort, to: discovery, label: one metric at a time, step: 3 }
+    - { from: sort, to: answered, label: "a number, 0 included", tone: success }
+    - { from: sort, to: ask, label: no number to give }
+    - { from: sort, to: dropped, label: Q-7 and Q-12 }
+    - { from: agent, to: ask, label: forwarded unchecked, tone: danger }
+
+approach:
+  goal: Send the sponsor only what serves agreed intent and discovery cannot answer
+  branches:
+    - label: Give the agent the agreed intent
+      leaves: ["every line from `intent()`", each one with its id]
+    - label: Check what each question cites
+      detail: A citation is the agent's claim about its own question. Settle it against the lines the sponsor agreed.
+      leaves: [an id nobody wrote, a list with nothing in it]
+    - label: Ask discovery before the sponsor
+      leaves: ["a number is an answer, 0 included", null is a question for her]
+    - label: Keep the agent's order
+      leaves: [three lists, a reason with every drop]
+
+coach:
+  opening: >-
+    Before you sort anything, list the intent lines the agent was given. Every
+    question has to serve one of them.
+  signals:
+    - id: no-intent-read
+      when: { code_lacks: '["'']intent["'']' }
+      say: >-
+        The agent proposes questions for the intent it can see. Where does your
+        prompt get the lines the sponsor agreed?
+    - id: no-citation-check
+      when: { code_lacks: '\[\s*["'']traces_to["'']\s*\]|\.get\(\s*["'']traces_to["'']' }
+      say: >-
+        Nothing in your sort reads `traces_to`, so every question discovery
+        cannot answer goes to the sponsor. Q-7 cites INT-9. Who agreed that
+        line?
+    - id: intent-ids-typed-in
+      when: { code_matches: '["'']INT-[0-9]+["'']' }
+      say: >-
+        The agreed lines come from `intent()`. If the sponsor agrees a third
+        line, does your sort still hold?
+    - id: no-none-comparison
+      when:
+        code_matches: '["'']discovery["'']'
+        code_lacks: 'is\s+(not\s+)?None|[=!]=\s*None'
+      say: >-
+        Your sort never compares the read with `None`. What happens to a
+        question whose measured answer is 0?
+    - id: hidden-strays-reach-the-sponsor
+      when: { test_failed: q7_and_q12_never_reach_the_sponsor }
+      say: >-
+        In that run two questions that serve no agreed intent line reached the
+        sponsor's list. Where does your sort check what each question cites?
+    - id: hidden-ask-cited
+      when: { test_failed: a_question_citing_the_sponsors_sentence_is_dropped }
+      say: >-
+        In that run a question cited the sponsor's opening sentence. Is that
+        one of the lines `intent()` returns?
+    - id: hidden-padded-citation
+      when: { test_failed: q7_citing_a_real_line_beside_int_9_is_still_dropped }
+      say: >-
+        In that run Q-7 cited a real intent line beside INT-9. Does one real
+        citation make up for one nobody agreed?
+    - id: hidden-zero
+      when: { test_failed: a_measured_zero_is_an_answer }
+      say: >-
+        In that run the data lead read 0 for one metric. Is 0 a read nobody
+        made, or a measurement?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and press Run. The trace shows what the agent asks for
+        when the intent lines are missing from the prompt.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint says where to look, and on this
+        tier it costs nothing to open.
+  wrap_up: >-
+    An agent's question is a proposal until it serves a line the sponsor
+    agreed. Drop what serves nothing, answer what the data lead measured, and
+    send her only the rest.
+
+tests:
+  - name: sorts_the_twelve_questions_the_agent_proposed
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Summer is six weeks away. Cut service cost with AI." }
+      llm_script:
+        - match: { all: [ { contains: "INT-1" }, { contains: "INT-2" } ] }
+          reply: |
+            {"questions": [
+              {"id": "Q-1", "text": "What is the median request-to-completed-repair time for ACNC today, and from which system?", "traces_to": ["INT-1"], "metric": "median_days_acnc"},
+              {"id": "Q-2", "text": "What is first-time fix on ACNC today?", "traces_to": ["INT-2"], "metric": "ftf_acnc"},
+              {"id": "Q-3", "text": "Do all three cities report into the same service system?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-4", "text": "What share of ACNC visits end without the part?", "traces_to": ["INT-2"], "metric": "no_part_visits"},
+              {"id": "Q-5", "text": "Is partner stock readable by API, and how old is the data?", "traces_to": ["INT-2"], "metric": null},
+              {"id": "Q-6", "text": "Does \"completed repair\" mean the technician's close code or the customer's confirmation?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-7", "text": "How should installations be scheduled when the agent books a slot?", "traces_to": ["INT-9"], "metric": null},
+              {"id": "Q-8", "text": "What is the same-day visit rate today?", "traces_to": ["INT-1"], "metric": "same_day_visits"},
+              {"id": "Q-9", "text": "How many ACNC customers complete a diagnostic chat today?", "traces_to": ["INT-1"], "metric": "diagnostic_chat_completion"},
+              {"id": "Q-10", "text": "Who may change a booked slot: the customer, the partner, or both?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-11", "text": "What is the peak daily request volume?", "traces_to": ["INT-1"], "metric": "requests_per_day_peak"},
+              {"id": "Q-12", "text": "Should the agent cancel a request when the customer does not reply?", "traces_to": [], "metric": null}
+            ]}
+        - match: "*"
+          reply: "Which intent should these questions serve? Send me the agreed intent lines with their ids, and every question I propose will cite the line it serves."
+      tools:
+        intent:
+          returns:
+            - { id: INT-1, text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: INT-2, text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        discovery:
+          by_arg:
+            arg: metric
+            values: { median_days_acnc: 4.3, ftf_acnc: 61, no_part_visits: 23, same_day_visits: 34, requests_per_day_peak: 38000 }
+            default: null
+      budget: { max_llm_calls: 2, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answered, ask_sponsor, dropped]
+            properties:
+              answered:
+                const:
+                  - { id: Q-1, answer: 4.3 }
+                  - { id: Q-2, answer: 61 }
+                  - { id: Q-4, answer: 23 }
+                  - { id: Q-8, answer: 34 }
+                  - { id: Q-11, answer: 38000 }
+              ask_sponsor: { type: array, items: { type: string } }
+              dropped: { type: array }
+        - { type: returns_lacks, value: '"answer":\s*null' }
+        - { type: calls_tool, name: intent }
+        - { type: llm_calls_at_most, value: 1 }
+
+  # The data lead's reads before peak volume was pulled: requests_per_day_peak
+  # has no read yet, so Q-11 waits for the sponsor alongside Q-9.
+  - name: a_metric_nobody_has_read_goes_to_the_sponsor
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Summer is six weeks away. Cut service cost with AI." }
+      llm_script:
+        - match: { all: [ { contains: "INT-1" }, { contains: "INT-2" } ] }
+          reply: |
+            {"questions": [
+              {"id": "Q-1", "text": "What is the median request-to-completed-repair time for ACNC today, and from which system?", "traces_to": ["INT-1"], "metric": "median_days_acnc"},
+              {"id": "Q-2", "text": "What is first-time fix on ACNC today?", "traces_to": ["INT-2"], "metric": "ftf_acnc"},
+              {"id": "Q-3", "text": "Do all three cities report into the same service system?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-4", "text": "What share of ACNC visits end without the part?", "traces_to": ["INT-2"], "metric": "no_part_visits"},
+              {"id": "Q-5", "text": "Is partner stock readable by API, and how old is the data?", "traces_to": ["INT-2"], "metric": null},
+              {"id": "Q-6", "text": "Does \"completed repair\" mean the technician's close code or the customer's confirmation?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-7", "text": "How should installations be scheduled when the agent books a slot?", "traces_to": ["INT-9"], "metric": null},
+              {"id": "Q-8", "text": "What is the same-day visit rate today?", "traces_to": ["INT-1"], "metric": "same_day_visits"},
+              {"id": "Q-9", "text": "How many ACNC customers complete a diagnostic chat today?", "traces_to": ["INT-1"], "metric": "diagnostic_chat_completion"},
+              {"id": "Q-10", "text": "Who may change a booked slot: the customer, the partner, or both?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-11", "text": "What is the peak daily request volume?", "traces_to": ["INT-1"], "metric": "requests_per_day_peak"},
+              {"id": "Q-12", "text": "Should the agent cancel a request when the customer does not reply?", "traces_to": [], "metric": null}
+            ]}
+        - match: "*"
+          reply: "Which intent should these questions serve? Send me the agreed intent lines with their ids, and every question I propose will cite the line it serves."
+      tools:
+        intent:
+          returns:
+            - { id: INT-1, text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: INT-2, text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        discovery:
+          by_arg:
+            arg: metric
+            values: { median_days_acnc: 4.3, ftf_acnc: 61, no_part_visits: 23, same_day_visits: 34 }
+            default: null
+      budget: { max_llm_calls: 2, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answered, ask_sponsor, dropped]
+            properties:
+              answered:
+                const:
+                  - { id: Q-1, answer: 4.3 }
+                  - { id: Q-2, answer: 61 }
+                  - { id: Q-4, answer: 23 }
+                  - { id: Q-8, answer: 34 }
+              ask_sponsor:
+                type: array
+                allOf:
+                  - { contains: { const: Q-9 } }
+                  - { contains: { const: Q-11 } }
+        - { type: returns_lacks, value: '"answer":\s*null' }
+
+  - name: q7_and_q12_never_reach_the_sponsor
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Summer is six weeks away. Cut service cost with AI." }
+      llm_script:
+        - match: { all: [ { contains: "INT-1" }, { contains: "INT-2" } ] }
+          reply: |
+            {"questions": [
+              {"id": "Q-1", "text": "What is the median request-to-completed-repair time for ACNC today, and from which system?", "traces_to": ["INT-1"], "metric": "median_days_acnc"},
+              {"id": "Q-2", "text": "What is first-time fix on ACNC today?", "traces_to": ["INT-2"], "metric": "ftf_acnc"},
+              {"id": "Q-3", "text": "Do all three cities report into the same service system?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-4", "text": "What share of ACNC visits end without the part?", "traces_to": ["INT-2"], "metric": "no_part_visits"},
+              {"id": "Q-5", "text": "Is partner stock readable by API, and how old is the data?", "traces_to": ["INT-2"], "metric": null},
+              {"id": "Q-6", "text": "Does \"completed repair\" mean the technician's close code or the customer's confirmation?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-7", "text": "How should installations be scheduled when the agent books a slot?", "traces_to": ["INT-9"], "metric": null},
+              {"id": "Q-8", "text": "What is the same-day visit rate today?", "traces_to": ["INT-1"], "metric": "same_day_visits"},
+              {"id": "Q-9", "text": "How many ACNC customers complete a diagnostic chat today?", "traces_to": ["INT-1"], "metric": "diagnostic_chat_completion"},
+              {"id": "Q-10", "text": "Who may change a booked slot: the customer, the partner, or both?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-11", "text": "What is the peak daily request volume?", "traces_to": ["INT-1"], "metric": "requests_per_day_peak"},
+              {"id": "Q-12", "text": "Should the agent cancel a request when the customer does not reply?", "traces_to": [], "metric": null}
+            ]}
+        - match: "*"
+          reply: "Which intent should these questions serve? Send me the agreed intent lines with their ids, and every question I propose will cite the line it serves."
+      tools:
+        intent:
+          returns:
+            - { id: INT-1, text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: INT-2, text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        discovery:
+          by_arg:
+            arg: metric
+            values: { median_days_acnc: 4.3, ftf_acnc: 61, no_part_visits: 23, same_day_visits: 34, requests_per_day_peak: 38000 }
+            default: null
+      budget: { max_llm_calls: 2, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answered, ask_sponsor, dropped]
+            properties:
+              ask_sponsor: { const: [Q-3, Q-5, Q-6, Q-9, Q-10] }
+              dropped:
+                type: array
+                minItems: 2
+                maxItems: 2
+                prefixItems:
+                  - { type: object, required: [id, reason],
+                      properties: { id: { const: Q-7 }, reason: { type: string, pattern: "INT-9" } } }
+                  - { type: object, required: [id, reason],
+                      properties: { id: { const: Q-12 }, reason: { type: string, minLength: 1 } } }
+
+  # Derived from Q-12: the agent cites the sponsor's opening sentence, INT-0,
+  # for the auto-cancel question, since cancelling cuts service cost.
+  - name: a_question_citing_the_sponsors_sentence_is_dropped
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Summer is six weeks away. Cut service cost with AI." }
+      llm_script:
+        - match: { all: [ { contains: "INT-1" }, { contains: "INT-2" } ] }
+          reply: |
+            {"questions": [
+              {"id": "Q-1", "text": "What is the median request-to-completed-repair time for ACNC today, and from which system?", "traces_to": ["INT-1"], "metric": "median_days_acnc"},
+              {"id": "Q-2", "text": "What is first-time fix on ACNC today?", "traces_to": ["INT-2"], "metric": "ftf_acnc"},
+              {"id": "Q-3", "text": "Do all three cities report into the same service system?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-4", "text": "What share of ACNC visits end without the part?", "traces_to": ["INT-2"], "metric": "no_part_visits"},
+              {"id": "Q-5", "text": "Is partner stock readable by API, and how old is the data?", "traces_to": ["INT-2"], "metric": null},
+              {"id": "Q-6", "text": "Does \"completed repair\" mean the technician's close code or the customer's confirmation?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-7", "text": "How should installations be scheduled when the agent books a slot?", "traces_to": ["INT-9"], "metric": null},
+              {"id": "Q-8", "text": "What is the same-day visit rate today?", "traces_to": ["INT-1"], "metric": "same_day_visits"},
+              {"id": "Q-9", "text": "How many ACNC customers complete a diagnostic chat today?", "traces_to": ["INT-1"], "metric": "diagnostic_chat_completion"},
+              {"id": "Q-10", "text": "Who may change a booked slot: the customer, the partner, or both?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-11", "text": "What is the peak daily request volume?", "traces_to": ["INT-1"], "metric": "requests_per_day_peak"},
+              {"id": "Q-12", "text": "Should the agent cancel a request when the customer does not reply?", "traces_to": ["INT-0"], "metric": null}
+            ]}
+        - match: "*"
+          reply: "Which intent should these questions serve? Send me the agreed intent lines with their ids, and every question I propose will cite the line it serves."
+      tools:
+        intent:
+          returns:
+            - { id: INT-1, text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: INT-2, text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        discovery:
+          by_arg:
+            arg: metric
+            values: { median_days_acnc: 4.3, ftf_acnc: 61, no_part_visits: 23, same_day_visits: 34, requests_per_day_peak: 38000 }
+            default: null
+      budget: { max_llm_calls: 2, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answered, ask_sponsor, dropped]
+            properties:
+              ask_sponsor: { const: [Q-3, Q-5, Q-6, Q-9, Q-10] }
+              dropped:
+                type: array
+                minItems: 2
+                maxItems: 2
+                prefixItems:
+                  - { type: object, required: [id, reason],
+                      properties: { id: { const: Q-7 }, reason: { type: string, pattern: "INT-9" } } }
+                  - { type: object, required: [id, reason],
+                      properties: { id: { const: Q-12 }, reason: { type: string, pattern: "INT-0" } } }
+
+  # Derived from Q-7: the agent cites INT-1 beside INT-9, so one citation is
+  # real and one was never agreed.
+  - name: q7_citing_a_real_line_beside_int_9_is_still_dropped
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Summer is six weeks away. Cut service cost with AI." }
+      llm_script:
+        - match: { all: [ { contains: "INT-1" }, { contains: "INT-2" } ] }
+          reply: |
+            {"questions": [
+              {"id": "Q-1", "text": "What is the median request-to-completed-repair time for ACNC today, and from which system?", "traces_to": ["INT-1"], "metric": "median_days_acnc"},
+              {"id": "Q-2", "text": "What is first-time fix on ACNC today?", "traces_to": ["INT-2"], "metric": "ftf_acnc"},
+              {"id": "Q-3", "text": "Do all three cities report into the same service system?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-4", "text": "What share of ACNC visits end without the part?", "traces_to": ["INT-2"], "metric": "no_part_visits"},
+              {"id": "Q-5", "text": "Is partner stock readable by API, and how old is the data?", "traces_to": ["INT-2"], "metric": null},
+              {"id": "Q-6", "text": "Does \"completed repair\" mean the technician's close code or the customer's confirmation?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-7", "text": "How should installations be scheduled when the agent books a slot?", "traces_to": ["INT-1", "INT-9"], "metric": null},
+              {"id": "Q-8", "text": "What is the same-day visit rate today?", "traces_to": ["INT-1"], "metric": "same_day_visits"},
+              {"id": "Q-9", "text": "How many ACNC customers complete a diagnostic chat today?", "traces_to": ["INT-1"], "metric": "diagnostic_chat_completion"},
+              {"id": "Q-10", "text": "Who may change a booked slot: the customer, the partner, or both?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-11", "text": "What is the peak daily request volume?", "traces_to": ["INT-1"], "metric": "requests_per_day_peak"},
+              {"id": "Q-12", "text": "Should the agent cancel a request when the customer does not reply?", "traces_to": [], "metric": null}
+            ]}
+        - match: "*"
+          reply: "Which intent should these questions serve? Send me the agreed intent lines with their ids, and every question I propose will cite the line it serves."
+      tools:
+        intent:
+          returns:
+            - { id: INT-1, text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: INT-2, text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        discovery:
+          by_arg:
+            arg: metric
+            values: { median_days_acnc: 4.3, ftf_acnc: 61, no_part_visits: 23, same_day_visits: 34, requests_per_day_peak: 38000 }
+            default: null
+      budget: { max_llm_calls: 2, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answered, ask_sponsor, dropped]
+            properties:
+              ask_sponsor: { const: [Q-3, Q-5, Q-6, Q-9, Q-10] }
+              dropped:
+                type: array
+                minItems: 2
+                maxItems: 2
+                prefixItems:
+                  - { type: object, required: [id, reason],
+                      properties: { id: { const: Q-7 }, reason: { type: string, pattern: "INT-9" } } }
+                  - { type: object, required: [id, reason],
+                      properties: { id: { const: Q-12 }, reason: { type: string, minLength: 1 } } }
+
+  # Derived from Q-3: the agent asks it as a count the data lead can read, and
+  # the read is 0, because all three cities report into one service system.
+  - name: a_measured_zero_is_an_answer
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Summer is six weeks away. Cut service cost with AI." }
+      llm_script:
+        - match: { all: [ { contains: "INT-1" }, { contains: "INT-2" } ] }
+          reply: |
+            {"questions": [
+              {"id": "Q-1", "text": "What is the median request-to-completed-repair time for ACNC today, and from which system?", "traces_to": ["INT-1"], "metric": "median_days_acnc"},
+              {"id": "Q-2", "text": "What is first-time fix on ACNC today?", "traces_to": ["INT-2"], "metric": "ftf_acnc"},
+              {"id": "Q-3", "text": "How many of the three cities report into a second service system?", "traces_to": ["INT-1"], "metric": "cities_on_a_second_system"},
+              {"id": "Q-4", "text": "What share of ACNC visits end without the part?", "traces_to": ["INT-2"], "metric": "no_part_visits"},
+              {"id": "Q-5", "text": "Is partner stock readable by API, and how old is the data?", "traces_to": ["INT-2"], "metric": null},
+              {"id": "Q-6", "text": "Does \"completed repair\" mean the technician's close code or the customer's confirmation?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-7", "text": "How should installations be scheduled when the agent books a slot?", "traces_to": ["INT-9"], "metric": null},
+              {"id": "Q-8", "text": "What is the same-day visit rate today?", "traces_to": ["INT-1"], "metric": "same_day_visits"},
+              {"id": "Q-9", "text": "How many ACNC customers complete a diagnostic chat today?", "traces_to": ["INT-1"], "metric": "diagnostic_chat_completion"},
+              {"id": "Q-10", "text": "Who may change a booked slot: the customer, the partner, or both?", "traces_to": ["INT-1"], "metric": null},
+              {"id": "Q-11", "text": "What is the peak daily request volume?", "traces_to": ["INT-1"], "metric": "requests_per_day_peak"},
+              {"id": "Q-12", "text": "Should the agent cancel a request when the customer does not reply?", "traces_to": [], "metric": null}
+            ]}
+        - match: "*"
+          reply: "Which intent should these questions serve? Send me the agreed intent lines with their ids, and every question I propose will cite the line it serves."
+      tools:
+        intent:
+          returns:
+            - { id: INT-1, text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: INT-2, text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        discovery:
+          by_arg:
+            arg: metric
+            values: { median_days_acnc: 4.3, ftf_acnc: 61, cities_on_a_second_system: 0, no_part_visits: 23, same_day_visits: 34, requests_per_day_peak: 38000 }
+            default: null
+      budget: { max_llm_calls: 2, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [answered, ask_sponsor, dropped]
+            properties:
+              answered:
+                const:
+                  - { id: Q-1, answer: 4.3 }
+                  - { id: Q-2, answer: 61 }
+                  - { id: Q-3, answer: 0 }
+                  - { id: Q-4, answer: 23 }
+                  - { id: Q-8, answer: 34 }
+                  - { id: Q-11, answer: 38000 }
+              ask_sponsor: { const: [Q-5, Q-6, Q-9, Q-10] }
+
+reference_md: |
+  The elaboration agent did what it was asked. It read two intent lines and
+  proposed twelve questions, and ten of them serve those lines. Q-7 and Q-12
+  read like discovery questions too. On the sponsor's list, a question about
+  scheduling installations tells her installations are part of the work, and a
+  question about cancelling requests when customers go quiet tells her somebody
+  plans to. A sort that forwards whatever discovery cannot answer makes her the
+  filter for the agent's mistakes, in the one reply she gives to discovery.
+
+  Each id in `traces_to` is a claim the agent makes about its own question, and
+  only the agreed intent can settle it. `intent()` lists the lines the sponsor
+  agreed. A question goes forward when it cites at least one id and every id it
+  cites is on that list. INT-9 fails the lookup because nobody ever wrote it,
+  and a real line cited beside it does not change that. The sponsor's opening
+  sentence fails it as well: it is on file as INT-0, and it is the ask she made
+  before anyone agreed what the work would serve.
+
+  Null is the data lead's way of saying nobody has measured the thing. Q-9 asks
+  how many customers complete a diagnostic chat today, a number no one has, so
+  the question goes to the sponsor and stays out of the answers. A measured 0 is
+  the other case: somebody read it, and it belongs with the answers. Comparing
+  the read with `None`, instead of testing whether it is truthy, keeps the two
+  apart.
+
+  AWS puts this step in Inception and names it Mob Elaboration, in which AI
+  turns business intent into requirements, stories and units, "where the entire
+  team actively validates AI's questions and proposals"
+  ([AI-Driven Development Life Cycle](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/),
+  AWS DevOps blog, Raja SP, 31 July 2025, read 8 October 2026). Running the
+  check in code first means the team spends its time on the five questions only
+  the sponsor can answer.
+
+  A reason travels with every drop because both questions come back in later
+  stages of this build: the auto-cancel idea as a requirement nobody asked for,
+  and installations as a message from the sponsor. A dropped question with its
+  reason is what lets the team say why each one was never asked.
+
+  The three lists, the routing rule and the ids are this problem's own
+  construction.
+
+interview_evidence:
+  round: both
+  asked_as: |
+    An AI agent proposed a dozen discovery questions for your client. Before any of them reach the sponsor, what do you check, and what happens to a question nobody can answer from the data?
+  source: |
+    Author judgement. No employer frequency data stands behind it. AWS describes Inception's
+    Mob Elaboration as the step "where the entire team actively validates AI's questions and
+    proposals": AI-Driven Development Life Cycle, AWS DevOps blog, Raja SP, 31 July 2025,
+    https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/, read 8 October 2026.
+
+tools:
+  - name: intent
+    args: ""
+    returns: The intent lines the sponsor agreed, each with its `id` and `text`.
+  - name: discovery
+    args: metric
+    returns: "The data lead's read for that metric: a number, or null when nobody has measured it."
+example:
+  case: sorts_the_twelve_questions_the_agent_proposed
+  expect: Q-1, Q-2, Q-4, Q-8 and Q-11 are answered from discovery, the five with no number go to the
+    sponsor, and Q-7 and Q-12 are dropped because neither cites an agreed intent line.
+traps:
+  - Sending the sponsor every question discovery cannot answer, including ones that cite a line nobody
+    wrote or cite nothing at all.
+  - Checking only that `traces_to` is not empty, when every id in it has to be a line `intent()` returns.
+  - Testing the read for truth, so a measured 0 goes to the sponsor as if nobody had read it.
+  - Passing a null on as an answer, which the discovery plan then reads as a number somebody measured.
