@@ -12,7 +12,7 @@ import { createSubmission, DuplicateSubmissionError, GateRefused, RateLimitError
 import { dispatchOnce } from "../lib/queue/dispatcher.ts";
 import { receive } from "../lib/queue/shim.ts";
 import { writeResult } from "../lib/queue/result-writer.ts";
-import { stateForSubmission, isUpgrade } from "../lib/competency/score.ts";
+import { stateForSubmission, isUpgrade } from "../lib/eval/competency.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 
 let learner: Awaited<ReturnType<typeof seedLearner>>;
@@ -371,13 +371,14 @@ describe("give-up unlocks L5 and records the choice", () => {
 
 describe("competency transitions, docs/02 section 7", () => {
   it("computes the state a submission earns", () => {
-    expect(stateForSubmission({ verdict: "fail", hintsUsed: 0, llmCalls: 1, callBudget: 6 }))
+    const kind = "submit";
+    expect(stateForSubmission({ kind, verdict: "fail", hintsUsed: 0, llmCalls: 1, callBudget: 6 }))
       .toBe("attempted");
-    expect(stateForSubmission({ verdict: "pass", hintsUsed: 0, llmCalls: 6, callBudget: 6 }))
+    expect(stateForSubmission({ kind, verdict: "pass", hintsUsed: 0, llmCalls: 6, callBudget: 6 }))
       .toBe("clean");
-    expect(stateForSubmission({ verdict: "pass", hintsUsed: 1, llmCalls: 1, callBudget: 6 }))
+    expect(stateForSubmission({ kind, verdict: "pass", hintsUsed: 1, llmCalls: 1, callBudget: 6 }))
       .toBe("passed");
-    expect(stateForSubmission({ verdict: "pass", hintsUsed: 0, llmCalls: 7, callBudget: 6 }))
+    expect(stateForSubmission({ kind, verdict: "pass", hintsUsed: 0, llmCalls: 7, callBudget: 6 }))
       .toBe("passed");
   });
 

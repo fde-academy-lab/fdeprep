@@ -22,8 +22,11 @@ interface Gate {
   passed?: number;
   total?: number;
   score?: number;
+  /** The rubric gate's score out of a hundred, as judge/handler.py names it. */
+  percent?: number;
   checks?: Array<{ rule?: string; status?: string; message?: string | null }>;
   cases?: Array<{ name?: string; status?: string; message?: string | null }>;
+  criteria?: unknown[];
 }
 
 export interface ResultContract {
@@ -173,12 +176,14 @@ export function pretrainedFor(options?: PretrainedOptions): Panelist {
  * Panelist 3, assembled from the rubric gate the judge already produced.
  *
  * The judge returns a rubric score out of a hundred. That becomes a band here,
- * once, using the thresholds anchored to the authored exemplars.
+ * once, using the thresholds anchored to the authored exemplars. The seat also
+ * records which judge prompt produced the score, which is how an evaluation
+ * comes to name it.
  */
 export function llmPanelist(contract: ResultContract): Panelist {
   return {
     name: "llm",
-    async run(): Promise<PanelistResult> {
+    async run(input): Promise<PanelistResult> {
       const gate = contract.gates?.[MODEL_GATE];
 
       if (!gate || gate.status === "skipped") {
@@ -186,18 +191,69 @@ export function llmPanelist(contract: ResultContract): Panelist {
         // deterministic-first rule working rather than an outage.
         return { status: "skipped", reason: "earlier_gate_failed", ms: 0, findings: [] };
       }
-      if (gate.score === undefined || gate.score === null) {
+
+      const score = rubricScore(contract, input.artefactType);
+      if (score === null) {
+        // A defence the word cap stopped never reached a model, which is the
+        // same rule as above: the cheaper check failed it, and no re-run is owed.
+        if (input.artefactType === "defence" && !gate.criteria?.length) {
+          return { status: "skipped", reason: "earlier_gate_failed", ms: 0, findings: [] };
+        }
         return { status: "unavailable", reason: "no_rubric_score", ms: 0, findings: [] };
       }
 
+      const prompt = judgePromptOf(contract);
       return {
         status: "ran",
         ms: 0,
         findings: [],
-        band: bandForScore(Number(gate.score)),
+        band: bandForScore(score),
+        ...(prompt ? { prompt } : {}),
       };
     },
   };
+}
+
+/**
+ * The judge's rubric score out of a hundred, or null where the result has none.
+ *
+ * judge/handler.py writes it on the rubric gate as `percent`, and a defence
+ * carries it as the result's own `score`, because the defence's rubric gate
+ * holds the criterion and nothing else. `score` on the gate comes first, since
+ * the seeded contracts and the tests wrote that name before anything read the
+ * judge's. Until S15.3 only `score` was read, so panelist 3 reported every real
+ * design, prompt and defence result unavailable, every one of those
+ * evaluations went partial, and the free re-run each one promised was owed by
+ * a drain that did not exist. Reading the judge's own fields is what lets the
+ * drain pay those off without a model call.
+ */
+export function rubricScore(contract: ResultContract, artefactType: string): number | null {
+  const gate = contract.gates?.[MODEL_GATE];
+  if (!gate || gate.status === "skipped") return null;
+  for (const value of [gate.score, gate.percent]) {
+    if (typeof value === "number" && Number.isFinite(value)) return value;
+  }
+  if (artefactType === "defence" && gate.criteria?.length &&
+      typeof contract.score === "number" && Number.isFinite(contract.score)) {
+    return contract.score;
+  }
+  return null;
+}
+
+/** A file name in judge/prompts/, and nothing that could be a path. */
+const PROMPT_FILE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,118}\.md$/;
+
+/**
+ * The judge prompt the result names, or null.
+ *
+ * The judge sets `judge_prompt` only where a prompt graded the answer. A value
+ * that is not a plain file name is dropped rather than stored, because faculty
+ * read it as the name of a file they can open.
+ */
+export function judgePromptOf(contract: ResultContract): string | null {
+  const value = contract["judge_prompt"];
+  return typeof value === "string" && PROMPT_FILE.test(value) && !value.includes("..")
+    ? value : null;
 }
 
 export function panelistsFor(

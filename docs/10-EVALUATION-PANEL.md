@@ -132,7 +132,7 @@ Heuristics produce findings and never produce a terminal fail on their own, beca
 
 The registry lives in `web/lib/eval/heuristics.ts` and runs inside panelist 1. It runs after the gates rather than before them, which does not soften the deterministic-first rule in `CLAUDE.md`: that rule exists so a cheap check can save a model call, and a rule that cannot fail a submission can never save one.
 
-Every threshold was measured against the catalogue rather than chosen: first on 21 September 2026, when it held 25 problems, and again on 30 September 2026, when it held 92 problems and 12 voice questions. The figures below are from 30 September, and every threshold held.
+Every threshold was measured against the catalogue rather than chosen: first on 21 September 2026, when it held 25 problems, and again on 30 September 2026, when it held 92 problems and 12 voice questions. The figures below are from 30 September, and every threshold held. The `names_no_constraint` row is from 8 October 2026, when its lists were written.
 
 | Rule | Threshold | What the measurement said |
 |---|---|---|
@@ -140,7 +140,7 @@ Every threshold was measured against the catalogue rather than chosen: first on 
 | `single_paragraph` | 400 words in one paragraph | No authored design exemplar is a single paragraph. The longest is 606 words in eight. |
 | `budget_ignored` | More than twice the declared budget | Straight from this table. |
 | `no_tradeoff_language` | No marker from a deliberately narrow list | `but` and `while` appear in nearly every answer of any quality, so including them makes the rule unable to fire at all. As the list stands it fires on none of the 12 strong C4 design exemplars and on 6 of the 12 adequate ones. |
-| `names_no_constraint` | No constraint term appears in the answer | Needs a `constraints` list, which no problem authors yet, so it is silent until one does. |
+| `names_no_constraint` | No constraint term appears in the answer | Every one of the 28 C3 and C4 design problems declares a `constraints` list, and the validator refuses one that does not. The terms restate the problem's scenario, and its strong exemplar names at least one of them word for word. Measured on 8 October 2026, the rule fires on none of the 28 strong exemplars, none of the 28 adequate ones and 4 of the 28 weak ones. |
 
 `restates_the_brief` cannot tell an unedited original prompt from the best authored answer, since 0.45 and 0.44 are the same number for this purpose. The static gate is what stops an unedited prompt submission: each of the nine catalogue prompt problems has a `must_remove` rule whose text is in the original, or a `max_words` limit the original breaks, which is 411 words against 250 on `compress-a-prompt-without-losing-a-constraint`. The rule's job is the answer that pastes the brief back.
 
@@ -233,6 +233,7 @@ This is the judge that exists today, in `judge/`, with its prompts as versioned 
 |---|---|
 | A panelist envelope | The judge returns findings tagged with its own identity, rather than a bare score, so the consolidator can attribute them. |
 | A hard timeout | The panel does not wait indefinitely. When the deadline passes, P3 is `unavailable` and the evaluation is `partial`. |
+| The prompt's name | Built 8 October 2026 (S15.3). A response a judge prompt graded carries `judge_prompt`, the file's name in `judge/prompts/`, such as `rubric.v1.md` or `defence.v1.md`. A response a cheaper check stopped carries none. P3's seat records it and section 10 says where it goes. |
 
 Everything in `.claude/rules/01-trust-boundaries.md` about prompt injection still holds. Learner text reaches P3 wrapped in delimiters and labelled as data, output is parsed as JSON against a schema and rejected when it does not conform, and a design answer asking for full marks scores on content.
 
@@ -348,6 +349,8 @@ Two rules make degradation safe rather than merely graceful.
 
 **A re-evaluation never consumes an allowance.** It is the platform finishing work it already owed.
 
+**The judge worker pays the backlog.** Built 8 October 2026 (S15.3). Each tick, after its own judgements, the worker re-runs at most three partial evaluations, oldest first: `drainReevaluations` in `web/lib/queue/judge-worker.ts`, over `reevaluationBacklog`. A re-run asks again only the panelists that could not run and carries the rest across, and P3 reads the judgement already on the record before it calls the judge. P1 is rebuilt from the committed result with the committed verdict, so a re-run moves no verdict. A re-run that completes the evaluation appends a row, floored at the provisional score. One that would still be partial writes nothing, so an outage stays one `partial` row, and that submission waits a minute before its next try, doubling to fifteen minutes. Nothing on the path reads or spends an allowance.
+
 **A worker refuses to start when its own catalogue requires a panelist it cannot run.** Checked once at boot, never per submission, because the failure it catches is permanent: a model that is not on disk now will not be on disk in an hour. The worker reads the published problems, takes the strongest demand any one of them places, and probes. A code-only catalogue starts without the embedding model, because C2 makes panelist 2 optional and the battery decides the grade. A catalogue holding one C3 problem does not. Nothing here is configured by hand: an operator describing what their box is for would eventually describe it wrong, so the content decides. `EVAL_DEGRADED_PANELISTS=pretrained` starts anyway, prints what was given up, and is a decision somebody made rather than a default.
 
 Only absences are checked at boot. Bedrock being unreachable is transient, costs a model call to test, and is already handled at run time by the evaluation going `partial` and owing a free re-run.
@@ -363,6 +366,8 @@ The learner-facing message names the next action, per `.claude/rules/02-writing.
 ## 10. The evaluation record
 
 One row per submission per evaluation attempt. Immutable. A re-run writes a new row and the latest complete row wins.
+
+Amended 8 October 2026: the newest row is the one shown, which is the same rule in practice. The result writer is the only writer of a `partial` row and it writes the first row, and a re-run, a regrade and an override write only complete rows, so a submission with any complete row has a complete row as its newest.
 
 ```json
 {
@@ -407,6 +412,27 @@ The result contract in `03` section 5 does not change shape. The front end keeps
 
 `gates` continues to be P1's output, because that is what it always was. P2 and P3 never appear in `gates`, since a gate is something that passes or fails and a band is not.
 
+P3 reads its score from the rubric gate's `percent`, the field the judge writes, and on a defence from the result's own `score`, because a defence's rubric gate holds the criterion alone. Until 8 October 2026 it read only a `score` field the judge never wrote, so every real design, prompt and defence evaluation was `partial` and owed a re-run. The drain in section 9 pays those off from the stored judgement, with no model call.
+
+### Which prompt graded it, and the regrade
+
+Built 8 October 2026 (S15.3). Every evaluation records `judge_prompt`, the file in `judge/prompts/` whose wording produced P3's band, from the `judge_prompt` the judge returns. It is empty where no judge prompt graded the answer, and on every row written before the column existed. An override copies it from the row it corrects, because it copies that row's panel.
+
+`npm run regrade` grades earlier submissions again after a prompt changes, and `05` section 7 has the drill. It takes each submission whose newest evaluation is complete, carries no faculty override, and was graded by P3 under a prompt other than the current one, or under the one named with `--from`. It works oldest first, up to `--limit`, asks the judge again with the rubric alone, and appends a new evaluation.
+
+| Rule | Why |
+|---|---|
+| The old row is never edited or deleted, and each row names its prompt. | An appeal has to read what the earlier prompt said. |
+| The terminal verdict never moves, in either direction. | Only deterministic checks produce one. P1 is rebuilt from the committed result with the committed verdict. |
+| The band may move either way, and the newest row is the one shown. | The newer prompt is the better judge, and a band from a retired prompt has no claim to outrank it. |
+| No allowance is spent. | Regrading is the platform's work, as a re-run is. |
+| P2 is carried across unchanged. | The prompt is the only thing that changed. |
+| A faculty correction is never regraded. | A person settled that grade, and a machine does not overrule one. |
+
+The learner's result keeps its committed verdict, score and rubric breakdown. The contract's `evaluation` block and `feedback_md` follow the newest row, as they do after a re-run, and neither names a prompt. Faculty read every row of a submission, newest first, with its prompt and what each panelist said, at `/admin/submissions/[id]`, linked from Submissions and from each Disagreements row.
+
+The current prompt is whatever `RUBRIC_PROMPT` in `judge/rubric.py` and `DEFENCE_PROMPT` in `judge/defence.py` name, read from that source. A run stops at the first answer the judge grades with some other prompt, because that judge has not been deployed with the new one and every further call would grade under the old wording again.
+
 ---
 
 ## 11. Validator rules this adds
@@ -422,6 +448,7 @@ Checked in CI on every problem, per the rule in `CLAUDE.md` that problem YAML is
 | Every heuristic named in a problem exists in the heuristic registry. | An author inventing a heuristic inline produces a rule that fails at run time in front of a learner. |
 | A heuristic a problem names can read that problem's artefact. | The same mistake wearing a better disguise: the name exists, so nothing looks wrong, and the rule never runs. |
 | Every design problem has at least three graded exemplars. | P2's nearest-neighbour vote needs anchors. This rule already exists and now has a second reason. |
+| A C3 or C4 design problem declares a `constraints` list of quoted, non-empty terms. | Without one, `names_no_constraint` has nothing to compare an answer against and stays silent on every answer. Added 8 October 2026. |
 | Every problem declares `interview_evidence` with a non-empty `asked_as`. | Section 12. |
 
 Per the standing rule, any new heuristic ships with a fixture, a unit test and a registry entry, or it does not ship.
@@ -451,21 +478,29 @@ The validator checks the fields exist and are non-empty. It cannot check that a 
 
 `analytics/` reports coverage across rounds, which is how you find out that the catalogue has drifted toward written problems while learners keep failing oral rounds.
 
-The catalogue declares 22 `written` and 3 `both`, and no problem declares `oral`. That is correct rather than a gap: a problem's artefact is code, a prompt or a written argument, and the oral round is covered by `voice-questions/` instead. The number is worth watching all the same, because it is the measurement that would show the two halves drifting apart.
+Measured on 8 October 2026 from `interview_evidence.round`, the field the validator reads, the 173 catalogue problems declare 76 `written`, 61 `both` and 36 `oral`. The 13 fixtures under `problems/_fixtures` all declare `written` and are left out of that count. When the catalogue held 25 problems it declared 22 `written` and 3 `both`, and none `oral`. The spoken round itself is practised in `voice-questions/`, and the split is worth watching, because it is the measurement that would show the two halves drifting apart.
 
-Fifteen of the 25 `asked_as` questions are adapted from `docs/source-pack/09-interview-bank.json`, which labels every entry "Original interview-style practice; actual employer frequency unverified". Each one that borrows from it inherits that caveat in its `source`. The other ten say "author judgement" and name no evidence, because there is none.
+On the same day, 66 of the 173 `source` fields name an entry in `docs/source-pack/09-interview-bank.json`, which labels every entry "Original interview-style practice; actual employer frequency unverified", and all 66 repeat that caveat. 115 say "author judgement", eight of them beside the nearest bank entry. When the catalogue held 25 problems, fifteen questions came from the bank and ten from author judgement.
 
 ---
 
 ## 13. Module boundary
 
-`eval/` is the only writer of `evaluation` and of `competency_score`. Nothing else computes a grade, a band or a competency state.
+`eval/` is the only writer of `evaluation`, `evaluation_review` and `competency_score`. Nothing else computes a grade, a band or a competency state.
+
+**Amended 8 October 2026** to what story S15.7 built. The competency write is `web/lib/eval/competency.ts`, and two writers outside `eval/` keep a grade column, each for the reason given under the table.
 
 | Module | May | May not |
 |---|---|---|
-| `eval/` | Write `evaluation`, write `competency_score`, read anything. | Execute learner code. Render. Decide caps or scaffolding. |
-| `progress/` | Read `evaluation` and `competency_score`. | Write either. Recompute a grade. |
-| `analytics/` | Read `evaluation`, `submission`, `problem`. | Write anything a learner sees. Recompute a grade. |
+| `eval/` | Write `evaluation`, `evaluation_review` and `competency_score`. Write a submission's verdict and score when faculty correct a grade. Read anything. | Execute learner code. Render. Decide caps or scaffolding. |
+| `writeResult` in `web/lib/queue/result-writer.ts` | Write a submission's terminal verdict and score and an attempt's defence score, then call `eval/` for the competency cells and the evaluation row in the same transaction. | Write a grade table itself. |
+| `scoreVoiceOnce` in `web/lib/voice/judge.ts` | Write a voice session's score. | Write a grade table. |
+| `progress/` | Read `evaluation` and `competency_score`. | Write anything. Recompute a grade. |
+| `analytics/` | Read `evaluation`, `submission`, `problem` and `competency_score`. Append a `report_card` row, a dated copy of numbers `eval/` and `progress/` already produced. | Write a grade, a band or a competency state, or anything a learner sees on screen. Change a report card once issued. Recompute a grade. |
+
+`writeResult` stays outside `eval/` because `03` section 9.3 commits the verdict with a compare-and-set on the runner's lease, and moving the write would split the lease logic across two modules. `scoreVoiceOnce` stays because a voice session is not a submission and has no evaluation row. The lease reaper in `web/lib/queue/dispatcher.ts` also sets a verdict. It only ever sets `error`, which is the platform's failure and moves no cell, so it does not count as a third writer.
+
+`web/tests/writer-boundary.test.ts` enforces the table. It reads every file under `web/lib`, `web/app` and `web/scripts`, and fails on a grade table written from outside `eval/`, on a grade column set from anywhere but `eval/` and the two writers above, on any write at all under `progress/`, on any write under `analytics/` but a new report card, and on any update or delete of a report card. Migration 026 adds a second line behind it: a role, `fdeprep_reader`, with SELECT on every table and no write grant, created when the user running the migrations may create roles. Nothing runs under that role in this release.
 
 The rule that makes it worth enforcing: a heatmap that disagrees with a report card is a bug nobody can find, because two pieces of code computed the same number from the same rows in different ways. One writer removes the category.
 

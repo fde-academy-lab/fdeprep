@@ -14,6 +14,8 @@ competencies:
   - { slug: system-design, weight: 1.0 }
   - { slug: client-communication, weight: 0.5 }
 
+constraints: ["nightly", "April", "summary", "cache", "eval fixture"]
+
 brief_md: |
   A customer asked for their data to be deleted. The primary record went in
   twenty minutes and the confirmation email said it was done.

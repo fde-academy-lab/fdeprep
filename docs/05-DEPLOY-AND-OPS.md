@@ -124,7 +124,7 @@ Live runs dominate. At the 10 per day cap, the ceiling is 2,000 model conversati
 
 Probes run twice each for agreement, which doubles that line. It is worth the cost, because a prompt-surgery result that flips between submissions destroys confidence in every other result on the platform.
 
-Set an AWS Budgets alarm on the Bedrock line at a monthly figure you pick, alerting at 50 and 80 percent. Do this before the first learner signs in, not after the first surprise.
+Set an AWS Budgets alert at a monthly figure you pick, filtered on the AWS Marketplace billing entity, alerting at 50 and 80 percent. The model provider bills its charges through AWS Marketplace, so a budget filtered on the Amazon Bedrock service misses them. DEPLOY.md section 8.1 has the steps and the source. Do this before the first learner signs in.
 
 Amended 8 October 2026: interview mode (docs/07 section 5a) adds a fourth source, one judge call per follow-up round, at most five rounds a session, and one more when a learner pastes a resume. It spends the weekly rehearsal allowance, so the cap on it is the same `rehearsal_weekly` row as pressure mode. The next section of the runbook measures it.
 
@@ -142,7 +142,7 @@ Three, and no more, because an alarm nobody reads is worse than no alarm.
 |---|---|---|
 | Runner throttled (was: queue backing up, amended 30 September 2026) | Lambda `Throttles` on the runner above zero in 5 minutes. With no SQS queue there is no queue age; a submission waits when Lambda refuses the worker's call for want of capacity. | Check the account's concurrent executions quota in Service Quotas, then any reserved concurrency on the runner. Queue depth is on the admin Ops screen. |
 | Runner failing | Lambda error rate over 5 percent over 15 minutes | Read the last `runner_event` rows, roll back the runner image tag |
-| Token spend | AWS Budgets at 80 percent of the monthly figure | Lower the `live_daily` cap in the admin screen |
+| Token spend | The AWS Budgets alert on the AWS Marketplace billing entity reaches 80 percent of the monthly figure | Lower the `live_daily` cap in the admin screen |
 
 Route all three to a shared channel, not to one person.
 
@@ -162,13 +162,19 @@ Written for the second operator, who is not the person who built this.
 
 The `error` verdict does not consume an allowance, so this should not happen. If it did, an admin can clear the counter row for that learner, scope and window in the Ops screen. Log the reason; the audit trail is the point.
 
+### A judge prompt changed
+
+Once the judge is deployed with the new prompt file, regrade what the old one graded. From `web/`, `npm run regrade -- --dry-run` lists the submissions a run would regrade and calls nothing. `npm run regrade` then regrades the oldest 25; run it again until it prints "Nothing to regrade". `--limit N` sets the batch, and `--from rubric.v1.md` takes only what that prompt graded. Each regrade is one model call that adds an evaluation, moves no verdict and spends no allowance (`10` section 10). A run that stops early naming another prompt means the judge has not been deployed with the new one yet.
+
 ### Rolling back
 
 The web application rolls back by checking out the previous commit on the web host, rebuilding and restarting, or from the Vercel dashboard on that route. The runner and the judge roll back by running `cdk deploy` from the previous commit, which rebuilds the previous images from source; each result records the runner image tag that graded it. Migrations roll forward only; write every migration so the previous application version still runs against the new schema, which means adding columns before using them and dropping them a release later.
 
 ### Restoring the database
 
-Point-in-time restore to a new branch, verify against a known submission id, then repoint the application. Practise this once before the cohort starts. A restore procedure that has never been run is not a restore procedure.
+On the beta host the backup is the daily EBS snapshot of the server's disk, and DEPLOY.md section 8.2 has both procedures. The drill copies the newest snapshot to a new volume beside the live disk, starts a second Postgres on it at port 5433 and compares its row counts with the live database, while the site keeps serving. A real restore puts the whole server back to a snapshot with EC2's root volume replacement, and loses whatever was written after that snapshot. Run the drill once before the cohort starts and write down how long it took. A restore procedure that has never been run is not a restore procedure.
+
+Point-in-time restore arrives with managed Postgres before the cohort (section 2), and this entry changes with it.
 
 ### Measuring interview mode's cost and wait
 

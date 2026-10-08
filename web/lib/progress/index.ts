@@ -9,7 +9,7 @@ import type { Pool, PoolClient } from "pg";
 import { db } from "../db/pool.ts";
 import { COMPETENCIES } from "../problems/vocabulary.ts";
 import { byTier, DIFFICULTIES, type Difficulty } from "../policy/tiers.ts";
-import type { State } from "../competency/score.ts";
+import type { State } from "../eval/competency.ts";
 
 export interface HeatCell {
   difficulty: Difficulty;

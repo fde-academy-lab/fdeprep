@@ -530,6 +530,127 @@ Then in the EC2 console:
 
 The first snapshot runs within an hour of the start time. Tags are case-sensitive.
 
+#### Restore drill: a snapshot into a scratch database
+
+Run this once before the cohort starts, and again after any change to how Postgres is installed. It copies the newest snapshot to a new volume, mounts the copy beside the live disk, starts a second Postgres on it at port 5433 and compares its row counts with the live database. The site keeps running throughout, and the live database is only read. Note the time when you start step 1.
+
+1. Find the newest finished snapshot of the server's disk. In CloudShell:
+
+   ```bash
+   read -r IID AZ VOL <<< "$(aws ec2 describe-instances --region us-east-1 \
+     --filters Name=tag:Name,Values=fdeprep-web Name=instance-state-name,Values=running \
+     --query 'Reservations[0].Instances[0].[InstanceId,Placement.AvailabilityZone,BlockDeviceMappings[0].Ebs.VolumeId]' \
+     --output text)"
+   read -r TAKEN SNAP <<< "$(aws ec2 describe-snapshots --region us-east-1 --owner-ids self \
+     --filters Name=volume-id,Values="$VOL" Name=status,Values=completed \
+     --query 'Snapshots[].[StartTime,SnapshotId]' --output text | sort | tail -n 1)"
+   echo "$SNAP taken $TAKEN"
+   ```
+
+   `echo` prints a snapshot ID starting `snap-` and the time the snapshot was taken, in UTC. The copy holds the database as it stood at that time. If it prints only `taken`, no snapshot has finished yet. The list goes through `sort` because with `--output text` the CLI runs `--query` once per page of results.
+
+   In the console instead: click **Snapshots**, choose **Owned by me**, filter on the server disk's volume ID from the instance's **Storage** tab, and take the newest snapshot whose status is `completed`.
+
+2. Make the copy in the server's Availability Zone and attach it to the server:
+
+   ```bash
+   NEW=$(aws ec2 create-volume --region us-east-1 --availability-zone "$AZ" \
+     --snapshot-id "$SNAP" --volume-type gp3 \
+     --tag-specifications 'ResourceType=volume,Tags=[{Key=Name,Value=fdeprep-restore-drill}]' \
+     --query VolumeId --output text)
+   aws ec2 wait volume-available --region us-east-1 --volume-ids "$NEW"
+   aws ec2 attach-volume --region us-east-1 --volume-id "$NEW" --instance-id "$IID" --device /dev/sdf
+   aws ec2 wait volume-in-use --region us-east-1 --volume-ids "$NEW"
+   echo "$NEW"
+   ```
+
+   `echo` prints the copy's volume ID, starting `vol-`. Without `--volume-type` the CLI makes a `gp2` volume; the console defaults to `gp3`.
+
+   In the console instead: click **Volumes**, then **Create volume**. Keep **Volume type** `gp3`, set **Size** to the server's disk size (`30` unless you have grown it), choose the server's zone under **Availability Zone**, pick the snapshot under **Snapshot ID**, click **Add tag** with key `Name` and value `fdeprep-restore-drill`, and click **Create volume**. When its state reads **Available**, select it, click **Actions**, then **Attach volume**, choose `fdeprep-web` under **Instance**, take the first name under **Recommended for data volumes** as the **Device name**, and click **Attach volume**.
+
+3. Mount the copy. On the server, in the browser terminal from 6.1:
+
+   ```bash
+   lsblk -o NAME,SIZE,FSTYPE,LABEL,SERIAL,MOUNTPOINT
+   sudo mkdir -p /mnt/restore
+   sudo mount /dev/nvme1n1p1 /mnt/restore
+   sudo ls /mnt/restore/var/lib/postgresql/16/main
+   ```
+
+   `lsblk` shows the live disk as `nvme0n1`, with its first partition mounted at `/`, and the copy as a second disk whose `SERIAL` is its volume ID without the hyphen. On a t3.medium the copy is usually `nvme1n1`, and its largest partition, usually `nvme1n1p1`, holds the root file system; use the names `lsblk` prints if they differ. The last command lists `PG_VERSION`, `base` and `pg_wal` among others.
+
+   Do not restart the server until step 6 has detached the copy. The copy carries the same disk labels as the live disk, so a restart while it is attached can boot the server from the copy.
+
+4. Start a second Postgres on the copy, on port 5433 and with no network listener:
+
+   ```bash
+   DATA=/mnt/restore/var/lib/postgresql/16/main
+   sudo -u postgres rm -f "$DATA/postmaster.pid"
+   sudo -u postgres cp /mnt/restore/etc/postgresql/16/main/pg_hba.conf \
+     /mnt/restore/etc/postgresql/16/main/pg_ident.conf "$DATA/"
+   sudo -u postgres tee "$DATA/postgresql.conf" > /dev/null <<'CONF'
+   port = 5433
+   listen_addresses = ''
+   unix_socket_directories = '/tmp'
+   CONF
+   sudo -u postgres /usr/lib/postgresql/16/bin/pg_ctl -D "$DATA" -l /tmp/restore-drill.log start
+   ```
+
+   It ends with `server started`. The snapshot caught Postgres running, so the copy holds the live server's lock file, `postmaster.pid`. Postgres uses that file to keep a second server out of a data directory, so the first command removes it from the copy. Ubuntu keeps Postgres's settings in `/etc/postgresql/16/main`, and Postgres started this way looks for them in the data directory, so the next two commands give the copy its own access rules and a settings file that moves it to port 5433. The log in `/tmp/restore-drill.log` shows the copy recovering as if from a crash, which is how Postgres treats a snapshot of a running server.
+
+5. Compare the copy with the live database, table by table:
+
+   ```bash
+   cat > /tmp/counts.sql <<'SQL'
+   select format('select %L, count(*) from public.%I', tablename, tablename)
+     from pg_tables where schemaname = 'public' order by tablename
+   \gexec
+   SQL
+   psql "postgres://ubuntu@/fdeprep?host=/tmp&port=5433" -qAt -f /tmp/counts.sql > /tmp/restored.txt
+   psql "postgres://ubuntu@/fdeprep?host=/var/run/postgresql" -qAt -f /tmp/counts.sql > /tmp/live.txt
+   diff /tmp/restored.txt /tmp/live.txt
+   psql "postgres://ubuntu@/fdeprep?host=/tmp&port=5433" -qAt -c "select max(queued_at) from submission"
+   ```
+
+   Each file has one line per table, such as `submission|212`. `diff` prints the tables whose count changed after the snapshot, with the copy's line after `<` and the live line after `>`. Outside `npm run db:seed -- --replace`, nothing deletes from `submission` or `evaluation`, so the copy's counts for those two sit at or below the live ones. The last command prints the time of the newest submission in the copy, which comes before the snapshot time from step 1. The drill passes when every table appears in both files and both checks hold. Note the time: the minutes since step 1 are the restore time.
+
+6. Put everything back. On the server:
+
+   ```bash
+   sudo -u postgres /usr/lib/postgresql/16/bin/pg_ctl -D /mnt/restore/var/lib/postgresql/16/main stop
+   sudo umount /mnt/restore
+   ```
+
+   Then in CloudShell:
+
+   ```bash
+   NEW=$(aws ec2 describe-volumes --region us-east-1 \
+     --filters Name=tag:Name,Values=fdeprep-restore-drill --query 'Volumes[0].VolumeId' --output text)
+   aws ec2 detach-volume --region us-east-1 --volume-id "$NEW"
+   aws ec2 wait volume-available --region us-east-1 --volume-ids "$NEW"
+   aws ec2 delete-volume --region us-east-1 --volume-id "$NEW"
+   ```
+
+   In the console instead: click **Volumes**, select `fdeprep-restore-drill`, click **Actions**, **Detach volume**, then **Detach**. When it reads **Available**, click **Actions**, **Delete volume**, type `delete` and click **Delete**. Delete the copy the same day: it holds the whole server, the settings in `/etc/fdeprep/env` included, and it costs as much as the live disk while it exists.
+
+Write the restore time, the snapshot's age and the date in README section 4.
+
+#### When the live database is lost
+
+Put the whole server back to a snapshot with EC2's root volume replacement. The instance keeps its ID, its addresses and its instance profile, and restarts on a new root volume made from the snapshot. Everything written after the snapshot is lost, up to a day of learner work.
+
+1. In the EC2 console, click **Instances**, select `fdeprep-web`, then **Actions**, **Monitor and troubleshoot**, **Replace root volume**. The instance has to be running.
+2. For **Restore**, choose **Snapshot** and pick the snapshot, found as in step 1 of the drill. Leave **Delete replaced root volume** unticked, so the old disk stays until the restored site works.
+3. Click **Create replacement task**. The server restarts by itself, and the task's progress is on the instance's **Storage** tab, under **Recent root volume replacement tasks**.
+
+The CloudShell equivalent, with `IID` and `SNAP` from step 1 of the drill:
+
+```bash
+aws ec2 create-replace-root-volume-task --region us-east-1 --instance-id "$IID" --snapshot-id "$SNAP"
+```
+
+When the task reads `succeeded`, run the tagging command at the top of this section again: the restored disk is a new volume, and the daily policy snapshots only a volume tagged `backup=daily`. Sign in and repeat the first two rows of 7.2. If `main` moved on since the snapshot, update the server as in 8.4. Once the site works, delete the old disk from **Volumes**, because it still carries the `backup=daily` tag.
+
 ### 8.3 A second operator
 
 Give one more person an admin login with step 1.2 and a copy of this file. Until then you are the only person who can restore the database, patch the server or roll back a bad deploy.
@@ -626,6 +747,13 @@ Every AWS, GitHub, Caddy and NodeSource detail above was read on 1 October 2026 
 - [Caddy install](https://caddyserver.com/docs/install) and [automatic HTTPS](https://caddyserver.com/docs/automatic-https). [NodeSource distributions](https://github.com/nodesource/distributions/blob/master/DEV_README.md).
 - Prices: [EC2](https://aws.amazon.com/ec2/pricing/on-demand/), [EBS](https://aws.amazon.com/ebs/pricing/), [VPC public IPv4](https://aws.amazon.com/vpc/pricing/), [Transcribe](https://aws.amazon.com/transcribe/pricing/), [Polly](https://aws.amazon.com/polly/pricing/), [API Gateway](https://aws.amazon.com/api-gateway/pricing/), [Lambda](https://aws.amazon.com/lambda/pricing/), [S3](https://aws.amazon.com/s3/pricing/), [SQS](https://aws.amazon.com/sqs/pricing/), [Secrets Manager](https://aws.amazon.com/secrets-manager/pricing/), [Route 53](https://aws.amazon.com/route53/pricing/).
 
+The restore steps in 8.2 were read on 8 October 2026, with the CLI reference at version 2.37.11, from these pages:
+
+- EBS: [create a volume](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-creating-volume.html), [replace a volume using a snapshot](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-restoring-volume.html), [attach a volume](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-attaching-volume.html), [make a volume available for use](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-using-volumes.html), [map volumes to NVMe device names](https://docs.aws.amazon.com/ebs/latest/userguide/identify-nvme-ebs-device.html), [view snapshot information](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-describing-snapshots.html), [detach a volume](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-detaching-volume.html), [delete a volume](https://docs.aws.amazon.com/ebs/latest/userguide/ebs-deleting-volume.html).
+- EC2: [booting from the wrong volume](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/instance-booting-from-wrong-volume.html), [replacing a root volume](https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/replace-root.html).
+- CLI: [describe-snapshots](https://docs.aws.amazon.com/cli/latest/reference/ec2/describe-snapshots.html), [create-volume](https://docs.aws.amazon.com/cli/latest/reference/ec2/create-volume.html), [wait volume-available](https://docs.aws.amazon.com/cli/latest/reference/ec2/wait/volume-available.html), [wait volume-in-use](https://docs.aws.amazon.com/cli/latest/reference/ec2/wait/volume-in-use.html), [filtering output](https://docs.aws.amazon.com/cli/latest/userguide/cli-usage-filter.html).
+- PostgreSQL 16: [file system level backup](https://www.postgresql.org/docs/16/backup-file.html), [file locations](https://www.postgresql.org/docs/16/runtime-config-file-locations.html), [starting the server](https://www.postgresql.org/docs/16/server-start.html). Ubuntu: [install and configure PostgreSQL](https://ubuntu.com/server/docs/how-to/databases/install-postgresql/).
+
 From this repository: the pinned `aws-cdk-lib` 2.269.0 declares Node 20 or newer; the voice Lambdas bundled locally with esbuild 0.25.12 in a test synth; the 310 MB is `voice/node_modules` and `infra/node_modules` plus the code.
 
-This route has not yet run end to end against a real account. The stack synthesises, its tests pass and the voice Lambdas bundle, and step 7.2 exists to catch what a first live run finds.
+This route has not yet run end to end against a real account. The stack synthesises, its tests pass and the voice Lambdas bundle, and step 7.2 exists to catch what a first live run finds. The restore drill in 8.2 has not run either: story S11.4 runs it on the first deployment and records how long it took.

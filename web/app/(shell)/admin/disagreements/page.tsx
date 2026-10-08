@@ -111,7 +111,14 @@ export default async function DisagreementsPage({ searchParams }: {
           }>
             {queue.rows.map((row) => (
               <Row key={row.evaluationId} className="align-top">
-                <Cell className="whitespace-nowrap text-text-dim">{relativeDay(row.createdAt)}</Cell>
+                <Cell className="whitespace-nowrap">
+                  {/* Every evaluation this answer has had, which is where a
+                      reviewer reads what the panel said before this one. */}
+                  <Link href={`/admin/submissions/${row.submissionId}` as Route}
+                        className="text-text-dim underline-offset-2 hover:text-text hover:underline">
+                    {relativeDay(row.createdAt)}
+                  </Link>
+                </Cell>
                 <Cell className="whitespace-nowrap text-text">{row.login}</Cell>
                 <Cell>
                   <Link href={`/admin/submissions?slug=${row.slug}` as Route}
@@ -127,6 +134,11 @@ export default async function DisagreementsPage({ searchParams }: {
                       {panelist} said <span className="text-text">{BAND_WORD[band]}</span>
                     </div>
                   ))}
+                  {row.judgePrompt ? (
+                    <div className="whitespace-nowrap text-meta text-text-faint">
+                      judge prompt <span className="font-mono">{row.judgePrompt}</span>
+                    </div>
+                  ) : null}
                 </Cell>
                 <Cell className="text-warn">{BAND_WORD[row.held]}</Cell>
                 <NumCell className="text-text">{row.score}</NumCell>

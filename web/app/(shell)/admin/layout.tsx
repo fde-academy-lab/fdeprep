@@ -1,9 +1,10 @@
 /**
  * The admin shell, S10.
  *
- * Faculty see the Overview, Roster read-only, Submissions in full and
- * Disagreements; everything else is admin only (docs/01 S10, amended 8 October
- * 2026 for the Overview). The staff check is here rather than on each screen,
+ * Faculty see the Overview, the Cohort views, Roster read-only, Submissions in
+ * full, Disagreements and Calibration; everything else is admin only (docs/01
+ * S10, amended 8 October 2026 for the Overview and for the analytics screens of
+ * docs/11). The staff check is here rather than on each screen,
  * so a new screen added under this directory is closed to learners by default
  * rather than open by oversight. A layout cannot see which page it wraps, so
  * an admin-only page also refuses faculty itself.
@@ -20,10 +21,13 @@ export const dynamic = "force-dynamic";
 
 const TABS = [
   { href: "/admin", label: "Overview", faculty: true },
+  { href: "/admin/cohort", label: "Cohort", faculty: true },
   { href: "/admin/roster", label: "Roster", faculty: true },
   { href: "/admin/import", label: "Problems", faculty: false },
   { href: "/admin/submissions", label: "Submissions", faculty: true },
   { href: "/admin/disagreements", label: "Disagreements", faculty: true },
+  { href: "/admin/calibration", label: "Calibration", faculty: true },
+  { href: "/admin/panel", label: "Panel", faculty: false },
   { href: "/admin/ops", label: "Ops", faculty: false },
 ] as const;
 

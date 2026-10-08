@@ -9,7 +9,7 @@
  */
 import { parse } from "yaml";
 import { inTransaction } from "../db/pool.ts";
-import { applyForSubmission } from "../competency/score.ts";
+import { applyForSubmission } from "../eval/competency.ts";
 import { complexityOf, panelistsFor } from "../eval/from-result.ts";
 import { rememberGraded } from "../eval/pretrained.ts";
 import { runPanel } from "../eval/panel.ts";

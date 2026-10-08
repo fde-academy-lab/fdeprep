@@ -29,6 +29,10 @@ class RubricOutcome:
     total: int
     max_total: int
     grounded: dict[str, bool]
+    # The file in judge/prompts/ that produced this grade. It travels with the
+    # outcome so the response names the prompt that ran rather than the
+    # default, and a regrade can select an evaluation by it. docs/10 section 10.
+    prompt: str = RUBRIC_PROMPT
 
     @property
     def fraction(self) -> float:
@@ -138,7 +142,8 @@ def judge_rubric(
     haystack = answer.casefold()
     grounded = {s.criterion_id: s.evidence_quote.strip().casefold() in haystack for s in scores}
 
-    return RubricOutcome(criteria=scores, total=total, max_total=max_total, grounded=grounded)
+    return RubricOutcome(criteria=scores, total=total, max_total=max_total, grounded=grounded,
+                         prompt=prompt_name)
 
 
 def with_ids(rubric: list[dict[str, Any]]) -> list[dict[str, Any]]:

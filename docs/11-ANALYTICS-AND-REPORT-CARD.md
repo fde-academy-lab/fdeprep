@@ -60,6 +60,22 @@ Every report card states: the number of problems attempted out of the catalogue,
 
 The report card is generated from the evaluation records at a point in time and stored as a row with its generated timestamp and a content hash. Regenerating produces a new row. An old card stays readable, because somebody has it in their inbox and it has to keep meaning what it meant.
 
+**Amended 8 October 2026** to what story S15.6 built. The table is `report_card`, in `02-DATA-MODEL.md` section 11. `web/lib/analytics/report-card.ts` builds the snapshot, stores it as canonical JSON (every key sorted, no whitespace) with its SHA-256, and renders it as Markdown. The database refuses a row whose hash is not its content's and refuses every update, so issuing again always adds a row. The snapshot holds no clock time: two cards issued from unchanged data hash the same, and a new evaluation changes the count inside it and so the hash. The time of issue is the row's `generated_at`, printed on the card beside the hash, and the card ends with the snapshot itself, so a reader can check the hash without asking the platform.
+
+Faculty and admins issue a card from the learner's page in the admin area, where every card issued is listed with a Markdown download. How the sections above were read:
+
+| Section | As built |
+|---|---|
+| Header | The evaluation count is every evaluation row on record for the learner, re-runs included. |
+| Readiness | `readinessFor` itself, so the card and Progress read one number, tested in one transaction. |
+| Competency detail | Per competency: submits and rehearsal submits with a verdict the learner earned, the best cell, the highest tier holding it, and whether it is clean, which is what without hints and within budget means. |
+| Evidence | Up to five passing submits, one per problem, hardest first and then by score, each with its verdict, its score as the learner saw it, its day and the path to its trace. |
+| Voice | Every answer finished and scored, the mean score, and the newest ten with content, structure and pace, and beats covered. Delivery never appears, per `07` section 6. |
+| Interview coverage | `coverageFor`, the line Home and Progress show. |
+| Caveats | Problems practised out of the published catalogue, how many scores are provisional because the newest evaluation is partial, and that general software ability is outside what the platform measures. |
+
+No panelist is named anywhere on a card, since a card leaves the platform and provenance stays with faculty.
+
 ---
 
 ## 4. Cohort views
@@ -74,6 +90,17 @@ Four tables, each a plain table with a filter row, following the density directi
 | Interview coverage | One round per row: how many problems in the catalogue, how many the cohort has attempted. | Whether the catalogue has drifted away from what interviews ask. |
 
 The stuck list is the one that earns its place daily. A learner failing the same problem four times is a learner about to quit, and the attempt notes on Hard problems are already text a faculty member can read.
+
+**Amended 8 October 2026** to what story S15.5 built, in `web/lib/analytics/`, each view for the viewer's own cohort.
+
+| View | Where | What it reads |
+|---|---|---|
+| Cohort standing | The Overview at `/admin`, with Export CSV beside its title. | `readinessFor`'s statement, interview coverage, last activity and the stuck count. |
+| Stuck list | `/admin/cohort`, first table. | Attempts with three or more failed submits and no pass. The Overview's Stuck column counts the same rows per learner. |
+| Competency gaps | `/admin/cohort`, second table, under a sentence naming the competency with the lowest pass rate. | `competency_score`: per competency, the active learners with a cell, those whose best cell is passed or clean, and the mean best state on a scale of 1 for attempted to 3 for clean. |
+| Interview coverage | `/admin/cohort`, third table. | Published problems per round, and those the cohort's active learners have practised, with the rule in `12` section 5. |
+
+Stuck means the learner and problem pair on every screen. A submission waiting in the queue with no verdict is waiting, which is the word Ops uses for it. The tables have no filter row: each is scoped to one cohort and is short at that scale, and a filter is worth adding the first time a cohort outgrows a screen.
 
 ---
 
@@ -92,6 +119,17 @@ The feedback loop that makes the content improve, and the reason to keep evaluat
 These are thresholds to look at rather than rules to act on, and the document says so because an author who treats a threshold as a verdict will rewrite a problem that was fine.
 
 **The calibration report is written for the author, not for the learner.** It names the problem, the signal, the number, and what to check first.
+
+**Amended 8 October 2026**, story S15.5. The report is `/admin/calibration`, open to faculty and admins, and downloads as Markdown. Four choices the table above left open:
+
+| Choice | Value | Why |
+|---|---|---|
+| Smallest sample a signal needs | Five learners, first attempts or evaluations. | A rate over two or three learners is noise, and the report prints the sample beside every number. |
+| A high give-up rate | A quarter of attempts or more. | The table says high and gives no number. |
+| Far above `est_minutes` | More than double. | The same. |
+| Time to pass | The median elapsed time from opening the problem to passing it, breaks included. | A mean of elapsed times is set by whoever left a problem open overnight, and the platform records no active time. |
+
+Only learners count, so faculty trying a problem out never move its numbers. The disagreement rate reads the panel's newest evaluation of each submission and skips a faculty correction, which would otherwise hide that the judges disagreed. The tier thresholds live in the policy module, `calibrationFor` in `web/lib/policy/tiers.ts`.
 
 ### Exemplar coverage
 
@@ -115,6 +153,8 @@ Read daily by whoever is operating the platform, and the numbers that say whethe
 
 The re-evaluation backlog is the one with teeth. A `partial` evaluation is a promise to the learner, and a promise nobody drains is worse than a plain failure, because the learner is still waiting.
 
+**Amended 8 October 2026**, story S15.5. Panel health is `/admin/panel`, admin only, since it names panelists. Its unit is a panel run: one evaluation row the panel wrote, a re-run included and a faculty correction left out. A partial whose re-run later completes counts once as partial and once as complete, so the partial rate equals the count of partial rows over the count of runs and nothing is counted twice. The rates cover the last seven days and availability the last 24 hours, by the hour. The backlog counts submissions whose newest evaluation is still partial, the rule `reevaluationBacklog` in `web/lib/eval/record.ts` uses. The disagreement rate is over the runs where two judges both gave a band, since only those can disagree.
+
 ---
 
 ## 7. Exports
@@ -128,6 +168,10 @@ The re-evaluation backlog is the one with teeth. A `partial` evaluation is a pro
 
 Every export carries the date it was generated and the count of rows it covers. An undated export of a live system is a number somebody will quote six months later.
 
+**Amended 8 October 2026**, story S15.6. The report card is Markdown only for now. A PDF needs a renderer this repository does not carry, and `CLAUDE.md` asks for a dependency to be proposed before it is added, so the PDF waits on that proposal. The Markdown carries the date, the evaluation count and the hash in its header.
+
+**Amended 8 October 2026**, story S15.5. The cohort standing CSV puts both on its first line, as a comment with no comma in it, `# Cohort standing for <cohort> generated <time> covering <n> learners`, so a spreadsheet keeps it in one cell and a reader that skips lines starting with `#` skips it. Its columns are the Overview's, with the interview coverage counts beside readiness. The calibration Markdown states both in its opening paragraph.
+
 ---
 
 ## 8. What this module may never do
@@ -135,7 +179,7 @@ Every export carries the date it was generated and the count of rows it covers. 
 | Never | Because |
 |---|---|
 | Compute a grade, a band or a competency state. | `eval/` owns those. Two writers produce two answers. |
-| Write to `evaluation`, `submission` or `competency_score`. | Reader only, enforced by the database role the analytics queries run under. |
+| Write to `evaluation`, `submission` or `competency_score`. | Reader only. `web/tests/writer-boundary.test.ts` fails when a grade is written from outside `eval/` and the two writers `10` section 13 names. Migration 026 also creates `fdeprep_reader`, a role with SELECT on every table and no write grant, where the user running the migrations may create roles. The analytics queries do not run under it in this release (amended 8 October 2026). |
 | Show a learner a number that `progress/` does not also show. | A learner seeing 62 on one screen and 58 on another stops believing both. |
 | Show one learner another learner's standing. | Cohort views are faculty and admin only, per the roles in `00-PRD.md` section 2. |
 | Surface panelist identity to a learner. | `10` section 7. The panel speaks with one voice to the learner and keeps provenance for faculty. |
@@ -147,7 +191,7 @@ Every export carries the date it was generated and the count of rows it covers. 
 1. A report card generated twice from unchanged data produces the same content hash.
 2. A report card generated after a new evaluation produces a different hash and a new row, and the old row is still readable.
 3. Every readiness number on a report card matches the number `progress/` shows for the same learner at the same moment, verified by a test that reads both.
-4. The analytics database role has no write grant on `evaluation`, `submission` or `competency_score`, verified by a test that attempts a write and expects a refusal.
+4. The reader role, `fdeprep_reader`, has no write grant on `evaluation`, `submission` or `competency_score`, verified by a test that attempts a write as that role and expects a refusal (`web/tests/reader-role.test.ts`).
 5. The stuck list finds a learner with three failed submissions and no pass, and excludes one who failed three times and then passed.
 6. Panel health reports a `partial` rate that matches the count of `partial` rows, with no double counting when a re-evaluation later completes.
 7. A cohort view requested by a learner account is refused, and the refusal names who can see it.

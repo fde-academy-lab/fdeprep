@@ -295,6 +295,19 @@ Four screens, each a plain table with an action column.
 
 **Amended 8 October 2026: the Overview.** An Overview at `/admin` shows one row per learner with readiness and its four counts, last activity including voice, and the stuck count, derived from Roster and Submissions. Faculty see the Overview and a learner's row, read-only, because it derives from the two screens they already see.
 
+**Amended 8 October 2026: the analytics screens of `11-ANALYTICS-AND-REPORT-CARD.md`.** Each is plain tables, and each empty state names the next action.
+
+| Screen | Contents | Who |
+|---|---|---|
+| Overview | Gains Export CSV, the cohort standing with its date and row count. | Faculty and admins |
+| Cohort, `/admin/cohort` | The stuck list, one learner and problem pair per row; the competency gaps, with the lowest pass rate named in a sentence above the table; interview coverage by round. | Faculty and admins |
+| Calibration, `/admin/calibration` | Each problem signal with its number, its sample and what to check first, and how many graded answers panelist 2's index holds per problem. Downloads as Markdown. | Faculty and admins |
+| Panel, `/admin/panel` | Panel runs by state, the partial rate, re-evaluations owed, the disagreement rate, P3 latency, and panelist availability by the hour. | Admins |
+
+Ops says waiting for a submission with no verdict and a voice answer with no score, because stuck belongs to the learner and problem pair above.
+
+A learner's page from the Overview ends with their report cards: one row per card issued, with its date, readiness, evaluation count, the start of its hash and a Markdown download, and an Issue a report card button for faculty and admins. It is the page's one action, since a card is a dated copy of the page.
+
 Faculty see Roster read-only and Submissions in full. Everything else is admin only.
 
 ---

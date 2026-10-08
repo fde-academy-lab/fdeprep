@@ -1115,6 +1115,7 @@ stages:
         finish: 2026-10-06
         acceptance:
           - A backup restores into a scratch database, and the time it took is written in README section 4.
+          - The written procedure exists in DEPLOY.md section 8.2 since 8 October 2026, and the timed drill waits for a deployment to run it on.
       - id: S11.5
         title: Brief a second operator and run one practice drill
         type: Task
@@ -1703,7 +1704,7 @@ stages:
     name: First cohort
     kind: roadmap
     horizon: later
-    start: 2026-10-12
+    start: 2026-10-08
     finish: 2026-11-30
     area: Evaluation panel
     priority: P2
@@ -1731,19 +1732,19 @@ stages:
       - id: S15.2
         title: Author constraint lists, so the unnamed-constraint check can fire
         type: Task
-        status: todo
+        status: done
         points: 5
         area: Content
-        finish: 2026-10-26
+        finish: 2026-10-08
         acceptance:
-          - Every C3 and C4 problem declares its constraints, and names_no_constraint fires on an answer that names none.
+          - Every C3 and C4 design problem declares its constraints, the validator refuses one that does not, and names_no_constraint fires on an answer that names none and stays silent on every strong exemplar.
       - id: S15.3
         title: Re-grade past submissions against a new judge prompt version
         type: Feature
-        status: todo
+        status: done
         points: 8
         area: Evaluation panel
-        finish: 2026-11-09
+        finish: 2026-10-08
         acceptance:
           - A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it.
       - id: S15.4
@@ -1758,30 +1759,30 @@ stages:
       - id: S15.5
         title: "Build analytics: cohort views, the stuck list, calibration and panel health"
         type: Feature
-        status: todo
+        status: done
         points: 13
         area: Evaluation panel
-        finish: 2026-11-23
+        finish: 2026-10-08
         acceptance:
           - Faculty can see which topic a cohort failed without writing SQL.
       - id: S15.6
         title: Issue the report card as a dated, hashed snapshot
         type: Feature
-        status: todo
+        status: done
         points: 8
         area: Evaluation panel
-        finish: 2026-11-23
+        finish: 2026-10-08
         acceptance:
-          - A report card never changes after it is issued, and its hash proves it.
+          - A report card never changes after it is issued, and the SHA-256 of its canonical JSON snapshot, printed on its Markdown export with the snapshot itself, proves it.
       - id: S15.7
         title: Move the competency write into eval/, and make progress a pure reader
         type: Task
-        status: todo
+        status: done
         points: 5
         area: Evaluation panel
-        finish: 2026-11-16
+        finish: 2026-10-08
         acceptance:
-          - Only eval/ writes a grade, a band or a competency state, and a test fails if anything else does.
+          - Only eval/ writes evaluation, evaluation_review and competency_score, writeResult and scoreVoiceOnce are the two named writers outside it and keep only their grade columns, and a scan of web/lib, web/app and web/scripts fails if any other file writes a grade.
       - id: S15.8
         title: Compute the readiness signal with its four counts and three bands
         type: Feature

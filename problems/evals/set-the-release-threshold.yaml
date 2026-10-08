@@ -14,6 +14,8 @@ competencies:
   - { slug: client-communication, weight: 0.5 }
   - { slug: failure-mode-analysis, weight: 0.5 }
 
+constraints: ["Friday", "intake", "96.7 percent", "120", "eight cases"]
+
 brief_md: |
   A client grades coursework with an agent. It reads a submission, runs the
   tests, and writes a grade with feedback. It can also email the student
