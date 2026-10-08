@@ -16,6 +16,8 @@ competencies:
 
 build: { id: extraction-pilot, title: "Rescue a document extraction pilot", stage: 4, of: 4 }
 
+constraints: ["steering meeting", "next month", "80 percent", "three days", "200 records"]
+
 brief_md: |
   Stages 1 to 3 are live at the insurer. A record holds only values the
   letter contains, meets the intake rules or reaches an adjuster after one

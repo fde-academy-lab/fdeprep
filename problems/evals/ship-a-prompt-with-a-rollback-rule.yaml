@@ -14,6 +14,8 @@ competencies:
   - { slug: system-design, weight: 0.5 }
   - { slug: client-communication, weight: 0.5 }
 
+constraints: ["Monday", "connection", "150 holdout", "21 correct", "forbidden refund"]
+
 brief_md: |
   An airline's rebooking assistant helps passengers whose flights were
   cancelled, and it handles about 9,000 conversations a day. Prompt v14 has run
