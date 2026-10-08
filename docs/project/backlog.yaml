@@ -1775,12 +1775,15 @@ stages:
       - id: S17.3
         title: "Learner screens at S1 and S2: sign-in and invite, Home, Problems, Voice and Progress"
         type: Feature
-        status: todo
+        status: done
         points: 8
         area: Web application
-        finish: 2026-10-14
+        finish: 2026-10-08
         acceptance:
-          - Sign-in and /invite/<token> are S1's single column, Home is S2 at the chapter page's measure, Voice is one table, Progress opens on the readiness line, no screen shows an environment variable name, and every empty state names its next action.
+          - Sign-in and /invite/<token> are S1's single column with one button, /signin reads 26 words, and when sign-in or graded voice is not set up the screen says so in one sentence while the server log names the missing variables once per process; no screen shows an environment variable name.
+          - Home is S2 at the chapter page's 960 pixel measure, opening on the learner's track, persona, storyline day and solved count, then the start card, Next up or a rehearsal, and the readiness line Progress also draws from readinessFor; the zero state reads 66 words with the header, and a test checks that the start card opens the first row of Problems in path order.
+          - Problems opens on the fourteen-chapter map until a filter, search or sort is set, Voice is one table whose only button is Answer, with the mode and its allowance picked on the session start screen, and Past answers says when scoring is late or gave up.
+          - Every empty state names its next action, checked by a render per state, and the brief's diagram no longer scrolls sideways at 1440 on route-tickets-with-rules or cancel-without-one-more-action.
       - id: S17.4
         title: "Admin: the cohort Overview, stuck voice answers on Ops, titled tabs and the Roster dialogs"
         type: Feature
