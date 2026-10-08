@@ -13,6 +13,8 @@
  * two places it reaches.
  */
 import { db } from "../db/pool.ts";
+import { STUCK_VOICE_AFTER_MINUTES } from "../admin/ops.ts";
+import { RETENTION_DAYS } from "./audio.ts";
 import type { PaceState } from "./cues.ts";
 import { deliveryFor, type Delivery, type Segment } from "./delivery.ts";
 import { depthByBeat, type BeatDepth } from "./depth.ts";
@@ -189,12 +191,12 @@ export async function loadDebrief(
 export async function pastSessions(enrolmentId: number) {
   const { rows } = await db().query<{
     id: string; mode: VoiceMode; input: "spoken" | "typed"; title: string; started_at: Date;
-    score: string | null; scored_at: Date | null; not_counted: boolean;
-    audio_s3_key: string | null; audio_deleted_at: Date | null;
+    finished_at: Date; score: string | null; scored_at: Date | null; not_counted: boolean;
+    judge_attempts: number; audio_s3_key: string | null; audio_deleted_at: Date | null;
   }>(
-    `select s.id, s.mode, s.input, q.title, s.started_at, s.score, s.scored_at,
+    `select s.id, s.mode, s.input, q.title, s.started_at, s.finished_at, s.score, s.scored_at,
             coalesce(s.judge_result ->> 'skipped' = 'did_not_count', false) as not_counted,
-            s.audio_s3_key, s.audio_deleted_at
+            s.judge_attempts, s.audio_s3_key, s.audio_deleted_at
        from voice_session s join voice_question q on q.id = s.voice_question_id
       where s.enrolment_id = $1 and s.finished_at is not null
       order by s.started_at desc limit 50`,
@@ -207,8 +209,51 @@ export async function pastSessions(enrolmentId: number) {
     input: row.input,
     title: row.title,
     startedAt: row.started_at.toISOString(),
+    finishedAt: row.finished_at.toISOString(),
     notCounted: row.not_counted,
+    // The same reading as the debrief's: unscored for good, allowance given back.
+    judgeGaveUp: row.scored_at === null && row.judge_attempts >= MAX_JUDGE_ATTEMPTS,
     score: row.scored_at === null || row.not_counted ? null : Number(row.score ?? 0),
     hasAudio: row.audio_s3_key !== null && row.audio_deleted_at === null,
+    audioDeletedAt: row.audio_deleted_at ? row.audio_deleted_at.toISOString() : null,
   }));
+}
+
+export type PastSession = Awaited<ReturnType<typeof pastSessions>>[number];
+
+/** What Past answers says about an answer's score. */
+export type ScoreState = "scored" | "not_counted" | "scoring" | "late" | "gave_up";
+
+/**
+ * An answer still unscored after the wait Ops allows before listing it as
+ * stuck is late, and the learner is told who to tell. One the judge gave up
+ * on had its allowance given back, so the learner can answer again.
+ */
+export function scoreState(
+  session: Pick<PastSession, "score" | "notCounted" | "judgeGaveUp" | "finishedAt">,
+  now: Date = new Date(),
+): ScoreState {
+  if (session.notCounted) return "not_counted";
+  if (session.score !== null) return "scored";
+  if (session.judgeGaveUp) return "gave_up";
+  const waited = now.getTime() - new Date(session.finishedAt).getTime();
+  return waited > STUCK_VOICE_AFTER_MINUTES * 60_000 ? "late" : "scoring";
+}
+
+/** What Past answers says about an answer's recording. */
+export type AudioState = "typed" | "kept" | "expired" | "deleted" | "none";
+
+/**
+ * A recording the scorer's sweep removed was kept for RETENTION_DAYS; one
+ * removed sooner was deleted by the learner (docs/07 section 9). An answer
+ * with no recording ever stored says so rather than claiming a deletion.
+ */
+export function audioState(
+  session: Pick<PastSession, "input" | "hasAudio" | "audioDeletedAt" | "finishedAt">,
+): AudioState {
+  if (session.input === "typed") return "typed";
+  if (session.hasAudio) return "kept";
+  if (!session.audioDeletedAt) return "none";
+  const kept = new Date(session.audioDeletedAt).getTime() - new Date(session.finishedAt).getTime();
+  return kept >= RETENTION_DAYS * 86_400_000 ? "expired" : "deleted";
 }

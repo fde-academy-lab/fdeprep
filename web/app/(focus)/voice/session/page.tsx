@@ -1,33 +1,37 @@
 /**
- * The Voice Screen, in whichever mode the link asked for.
+ * The Voice Screen's start screen, then the session, in whichever mode the
+ * learner picks here.
  *
- * The mode is read from the query string and checked against the three the
- * spec names. It decides what the cockpit draws and nothing else: the caps,
- * the consent gate and the question are all resolved server-side when the
- * session opens, so a learner editing the URL changes the instruments they
- * see and not what they are allowed to do.
+ * The screen opens on the question, its clock and the four ways to answer
+ * it, each with what it spends. The mode is read from the query string and
+ * checked against the three the spec names. It decides what the cockpit draws
+ * and nothing else: the caps, the consent gate and the question are all
+ * resolved server-side when the session opens, so a learner editing the URL
+ * changes the instruments they see and not what they are allowed to do.
  *
  * Four ways in, and none of them a dead end. Graded sessions need the voice
  * socket; where it is not deployed the page offers timed practice that records
- * nothing, and tells faculty exactly what is missing. Where it is deployed,
+ * nothing, and the server log says what is missing. Where it is deployed,
  * consent comes first, then the cockpit. A typed answer needs neither, so it
- * is offered from every one of them.
+ * is on the list in every one of them.
  *
  * The question is the one the link names, resolved to a published question
  * here and again by the session route. A link with no question, or one that
- * names a question no longer published, goes to the picker.
+ * names a question no longer published, goes to Voice.
  */
 import Link from "next/link";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Keyboard, Mic, ShieldCheck, Wrench } from "lucide-react";
+import { ArrowLeft, Keyboard, ShieldCheck } from "lucide-react";
+import { allowanceFor, humanise, voiceScope, type Allowance } from "@/lib/policy/caps";
 import { consentState } from "@/lib/voice/consent";
 import { currentLearner } from "@/lib/session/current";
+import { clock } from "@/lib/voice/clock";
 import {
   beatsAreAPathway, loadQuestion, nextQuestionSlug, publishedQuestions, QuestionNotFound,
   resolvePublishedQuestion,
 } from "@/lib/voice/question";
-import { voiceReadiness, type VoiceMode } from "@/lib/voice/start";
+import { logVoiceNotSetUp, voiceReadiness, type VoiceMode } from "@/lib/voice/start";
 import { typedWordLimit } from "@/lib/voice/typed";
 import { LogoMark } from "@/components/ui/logo";
 import { ButtonLink } from "@/components/ui/button";
@@ -39,12 +43,6 @@ import { TypedAnswer } from "./typed-answer";
 export const dynamic = "force-dynamic";
 
 const MODES: VoiceMode[] = ["guided", "unguided", "pressure"];
-
-const BLURB: Record<VoiceMode, string> = {
-  guided: "Five instruments. The beat track is the one to watch.",
-  unguided: "The question, the clock and a microphone. The instruments come back in the debrief.",
-  pressure: "Guided, and the interviewer interrupts twice.",
-};
 
 type Params = Record<string, string | string[] | undefined>;
 
@@ -71,6 +69,12 @@ async function questionFor(slug: string | undefined) {
   }
 }
 
+function left(allowance: Allowance, period: string): string {
+  if (allowance.max === null) return "No cap";
+  if (allowance.remaining > 0) return `${allowance.remaining} of ${allowance.max} left ${period}`;
+  return `None left. More in ${humanise(allowance.resetInS ?? 0)}`;
+}
+
 export default async function VoiceSessionPage({ searchParams }: { searchParams: Promise<Params> }) {
   const params = await searchParams;
   const asked = first(params.mode);
@@ -82,19 +86,76 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
   // Pressure with nothing to interrupt with is guided mode spending the
   // weekly rehearsal allowance, so a question with no follow-ups is guided.
   const mode = requested === "pressure" && question.followUps.length === 0 ? "guided" : requested;
-  const [{ granted }, next] = await Promise.all([
+  const [{ granted }, next, guided, unguided, pressure] = await Promise.all([
     consentState(learner.enrolmentId), nextQuestionSlug(question.slug),
+    allowanceFor({ enrolmentId: learner.enrolmentId, scope: voiceScope("guided") }),
+    allowanceFor({ enrolmentId: learner.enrolmentId, scope: voiceScope("unguided") }),
+    allowanceFor({ enrolmentId: learner.enrolmentId, scope: voiceScope("pressure") }),
   ]);
   const readiness = voiceReadiness();
+  if (!readiness.ready) logVoiceNotSetUp(readiness.missing);
   const staff = learner.role !== "learner";
   // Pressure is an interviewer cutting in out loud, so a typed pressure
   // answer is a guided one.
   const typedMode = mode === "pressure" ? "guided" : mode;
-  const typeInstead = (
-    <ButtonLink href={{ pathname: "/voice/session", query: { q: question.slug, mode: typedMode, input: "typed" } }}
-                variant="ghost" size="sm">
-      <Keyboard aria-hidden /> Type the answer instead
-    </ButtonLink>
+  const practice = "Timed practice, nothing is recorded or scored";
+
+  const rows: Array<{ key: string; name: string; line: string; spends: string; current: boolean;
+                      query: Record<string, string> }> = [
+    { key: "guided", name: "Guided", line: "Five instruments while you speak.",
+      spends: readiness.ready ? left(guided, "today") : practice,
+      current: !typed && mode === "guided", query: { q: question.slug, mode: "guided" } },
+    { key: "unguided", name: "Unguided",
+      line: "The clock and a microphone; the instruments come back in the debrief.",
+      spends: readiness.ready ? left(unguided, "today") : practice,
+      current: !typed && mode === "unguided", query: { q: question.slug, mode: "unguided" } },
+    ...(question.followUps.length > 0 ? [{
+      key: "pressure", name: "Pressure", line: "Guided, and the interviewer cuts in twice.",
+      spends: readiness.ready ? left(pressure, "this week, shared with rehearsals") : practice,
+      current: !typed && mode === "pressure", query: { q: question.slug, mode: "pressure" },
+    }] : []),
+    { key: "typed", name: "Type",
+      line: "Write the answer when you cannot speak; it is scored on the same rubric.",
+      spends: `Spends the ${typedMode} allowance`,
+      current: typed, query: { q: question.slug, mode: typedMode, input: "typed" } },
+  ];
+
+  // Above every state, and handed to the cockpit as its lobby, which it draws
+  // only while no answer is running: docs/07 keeps the mode links off screen
+  // mid-answer.
+  const start = (
+    <div>
+      <h1 className="text-display font-semibold tracking-[-0.02em] text-text">{question.title}</h1>
+      <p className="tnum mt-1 text-text-dim">{clock(question.totalSeconds * 1000)} on the clock</p>
+      <h2 className="mt-8 text-lead font-semibold text-text">How you will answer</h2>
+      <ul className="mt-3 divide-y divide-border overflow-hidden rounded-panel border border-border bg-surface">
+        {rows.map((row) => (
+          <li key={row.key}>
+            <Link href={{ pathname: "/voice/session", query: row.query }}
+                  aria-current={row.current ? "page" : undefined}
+                  className={cn("flex items-baseline justify-between gap-4 px-4 py-3 hover:bg-surface-2",
+                                // The cockpit below spends this screen's accent on its own buttons.
+                                row.current && "bg-surface-2 shadow-[inset_2px_0_0_var(--color-text)]")}>
+              <span className="min-w-0">
+                <span className="font-medium text-text">{row.name}.</span>{" "}
+                <span className="text-text-dim">{row.line}</span>
+              </span>
+              <span className="tnum shrink-0 text-right text-meta text-text-faint">{row.spends}</span>
+            </Link>
+          </li>
+        ))}
+      </ul>
+      {readiness.ready ? (
+        <p className="mt-3 text-meta text-text-faint">
+          An answer you stop inside its first thirty seconds, before forty words, does not count.
+        </p>
+      ) : null}
+      {staff && !beatsAreAPathway(question.beats) ? (
+        <p className="mt-4 rounded-control border border-warn/40 bg-warn-soft px-3 py-2 text-text">
+          This question has {question.beats.length} beats. docs/07 asks for four to six.
+        </p>
+      ) : null}
+    </div>
   );
 
   return (
@@ -110,13 +171,9 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
       <main className="mx-auto max-w-3xl px-5 pb-16 pt-10">
         {typed ? (
           <>
-            <p className="inline-flex items-center gap-2 rounded-full border border-border-strong px-3 py-1
-                          text-meta text-text-dim">
-              <Keyboard aria-hidden className="size-3.5" /> Typed answer, {typedMode}
-            </p>
-            <h1 className="mt-4 text-display font-semibold tracking-[-0.02em] text-text">{question.title}</h1>
+            {start}
             {mode === "pressure" ? (
-              <p className="mt-3 text-text-dim">
+              <p className="mt-6 text-text-dim">
                 Pressure needs a spoken answer, because the interviewer interrupts out loud. This
                 one is guided instead.
               </p>
@@ -126,42 +183,20 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
           </>
         ) : !readiness.ready ? (
           <>
-            <p className="inline-flex items-center gap-2 rounded-full border border-border-strong px-3 py-1
-                          text-meta text-text-dim">
-              <Mic aria-hidden className="size-3.5" /> Timed practice
+            {start}
+            <h2 className="mt-10 text-lead font-semibold text-text">Answer it out loud against the clock</h2>
+            <p className="mt-1 text-text-dim">
+              This run records nothing and scores nothing. The clock and the beats are the same ones a
+              graded session uses.
             </p>
-            <h1 className="mt-4 text-display font-semibold tracking-[-0.02em] text-text">{question.title}</h1>
-            <p className="mt-2 text-lead text-text-dim">Answer it out loud against the clock.</p>
-            <p className="mt-3 text-text-dim">
-              Graded voice sessions are not switched on for this cohort yet, so this run records
-              nothing and scores nothing. The clock and the beats are the same ones a graded
-              session uses.
-            </p>
-            <div className="mt-8 rounded-panel border border-border bg-surface p-5 sm:p-6">
+            <div className="mt-4 rounded-panel border border-border bg-surface p-5 sm:p-6">
               <VoicePractice key={question.slug} prompt={question.promptText} totalSeconds={question.totalSeconds}
                              beats={question.beats.map((b) => ({ key: b.key, label: b.label, seconds: b.seconds }))} />
             </div>
-            <p className="mt-4 flex flex-wrap items-center gap-2 text-text-dim">
-              A typed answer is scored now. {typeInstead}
-            </p>
-            {staff ? (
-              <details className="mt-6 rounded-panel border border-border bg-surface px-4 py-3">
-                <summary className="flex cursor-pointer items-center gap-2 text-text">
-                  <Wrench aria-hidden className="size-4 text-text-dim" /> What faculty need to switch graded voice on
-                </summary>
-                <p className="mt-2 text-text-dim">
-                  The web app needs {readiness.missing.map((name, i) => (
-                    <span key={name}>{i ? " and " : ""}<code className="font-mono text-text">{name}</code></span>
-                  ))}. Both come from the voice stack in <code className="font-mono text-text">infra/</code>;
-                  docs/05 has the deploy steps, and a human runs the deploy.
-                </p>
-              </details>
-            ) : null}
           </>
         ) : !granted ? (
           <>
-            <h1 className="text-display font-semibold tracking-[-0.02em] text-text">{question.title}</h1>
-            <p className="mt-2 text-lead text-text-dim">Answer it out loud against the clock.</p>
+            {start}
             <div className="mt-8 rounded-panel border border-border bg-surface p-6">
               <ShieldCheck aria-hidden className="size-6 text-text-dim" strokeWidth={1.75} />
               <h2 className="mt-3 text-title font-semibold text-text">Recording needs your consent first</h2>
@@ -171,7 +206,11 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
               </p>
               <div className="mt-5 flex flex-wrap gap-2.5">
                 <ButtonLink href="/voice/consent" variant="primary">Read what is recorded</ButtonLink>
-                {typeInstead}
+                <ButtonLink href={{ pathname: "/voice/session",
+                                    query: { q: question.slug, mode: typedMode, input: "typed" } }}
+                            variant="ghost">
+                  <Keyboard aria-hidden /> Type the answer instead
+                </ButtonLink>
                 <ButtonLink href="/voice" variant="ghost">Not now</ButtonLink>
               </div>
             </div>
@@ -179,36 +218,9 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
         ) : (
           /* Keyed so a new question or mode is a new cockpit. Its refs hold
              the session, the transcript and the follow-ups already fired, and
-             a cockpit reused across questions carried all three over. The
-             lobby is drawn by the cockpit only while no answer is running, so
-             the mode links are not a sixth thing on screen mid-answer. */
+             a cockpit reused across questions carried all three over. */
           <Cockpit key={`${question.slug}:${mode}`} question={question} mode={mode}
-                   nextSlug={next !== question.slug ? next : null}
-                   lobby={
-                     <>
-                       <nav aria-label="Mode" className="flex flex-wrap items-center gap-1.5">
-                         {MODES.filter((candidate) => candidate !== "pressure" || question.followUps.length > 0)
-                           .map((candidate) => (
-                           <Link key={candidate}
-                                 href={{ pathname: "/voice/session", query: { q: question.slug, mode: candidate } }}
-                                 aria-current={candidate === mode ? "page" : undefined}
-                                 className={cn("rounded-full border px-3 py-1 font-medium capitalize",
-                                               candidate === mode ? "border-text bg-text text-bg"
-                                                 : "border-border-strong text-text-dim hover:text-text")}>
-                             {candidate}
-                           </Link>
-                         ))}
-                         <span className="ml-auto">{typeInstead}</span>
-                       </nav>
-                       <p className="mt-3 text-text-dim">{BLURB[mode]}</p>
-                       {beatsAreAPathway(question.beats) ? null : (
-                         <p className="mt-4 rounded-control border border-warn/40 bg-warn-soft px-3 py-2 text-text">
-                           This question has {question.beats.length} beats. docs/07 asks for four to six: three is
-                           not a pathway and seven is a script.
-                         </p>
-                       )}
-                     </>
-                   } />
+                   nextSlug={next !== question.slug ? next : null} lobby={start} />
         )}
       </main>
     </div>

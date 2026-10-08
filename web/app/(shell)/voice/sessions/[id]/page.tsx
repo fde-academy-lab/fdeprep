@@ -266,7 +266,7 @@ function Axis({ label, points, outOf }: { label: string; points: number; outOf: 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <section className="mt-6 border border-border bg-surface p-4">
-      <h2 className="text-xs uppercase tracking-wide text-text-faint">{title}</h2>
+      <h2 className="text-meta font-medium text-text-faint">{title}</h2>
       <div className="mt-3">{children}</div>
     </section>
   );

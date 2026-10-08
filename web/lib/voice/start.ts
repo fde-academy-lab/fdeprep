@@ -7,6 +7,7 @@
  * keeps the consent gate and the caps real rather than advisory.
  */
 import { inTransaction } from "../db/pool.ts";
+import { logOnce } from "../log-once.ts";
 import { consume, voiceScope } from "../policy/caps.ts";
 import { requireConsent } from "./consent.ts";
 import { mintVoiceToken } from "./token.ts";
@@ -34,6 +35,16 @@ export class VoiceNotConfigured extends Error {
 export function voiceReadiness(): { ready: boolean; missing: string[] } {
   const missing = ["VOICE_SOCKET_URL", "VOICE_TOKEN_SECRET"].filter((name) => !process.env[name]);
   return { ready: missing.length === 0, missing };
+}
+
+/**
+ * The screens say spoken answers are not switched on and name nothing; this
+ * line tells whoever runs the deployment which variables to set, once per
+ * process.
+ */
+export function logVoiceNotSetUp(missing: readonly string[]): void {
+  logOnce(`Graded voice is off: the web app needs ${missing.join(" and ")}, from the voice stack ` +
+          "in infra/. docs/05 has the deploy steps.");
 }
 
 function socketUrl(): string {
