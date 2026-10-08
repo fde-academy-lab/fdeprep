@@ -23,6 +23,12 @@ well as for the learner.
    `problems/loop/route-tickets-with-a-decision-model.yaml` too.
 5. `web/lib/problems/vocabulary.ts` for your chapter's topics in
    `CHAPTER_TOPICS`, and the competency list.
+6. For the solutions and the stub: `.claude/skills/vendor/karpathy/karpathy-guidelines/SKILL.md`
+   and `.claude/skills/vendor/ponytail/ponytail/SKILL.md`. A reference solution is
+   the smallest complete answer, which is also what a learner reads after the
+   attempt closes.
+7. For every sentence a learner reads: `.claude/skills/vendor/humanizer/SKILL.md`,
+   as the last pass.
 
 ## What a good problem here looks like
 
@@ -69,6 +75,10 @@ Run, from the repository root, and fix everything they find:
 The reference passes every gate, the naive solution fails at least one hidden
 test, the stub fails a public test and every step check, and the coach is
 quiet on the reference and fires on the naive solution.
+
+Keep checking proportionate: the validator and the runner for each problem you
+wrote, plus the content tests filtered to your slugs. The coordinator runs the
+full suites once for the whole batch.
 
 Do not commit. Report each problem's slug, tier, the one mistake it exists to
 catch, the runner verdicts for the reference and the naive solution, and every
