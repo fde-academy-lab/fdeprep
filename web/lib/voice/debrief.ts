@@ -18,6 +18,9 @@ import { RETENTION_DAYS } from "./audio.ts";
 import type { PaceState } from "./cues.ts";
 import { deliveryFor, type Delivery, type Segment } from "./delivery.ts";
 import { depthByBeat, type BeatDepth } from "./depth.ts";
+import {
+  interviewerOnRecord, interviewerTitle, labelOf, type InterviewerLabel,
+} from "./interviewers.ts";
 import { loadQuestion, type VoiceQuestion } from "./question.ts";
 import { MAX_JUDGE_ATTEMPTS } from "./score.ts";
 import type { VoiceMode } from "./run.ts";
@@ -47,6 +50,9 @@ export type Debrief = {
   /** Typed answers have no clock, no pace, no delivery and no recording. */
   input: "spoken" | "typed";
   question: VoiceQuestion;
+  /** Who asked, retired or not. Null for a session from before interviewers
+   *  existed, which the page reads as no interviewer chosen. */
+  interviewer: InterviewerLabel | null;
   startedAt: string;
   finishedAt: string | null;
   durationMs: number;
@@ -88,12 +94,12 @@ export async function loadDebrief(
     pace_score: string | null; score: string | null;
     delivery: Delivery | null; judge_result: { summary?: string; skipped?: string } | null;
     audio_s3_key: string | null; audio_deleted_at: Date | null; shared: boolean;
-    judge_attempts: number;
+    judge_attempts: number; interviewer_slug: string | null;
   }>(
     `select s.id, s.mode, s.voice_question_id, s.input, s.started_at, s.finished_at, s.scored_at,
             s.transcript, s.transcript_segments, s.content_score, s.structure_score,
             s.pace_score, s.score, s.delivery, s.judge_result, s.judge_attempts,
-            s.audio_s3_key, s.audio_deleted_at,
+            s.audio_s3_key, s.audio_deleted_at, s.interviewer_slug,
             coalesce(sh.id is not null and sh.withdrawn_at is null, false) as shared
        from voice_session s
        left join voice_session_share sh on sh.voice_session_id = s.id
@@ -104,6 +110,7 @@ export async function loadDebrief(
   if (!row) throw new DebriefNotFound("That session is not yours, or does not exist.");
 
   const question = await loadQuestion(Number(row.voice_question_id));
+  const interviewer = await interviewerOnRecord(row.interviewer_slug);
 
   const beatRows = await pool.query<{
     beat_key: string; covered: boolean; live_covered: boolean;
@@ -152,6 +159,7 @@ export async function loadDebrief(
     mode: row.mode,
     input: row.input,
     question,
+    interviewer: interviewer ? labelOf(interviewer) : null,
     startedAt: row.started_at.toISOString(),
     finishedAt: finishedAt ? finishedAt.toISOString() : null,
     durationMs: finishedAt ? finishedAt.getTime() - row.started_at.getTime() : 0,
@@ -193,11 +201,14 @@ export async function pastSessions(enrolmentId: number) {
     id: string; mode: VoiceMode; input: "spoken" | "typed"; title: string; started_at: Date;
     finished_at: Date; score: string | null; scored_at: Date | null; not_counted: boolean;
     judge_attempts: number; audio_s3_key: string | null; audio_deleted_at: Date | null;
+    interviewer_slug: string | null; interviewer_name: string | null; role_line: string | null;
   }>(
     `select s.id, s.mode, s.input, q.title, s.started_at, s.finished_at, s.score, s.scored_at,
             coalesce(s.judge_result ->> 'skipped' = 'did_not_count', false) as not_counted,
-            s.judge_attempts, s.audio_s3_key, s.audio_deleted_at
+            s.judge_attempts, s.audio_s3_key, s.audio_deleted_at,
+            s.interviewer_slug, i.name as interviewer_name, i.role_line
        from voice_session s join voice_question q on q.id = s.voice_question_id
+       left join voice_interviewer i on i.slug = s.interviewer_slug
       where s.enrolment_id = $1 and s.finished_at is not null
       order by s.started_at desc limit 50`,
     [enrolmentId],
@@ -208,6 +219,11 @@ export async function pastSessions(enrolmentId: number) {
     mode: row.mode,
     input: row.input,
     title: row.title,
+    // Retired or not: a past answer keeps saying who asked.
+    interviewer: row.interviewer_slug && row.interviewer_name && row.role_line
+      ? { slug: row.interviewer_slug, name: row.interviewer_name, role: row.role_line,
+          title: interviewerTitle(row.interviewer_slug, row.role_line) }
+      : null,
     startedAt: row.started_at.toISOString(),
     finishedAt: row.finished_at.toISOString(),
     notCounted: row.not_counted,

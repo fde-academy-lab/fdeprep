@@ -6,10 +6,11 @@
  * cannot name an enrolment, a question, a mode or a session, which is what
  * keeps the consent gate and the caps real rather than advisory.
  */
-import { inTransaction } from "../db/pool.ts";
+import { db, inTransaction } from "../db/pool.ts";
 import { logOnce } from "../log-once.ts";
 import { consume, voiceScope } from "../policy/caps.ts";
 import { requireConsent } from "./consent.ts";
+import { InterviewerNotFound, resolveInterviewer } from "./interviewers.ts";
 import { mintVoiceToken } from "./token.ts";
 
 export type VoiceMode = "guided" | "unguided" | "pressure";
@@ -87,11 +88,15 @@ export async function startVoiceSession(input: {
   voiceQuestionId: number;
   mode: VoiceMode;
   capped?: boolean;
+  /** The slug the browser sent, resolved here. Absent means the question's
+   *  first interviewer. */
+  interviewerSlug?: string | null;
 }): Promise<StartedSession> {
   // Order matters. Every refusal costs nothing and leaves no row behind.
   await requireConsent(input.enrolmentId);
   const url = socketUrl();
   const signing = secret();
+  const interviewer = await sessionInterviewer(input.voiceQuestionId, input.interviewerSlug);
 
   const sessionId = await inTransaction(async (client) => {
     if (input.capped !== false) {
@@ -99,10 +104,10 @@ export async function startVoiceSession(input: {
     }
     const { rows } = await client.query<{ id: string }>(
       `insert into voice_session
-         (enrolment_id, voice_question_id, cohort_id, mode, spent_allowance)
-       values ($1, $2, $3, $4, $5) returning id`,
+         (enrolment_id, voice_question_id, cohort_id, mode, spent_allowance, interviewer_slug)
+       values ($1, $2, $3, $4, $5, $6) returning id`,
       [input.enrolmentId, input.voiceQuestionId, input.cohortId, input.mode,
-       input.capped !== false],
+       input.capped !== false, interviewer],
     );
     return Number(rows[0]!.id);
   });
@@ -121,4 +126,27 @@ export async function startVoiceSession(input: {
     socketUrl: url,
     sampleRate: 16_000,
   };
+}
+
+/**
+ * Who asks, decided on the server. A slug the browser named has to be a
+ * published interviewer, or the session is refused before anything is
+ * claimed. With none named it is the question's first interviewer that is
+ * still published, and null for a question that names none, such as the
+ * development fixture.
+ */
+export async function sessionInterviewer(
+  questionId: number, slug: string | null | undefined,
+): Promise<string | null> {
+  if (slug) return (await resolveInterviewer(slug)).slug;
+  const { rows } = await db().query<{ interviewers: string[] }>(
+    "select interviewers from voice_question where id = $1", [questionId]);
+  for (const candidate of rows[0]?.interviewers ?? []) {
+    try {
+      return (await resolveInterviewer(candidate)).slug;
+    } catch (error) {
+      if (!(error instanceof InterviewerNotFound)) throw error;
+    }
+  }
+  return null;
 }
