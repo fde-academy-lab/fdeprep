@@ -1,0 +1,735 @@
+slug: give-every-customer-their-own-thread
+title: "Give every customer their own thread"
+day: 12
+skill: Key a checkpointed graph's memory to each customer, and resume a pause only on an answer
+artefact_type: code
+difficulty: medium
+track: memory
+concept:
+  topic: "Short-term and long-term"
+  question: "What is the key that keeps one conversation's memory out of another's?"
+est_minutes: 30
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: agent-loop, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 4
+time_limit_s: 10
+allowed_imports: [json, re, typing, langgraph]
+
+brief_md: |
+  A bank the size of AU Small Finance Bank runs a card-dispute agent in its
+  app chat, about 3,000 chats a day. The agent is a LangGraph graph with an
+  `InMemorySaver` checkpointer. It keeps what each customer has said as facts,
+  asks the model what to make of each message, and pauses at an `interrupt()`
+  to have the customer confirm before it files a dispute.
+
+  The team ran every chat on one thread id, `main`. On Monday a customer came
+  back after lunch and was asked to confirm a ₹4,200 dispute on someone else's
+  card, because the checkpoint on `main` held whatever the last customer had
+  written. The same week a customer whose chat was paused at a confirmation
+  asked about her credit limit, and the graph took the question as her answer.
+  Her dispute was dropped and her question never reached the model.
+
+  The graph itself is fine. Change how messages reach it, so that each
+  customer's memory stays on their own thread and a pause is resumed only by
+  an answer to it.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` names the batch, such as "App chat, 7 October, 14:00 to 14:30".
+  `tools["sessions"]()` returns the batch's messages in arrival order, every
+  customer's mixed together:
+
+      [{"customer": "C-14", "text": "My card ending 4417 was charged ..."},
+       {"customer": "C-22", "text": "Why is there a late fee ..."}, ...]
+
+  The starter code's `build_graph(llm, tools)` is the team's graph, compiled
+  with `InMemorySaver()`. Leave it as it is. A turn asks the model about one
+  message and adds the `Fact: key=value` lines it replies with to the
+  thread's `facts`. When the model asks for a dispute, the graph pauses at
+  `interrupt({"confirm": <the dispute>})`, and resumed with a yes it calls
+  `tools["file_dispute"]`.
+
+  For each message:
+
+  - Run it on the thread `{"configurable": {"thread_id": <its customer>}}`,
+    so a customer's facts carry from one message to the next and reach nobody
+    else.
+  - When that thread is paused at a confirmation and the message answers it,
+    resume with `invoke(Command(resume=<the message's text>), config)`. A
+    message answers when its whole text is yes or no, in any case, with an
+    optional full stop or exclamation mark. The starter code's `ANSWER`
+    matches exactly those.
+  - When the thread is paused and the message is anything else, the
+    confirmation is cancelled. Count it, and run the message as a new turn
+    with `invoke({"customer": ..., "text": ...}, config)`. In langgraph 1.2.12
+    a new input on a paused thread drops the paused step and starts again from
+    `START`, and the thread keeps its facts.
+  - A message with no `customer`, or an empty one, belongs to nobody. Count it
+    in `unrouted` and run nothing for it.
+
+  A turn is one model call, and an answer to a confirmation is none.
+
+  Return a JSON string with an entry for every customer who sent a message:
+
+      {"customers": {"C-14": {"facts": {...}, "filed": true, "pending": false, "cancelled": 0}},
+       "unrouted": 0}
+
+  `filed` says whether a dispute was filed on the customer's thread, `pending`
+  whether the thread is still paused at a confirmation when the batch ends,
+  and `cancelled` how many confirmations a new message cancelled.
+
+  Budget: at most 4 model calls. Allowed imports: json, re, typing and
+  langgraph, version 1.2.12.
+
+stub_code: |
+  import json
+  import re
+  from typing import Annotated, TypedDict
+
+  from langgraph.checkpoint.memory import InMemorySaver
+  from langgraph.graph import END, START, StateGraph
+  from langgraph.types import Command, interrupt
+
+  FACT = re.compile(r"^Fact:\s*(\w+)\s*=\s*(.+?)\s*$", re.MULTILINE)
+  DISPUTE = re.compile(r"^Dispute:\s*(.+?)\s*$", re.MULTILINE)
+  ANSWER = re.compile(r"^\s*(yes|no)\s*[.!]?\s*$", re.IGNORECASE)
+
+
+  def merge(old: dict, new: dict) -> dict:
+      return {**old, **new}
+
+
+  class State(TypedDict):
+      customer: str
+      text: str                             # the message this turn handles
+      facts: Annotated[dict, merge]  # each turn's new facts are added to these
+      dispute: str                          # what the model asked to file, if anything
+      answer: str                           # "yes" or "no" once the customer answers
+      filed: bool
+
+
+  def build_graph(llm, tools):
+      """The team's dispute graph, compiled with a checkpointer. Leave it as it is."""
+
+      def turn(state):
+          reply = llm(f"Facts so far: {json.dumps(state['facts'], sort_keys=True)}\n"
+                      f"Customer message: {state['text']}\n"
+                      "Reply with a Fact: key=value line for each new fact, and a Dispute: line "
+                      "when the customer wants a charge disputed.")
+          found = DISPUTE.search(reply)
+          return {"facts": dict(FACT.findall(reply)), "dispute": found.group(1) if found else "",
+                  "answer": ""}
+
+      def confirm(state):
+          said = ANSWER.match(str(interrupt({"confirm": state["dispute"]})))
+          return {"answer": said.group(1).lower() if said else ""}
+
+      def file(state):
+          tools["file_dispute"](customer=state["customer"], dispute=state["dispute"])
+          return {"filed": True}
+
+      graph = StateGraph(State)
+      graph.add_node("turn", turn)
+      graph.add_node("confirm", confirm)
+      graph.add_node("file", file)
+      graph.add_edge(START, "turn")
+      graph.add_conditional_edges("turn", lambda state: "confirm" if state["dispute"] else END)
+      graph.add_conditional_edges("confirm", lambda state: "file" if state["answer"] == "yes" else END)
+      graph.add_edge("file", END)
+      return graph.compile(checkpointer=InMemorySaver())
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      app = build_graph(llm, tools)
+      customers = {}
+
+      for message in tools["sessions"]():
+          # TODO 1: run the message on its customer's own thread, keyed by the
+          #         customer id. A message with no customer runs nowhere: count it
+          #         as unrouted
+          config = {"configurable": {"thread_id": "main"}}
+          # TODO 3: when the thread is paused (app.get_state(config).interrupts)
+          #         and ANSWER matches the message, resume with Command(resume=...)
+          # TODO 4: when it is paused and the message is anything else, count a
+          #         cancelled confirmation and run the message as a new turn
+          app.invoke({"customer": message["customer"], "text": message["text"]}, config)
+
+      # TODO 2: report each customer's facts and filed from their thread's
+      #         app.get_state(...).values, and pending from its interrupts
+      return json.dumps({"customers": customers, "unrouted": 0})
+
+steps:
+  - id: s1
+    text: Run each message on its customer's own thread, with the customer id as the `thread_id`.
+    check_id: s1
+  - id: s2
+    text: Report each customer's `facts`, `filed` and `pending` from their own thread's state when the batch ends.
+    check_id: s2
+  - id: s3
+    text: When a customer's thread is paused and the message is a yes or a no, resume it with `Command(resume=...)`.
+    check_id: s3
+  - id: s4
+    text: When the thread is paused and the message is anything else, count a cancelled confirmation and run the message as a new turn.
+    check_id: s4
+
+step_checks:
+  # The public batches each come from one customer, where a shared thread
+  # still works, so this check runs two customers of its own.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "App chat, 6 October, 09:00 to 09:30" }
+      llm_script:
+        - { match: { contains: "8:15 pm" }, reply: "Fact: declines=2" }
+        - { match: { contains: "savings account" }, reply: "Fact: account=4471\nFact: request=address change" }
+        - { match: { contains: "petrol pump" }, reply: "Fact: card=1188\nFact: city=Nagpur" }
+        - { match: "*", reply: "Noted." }
+      tools:
+        sessions:
+          returns:
+            - { customer: "C-51", text: "My card ending 1188 was declined at a petrol pump in Nagpur." }
+            - { customer: "C-52", text: "I want to change the address on my savings account ending 4471." }
+            - { customer: "C-51", text: "It happened twice, at 8 pm and 8:15 pm." }
+        file_dispute: { returns: { status: 200, case: "DSP-30001" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [customers]
+            properties:
+              customers:
+                type: object
+                required: [C-51, C-52]
+                properties:
+                  C-51:
+                    type: object
+                    required: [facts]
+                    properties:
+                      facts: { const: { card: "1188", city: "Nagpur", declines: "2" } }
+                  C-52:
+                    type: object
+                    required: [facts]
+                    properties:
+                      facts: { const: { account: "4471", request: "address change" } }
+  - step_id: s2
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [customers]
+            properties:
+              customers:
+                type: object
+                required: [C-27]
+                properties:
+                  C-27:
+                    type: object
+                    required: [facts, filed, pending]
+                    properties:
+                      facts: { const: { card: "2290", issue: "blocked", city: "Jaipur" } }
+                      filed: { const: false }
+                      pending: { const: false }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: file_dispute, args: { customer: "C-14" } }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [customers]
+            properties:
+              customers:
+                type: object
+                required: [C-14]
+                properties:
+                  C-14:
+                    type: object
+                    required: [filed, pending]
+                    properties:
+                      filed: { const: true }
+                      pending: { const: false }
+  # No public batch sends a paused thread anything but an answer, so this
+  # check runs its own.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "App chat, 6 October, 11:00 to 11:30" }
+      llm_script:
+        - { match: { contains: "statement" }, reply: "Fact: wants=statement" }
+        - { match: { contains: "Fitzone" },
+            reply: "Fact: card=5521\nFact: amount=1250\nFact: merchant=Fitzone\nDispute: ₹1,250 at Fitzone, card ending 5521" }
+        - { match: "*", reply: "Noted." }
+      tools:
+        sessions:
+          returns:
+            - { customer: "C-86", text: "Please dispute ₹1,250 at Fitzone on my card ending 5521. I cancelled that membership." }
+            - { customer: "C-86", text: "Can you also send me last month's statement?" }
+        file_dispute: { returns: { status: 200, case: "DSP-30002" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: file_dispute }
+        - { type: prompt_contains, value: "statement" }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [customers]
+            properties:
+              customers:
+                type: object
+                required: [C-86]
+                properties:
+                  C-86:
+                    type: object
+                    required: [facts, filed, pending, cancelled]
+                    properties:
+                      facts: { required: [wants], properties: { wants: { const: "statement" } } }
+                      filed: { const: false }
+                      pending: { const: false }
+                      cancelled: { const: 1 }
+
+hints:
+  - Look at the `thread_id` in your config. The checkpointer keeps one state per
+    thread, so two customers on one id share one memory.
+  - Before you invoke, ask the customer's thread whether it is paused.
+    `app.get_state(config).interrupts` is empty when it is not.
+  - A paused thread takes a resume only from an answer to its question. Check
+    the message with `ANSWER`, and send anything else in as a new turn.
+  - In langgraph 1.2.12 a new input on a paused thread drops the paused step,
+    so the cancel path is an ordinary `invoke` with the message. Count the
+    cancellation before you make it.
+  - "At the end, read each customer's own thread with `app.get_state`: `values`
+    for the facts and `filed`, and `interrupts` for `pending`."
+
+scenario:
+  headline: "A customer was asked to confirm someone else's ₹4,200 dispute"
+  who: "Card disputes at a bank the size of AU Small Finance Bank"
+  situation: >-
+    The dispute agent ran every chat on one LangGraph thread. A customer back
+    from lunch was shown another customer's dispute to confirm, and a paused
+    chat took a question about a credit limit as the answer.
+  stakes: >-
+    About 3,000 dispute chats a day go through the agent. One shared thread
+    shows a customer another customer's card, amount and merchant.
+  metrics:
+    - { label: Threads in use, value: "1" }
+    - { label: Dispute chats a day, value: "3,000" }
+    - { label: Dispute shown to a stranger, value: "₹4,200" }
+
+diagram:
+  title: Where each message lands, and what a paused thread accepts
+  caption: >-
+    The checkpointer keeps one state per thread id. Key the thread to the
+    customer, and resume a paused thread only with a yes or a no.
+  direction: lr
+  nodes:
+    - { id: sessions, label: Chat messages, sub: "every customer, in arrival order", kind: queue, tone: orange, at: [0, 1] }
+    - { id: router, label: "`run_agent`", sub: "picks the thread, resumes or starts a turn", kind: agent, tone: purple, at: [1, 1] }
+    - { id: one, label: "Thread `main`", sub: "everyone's facts, last writer wins", kind: store, tone: neutral, at: [2, 0] }
+    - { id: c14, label: Thread C-14, sub: "C-14's facts, a paused confirmation", kind: store, tone: blue, at: [2, 1] }
+    - { id: c22, label: Thread C-22, sub: C-22's facts only, kind: store, tone: teal, at: [2, 2] }
+    - { id: graph, label: Dispute graph, sub: "turn, confirm, file", kind: model, tone: pink, at: [3, 1] }
+    - { id: file, label: "`file_dispute`", sub: runs after a yes, kind: tool, tone: green, at: [4, 1] }
+  edges:
+    - { from: sessions, to: router, label: the next message, step: 1 }
+    - { from: router, to: one, label: one id for everyone, tone: danger }
+    - { from: router, to: c14, label: "`thread_id` is C-14", step: 2, tone: success }
+    - { from: router, to: c22, label: "`thread_id` is C-22", tone: success }
+    - { from: c14, to: graph, label: a yes or no resumes, step: 3 }
+    - { from: c22, to: graph, label: anything else is a turn }
+    - { from: graph, to: file, label: after a yes, step: 4 }
+
+approach:
+  goal: Keep each customer's memory on their own thread, and resume only on an answer
+  branches:
+    - label: Pick the key for memory
+      detail: A checkpointer keeps one state per thread id. Whatever shares the key shares the memory.
+      leaves: [the customer id, never a fixed name, never the thread that ran last]
+    - label: Tell an answer from a new message
+      leaves: [a yes or a no resumes the pause, anything else is a new turn, count each cancelled confirmation]
+    - label: Read each customer back from their thread
+      leaves: [facts and filed from its values, pending from its interrupts]
+    - label: Route nothing you cannot place
+      leaves: [a message with no customer is counted, it runs on no thread]
+
+coach:
+  opening: >-
+    Before you change anything else, decide what the thread id should be, and
+    who else would read a checkpoint saved under it.
+  signals:
+    - id: one-thread
+      when: { code_matches: '["'']main["'']' }
+      say: >-
+        Every message runs on the thread `main`. Whose checkpoint does the next
+        customer's message read and write?
+    - id: no-cancel-count
+      when: { code_lacks: 'cancelled\b[^\n]*\+=\s*1' }
+      say: >-
+        Nothing in your code counts a cancelled confirmation. What happens to a
+        paused thread when its customer writes something that is not a yes or a no?
+    - id: no-unrouted
+      when: { code_lacks: 'unrouted\s*\+=' }
+      say: >-
+        Nothing in your code counts a message that has no customer. Which
+        thread would such a message land on?
+    - id: interleaved
+      when: { test_failed: two_customers_interleaved_keep_their_own_facts }
+      say: >-
+        Two customers wrote in turns in that batch. Which thread did each
+        message run on, and whose facts ended up in the second customer's entry?
+    - id: question-taken-as-answer
+      when: { test_failed: an_unrelated_message_cancels_the_confirmation }
+      say: >-
+        That customer asked a question while a confirmation waited. Did the
+        question reach the model, or did it go in as the answer?
+    - id: no-is-an-answer
+      when: { test_failed: a_no_files_nothing }
+      say: >-
+        That customer said no. Did your code resume the paused thread with it,
+        or start a new turn?
+    - id: nobodys-message
+      when: { test_failed: adversarial_a_message_with_no_customer }
+      say: >-
+        One message in that batch had no customer. Where did it go, and whose
+        facts did its card number end up in?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1. Change the thread id to the message's customer and
+        run the public batches again.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint is about the thread id, and
+        it is where every crossed conversation in this brief started.
+  wrap_up: >-
+    A checkpointer remembers per thread, so the thread id is the line between
+    one person's memory and another's. Key it to the customer, resume a pause
+    only with an answer to it, and let anything else start a new turn.
+
+tests:
+  - name: files_after_the_customer_says_yes
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "App chat, 7 October, 14:00 to 14:30" }
+      llm_script:
+        - { match: { contains: "Zestmart" },
+            reply: "Fact: card=4417\nFact: amount=4200\nFact: merchant=Zestmart\nDispute: ₹4,200 at Zestmart on 2 October, card ending 4417" }
+        - { match: "*", reply: "Noted." }
+      tools:
+        sessions:
+          returns:
+            - { customer: "C-14", text: "My card ending 4417 was charged ₹4,200 at Zestmart on 2 October. I never bought anything there." }
+            - { customer: "C-14", text: "Yes." }
+        file_dispute: { returns: { status: 200, case: "DSP-30118" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [customers, unrouted]
+            properties:
+              unrouted: { const: 0 }
+              customers:
+                type: object
+                required: [C-14]
+                properties:
+                  C-14:
+                    type: object
+                    required: [facts, filed, pending, cancelled]
+                    properties:
+                      facts: { const: { card: "4417", amount: "4200", merchant: "Zestmart" } }
+                      filed: { const: true }
+                      pending: { const: false }
+                      cancelled: { const: 0 }
+        - { type: calls_tool_with, name: file_dispute, args: { customer: "C-14" } }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: keeps_a_customers_facts_across_messages
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "App chat, 7 October, 15:00 to 15:30" }
+      llm_script:
+        - { match: { contains: "Jaipur" }, reply: "Fact: city=Jaipur" }
+        - { match: { contains: "blocked yesterday" }, reply: "Fact: card=2290\nFact: issue=blocked" }
+        - { match: "*", reply: "Noted." }
+      tools:
+        sessions:
+          returns:
+            - { customer: "C-27", text: "Hi, my debit card ending 2290 was blocked yesterday." }
+            - { customer: "C-27", text: "I was travelling in Jaipur when it happened." }
+        file_dispute: { returns: { status: 200, case: "DSP-30121" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [customers, unrouted]
+            properties:
+              unrouted: { const: 0 }
+              customers:
+                type: object
+                required: [C-27]
+                properties:
+                  C-27:
+                    type: object
+                    required: [facts, filed, pending, cancelled]
+                    properties:
+                      facts: { const: { card: "2290", issue: "blocked", city: "Jaipur" } }
+                      filed: { const: false }
+                      pending: { const: false }
+                      cancelled: { const: 0 }
+        - { type: does_not_call_tool, name: file_dispute }
+
+  - name: two_customers_interleaved_keep_their_own_facts
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "App chat, 7 October, 16:00 to 16:30" }
+      llm_script:
+        - { match: { contains: "paid the full bill" }, reply: "Fact: paid_on=2026-09-28" }
+        - { match: { contains: "late fee" }, reply: "Fact: account=5508\nFact: fee=590" }
+        - { match: { contains: "Brightmart" },
+            reply: "Fact: card=6604\nFact: amount=3150\nFact: merchant=Brightmart\nDispute: ₹3,150 at Brightmart on 4 October, card ending 6604" }
+        - { match: "*", reply: "Noted." }
+      tools:
+        sessions:
+          returns:
+            - { customer: "C-41", text: "My card ending 6604 was charged ₹3,150 at Brightmart on 4 October and I was nowhere near the shop." }
+            - { customer: "C-58", text: "Why is there a ₹590 late fee on my credit card account ending 5508?" }
+            - { customer: "C-41", text: "yes" }
+            - { customer: "C-58", text: "I paid the full bill on 28 September." }
+        file_dispute: { returns: { status: 200, case: "DSP-30140" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: returns_lacks, value: '"C-58":\s*\{[^}]*6604' }
+        - { type: calls_tool_with, name: file_dispute, args: { customer: "C-41" } }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [customers]
+            properties:
+              customers:
+                type: object
+                required: [C-41, C-58]
+                properties:
+                  C-41:
+                    type: object
+                    required: [facts, filed, pending]
+                    properties:
+                      facts: { const: { card: "6604", amount: "3150", merchant: "Brightmart" } }
+                      filed: { const: true }
+                      pending: { const: false }
+                  C-58:
+                    type: object
+                    required: [facts, filed]
+                    properties:
+                      facts: { const: { account: "5508", fee: "590", paid_on: "2026-09-28" } }
+                      filed: { const: false }
+
+  - name: an_unrelated_message_cancels_the_confirmation
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "App chat, 7 October, 17:00 to 17:30" }
+      llm_script:
+        - { match: { contains: "credit limit" }, reply: "Fact: asked=credit limit" }
+        - { match: { contains: "Railmart" },
+            reply: "Fact: card=7781\nFact: amount=2640\nFact: merchant=Railmart\nDispute: ₹2,640 charged twice at Railmart on 5 October, card ending 7781" }
+        - { match: "*", reply: "Noted." }
+      tools:
+        sessions:
+          returns:
+            - { customer: "C-63", text: "My card ending 7781 was charged ₹2,640 twice at Railmart on 5 October." }
+            - { customer: "C-63", text: "Before that, what is my credit limit now?" }
+        file_dispute: { returns: { status: 200, case: "DSP-30152" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_contains, value: "credit limit" }
+        - { type: does_not_call_tool, name: file_dispute }
+        - { type: llm_calls_at_most, value: 2 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [customers]
+            properties:
+              customers:
+                type: object
+                required: [C-63]
+                properties:
+                  C-63:
+                    type: object
+                    required: [facts, filed, pending, cancelled]
+                    properties:
+                      facts:
+                        required: [card, asked]
+                        properties: { card: { const: "7781" }, asked: { const: "credit limit" } }
+                      filed: { const: false }
+                      pending: { const: false }
+                      cancelled: { const: 1 }
+
+  - name: a_no_files_nothing
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "App chat, 7 October, 18:00 to 18:30" }
+      llm_script:
+        - { match: { contains: "Streamly" },
+            reply: "Fact: card=3302\nFact: amount=899\nFact: merchant=Streamly\nDispute: ₹899 at Streamly, card ending 3302" }
+        - { match: "*", reply: "Noted." }
+      tools:
+        sessions:
+          returns:
+            - { customer: "C-75", text: "Please dispute ₹899 at Streamly on my card ending 3302. I cancelled that plan in August." }
+            - { customer: "C-75", text: "No" }
+        file_dispute: { returns: { status: 200, case: "DSP-30167" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: file_dispute }
+        - { type: llm_calls_at_most, value: 1 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [customers]
+            properties:
+              customers:
+                type: object
+                required: [C-75]
+                properties:
+                  C-75:
+                    type: object
+                    required: [filed, pending, cancelled]
+                    properties:
+                      filed: { const: false }
+                      pending: { const: false }
+                      cancelled: { const: 0 }
+
+  - name: adversarial_a_message_with_no_customer
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The chat service returned a well-formed batch with one message that
+      named no customer: a ₹12,000 charge on a card ending 6612. The message
+      is real, and it belongs to somebody, but nothing in it says who.
+
+      Put on a default thread, it becomes a customer called `main`. Put on
+      the thread that ran last, it lands in C-31's chat while C-31's own
+      dispute waits for a yes: it cancels that confirmation, the model asks
+      to dispute the ₹12,000 charge, and C-31's "Yes" files a dispute on a
+      card C-31 never mentioned. The message runs on no thread. It is
+      counted in `unrouted` for a person to trace.
+    spec:
+      kind: agent_run
+      input: { question: "App chat, 7 October, 19:00 to 19:30" }
+      llm_script:
+        - { match: { contains: "Gadgetbay" },
+            reply: "Fact: card=9015\nFact: amount=5499\nFact: merchant=Gadgetbay\nDispute: ₹5,499 at Gadgetbay on 6 October, card ending 9015" }
+        - { match: { contains: "Quickpay" },
+            reply: "Fact: card=6612\nFact: amount=12000\nFact: merchant=Quickpay\nDispute: ₹12,000 at Quickpay, card ending 6612" }
+        - { match: "*", reply: "Noted." }
+      tools:
+        sessions:
+          returns:
+            - { customer: "C-31", text: "My card ending 9015 was charged ₹5,499 at Gadgetbay on 6 October and I did not make it." }
+            - { text: "Card ending 6612 has a ₹12,000 charge at Quickpay that I never made." }
+            - { customer: "C-31", text: "Yes" }
+        file_dispute: { returns: { status: 200, case: "DSP-30175" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: returns_lacks, value: "6612" }
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: calls_tool_with, name: file_dispute, args: { customer: "C-31" } }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [customers, unrouted]
+            properties:
+              unrouted: { const: 1 }
+              customers:
+                type: object
+                required: [C-31]
+                additionalProperties: false
+                properties:
+                  C-31:
+                    type: object
+                    required: [facts, filed, pending]
+                    properties:
+                      facts: { const: { card: "9015", amount: "5499", merchant: "Gadgetbay" } }
+                      filed: { const: true }
+                      pending: { const: false }
+
+reference_md: |
+  A checkpointer keeps one state per `thread_id`, and that id is the whole
+  boundary between one conversation's memory and another's. The team's graph
+  did exactly what it was built to do: it remembered everything said on the
+  thread it was given. It was given one thread, so every customer read and
+  wrote the same checkpoint. Keyed by the customer, a customer's facts persist
+  across their messages because their thread's checkpoint carries them, and no
+  other customer's message can reach them.
+
+  The thread is the short-term memory here: the facts one conversation has
+  built up and, while a confirmation waits, the paused step. Long-term memory,
+  such as a customer's earlier disputes, would sit in a store keyed by the
+  customer and be read into a turn. It is the same question one level up,
+  which key decides whose memory a turn reads, and the answer is the same.
+
+  A paused thread is waiting for the answer to one question.
+  `Command(resume=...)` hands the waiting `interrupt()` whatever it is given,
+  so the router decides what counts as an answer before it resumes. A yes or a
+  no resumes. Anything else is the customer moving on: the confirmation is
+  counted as cancelled and the message runs as a new turn, which is how a
+  question reaches the model instead of being read as a no. A no is an answer
+  too, and running it as a turn would spend a model call to cancel what the
+  customer had just declined.
+
+  In langgraph 1.2.12 the new input does the cancelling. When a run starts
+  from an input rather than a `Command`, `_first` in `langgraph/pregel/_loop.py`
+  discards the unfinished tasks of the previous checkpoint, so the paused step
+  is dropped, the graph starts again from `START`, and the thread keeps its
+  facts. Moving the customer to a fresh thread would drop the pause and their
+  facts with it. `app.update_state` can drop it as well, because LangGraph
+  applies the update as one node's output, `as_node` or else the node that ran
+  last, and follows that node's edges, so whether the pause clears depends on
+  where those edges lead.
+
+  A message with no customer belongs to nobody. On a default thread it
+  becomes a customer called `main`, and on the thread that ran last it writes
+  one person's card into another person's memory, which is Monday's incident
+  by a shorter route. It runs nowhere and is counted, so a person can trace it.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Two users of your LangGraph agent report seeing each other's details. What do you check first, and how do you fix it?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: sessions
+    args: ""
+    returns: >-
+      The batch's messages in arrival order, every customer's mixed together:
+      `[{"customer": "C-14", "text": ...}, ...]`.
+  - name: file_dispute
+    args: customer, dispute
+    returns: '`{"status": 200, "case": <id>}`. The starter graph calls it after a yes.'
+example:
+  case: files_after_the_customer_says_yes
+  expect: >-
+    C-14's first message asks for a dispute, so the graph pauses at the confirmation. "Yes."
+    answers it: resume, `file_dispute` runs once, and C-14 reports `filed` true and `pending` false.
+traps:
+  - Running every customer on one fixed thread id, so each message reads and writes the checkpoint the last customer left.
+  - Taking any message to a paused thread as the answer, so a question goes in as a yes or no and never reaches the model.
+  - Treating only a yes as an answer, so a no starts a new turn and spends a model call to cancel what the customer declined.
+  - Putting a message with no customer on some thread anyway, where its card number becomes another customer's fact.

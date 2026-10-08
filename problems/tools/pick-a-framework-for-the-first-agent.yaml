@@ -1,0 +1,600 @@
+slug: pick-a-framework-for-the-first-agent
+title: "Pick a framework for the first agent"
+day: 7
+skill: Choose a framework against the client's numbers, and name what you build by hand anyway
+artefact_type: design
+difficulty: hard
+track: tools
+concept:
+  topic: "Frameworks"
+  question: "What does a framework buy against each constraint, and what do you build by hand anyway?"
+est_minutes: 45
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: evaluation-design, weight: 0.5 }
+  - { slug: client-communication, weight: 0.5 }
+
+brief_md: |
+  A hospital chain the size of Narayana Health discharges about 1,400
+  patients a day across 18 hospitals. Each discharge needs a summary: the
+  diagnosis, what was done, the medicines to take home and the follow-up.
+  Doctors write them at the ward desk, and the chief medical officer wants an
+  agent that drafts each one from the stay's notes for the doctor to approve.
+
+  Nothing is released without a doctor's approval. In a six-week pilot of a
+  single drafting prompt, doctors edited about one draft in three before
+  approving it.
+
+  A vendor has pitched a crew of five CrewAI agents working in sequence: a
+  reader, a drafter, a coder for the diagnosis codes, a checker and a
+  formatter. They build on CrewAI 1.15.25. Their demo drafted the summary of
+  a three-day stay in 41 seconds, and their quote includes CrewAI's hosted
+  tracing for the audit.
+
+  The hospital's team is two engineers for twelve weeks. They have shipped
+  three agents as plain Python loops and nothing on a framework. Three
+  options are on the table:
+
+  1. A plain Python loop, with its own checkpoints and its own trace.
+  2. LangGraph 1.2.12, with the approval as an `interrupt()` and a
+     checkpointer, the recursion limit as a backstop, and the graph's step
+     stream as the trace.
+  3. The vendor's crew.
+
+  | Constraint | The number | Where it comes from |
+  |---|---|---|
+  | Discharges | 1,400 a day, 70 percent of them between 10:00 and 14:00 | Admissions system |
+  | Busiest ward | 24 discharges a day, 17 of them between 10:00 and 14:00 | Admissions system |
+  | Wait at the ward desk | under 20 seconds at p95, from asking to a draft on screen | Chief medical officer |
+  | Model gateway | 4 concurrent calls per ward; a fifth waits for a free slot | Hospital IT |
+  | A call that reads the whole stay's notes | 7 seconds at the median, 12 at p95 | Gateway logs from the pilot |
+  | A call that reads only a draft or a list | 2 seconds at the median, 4 at p95 | Gateway logs from the pilot |
+  | The discharge order | signed 2 to 5 hours before the patient leaves; nurses add notes until then | Ward process |
+  | Patient identifiers | may not leave the hospital's network; the gateway forwards to a hosted model | Information governance |
+  | Clinical audit | every summary replayable: what the model saw, what it said, who approved, and when | Clinical audit committee |
+
+  Write the recommendation.
+
+contract_md: |
+  Write the recommendation for the chain's chief medical information
+  officer, who chairs the clinical audit committee and signs off the build,
+  and for the two engineers who will build it.
+
+  Between 500 and 800 words, under exactly these four headings:
+
+      ## Decision
+      ## What each option costs
+      ## What we build by hand anyway
+      ## First four weeks
+
+  Under Decision, choose one of the three options and name the one
+  constraint that decides it. Under What each option costs, set every option
+  against the constraints in the brief, with the arithmetic wherever the
+  brief gives numbers. Under What we build by hand anyway, say what you
+  would build whichever option you chose, and why no framework carries it.
+  Under First four weeks, say what each week builds and what ends week four.
+
+  Any claim about CrewAI names the page on `docs.crewai.com` it comes from
+  and the date you read it. Claims about LangGraph hold for version 1.2.12,
+  the one in the brief.
+
+word_range: [500, 800]
+required_headings: [Decision, What each option costs, What we build by hand anyway, First four weeks]
+
+rubric:
+  - label: Maps every constraint to a mechanism in the chosen option
+    weight: 25
+    descriptor_md: |
+      Strong answers take each line of the table and name what in the chosen
+      option meets it: the approval pause (an `interrupt()` with a Postgres
+      checkpointer, or a status row the doctor's approval moves), the replay
+      (checkpoints or a step table, plus a record of who approved), the desk
+      wait (which calls run when, and which run before the doctor asks), the
+      limit of four calls per ward (a queue keyed by ward, because LangGraph's
+      `max_concurrency` limits the steps inside one run), the identifiers
+      (redaction before the gateway) and the team (what they learn, and when
+      they would turn back). A LangGraph answer that drafts and interrupts in
+      the same node has missed that the node runs again from the top on
+      resume, so the text a doctor approved can differ from the text stored.
+      Answers that map two or three constraints and leave the rest to "the
+      framework handles it" have not done the work.
+  - label: Costs the crew's five roles in latency and audit, with arithmetic
+    weight: 20
+    descriptor_md: |
+      Strong answers count the crew's calls between the doctor asking and the
+      draft appearing: five in sequence, two of which read the whole stay
+      (the reader and the checker), so about 7 + 2 + 2 + 7 + 2 = 20 seconds
+      at the median before any agent takes a second step, against a
+      20-second p95, and the vendor's own demo took 41 seconds. They see the
+      same arithmetic applies to any option that keeps five steps on the desk
+      path, LangGraph included, and that a fan-out to save time runs into
+      four calls per ward. They cost the audit too: five hand-offs are five
+      prompts and outputs to keep and replay, and hosted tracing sends
+      prompts, inputs and outputs to the vendor's platform. "Slower" or "more
+      complex" without a figure gives the client nothing to weigh.
+  - label: Names the hand-built parts and why no framework carries them
+    weight: 20
+    descriptor_md: |
+      Strong answers name at least three: the evaluation set built from the
+      doctors' edits (each edit is a labelled failure, and the share approved
+      without edits is the number to report), the approval record (which
+      doctor approved which exact text, when, and what they changed, kept by
+      the hospital as long as the clinical record), and the redaction before
+      the gateway. They say why: these hold the hospital's own rules and data,
+      and a checkpoint is state saved so a run can resume, which nobody signs
+      as an audit record. Good answers add the per-ward queue and the check
+      for notes added after the draft.
+  - label: Rejects or accepts the vendor pitch on evidence, with any CrewAI claim dated
+    weight: 15
+    descriptor_md: |
+      Strong answers decide on the brief's numbers and on what CrewAI's own
+      documentation says, cited with the page or version and the date read.
+      On docs.crewai.com, read 8 October 2026: in a sequential process the
+      output of one task is the context for the next; a task's `human_input`
+      has the agent ask for review before it gives its final answer; a pause
+      that waits hours for a person needs a Flow with `@human_feedback` and
+      a custom provider (CrewAI 1.8.0 and later) or the Enterprise webhooks;
+      and built-in tracing sends traces to CrewAI AMP, which the tracing page
+      says may contain prompts, inputs and outputs. Rejecting the crew
+      because frameworks are bad, or accepting it because five specialists
+      sound thorough, is not evidence.
+  - label: Ends the first four weeks on an exit criterion a doctor can check
+    weight: 20
+    descriptor_md: |
+      Strong answers order the weeks by risk: redaction and the approval
+      record early, a replay of last month's discharges from one ward, the
+      pause and resume tested by stopping the process mid-approval, and the
+      desk wait measured. Week four ends on something a doctor can check,
+      such as: on 200 discharges from one ward, every draft held for
+      approval, no medicine missing against the drug chart, at least two in
+      three approved without edits, and the desk wait under 20 seconds at
+      p95, with what happens if a number falls short. "The graph runs end to
+      end" or "a demo for the doctors" is not something a doctor can check.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      ## Decision
+
+      Build it on LangGraph 1.2.12: one drafting call when the discharge
+      order is signed, checks in code, and the doctor's approval as an
+      `interrupt()` saved by a Postgres checkpointer. The constraint that
+      decides it is the approval. A pause that lasts hours and survives a
+      restart is the hardest part to write by hand, and the graph gives it
+      tested. We prefer that to a status column we would write and test
+      ourselves, at the cost of a pinned dependency the team has to learn.
+      The desk wait rules out the crew and does not separate the
+      other two, because no framework changes how many calls a step makes.
+
+      ## What each option costs
+
+      The desk wait. A call that reads the whole stay takes 7 seconds at the
+      median and 12 at p95, and a short call takes 2 and 4. The crew runs
+      five roles in sequence, and two of them, the reader and the checker,
+      read the whole stay: 7 + 2 + 2 + 7 + 2 is 20 seconds at the median
+      before any agent takes a second step, against a 20-second p95. The
+      vendor's demo took 41 seconds. Five nodes in a row cost a graph the
+      same, so the design moves the long call. We draft when the order is
+      signed, 2 to 5 hours before the patient leaves. At the desk, code
+      lists the notes added since; with none the draft is already there, and
+      with some one short call revises it, 4 seconds at p95.
+
+      Four calls per ward. The busiest ward discharges 17 patients between
+      10:00 and 14:00, and drafting at order time spreads those calls over
+      the morning. The limit covers every run on the ward, and LangGraph's
+      `max_concurrency` only limits the steps inside one run, so a queue
+      keyed by ward sits in front of the gateway under any option.
+
+      The audit. LangGraph saves the state after each step, and
+      `get_state_history` lists it. That exists so a run can resume, so we
+      put the redacted prompt, the output and the model version into the
+      state on purpose, and keep a separate approval record. The crew's
+      hosted tracing sends spans to CrewAI AMP, and CrewAI's tracing page
+      (docs.crewai.com, read 8 October 2026) says traces may contain
+      prompts, inputs and outputs. Identifiers may not leave our network,
+      and an audit kept on a vendor's platform is not ours to sign.
+
+      The approval. A crew task's `human_input` has the agent ask for review
+      before it gives its final answer (CrewAI's task documentation, read 8
+      October 2026). A doctor who approves three hours later needs a Flow
+      with `@human_feedback` and a custom provider, from CrewAI 1.8.0, so the
+      five-role crew would be rebuilt as a Flow anyway. In LangGraph the
+      approval gets its own node, because the node that calls `interrupt()`
+      runs again from the top on resume: a model call before the interrupt
+      in the same node would draft again, and the doctor would approve one
+      text while we stored another.
+
+      The team. Two engineers who have shipped plain loops need about a week
+      to learn the graph. A plain loop needs a hand-written pause, resume
+      and step table, about two weeks we would rather spend on the audit.
+      The recursion limit is a backstop only once it is set: the default in
+      1.2.12 is 10,007 steps, so we set 10.
+
+      ## What we build by hand anyway
+
+      Redaction before the gateway, tested on last month's notes, because
+      no framework knows which fields identify our patients. The approval
+      record: which doctor approved which text, when, and the edit they
+      made, kept with the clinical record. The evaluation set from the
+      doctors' edits: each edit is a labelled failure, and the share of
+      drafts approved without edits is the number we report. The queue per
+      ward, and the check for notes added after the draft.
+
+      ## First four weeks
+
+      Week 1: redaction, and a spike that pauses the graph for approval,
+      kills the process and resumes it. If the resume is not clean by
+      Friday, we switch to a plain loop with a status table and lose one
+      week of the twelve. Week 2: the drafting node and the checks in code
+      against the drug chart, replaying last month's discharges from the
+      cardiac ward. Week 3: the approval screen and the approval record,
+      with doctors approving drafts beside the summaries they wrote. Week 4
+      ends on numbers the cardiac ward's doctors can check: on 200
+      discharges, every draft held for approval, no medicine missing against
+      the drug chart, at least two in three approved without edits, and the
+      desk wait under 20 seconds at p95. If any one falls short, the ward
+      keeps writing its own summaries until it holds.
+  - band: adequate
+    score: 58
+    body_md: |
+      ## Decision
+
+      We recommend LangGraph 1.2.12. It fits the clinical workflow best: the
+      doctor's approval maps directly onto `interrupt()`, the checkpointer
+      keeps the state while the doctor reviews, and the graph's step stream
+      gives us a trace of every node for the audit. Plain Python would mean
+      writing all of that ourselves, and the vendor's crew hides too much of
+      the flow for a clinical setting. The deciding constraint is the
+      approval gate, because nothing can be released without a doctor.
+
+      ## What each option costs
+
+      Plain Python is what the team knows, but it means hand-writing
+      checkpoints, resume logic and tracing. With two engineers and twelve
+      weeks, that is time taken away from the clinical work, and home-grown
+      checkpointing is where subtle bugs live.
+
+      LangGraph costs some learning time, perhaps a week. In return we get a
+      graph of nodes that mirrors the clinical process. We would keep the
+      vendor's sensible split of the work into five nodes: read the notes,
+      draft, assign codes, check and format. Each node is small and
+      testable, and the graph runs them in order. LangGraph is lightweight
+      and adds no overhead of its own, so the summary should come back within
+      the 20 seconds the chief medical officer asked for. The recursion limit
+      stops a graph that loops, and the checkpointer means a crash halfway
+      through does not lose the draft.
+
+      The crew costs the most. CrewAI's agents decide among themselves how
+      to do the work, which is hard to explain to a clinical audit, and the
+      vendor's demo took 41 seconds. CrewAI's `human_input` also only asks
+      for feedback at the console, which does not fit a doctor at a ward
+      desk. The hosted tracing is convenient, but it means relying on the
+      vendor for the audit.
+
+      The gateway allows four concurrent calls per ward. Since the graph runs
+      its nodes one at a time, a single summary uses one call at a time, so
+      we stay well inside the limit.
+
+      ## What we build by hand anyway
+
+      The approval screen for the doctors, which shows the draft and lets
+      them edit and approve it. We also need an approval log that records
+      which doctor approved each summary and when, because the checkpointer
+      stores the graph's state but not the identity of the person who
+      resumed it. Monitoring dashboards for the ward desks will be built by
+      hand too, since none of the options gives us the views the nursing
+      leads have asked for. We will also write the prompt for each node
+      ourselves, because every hospital in the chain words its summaries a
+      little differently.
+
+      ## First four weeks
+
+      Week 1: the team learns LangGraph and builds a skeleton graph with the
+      five nodes and an in-memory checkpointer.
+
+      Week 2: connect the nodes to the model gateway and write the prompt for
+      each node.
+
+      Week 3: add the `interrupt()` before release and the approval screen,
+      and move the checkpointer to Postgres.
+
+      Week 4: run the graph end to end on test data and demonstrate it to a
+      group of doctors. The exit criterion is that the graph runs end to end
+      on 50 test stays without errors, and the doctors are happy with the
+      drafts they see.
+  - band: weak
+    score: 25
+    body_md: |
+      ## Decision
+
+      We should go with the vendor's CrewAI crew. Discharge summaries are
+      complex documents, and five specialist agents will produce better
+      summaries than one general agent, in the same way that a ward team
+      with a specialist for each job works better than one person doing
+      everything. CrewAI is one of the most popular agent frameworks, it is
+      built for exactly this kind of multi-agent collaboration, and the
+      vendor has already shown a working demo, so we would start ahead
+      instead of from nothing. It also gives the hospital a story it can
+      tell: an AI team that works like a clinical team, which will help with
+      adoption among senior doctors who are sceptical of AI.
+
+      ## What each option costs
+
+      A plain Python loop is the cheapest option to start with, but it would
+      be one agent trying to do everything, and our engineers would have to
+      write a lot of infrastructure themselves. It would not scale as the
+      hospital adds more kinds of documents, such as referral letters and
+      operation notes.
+
+      LangGraph is a powerful framework, but it is low level. The team would
+      have to design the whole graph themselves, and it has a steep learning
+      curve for engineers who have never used a framework before.
+
+      The crew costs more in licences and model calls, but the quality of the
+      summaries is what matters in a hospital. The demo was slower than we
+      would like, but models are getting faster every few months, and the
+      agents can be run in parallel once we are in production. The four
+      concurrent calls per ward should be enough for five agents if we tune
+      the settings.
+
+      CrewAI also has memory and planning features, so the crew will get
+      better at our summaries the more it is used, and the vendor can add
+      more agents later, such as a pharmacist agent that checks the
+      medicines.
+
+      ## What we build by hand anyway
+
+      Very little. CrewAI's built-in tracing records everything the agents
+      do, which covers the clinical audit. The approval step is handled by
+      CrewAI's human input feature, which pauses the crew until a person
+      reviews the output. The coder agent assigns the diagnosis codes and the
+      checker agent reviews the draft for mistakes, so the doctors should
+      need to edit far fewer drafts than they did in the pilot.
+
+      We would still build an integration with the hospital's records system
+      to fetch the notes, and a screen at the ward desk where the doctor
+      reads the summary and approves it.
+
+      ## First four weeks
+
+      Week 1: install CrewAI, agree the five roles with the vendor and write
+      each agent's role, goal and backstory.
+
+      Week 2: connect the reader agent to the hospital records, test the
+      crew on sample stays, and agree with the vendor how the agents hand
+      work to each other.
+
+      Week 3: tune the prompts of each agent with feedback from two doctors,
+      and add more detail to the checker's instructions.
+
+      Week 4: a demo for the chief medical officer and the heads of
+      department, with a plan to roll the crew out to all 18 hospitals next
+      quarter.
+
+hints:
+  - Write down the calls one summary makes between the doctor asking and the draft appearing, with the gateway's figures beside each. Then do it for each option.
+  - A framework changes how steps are written, saved and resumed. It does not change how many model calls a step makes, or when they run.
+  - The audit asks four questions. For each option, find where the answer to each one would be stored, and who controls that store.
+  - Some of the work can happen hours before the doctor asks. What could be ready when the discharge order is signed, and what can change after it?
+  - "End week four on numbers a doctor can check on one ward: drafts held for approval, medicines missing against the drug chart, the share approved without edits, and the desk wait."
+
+scenario:
+  headline: "A vendor pitched five agents for a summary a doctor signs in 20 seconds"
+  who: "The digital health team at a hospital chain the size of Narayana Health"
+  situation: >-
+    The chain wants an agent that drafts each discharge summary from the
+    stay's notes for a doctor to approve. A vendor has pitched a five-agent
+    CrewAI crew, and the team has only ever shipped plain Python loops.
+  stakes: >-
+    A doctor approves every summary, the audit committee must be able to
+    replay each one, and a doctor at the ward desk waits under 20 seconds at
+    p95 for the draft.
+  metrics:
+    - { label: Discharges a day, value: "1,400" }
+    - { label: Desk wait at p95, value: under 20 s }
+    - { label: Team, value: 2 for 12 weeks }
+
+diagram:
+  title: From the stay's notes to a summary a doctor signs
+  caption: >-
+    Every step sits under one of the brief's numbers. The framework decides
+    how the steps are written and resumed, and leaves the numbers as they
+    are.
+  direction: lr
+  nodes:
+    - { id: notes, label: The stay's notes, sub: nurses add notes until discharge, kind: doc, tone: neutral, at: [0, 1] }
+    - { id: redact, label: Redaction, sub: identifiers stay in the network, kind: guard, tone: purple, at: [1, 1] }
+    - { id: gateway, label: Model gateway, sub: 4 concurrent calls per ward, kind: service, tone: orange, at: [2, 1] }
+    - { id: draft, label: The drafting agent, sub: "7 s median, 12 s p95 per long call", kind: agent, tone: teal, at: [3, 1] }
+    - { id: doctor, label: Doctor at the ward desk, sub: "waits under 20 s, edits 1 in 3", kind: actor, tone: blue, at: [4, 0] }
+    - { id: approval, label: Approval, sub: nothing leaves without it, kind: decision, tone: green, at: [4, 1] }
+    - { id: audit, label: Audit record, sub: "saw, said, who approved, when", kind: store, tone: pink, at: [3, 2] }
+    - { id: summary, label: Released summary, sub: to the patient and their GP, kind: output, tone: green, at: [5, 1] }
+  edges:
+    - { from: notes, to: redact, step: 1 }
+    - { from: redact, to: gateway, label: what the model may see, step: 2 }
+    - { from: gateway, to: draft, label: calls in sequence add up, tone: danger }
+    - { from: draft, to: approval, label: a draft held, step: 3 }
+    - { from: doctor, to: approval, label: approves or edits }
+    - { from: approval, to: summary, label: only once approved, tone: success, step: 4 }
+    - { from: draft, to: audit, label: prompt and output }
+    - { from: approval, to: audit, label: who and when }
+
+approach:
+  goal: Choose the option whose mechanisms meet every constraint, and name what you still build
+  branches:
+    - label: Price the path a doctor waits on
+      leaves: ["calls in sequence against 20 seconds", "what can run before the doctor asks?"]
+    - label: Map each constraint to a mechanism
+      leaves: [the approval pause, "the audit's four questions", four calls per ward, identifiers]
+    - label: List what no framework carries
+      detail: Some parts hold the hospital's own rules and data, and they are built whichever option wins.
+      leaves: ["what do the doctors' edits become?", "who approved which text, and when?"]
+    - label: Weigh the team against the timeline
+      leaves: [two engineers for twelve weeks, what they have shipped before]
+    - label: End week four on a doctor's check
+      leaves: [numbers a doctor can verify on one ward, what happens if one falls short]
+
+coach:
+  opening: >-
+    Before you choose, write down the calls one summary makes between the
+    doctor asking and the draft appearing, and price them with the gateway's
+    figures.
+  signals:
+    - id: no-arithmetic
+      when: { code_lacks: '(?i)\b(7|12)[\s-]*(s|sec|secs|seconds?)\b' }
+      say: >-
+        Your answer never prices the calls. A call that reads the whole stay
+        takes 7 seconds at the median and 12 at p95. How many of those fit
+        into the 20 seconds a doctor waits, and which option makes how many?
+    - id: specialists
+      when:
+        code_matches: '(?i)specialist'
+        code_lacks: '(?i)in sequence|one after (the )?other|in a row|sequential'
+      say: >-
+        Five roles are also five model calls, one after another. What does
+        that do to the wait at the ward desk?
+    - id: vendor-trace-as-audit
+      when:
+        code_matches: '(?i)(built-in|hosted|crewai.s) tracing'
+        code_lacks: '(?i)crewai amp|app\.crewai\.com|leave|outside the (hospital|network)'
+      say: >-
+        Where do the vendor's traces live, and do they answer which doctor
+        approved which text, and when?
+    - id: no-approval-record
+      when: { code_lacks: '(?i)approval (record|log|table)|who approved' }
+      say: >-
+        The audit asks who approved and when. Which record holds that, and
+        does any option give it to you?
+    - id: no-redaction
+      when: { code_lacks: '(?i)redact|de-?identif' }
+      say: >-
+        Patient identifiers may not leave the hospital's network. Where are
+        they removed, and does any framework do it for you?
+    - id: no-edit-evaluation
+      when: { code_lacks: '(?i)(evaluation|eval|golden|test) set' }
+      say: >-
+        Doctors edit about one draft in three. What do those edits become,
+        and who builds it?
+    - id: interrupt-same-node
+      when:
+        code_matches: '(?i)interrupt'
+        code_lacks: '(?i)own node|separate node|runs? again|re-?runs?|re-?execut'
+      say: >-
+        On resume, LangGraph runs the node that called `interrupt()` again
+        from the top. Where is the model call that wrote the draft the doctor
+        approved?
+    - id: no-exit
+      when: { code_lacks: '(?i)\bexit\b|doctors? can check|falls? short' }
+      say: >-
+        How will a doctor know week four went well? Name the numbers, the
+        ward and what happens if one falls short.
+    - id: undated-crewai
+      when:
+        code_matches: '(?i)crewai'
+        code_lacks: '(?i)docs\.crewai\.com|read \d{1,2} \w+ 20\d\d'
+      say: >-
+        Your answer leans on what CrewAI does. Which page or version says so,
+        and when did you read it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the table. Put each constraint on a line, then write what
+        each option does about it, and leave a gap where it does nothing.
+    - id: hints
+      when: { failed_runs_at_least: 1 }
+      say: >-
+        A submission has failed, so the hints are open. The first one is the
+        arithmetic the rest of the answer stands on.
+  wrap_up: >-
+    A framework decides how steps are written, saved and resumed. The calls
+    on the doctor's wait, the record of who approved and the set built from
+    their edits are yours, whichever one you pick.
+
+reference_md: |
+  Both LangGraph and a plain loop are defensible here, and the crew is not,
+  for reasons the brief's own numbers give.
+
+  The desk wait rules out five roles in sequence, whichever framework runs
+  them. Two of the crew's roles read the whole stay, so its desk path costs
+  about 7 + 2 + 2 + 7 + 2 = 20 seconds at the median before any agent takes
+  a second step, against a target of 20 seconds at p95, and the vendor's
+  demo took 41. A graph built as the same five nodes costs the same. The way
+  out is in the ward process: the discharge order is signed 2 to 5 hours
+  before the patient leaves, so the long call can run then, and the desk
+  path shrinks to a check for notes added since, plus at most one short
+  call. A design that fans calls out to cut the wait meets the gateway's
+  limit of four calls per ward instead, and that limit spans every run on
+  the ward. LangGraph's `max_concurrency` limits the steps inside one run
+  (langgraph 1.2.12, `langgraph/_internal/_config.py`, read 8 October 2026),
+  so a queue keyed by ward is built by hand under any option.
+
+  The approval decides between the two that remain. LangGraph gives a
+  tested pause: `interrupt()` with a checkpointer holds the run until the
+  doctor resumes it with `Command(resume=...)`. Its docstring says the graph
+  "resumes from the start of the node, re-executing all logic". Run against
+  1.2.12 on 8 October 2026, a node that drafted and then interrupted drafted
+  a second time on resume, and the graph stored the second draft: the doctor
+  approves one text while the graph stores another. The draft needs a node
+  of its own. The docstring of
+  `InMemorySaver` reserves it for debugging and testing and recommends the
+  Postgres checkpointer for production, and the default recursion limit in
+  1.2.12 is 10,007 steps, so the backstop exists only once it is set. A plain
+  loop gets the same pause from a status column the doctor's approval moves.
+  For one pipeline with one pause, that is about two weeks of work the team
+  already knows how to do, and the audit needs its own record either way.
+  The graph saves those two weeks at the cost of a dependency the team has
+  to learn, pin and upgrade.
+  An answer that picks the loop on those grounds is as strong as one that
+  picks LangGraph for the pause.
+
+  Neither option is the audit. A checkpoint is state saved so that a run can
+  resume, and no checkpoint says which doctor approved which text. The
+  audit's four questions need a record the hospital owns: the redacted text
+  the model saw, the model's output and version, the doctor, the time and
+  the edit. The crew's hosted tracing answers fewer of them, and CrewAI's
+  tracing page says traces may contain prompts, inputs and outputs and go to
+  CrewAI AMP at `app.crewai.com` (`docs.crewai.com`, read 8 October 2026). The
+  identifiers rule forbids that before redaction, and the audit committee
+  would question it after.
+
+  CrewAI does support an approval that waits for a person, in a different
+  shape from the one pitched. In a sequential process the output of one task
+  is the context for the next. A task's `human_input` has the agent ask for
+  review before it gives its final answer, and `@human_feedback` blocks on
+  console input by default. A Flow whose custom provider raises
+  `HumanFeedbackPending` pauses and saves its state, from CrewAI 1.8.0
+  (`docs.crewai.com`, read 8 October 2026, when the latest release on PyPI was
+  1.15.25, published on 7 October). Taking that route means building a
+  Flow, which is a different proposal from a crew of five roles.
+
+  Three things are built by hand whatever is chosen: redaction before the
+  gateway, the approval record, and the evaluation set from the doctors'
+  edits. One edit in three is the pilot's measure of the draft, and each
+  edit says what the draft got wrong, which makes the edits the cheapest
+  labelled set the hospital will ever have. The first four weeks end on
+  something a doctor can check, such as the share of one ward's drafts
+  approved without edits and no medicine missing against the drug chart,
+  with the rule for what happens if a number falls short.
+
+  The hospital, its numbers, the gateway's latencies, the vendor's 41
+  seconds and the pilot's edit rate are invented for this problem. The two
+  weeks for a hand-written pause and the week to learn LangGraph are the
+  author's estimates.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A client's team has shipped plain Python loops, and a vendor is pitching a multi-agent framework for their first production agent. How do you choose, and what do you build by hand whichever you pick?
+  source: |
+    Author judgement. LangGraph behaviour was read from version 1.2.12's installed source and run on 8 October 2026. CrewAI behaviour was read on docs.crewai.com on 8 October 2026, when the latest release on PyPI was 1.15.25. No employer frequency data stands behind it.
+
+traps:
+  - Counting the crew's five roles as five specialists, without counting them as five calls in a row against a 20-second wait.
+  - Treating a framework's checkpoints or hosted traces as the audit, when the audit asks which doctor approved which text, and when.
+  - Mapping the approval to a framework feature and leaving the doctors' edits unused, when they are the evaluation set.
+  - Ending week four on a demo, when the exit should be numbers a doctor can check on one ward.
