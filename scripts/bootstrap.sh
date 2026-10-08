@@ -587,6 +587,8 @@ if [ "$WITH_SKILLS" = "1" ]; then
   KARPATHY_REF="2c606141936f1eeef17fa3043a72095b4765b9c2"
   TASTE_REF="b482f7a970abb98c4108d4a9f761e458c64cefc8"
   UI_UX_PRO_MAX_REF="1a2c459b35f26116fd165b0a0f30597f252749ff"
+  # Added 2026-10-08 at the product owner's request, read before pinning.
+  HERDR_REF="2563803dca97c040beaf3dc3acdcb5a3221b4238"
 
   # Allowlists. Paths are relative to each repo's skills/ directory, and nothing
   # outside these lists is copied, so a re-run cannot restore a skill that was
@@ -682,6 +684,16 @@ minimalist-skill
 "
   UI_UX_PRO_MAX_KEEP="
 ui-ux-pro-max
+"
+
+  # herdrdev/herdr is a terminal multiplexer for coding agents, Apache 2.0.
+  # Its one skill runs the herdr command line, and only after checking
+  # HERDR_ENV=1, which says the agent sits in a Herdr pane; anywhere else it
+  # says so and stops, so in a cloud session it does nothing. No fetch. The
+  # three skills under .agents/ are the herdr maintainers' own release tooling
+  # and are not taken.
+  HERDR_KEEP="
+herdr
 "
 
   # A pinned SHA is not a branch, so the first clone form always fails on one
@@ -821,6 +833,7 @@ __KEEPLIST__
   fetch_skills "leonxlnx/taste-skill" "$TASTE_REF" "taste" "skills" "$TASTE_KEEP" "LICENSE"
   fetch_skills "nextlevelbuilder/ui-ux-pro-max-skill" "$UI_UX_PRO_MAX_REF" "ui-ux-pro-max" ".claude/skills" \
     "$UI_UX_PRO_MAX_KEEP" "LICENSE"
+  fetch_skills "herdrdev/herdr" "$HERDR_REF" "herdr" "skills" "$HERDR_KEEP" "LICENSE"
 
   say "vendored skills written to $DEST"
   say "re-running is safe: only the allowlisted skills are copied"
