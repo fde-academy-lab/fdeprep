@@ -143,7 +143,7 @@ scenario:
   metrics:
     - { label: Checkouts failed, value: "1,900" }
     - { label: Minutes with the wrong team, value: "90" }
-    - { label: Hours of failures, value: "2" }
+    - { label: Checkouts failed a minute, value: about 16 }
 
 diagram:
   title: Which red span is the cause
@@ -517,7 +517,10 @@ reference_md: |
   An orphan is also a limit on what the trace can prove, which is what the
   defence question asks about. The finding is that the earliest failure the
   trace holds is in the orphan. Whether the missing parent failed before it
-  is something this trace cannot say.
+  is something this trace cannot say. Explain an incident with half the
+  traces missing, a design problem later in this chapter, asks the same
+  question of a whole incident, where whole conversations are missing rather
+  than one span.
 
 complexity: C2
 

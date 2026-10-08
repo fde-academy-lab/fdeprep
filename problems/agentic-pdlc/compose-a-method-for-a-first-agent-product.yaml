@@ -33,6 +33,7 @@ brief_md: |
   | A first AI pilot that ran four months with no exit criterion and was cancelled | Board minutes, last year |
   | A second AI pilot that shipped a prompt nobody could reproduce after its author left | Head of engineering |
   | Verification checklists for 3,000 loan files from last year | Credit operations |
+  | Branches open about 1,200 loan files a week, and 28 percent go back to the borrower at least once for a document that is missing or does not match | Credit operations, last year |
 
   The board has asked which method you will run, and when it will see the
   agent work. Compose the method from these parts.
@@ -42,7 +43,7 @@ brief_md: |
   | Problem framing | BMAD lists `bmad-prfaq` as "Stress-test a product concept customer-first, working backwards from the press release", and `bmad-product-brief` as "Capture the product vision when the concept is clear". |
   | BMAD planning by size | Four paths. Trivial: "You don't need BMad for an obvious, low-risk edit." One session: "A spec that fits one Build session goes straight to `bmad-build`". Epic-sized: "One coherent outcome that needs several sessions is an epic", run as a spec, stories, one Build per story, then integration and a retrospective, through `bmad-spec`, `bmad-ticket`, `bmad-build` or `bmad-build-auto`, and `bmad-retrospective`. "Review the proposed order and decide which stories need a checkpoint", and "Verify the stories together" before the retrospective. Project-sized: "a greenfield product, a multi-epic initiative, or work likely to need roughly 20 or more implementation sessions", which adds shared contracts through `bmad-prd`, `bmad-ux` and `bmad-architecture`. "Each stream needs an owner", and the path runs "integration checks and a retrospective at each epic boundary". |
   | AWS AI-DLC | Three phases: Inception, Construction and Operations. In Inception, "AI transforms business intent into detailed requirements, stories and units" through Mob Elaboration, "where the entire team actively validates AI's questions and proposals". Construction runs through Mob Construction. "Epics are replaced by Units of Work", and sprints are replaced by bolts, "shorter, more intense work cycles measured in hours or days rather than weeks". AI "implements solutions only after receiving human validation". |
-  | AI-DLC workflows | "5 phases and 33 stages", and "11 workflow profiles", of which the README names Classic and Express. A run "stops at approval gates before moving forward", and the README lists "Human approval gates and source-bound review evidence". |
+  | AI-DLC workflows | The README counts "5 phases and 33 stages", where the AWS post counts three phases, and "11 workflow profiles", of which it names Classic and Express. A run "stops at approval gates before moving forward", and the README lists "Human approval gates and source-bound review evidence". |
   | Your own gates | An evaluation gate at the end of every bolt, and an approval gate before any customer-facing change. |
 
   Each source was read on 8 October 2026: BMAD's
@@ -422,9 +423,9 @@ exemplars:
       agent in 16 weeks, built with the best practices of both methods.
 
 hints:
-  - Write down what went wrong in each pilot, and what a team that has never
-    shipped an agent is likely to get wrong. A part belongs in the method
-    only if it prevents one of those.
+  - For each part in the table, finish the sentence 'Without this, the
+    lender would ...' with something from the brief. A part whose sentence
+    you cannot finish does not belong in the method.
   - Read each source for what a part does. A bolt, a Unit of Work, an
     epic-sized path and an approval gate each answer a different failure,
     and a part that answers none of this client's can be left out.
@@ -476,7 +477,7 @@ diagram:
     - { from: framing, to: planning, label: sized to the work, step: 2 }
     - { from: planning, to: bolts, label: built in bolts, step: 3 }
     - { from: bolts, to: evalgate, label: every bolt, step: 4 }
-    - { from: bolts, to: approval, label: customer-facing changes }
+    - { from: bolts, to: approval, label: every customer-facing change, tone: danger }
     - { from: officer, to: approval, label: signs, tone: muted }
 
 approach:
@@ -562,7 +563,10 @@ reference_md: |
   The two pilots name most of the parts. Pilot one ran four months with
   nothing that could say stop, so the method needs exit numbers written
   before work starts, which is what a PR/FAQ's internal FAQ is for, and a
-  check frequent enough that drift shows in days. Pilot two lost its prompt
+  check frequent enough that drift shows in days. Here the FAQ can name the
+  outcome, the 28 percent of files that go back to a borrower at least once,
+  with a match rate against last year's checklists standing in for it until
+  branches use the agent. Pilot two lost its prompt
   with its author, so everything a bolt produces, the spec, the prompt, the
   pinned model version and the evaluation set, lives in the repository and
   re-runs for someone else. AWS's post says AI-DLC stores "plans,

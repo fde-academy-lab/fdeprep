@@ -265,6 +265,14 @@ coach:
       say: >-
         In that run a POC cleared every production gate. Where does your code
         decide which stage is the one above?
+    # Before the thin-sample and missing-spend signals: code that demotes an
+    # MVP fails those two cases as well, and moving down is its real mistake.
+    # Code that mishandles only the sample or the blank passes this case.
+    - id: hidden-moves-down
+      when: { test_failed: an_mvp_whose_accuracy_slipped_never_moves_down }
+      say: >-
+        In that run an MVP no longer cleared its own stage's gates. Where
+        does your code start counting from, and does a pilot ever move down?
     - id: hidden-thin-sample
       when: { test_failed: thirty_right_out_of_thirty_is_too_few_to_count }
       say: >-
@@ -419,6 +427,25 @@ tests:
         - { type: returns_matches, value: '"stage":\s*"mvp"' }
         - { type: returns_matches, value: '"missed":\s*\["cost_per_task"\]' }
 
+  - name: an_mvp_whose_accuracy_slipped_never_moves_down
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The invoice-matching pilot had a bad fortnight. Where does it stand now?" }
+      llm_script:
+        - { match: "*", reply: "Production. Every number on the dashboard is green." }
+      tools:
+        pilot_results:
+          returns: { stage: mvp, tasks: 5000, escalated: 600, graded: 400, correct: 320, spend_inr: 40000, signed_off: [mvp, production] }
+        gate_table:
+          returns:
+            mvp: { accuracy: 0.85, min_graded: 100, cost_per_task_inr: 18, escalation_rate: 0.35 }
+            production: { accuracy: 0.95, min_graded: 400, cost_per_task_inr: 9, escalation_rate: 0.15 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"stage":\s*"mvp"' }
+        - { type: returns_matches, value: '"missed":\s*\["accuracy"\]' }
+
 reference_md: |
   The spreadsheet compared the numbers it had with the numbers in the table,
   and that is the mistake. A gate is a promise the sponsor agreed to, and it
@@ -448,6 +475,11 @@ reference_md: |
   later decision; it is not the production-readiness profile" (version
   2.10.0 of [aidlc-workflows](https://github.com/awslabs/aidlc-workflows),
   read 1 October 2026).
+
+  A pilot never moves down in a review either. Code that works the stage
+  out afresh from POC every week demotes an MVP whose accuracy dipped, and
+  taking a pilot away from the users it already has is a decision the
+  committee makes in the room.
 
   Naming every miss, instead of the first, is what turns the check into a
   work plan. "Escalation rate and sign-off" tells the sponsor two things to
@@ -490,5 +522,6 @@ traps:
     that asks for hundreds.
   - Reading a measurement nobody recorded as zero, or letting it raise, when a missing figure is a gate
     that does not hold.
-  - Moving a POC straight to production because its numbers clear the production gates.
+  - Working the stage out from the numbers alone, so a POC with production numbers skips a stage, or an MVP
+    that slipped drops back to POC.
   - Stopping at the first gate that fails, so the sponsor never sees the rest of the list.

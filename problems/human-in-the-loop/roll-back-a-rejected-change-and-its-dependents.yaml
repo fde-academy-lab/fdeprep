@@ -573,6 +573,11 @@ reference_md: |
   refused. The words in the report are what the morning shift acts on, and a
   refusal nobody made sends them to the wrong conversation.
 
+  The reviewer here answers after the change has run, which is the
+  on-the-loop half of this chapter. When a person answers before a step runs
+  and changes it, the resumed run has to keep their version in force, and
+  that is a later Hard problem in this chapter.
+
 complexity: C2
 
 interview_evidence:
@@ -617,8 +622,7 @@ example:
 traps:
   - Undoing everything the run did after a rejected change, which takes down changes the rejection never
     reached.
-  - Asking the approver about an email while a change beneath it is still unreviewed, so it can go out
-    about something rolled back an hour later.
-  - Looking only at the change an email was built on directly, when one unreviewed price two steps down
-    is enough to keep it waiting.
+  - Asking the approver about an email while any change beneath it, however far down, is still
+    unreviewed, so it goes out about something rolled back an hour later.
   - Reading only the status of an undo, so the actions beneath one that failed are undone anyway.
+  - Reading a blank answer from the approver as a no, or as a yes, when no person has decided yet.

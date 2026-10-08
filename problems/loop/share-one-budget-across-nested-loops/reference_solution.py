@@ -69,9 +69,6 @@ def parse_plan(reply: str) -> list:
 
 def run_step(step: str, question: str, share: int, ask, tools: dict) -> tuple:
     """One step's executor, on at most share model calls. Returns (status, detail)."""
-    if share <= 0:
-        return "not_started", None
-
     prompt = STEP_PROMPT.format(step=step, order=question)
     last = None  # the step's last tool result, which is all a partial step has to show
     for _ in range(share):

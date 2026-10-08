@@ -7,7 +7,7 @@ difficulty: extreme
 track: evals
 concept:
   topic: "Regression testing"
-  question: "Which failures on a new prompt are the prompt's fault, and which were already there?"
+  question: "Which failures on a new prompt did the change cause, and which were already there?"
 est_minutes: 50
 competencies:
   - { slug: evaluation-design, weight: 1.0 }
@@ -33,9 +33,10 @@ brief_md: |
 
   The gate can now afford three trials of every case on each prompt, and a
   few more. Write the gate that blocks only on failures the change caused. It
-  compares what each prompt does over several trials, runs confirm trials
-  before convicting a case that slipped, and asks for a rerun only when it is
-  missing evidence.
+  compares what each prompt does over several trials. A case that passed
+  every trial on the live prompt and only some on the new one has slipped,
+  and it gets confirm trials before it is convicted. It asks for a rerun only
+  when it is missing evidence.
 
 contract_md: |
   Implement:
@@ -73,7 +74,7 @@ contract_md: |
   1. `no_data` when either prompt's standing is `no_data`.
   2. `regression` when the baseline passes and the candidate fails.
   3. When the baseline passes and the candidate is mixed, ask `confirm` more
-     trials on the candidate, numbered on from `trials`, after the main pass
+     trials on the candidate, numbered from `trials + 1`, after the main pass
      and in suite order. The case is a `regression` when more than half of the
      candidate's answered trials failed, and `flaky` otherwise.
   4. `flaky` when either prompt's standing is `mixed`.
@@ -130,9 +131,10 @@ stub_code: |
 
       Verdict, first rule that fits: no_data on either prompt is no_data;
       passes then fails is regression; passes then mixed asks confirm more
-      candidate trials after the main pass, then is regression when more than
-      half of the candidate's answered trials failed, else flaky; mixed on
-      either prompt is flaky; fails then passes is improved; else unchanged.
+      candidate trials after the main pass, numbered from trials + 1, then is
+      regression when more than half of the candidate's answered trials
+      failed, else flaky; mixed on either prompt is flaky; fails then passes
+      is improved; else unchanged.
 
       Decision: block on any regression, else rerun on any no_data, else ship.
       When llm raises, stop calling, count the rest as missing, decide rerun.
@@ -172,7 +174,7 @@ scenario:
     rolled back, and the next real regression will ship the same way.
   metrics:
     - { label: Cases in the suite, value: "24" }
-    - { label: Flip on the live prompt, value: "3" }
+    - { label: Cases that already flip, value: "3" }
     - { label: Borrowers told a wrong date, value: "2,300" }
 
 diagram:
@@ -199,7 +201,7 @@ diagram:
     - { from: change, to: confirm, label: passed before and slips now, step: 3 }
     - { from: confirm, to: decision, label: more than half failed, tone: success, step: 4 }
     - { from: gate, to: decision, label: a verdict for every case, step: 4 }
-    - { from: gate, to: lottery, label: one draw each, tone: danger }
+    - { from: gate, to: lottery, label: "the old gate, one draw each", tone: danger }
 
 approach:
   goal: Block a change only on failures the change itself caused
@@ -266,6 +268,12 @@ coach:
       say: >-
         One reply in that run was empty and another was a 502 from upstream.
         Which of your counts did each of them land in?
+    - id: adversarial-timeout-on-live
+      when: { test_failed: adversarial_a_timeout_on_the_live_prompt_cannot_clear_a_regression }
+      say: >-
+        The provider timed out on one of the live prompt's trials in that run,
+        and the new prompt failed every trial. How many trials did the live
+        prompt answer, and what was its standing on them?
     - id: adversarial-gateway-closes
       when: { test_failed: adversarial_the_gateway_closes_partway_through_a_case }
       say: >-
@@ -282,11 +290,6 @@ coach:
       say: >-
         The budget ran out before the confirm trials were asked. Could the
         trials your gate never asked have changed its decision?
-    - id: many-failed-runs
-      when: { failed_runs_at_least: 3 }
-      say: >-
-        Three runs without a pass. On this tier the hints open after two failed
-        runs and a written note, and the first one says where to look.
   wrap_up: >-
     One trial of a prompt is one draw. Compare what each prompt does over
     several trials, let a case that already varied be flaky, confirm a slip
@@ -526,8 +529,8 @@ tests:
       This is the EMI-date break from last Tuesday. The live prompt gave the
       right date in all three trials, and the new prompt gave it once in three,
       leading with the amount and then naming 12 November. Three trials cannot
-      tell a case that slipped from a case that broke, and calling the case
-      flaky because it varied is how the break shipped.
+      tell a case that slipped from a case that broke, and a gate that calls
+      the case flaky because it varied ships the break again.
 
       The two confirm trials both said 12 November. One pass in five answered
       trials is a regression, and the change is blocked. The hidden case with
@@ -639,6 +642,70 @@ tests:
               flaky: { const: [emi-holiday] }
               no_data: { const: [] }
         - { type: llm_calls_at_most, value: 14 }
+
+  # The provider times out on the live prompt's second trial of emi-date and
+  # the new prompt names the wrong date in all three of its trials. Counted as
+  # a failure, the timeout makes the live prompt look mixed and the break
+  # reads as flaky.
+  - name: adversarial_a_timeout_on_the_live_prompt_cannot_clear_a_regression
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      The provider timed out on the live prompt's second trial of the EMI-date
+      case, and the new prompt named 12 November in all three of its trials.
+      Counted as a failure, the timeout makes the live prompt look mixed on
+      the case, the new prompt's three failures read as the case's usual
+      behaviour, and the change ships with the EMI-date break reported as
+      flaky. That is last Tuesday's incident with a different cause.
+
+      A timeout says nothing about the live prompt. Its two answered trials
+      both passed, which meets the suite's minimum, so the live prompt passes
+      the case, the new prompt fails it, and the change is blocked. A missing
+      trial counted as a failure cuts both ways: on the new prompt it blocks a
+      release for an outage, and on the live prompt it lets a regression
+      through.
+    spec:
+      kind: agent_run
+      input: { question: "CHG-2621" }
+      llm_script:
+        - match: { all: [ { contains: "prompt v50" }, { contains: "Customer: When is my next EMI due?" }, { contains: "Trial: 2" } ] }
+          reply: "Error: the provider timed out after 30 seconds"
+        - match: { all: [ { contains: "prompt v51" }, { contains: "Customer: When is my next EMI due?" } ] }
+          reply: "₹4,250, due on 12 November."
+        - { match: { contains: "Customer: When is my next EMI due?" },
+            reply: "Your next EMI of ₹4,250 is due on 5 November." }
+        - { match: { contains: "Customer: Can I close my loan early?" },
+            reply: "Yes. Closing early costs 4 percent of the principal still outstanding." }
+        - { match: "*", reply: "I can only help with questions about your loan." }
+      tools:
+        suite:
+          returns:
+            trials: 3
+            confirm: 2
+            min_answered: 2
+            baseline: { prompt: "Repayments assistant, prompt v50. Answer the borrower in one or two sentences, from the loan facts on file only." }
+            candidate: { prompt: "Repayments assistant, prompt v51. Lead with the amount the borrower owes, then answer in one sentence, from the loan facts on file only." }
+            cases:
+              - { id: emi-date, input: "When is my next EMI due?", expect: "5 November" }
+              - { id: foreclosure, input: "Can I close my loan early?", expect: "4 percent" }
+      budget: { max_llm_calls: 16, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [decision, cases, regressions, flaky, no_data]
+            properties:
+              decision: { const: block }
+              cases:
+                type: object
+                required: [emi-date, foreclosure]
+                properties:
+                  emi-date: { const: regression }
+                  foreclosure: { const: unchanged }
+              regressions: { const: [emi-date] }
+              flaky: { const: [] }
+              no_data: { const: [] }
+        - { type: llm_calls_at_most, value: 12 }
 
   - name: adversarial_the_gateway_closes_partway_through_a_case
     visibility: adversarial
@@ -805,7 +872,9 @@ reference_md: |
   trials that were answered. An empty reply, an `Error:` reply and a refused
   call say nothing about either prompt. Counted as failures, a provider's bad
   minute convicts the change. A case left with too few answers has no data,
-  and missing evidence is the one honest reason to rerun.
+  and missing evidence is the one honest reason to rerun. The per-case report
+  from [Report every trial so failures cannot hide](/problems/report-variability-across-trials)
+  is one side of this gate. The live prompt's report is the other.
 
   The live prompt's standing is what gives a failure on the new prompt its
   meaning. A case that already failed some trials before is failing in its
@@ -856,5 +925,6 @@ traps:
   - Blaming the change for failures on a case the live prompt already failed some of the time.
   - Deciding a case that slipped on the new prompt before its confirm trials, or asking those trials before every case
     has had its main ones.
-  - Counting an empty reply, an `Error:` reply or a refused call as a failed trial, so an outage blocks a release.
+  - Counting an empty reply, an `Error:` reply or a refused call as a failed trial, so an outage blocks a release, or
+    clears a case the change broke.
   - Shipping on a run the budget cut short, when the trials it never asked could have convicted a case.

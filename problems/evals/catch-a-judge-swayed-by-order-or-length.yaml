@@ -181,6 +181,8 @@ diagram:
     - { from: pad, to: counted, label: same winner again, step: 3, tone: success }
     - { from: pad, to: named, label: the verdict moved, tone: muted }
     - { from: pairs, to: inflated, label: one order only, tone: danger }
+    - { from: swap, to: counted, label: "agree, not a longer winner", tone: success }
+    - { from: swap, to: named, label: the orders disagree, tone: muted }
 
 approach:
   goal: A win rate built only from verdicts the judge would give again
@@ -636,6 +638,13 @@ reference_md: |
   again rarely helps, since the same question tends to draw the same drift,
   so the pair stops there. Identical answers need no judge at all: the
   verdict is a tie by definition, and a call can only add cost or show bias.
+
+  Both checks test the judge against itself, so a verdict that survives them
+  is still only the judge's reading of the content. A judge that prefers a
+  confident wrong answer passes both, and catching that needs an answer
+  somebody decided was right, which is what a golden set is for. Build a
+  golden set from a week's failures, another problem in this chapter, makes
+  one.
 
 complexity: C2
 

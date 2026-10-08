@@ -1,5 +1,5 @@
 slug: argue-one-agent-over-a-five-agent-crew
-title: "Argue for one agent over a five-agent crew"
+title: "Recommend a build for 600 morning summaries"
 day: 15
 skill: Weigh a multi-agent crew against one agent in a fixed workflow by cost, time and evidence
 artefact_type: design
@@ -43,12 +43,15 @@ brief_md: |
   | Credits that did not match the contract | 3 of 40 | 0 of 40 |
   | Summaries out after 08:00 | 2 of 40 | 0 of 40 |
   | Reasons an account manager would reword | 2 of 40 | 5 of 40 |
+  | Exceptions of a kind the exceptions tool had never returned before | 4 of 4 written up, 1 credit wrong | 0 of 4 written up, logged as unknown and skipped |
 
-  In the three wrong credits, the writer restated a figure the credits
-  analyst had passed on in prose. The two late summaries went round in
-  circles: the carrier analyst and the researcher kept delegating the same
-  status question to each other until each reached its iteration limit,
-  which is 20 by default.
+  In each of the three wrong credits, the trace shows the credit tool
+  returning the contract's figure and the credits analyst repeating it
+  correctly in its report to the account writer. The figure in the email was
+  different. The two late summaries ran to 83 and 91 model calls against a
+  median of 38, and both traces end with the carrier analyst and the shipment
+  researcher each at its iteration limit, which is 25 by default, still
+  asking each other for the same delivery's status.
 
   Write the recommendation you would send her.
 
@@ -61,8 +64,8 @@ contract_md: |
 
   Say what you would build and why, what each build costs in money and time,
   how each one fails, how you would settle the question with evidence, and
-  what would change your mind. The CrewAI facts in the brief come from the
-  CrewAI documentation for version 1.15.23.
+  what would change your mind. The CrewAI facts in the brief were checked
+  against version 1.15.23, its documentation and its source code.
 
 word_range: [350, 650]
 required_headings: []
@@ -90,13 +93,18 @@ rubric:
   - label: Names how each build fails, and which failures come from its shape
     weight: 20
     descriptor_md: |
-      Strong answers trace the wrong credits to a figure passed between agents
-      as prose, and the late summaries to a delegation loop, and say a better
+      Strong answers trace the wrong credits to a figure that was right at the
+      tool and right in the analyst's report and wrong in the email, so it
+      changed hands as text between two agents, and the late summaries to two
+      agents delegating the same question to each other, and say a better
       prompt makes both rarer without making them impossible. They name the
-      Flow's own failure, exception types nobody coded for, and they deal
-      honestly with the one row the crew won: reasons account managers would
-      reword. Answers that list only the crew's faults, or call the wrong
-      credits a prompt problem, have missed what the comparison shows.
+      Flow's own failure, the four exceptions of a new kind it logged and
+      skipped, and argue which is the better failure to have, a logged skip
+      fixed once in code or a write-up with a wrong credit in it, using the
+      row's numbers. They deal honestly with the row the crew won, reasons
+      account managers would reword. Answers that list only the crew's faults,
+      or call the wrong credits a prompt problem, have missed what the
+      comparison shows.
   - label: Settles the question with an evaluation decided in advance
     weight: 25
     descriptor_md: |
@@ -107,16 +115,21 @@ rubric:
       the replay which result decides it. A model's score from 1 to 10, which
       is what `crewai test` reports, cannot tell a wrong credit from a right
       one, and "run it for a month and monitor" decides nothing.
-  - label: Says what would change the recommendation, and keeps the board's statement true
+  - label: Says what would change the recommendation, and decides what the board hears
     weight: 15
     descriptor_md: |
       Strong answers name measurable conditions under which a crew earns its
       place, such as work whose steps differ from case to case, like
       investigating disputed deliveries, or a replay where the crew's better
-      prose comes with no credit errors at a cost the client accepts. They keep
-      the client on CrewAI with a Flow, which is how CrewAI's documentation
-      recommends starting a production application, so what the board was told
-      stays true.
+      prose comes with no credit errors at a cost the client accepts. They also
+      decide what the board hears, and defend the choice. Two answers earn the
+      marks. One: a Flow with an agent inside it is CrewAI used the way its
+      documentation recommends for production, so the statement stands, and
+      the answer says what she tells a director who asks why there is one
+      agent. The other: the board hears that the crew was built, measured and
+      set aside, with the figures that settled it, and the answer says why
+      that is worth the correction. An answer that ignores the board, or keeps
+      the crew so the statement stays true, loses the marks.
 
 exemplars:
   - band: strong
@@ -150,10 +163,14 @@ exemplars:
       text. In the Flow the credit comes from the credit tool and goes into
       the email as a field the model never writes. Two crew summaries missed
       08:00 because two agents delegated the same question back and forth
-      until each hit its limit of 20 iterations, and CrewAI's own
+      until each hit its limit of 25 iterations, and CrewAI's own
       documentation lists delegation loops as a known issue. The Flow fails
-      differently: it handles the exception types we coded, and a new carrier
-      status needs a code change. That failure is visible and testable.
+      differently. Four exceptions of a kind the tool had never returned were
+      logged as unknown and left out of their summaries, and the crew wrote
+      all four up and got one credit wrong. I would rather have the Flow's
+      failure. It is in a log, the replay's first check catches it, and it is
+      fixed once in code, while a crew that improvises through a new case will
+      improvise a credit for it.
 
       The crew did one thing better than the Flow. Account managers would
       reword 2 of its 40 reasons and 5 of the Flow's. That sits in one step,
@@ -174,7 +191,10 @@ exemplars:
       every time, a crew earns its place for that step, inside the Flow.
 
       For the board: this is CrewAI, built the way CrewAI's documentation
-      recommends for production, which is to start with a Flow.
+      recommends for production, which is to start with a Flow. If you would
+      rather the board heard that five agents were tried and set aside, the
+      figures above make that case, and better from you than from the first
+      director who asks why there is one agent.
   - band: adequate
     score: 60
     body_md: |
@@ -277,7 +297,7 @@ hints:
     that they can check.
 
 scenario:
-  headline: "A five-agent crew cost 13 times as much and got 3 credits wrong"
+  headline: "Two builds ran the same 40 summaries, and the board was promised a crew"
   who: "The head of customer operations at a parcel network the size of DPD UK"
   situation: >-
     She wants a five-agent CrewAI crew to write 600 delivery summaries every
@@ -294,40 +314,41 @@ scenario:
 diagram:
   title: Where the crew spent its calls, and where the Flow spends its two
   caption: >-
-    The crew plans and delegates the same fixed steps on every summary. The
-    Flow runs the steps in code and calls a model only where judgement is
-    needed.
+    Forty summaries through each build, with each failure drawn where the
+    trace shows it.
   direction: lr
   nodes:
     - { id: feeds, label: Carrier feeds, sub: land at 06:00, kind: doc, tone: neutral, at: [0, 1] }
-    - { id: manager, label: Manager agent, sub: re-plans the same steps each time, kind: agent, tone: purple, at: [1, 0] }
-    - { id: crew, label: Four specialist agents, sub: pass facts to each other as prose, kind: agent, tone: purple, at: [2, 0] }
-    - { id: wrong, label: 3 of 40 credits wrong, sub: a figure restated in prose, kind: output, tone: pink, at: [3, 0] }
-    - { id: late, label: 2 of 40 after 08:00, sub: a delegation loop, kind: output, tone: pink, at: [3, 1] }
+    - { id: manager, label: Manager agent, sub: plans and delegates every summary, kind: agent, tone: purple, at: [1, 0] }
+    - { id: crew, label: Four specialist agents, sub: 38 calls a summary between them, kind: agent, tone: purple, at: [2, 0] }
+    - { id: wrong, label: 3 of 40 credits wrong, sub: "tool right, analyst right, email wrong", kind: output, tone: pink, at: [3, 0] }
+    - { id: late, label: 2 of 40 after 08:00, sub: "two agents, each at its iteration limit", kind: output, tone: pink, at: [3, 1] }
     - { id: flow, label: CrewAI Flow, sub: fixed steps in code, kind: guard, tone: green, at: [1, 2] }
     - { id: tools, label: Three tools, sub: "exceptions, carrier note, credit", kind: tool, tone: blue, at: [2, 2] }
     - { id: model, label: One agent, sub: two calls for reasons and the email, kind: model, tone: teal, at: [3, 2] }
-    - { id: email, label: Summary email, sub: credits inserted from the tool, kind: output, tone: green, at: [4, 2] }
+    - { id: email, label: Summary email, sub: two calls a summary, kind: output, tone: green, at: [4, 2] }
+    - { id: skipped, label: 4 exceptions left out, sub: a kind the tool never returned before, kind: output, tone: pink, at: [2, 3] }
   edges:
     - { from: feeds, to: manager, label: the crew }
     - { from: manager, to: crew, label: 38 calls a summary }
-    - { from: crew, to: wrong, label: credit restated, tone: danger }
-    - { from: crew, to: late, label: delegated back and forth, tone: danger }
+    - { from: crew, to: wrong, label: a different figure, tone: danger }
+    - { from: crew, to: late, label: 83 and 91 calls, tone: danger }
     - { from: feeds, to: flow, label: the Flow, step: 1 }
     - { from: flow, to: tools, label: same order every time, step: 2, tone: success }
     - { from: tools, to: model, label: facts it is given, step: 3 }
     - { from: model, to: email, label: 2 calls a summary, tone: success }
+    - { from: flow, to: skipped, label: logged as unknown, tone: danger }
 
 approach:
   goal: Choose the build the work's shape calls for, and prove it on the client's own data
   branches:
     - label: Read the shape of the work
-      leaves: [the same three lookups for every customer, judgement in two places]
+      leaves: [which steps are the same for every customer, which steps need a model at all]
     - label: Price both builds
       leaves: [per summary and per morning, against the two hours before 08:00]
     - label: Name how each one fails
-      detail: The crew's failures came from its structure. The Flow's come from what nobody coded for.
-      leaves: [a credit restated in prose, a delegation loop, a new carrier status, reasons to reword]
+      detail: For each failure, ask whether a better prompt removes it or only makes it rarer.
+      leaves: ["where the email's figure parted from the tool's", why two agents ran out of iterations, what each build does with a case nobody has seen, the row the crew won]
     - label: Settle it with a replay
       leaves: [the same days through both builds, facts checked in code, prose read blind]
     - label: Say what would change your mind
@@ -336,8 +357,8 @@ approach:
 coach:
   opening: >-
     Before you choose, write the steps one summary goes through and mark where
-    a person would need judgement. Then look at which build puts a model on
-    every step.
+    a person would need judgement. Then count the model calls each build
+    spends on those steps.
   signals:
     - id: no-numbers
       when: { code_lacks: '£\s?0\.52|£\s?0\.04|£\s?312|£\s?24\b|96 seconds|9 seconds|38 (model )?calls' }
@@ -406,15 +427,21 @@ reference_md: |
 
   The delegation loop is the same lesson from another side. CrewAI's
   collaboration guide lists "Delegation Loops: agents delegate back and forth
-  indefinitely" among its known issues, and an agent's `max_iter` defaults to
-  20 (CrewAI documentation for version 1.15.23, read 1 October 2026). Two
-  agents that may each delegate to the other will sometimes do so until a
-  limit stops them, and an iteration limit says nothing about 08:00.
+  indefinitely" among its known issues (CrewAI documentation for version
+  1.15.23, read 1 October 2026). An agent's `max_iter` defaults to 25 in the
+  source of that version, in `crewai/agents/agent_builder/base_agent.py`,
+  though the Agents page of the documentation says 20 (both read 8 October
+  2026). Two agents that may each delegate to the other will sometimes do so
+  until a limit stops them, and an iteration limit says nothing about 08:00.
 
   Strong answers do not pretend the Flow has no faults. Its reasons needed
   rewording more often, and it handles only the exception types someone
-  coded. The first sits in one step and has a cheap fix. The second is
-  visible and testable, which emergent behaviour across five agents is not.
+  coded, so four of a new kind were logged and left out of their summaries.
+  Its clean credit row owes something to that: it cannot get wrong a credit
+  it never wrote. The first fault sits in one step and has a cheap fix. The
+  second is visible in a log, caught by a replay that checks every exception
+  is present, and fixed once in code. Emergent behaviour across five agents
+  is none of those.
 
   The evaluation turns a recommendation into a decision. The facts in a
   summary have right answers: the exceptions the tool returned, the credit
@@ -443,7 +470,8 @@ interview_evidence:
     Adapted from docs/source-pack/09-interview-bank.json I012, "When would multiple agents make this
     workflow worse?", which labels every entry "Original interview-style practice; actual employer
     frequency unverified", and this inherits the caveat. The CrewAI facts were checked against
-    docs.crewai.com for version 1.15.23 on 1 October 2026.
+    docs.crewai.com for version 1.15.23 on 1 October 2026. The `max_iter` default was checked
+    against that version's source on 8 October 2026: it is 25, where the Agents page says 20.
 
 traps:
   - Arguing from fashion or from what the board was told, with no cost, time or error figure from the comparison.

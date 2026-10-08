@@ -1,7 +1,7 @@
 slug: rebuild-the-context-from-current-facts
 title: "Rebuild the context each turn from current facts"
 day: 15
-skill: Rebuild a long session's context so the newest checked fact wins and open tasks stay
+skill: Rebuild a long session's context so the newest verified fact wins and open tasks stay
 artefact_type: code
 difficulty: extreme
 track: context
@@ -32,10 +32,10 @@ brief_md: |
   which had been fixed at 10:12. The customer took Tuesday morning off work,
   and nobody came.
 
-  Appending is the fault. Write the step that rebuilds the context from the
-  session log before every model call, so the model reads the open tasks,
-  the newest checked fact on each subject and the recent conversation, and
-  nothing that has since been replaced.
+  The team has decided the context will be rebuilt from the session log
+  before every model call. Write that step, so the model reads the open
+  tasks, the newest verified fact on each subject and the recent
+  conversation, and nothing that has since been replaced.
 
 contract_md: |
   Implement:
@@ -100,7 +100,7 @@ stub_code: |
 
   INSTRUCTIONS = (
       "You are the broadband support agent. Answer from the open tasks and the "
-      "facts below. Each fact is the newest checked result on its subject."
+      "facts below. Each fact is the newest verified result on its subject."
   )
 
 
@@ -169,14 +169,14 @@ diagram:
   title: Where an old result sat beside its replacement
   caption: >-
     Appending kept every result the session ever saw. Rebuilding keeps the
-    open tasks, the newest checked fact per subject and the last six turns.
+    open tasks, the newest verified fact per subject and the last six turns.
   direction: lr
   nodes:
     - { id: log, label: Session log, sub: "every turn and result, as written", kind: store, tone: blue, at: [0, 1] }
     - { id: appended, label: Appended context, sub: "old and new results together", kind: doc, tone: orange, at: [1, 0] }
     - { id: rebuild, label: Context rebuild, sub: runs before every model call, kind: agent, tone: purple, at: [1, 2] }
     - { id: tasks, label: Open tasks, sub: kept however old, kind: doc, tone: green, at: [2, 1] }
-    - { id: facts, label: Current facts, sub: newest checked result per subject, kind: doc, tone: green, at: [2, 2] }
+    - { id: facts, label: Current facts, sub: newest verified result per subject, kind: doc, tone: green, at: [2, 2] }
     - { id: turns, label: Recent turns, sub: the last six, kind: doc, tone: teal, at: [2, 3] }
     - { id: model, label: Support model, sub: reads what it is given, kind: model, tone: teal, at: [3, 1] }
     - { id: wrong, label: "Tuesday, and an outage", sub: both replaced an hour earlier, kind: output, tone: pink, at: [4, 0] }
@@ -190,6 +190,8 @@ diagram:
     - { from: rebuild, to: facts, label: one per subject, step: 3 }
     - { from: rebuild, to: turns, label: last six, step: 4 }
     - { from: facts, to: model, label: rebuilt context, tone: success }
+    - { from: tasks, to: model, tone: success }
+    - { from: turns, to: model, tone: success }
     - { from: model, to: right, label: answers from it, tone: success }
 
 approach:
@@ -198,8 +200,8 @@ approach:
     - label: Which result is newer?
       leaves: [when it was true beats when it was written, offsets differ between systems]
     - label: Which results count as facts?
-      detail: A customer's claim is worth hearing, and a checked record is what the agent acts on.
-      leaves: [checked results only, "decide, and defend, what happens to claims"]
+      detail: A customer's claim is worth hearing, and a verified record is what the agent acts on.
+      leaves: [verified results only, "decide, and defend, what happens to claims"]
     - label: What has to survive?
       leaves: [every open task however old, a fact that has not changed]
     - label: What has to go?
@@ -233,7 +235,7 @@ coach:
       when: { test_failed: a_customer_claim_never_replaces_a_checked_result }
       say: >-
         The newest visit entry in that run was the customer's claim. What
-        did your prompt say about the visit, and was it a checked result?
+        did your prompt say about the visit, and was it a verified result?
     - id: hidden-tasks
       when: { test_failed: a_closed_task_goes_and_the_oldest_open_one_stays }
       say: >-
@@ -250,6 +252,12 @@ coach:
       say: >-
         Two systems in that run wrote times with different offsets. Put the
         two visit results on one clock before you decide which is newer.
+    - id: adversarial-no-offset
+      when: { test_failed: adversarial_a_time_with_no_offset_cannot_be_placed }
+      say: >-
+        One result in that run carried a time with no offset. Can it be put
+        on the same clock as the others, and what does your code do when it
+        tries?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -265,7 +273,7 @@ coach:
   wrap_up: >-
     A long session rots because replaced results stay beside their
     replacements, and the model cannot tell which is current. Rebuild from the
-    log: the newest checked fact per subject by when it was true, every open
+    log: the newest verified fact per subject by when it was true, every open
     task, and only the turns recent enough to agree with them.
 
 tests:
@@ -545,6 +553,52 @@ tests:
         - { type: returns_matches, value: '"visit"\s*:\s*"e-03"' }
         - { type: prompt_lacks, value: "Tuesday 6 October" }
 
+  - name: adversarial_a_time_with_no_offset_cannot_be_placed
+    visibility: adversarial
+    fixture: schema_drift
+    annotation_md: |
+      A replica replayed the morning's outage check at 11:05 and stamped the
+      replay with its own clock, `2026-09-30T11:05:00`, with no offset.
+      Nothing says whether that is 11:05 in UTC or 11:05 in London, so it
+      cannot be put on the same clock as the other results. Read as text it
+      is the newest entry, and it was written last. In Python, comparing it
+      to a time that has an offset raises `TypeError`, so a rebuild that
+      parses every time and compares them answers nothing at all.
+
+      A time that cannot be placed never wins, however late it reads. The
+      10:20 result is the outage fact, and the replay stays in the log for a
+      person to read.
+    spec:
+      kind: agent_run
+      input: { question: "Is the outage fixed yet?" }
+      llm_script:
+        - { match: { contains: "fact outage: Area outage: resolved at 10:12." },
+            reply: "Yes. The outage at cabinet 14 was resolved at 10:12, so your line should be back." }
+        - { match: { contains: "fact outage: Area outage: yes, cabinet 14" },
+            reply: "No. There is still an outage at cabinet 14, with no fix time yet." }
+        - { match: "*", reply: "I need to check for an outage first." }
+      tools:
+        session:
+          returns:
+            status: 200
+            events:
+              - { id: e-01, kind: turn, role: customer, text: "Is there still an outage near me?" }
+              - { id: e-02, kind: task, task: task-1, state: open, observed_at: "2026-09-30T08:59:00Z",
+                  text: "Restore the broadband at 14 Elm Road." }
+              - { id: e-03, kind: result, key: outage, verified: true, observed_at: "2026-09-30T09:06:00Z",
+                  text: "Area outage: yes, cabinet 14, no fix time yet." }
+              - { id: e-04, kind: turn, role: agent, text: "There was one this morning. Let me check it again." }
+              - { id: e-05, kind: result, key: outage, verified: true, observed_at: "2026-09-30T10:20:00Z",
+                  text: "Area outage: resolved at 10:12." }
+              - { id: e-06, kind: result, key: outage, verified: true, observed_at: "2026-09-30T11:05:00",
+                  text: "Area outage: yes, cabinet 14, no fix time yet." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)resolved at 10:12" }
+        - { type: returns_matches, value: '"outage"\s*:\s*"e-05"' }
+        - { type: prompt_lacks, value: "no fix time yet" }
+
 reference_md: |
   The model did not misread anything. It was shown two visit bookings with
   nothing to say which replaced the other, and it chose one. Chroma's report
@@ -556,7 +610,7 @@ reference_md: |
   replacement.
 
   Rebuilding from the log takes the distractors away instead of hoping the
-  model sorts them. Each subject gets one line, from the newest checked
+  model sorts them. Each subject gets one line, from the newest verified
   result, and everything it replaced stays in the log, where a person can
   still read it. Anthropic's engineering guide to context engineering
   (September 2025) calls clearing old tool results one of the safest, lightest
@@ -570,11 +624,14 @@ reference_md: |
 
   Verified comes before newest. A customer saying the engineer has been is
   worth knowing, and the visit record is what the agent acts on. Keep the
-  checked results, then take the newest. The other order finds the claim,
+  verified results, then take the newest. The other order finds the claim,
   rejects it, and leaves the model with no visit at all. What the claim
   deserves is the open decision in this problem. This reference leaves it
   out of the prompt and relies on the transcript turns to carry what the
   customer said, which is a choice the defence asks you to argue either way.
+  The cost of leaving it out is that a turn lasts six turns and a result
+  lasts the session: once the claim is seven turns old, a model under this
+  choice no longer knows the customer ever said it.
 
   Two things survive the rebuild for opposite reasons. An open task is the
   reason the session exists, so it stays however old it is. A turn repeats

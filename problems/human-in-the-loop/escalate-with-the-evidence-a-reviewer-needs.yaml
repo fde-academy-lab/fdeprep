@@ -247,6 +247,11 @@ coach:
       say: >-
         The model was sure of a decision that is neither `verify` nor
         `reject`. Can a record hold that, and who decides instead?
+    - id: percent-confidence
+      when: { test_failed: a_confidence_of_94_is_not_a_number_from_0_to_1 }
+      say: >-
+        That reply was sure, at 94, and the bar is 0.85. What does your code do
+        with a confidence outside 0 to 1, and which reason does the reviewer read?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -386,6 +391,26 @@ tests:
         - { type: calls_tool_with, name: escalate,
             args: { reason: "unknown_decision", proposed: "verify_with_caution" } }
 
+  - name: a_confidence_of_94_is_not_a_number_from_0_to_1
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "AP-3441" }
+      llm_script:
+        - { match: "*",
+            reply: 'Decision: {"decision": "reject", "confidence": 94, "because": "The licence expired on 2024-02-29 and the surname is spelt differently."}' }
+      tools:
+        application: { returns: { status: 200, applicant: "AP-3441", name: "Nadia Qureshi", date_of_birth: "1988-06-17", address: "19 Orchard Close, Reading RG1 2PX" } }
+        document: { returns: { status: 200, applicant: "AP-3441", upload: "UP-77388", kind: "driving_licence", name: "NADIA QURESHY", date_of_birth: "1988-06-17", address: "19 Orchard Close, Reading RG1 2PX", expires: "2024-02-29" } }
+        record: { returns: { status: 200, recorded: true } }
+        escalate: { returns: { status: 200, queued: true, case: "REV-20417" } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: record }
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: calls_tool_with, name: escalate, args: { reason: "no_confidence", proposed: "reject" } }
+        - { type: returns_matches, value: '"reason":\s*"no_confidence"' }
+
 reference_md: |
   The threshold in the incident worked. Every case under 0.85 reached a
   person. What failed was the handover: the person received a score, which
@@ -455,6 +480,6 @@ example:
 traps:
   - Escalating an id and a score, so the reviewer fetches everything again and may judge a newer upload.
   - Asking the model again until its confidence clears the bar.
-  - Giving a missing confidence a number of its own, so the reviewer reads the wrong reason or nobody
-    reviews it at all.
+  - Giving a missing confidence a number of its own, or comparing one outside 0 to 1 with the bar, so the
+    reviewer reads the wrong reason or nobody reviews it.
   - Recording a confident decision that is neither of the two the record can hold.

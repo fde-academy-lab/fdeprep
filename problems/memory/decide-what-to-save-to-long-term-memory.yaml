@@ -24,10 +24,10 @@ brief_md: |
 
   A review of the memory store in September found 4,812 full card numbers,
   filed by the extraction model as payment preferences. It found 19,000
-  one-time codes, kept long after they expired. And it found notes such as
-  "probably diabetic", which the model had guessed from two orders of
-  sugar-free biscuits. The customer had never said it, and the assistant had
-  started steering them away from sweets.
+  one-time codes, kept long after they expired. And it found 260 guesses
+  saved as facts, such as "probably diabetic", which the model had inferred
+  from two orders of sugar-free biscuits. The customer had never said it,
+  and the assistant had started steering them away from sweets.
 
   The memory team has written the rule for what may be kept. Write the gate
   that applies it to every candidate, with a reason for each decision, so the
@@ -260,7 +260,7 @@ approach:
     - label: Know every way it is written
       leaves: [digits in groups, spaces or hyphens between, not every card has 16 digits]
     - label: Do not refuse the harmless
-      leaves: [a postal PIN, a phone number, the word OTP with no code]
+      leaves: [a postal PIN, a phone number, the word OTP with no code, the last four digits of a card]
     - label: Only what the customer said
       leaves: [a guess is not a fact, confirmed means said or agreed]
 
@@ -295,7 +295,8 @@ coach:
       say: >-
         Everything in that run was safe to keep, and something in your gate
         refused part of it. Check each pattern against an address, a phone
-        number and a message that mentions OTP with no code in it.
+        number, a card's last four digits and a message that mentions OTP with
+        no code in it.
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -444,16 +445,18 @@ tests:
               - { id: m-1, kind: fact, confirmed: true, text: "Delivers to 12 MG Road, Bengaluru, PIN 560001." }
               - { id: m-2, kind: fact, confirmed: true, text: "Reachable on +44 7700 900123 while she works in London." }
               - { id: m-3, kind: preference, confirmed: true, text: "Wants OTP messages by email instead of SMS." }
+              - { id: m-4, kind: preference, confirmed: true, text: "Pays with the card ending 5556 unless she says otherwise." }
       budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
       assertions:
         - type: valid_json_return
           schema:
             type: object
-            required: [m-1, m-2, m-3]
+            required: [m-1, m-2, m-3, m-4]
             properties:
               m-1: { const: { store: true, reason: confirmed_fact } }
               m-2: { const: { store: true, reason: confirmed_fact } }
               m-3: { const: { store: true, reason: preference } }
+              m-4: { const: { store: true, reason: preference } }
 
 reference_md: |
   The extraction model did its job. It was asked what might be worth
@@ -470,7 +473,10 @@ reference_md: |
   digits in a row matches the one form customers rarely use. A full card
   number has no business in a plain notes store at all: the card industry's
   standard, PCI DSS v4.0.1, requires the primary account number to be
-  rendered unreadable anywhere it is stored (requirement 3.5.1).
+  rendered unreadable anywhere it is stored (requirement 3.5.1). Keeping only
+  the last four digits is truncation, one of the four methods that
+  requirement accepts, and a customer naming the card she pays with has
+  stated a preference.
 
   The gate also has to let the harmless through. A postal PIN and a phone
   number are long runs of digits that a careless pattern refuses, and a

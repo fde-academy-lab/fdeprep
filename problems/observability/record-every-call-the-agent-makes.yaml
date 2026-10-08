@@ -316,7 +316,8 @@ coach:
   wrap_up: >-
     A record is only worth having if the call that failed is on it. Write
     each event around the call, mark an error status as an error, and keep
-    what a replay needs.
+    what a replay needs. Log every step without logging secrets, later in
+    this chapter, asks what the same record must leave out.
 
 tests:
   - name: records_a_pickup_that_was_booked

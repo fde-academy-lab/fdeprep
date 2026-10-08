@@ -460,6 +460,10 @@ reference_md: |
   the ticket it issued, and a model asked to restate it can only copy it,
   or get it wrong.
 
+  Make Cancel stop the agent straight away, another problem in this chapter,
+  reads an operator's Cancel in the same place this loop reads the airline's
+  status: after the result and before the next call.
+
 complexity: C2
 
 interview_evidence:

@@ -3,14 +3,16 @@
 Four limits on how far one approved job can reach, each catching what the
 others miss.
 
-The preview is checked before any refund, two ways. Every previewed order
+The preview is checked before any refund, three ways. Every previewed order
 must carry every field of the approved filter with the approved value, which
-catches a key the order service silently ignored. And the preview may hold no
-more orders than the lead approved, which catches orders that match the
-filter honestly but were never in front of the lead. Fewer is expected: the
-filter asks for orders not yet refunded, so each run's preview is shorter
-than the last. Either failure blocks the whole run, because a selection
-nobody approved is not partly approved.
+catches a key the order service silently ignored. No order may appear twice,
+which catches a preview whose pages overlapped, where refunding every row
+pays one customer twice. And the preview may hold no more orders than the
+lead approved, which catches orders that match the filter honestly but were
+never in front of the lead. Fewer is expected: the filter asks for orders not
+yet refunded, so each run's preview is shorter than the last. Any failure
+blocks the whole run, because a selection nobody approved is not partly
+approved.
 
 The run refunds at most the per-run cap, in preview order, and its first
 slice is a breaker. Once the slice is tried, the share of it that failed is
@@ -81,6 +83,8 @@ def run_agent(question: str, llm, tools: dict) -> str:
     if not isinstance(orders, list) or len(orders) > approved:
         return report("blocked", [], [], 0)
     if not all(matches(order, selection) for order in orders):
+        return report("blocked", [], [], 0)
+    if len({order["order"] for order in orders}) != len(orders):
         return report("blocked", [], [], 0)
 
     run = orders[:cap]

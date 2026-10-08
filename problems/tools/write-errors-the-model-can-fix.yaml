@@ -248,17 +248,18 @@ coach:
       say: >-
         In that run `refund` raised instead of answering. Where does your agent
         catch it, and what does the model read afterwards?
+    - id: adversarial-true
+      when: { test_failed: adversarial_an_amount_of_true_is_one_paisa_to_the_api }
+      say: >-
+        In that run the model sent `true` as the amount and the API refunded
+        one paisa. What does `isinstance(True, int)` return in Python, and
+        what does your check do about it?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
         Start with `check()`: one problem per failing field, each with the
         field, the value as sent and what the table allows. The loop is built
         around it.
-    - id: hints
-      when: { failed_runs_at_least: 3 }
-      say: >-
-        Three runs have failed. The hints open after one failed run on this
-        tier, and the second one says what the model needs to fix a field.
   wrap_up: >-
     An error is the only thing the model reads between a refused call and the
     next one. Name the field, show what was sent, say what is allowed, name
@@ -455,6 +456,7 @@ tests:
         - { type: calls_tool_with, name: refund, args: { order_id: OD-8150, amount_paise: 9000, reason: damaged } }
         - { type: tool_calls_at_most, value: 1 }
         - { type: returns_matches, value: "RF-8150" }
+        - { type: prompt_contains, value: '"field":\s*"reason"[\s\S]*"field":\s*"currency"' }
 
   - name: adversarial_the_payments_service_does_not_answer
     visibility: adversarial
@@ -488,6 +490,48 @@ tests:
         - { type: no_exception }
         - { type: tool_calls_at_most, value: 1 }
         - { type: returns_matches, value: "(?i)not answering" }
+
+  - name: adversarial_an_amount_of_true_is_one_paisa_to_the_api
+    visibility: adversarial
+    fixture: loop_bait
+    annotation_md: |
+      The model sent `true` for the amount. In Python `True` is an `int`, so
+      `isinstance(amount, int)` lets it through, `1 <= True <= 50000` holds,
+      and the payments API spends it as one paisa: a one-paisa refund for a
+      customer owed 15 rupees, with a 200 in the scratchpad that says
+      nothing was wrong.
+
+      The table says a whole number, and `true` is not one. Checked before
+      the call, the error echoes `true` as the value sent, and the model's
+      one correction carries the amount in paise.
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-9120: the bananas were black inside. Refund the 15 rupees." }
+      llm_script:
+        - { match: { contains: "RF-9120" },
+            reply: "Final Answer: I have refunded 15 rupees for the bananas. Your refund is RF-9120." }
+        - { match: { contains: "RF-0001" },
+            reply: "Final Answer: I have refunded the bananas. Your refund is RF-0001." }
+        - match:
+            all:
+              - { regex: '"field":\s*"amount_paise"' }
+              - { regex: '"received":\s*true\b' }
+              - { regex: 'whole number' }
+          reply: 'Action: refund({"order_id": "OD-9120", "amount_paise": 1500, "reason": "damaged"})'
+        - { match: "*", reply: 'Action: refund({"order_id": "OD-9120", "amount_paise": true, "reason": "damaged"})' }
+      tools:
+        refund:
+          by_arg:
+            arg: amount_paise
+            values:
+              "1500": { status: 200, refund_id: RF-9120 }
+            default: { status: 200, refund_id: RF-0001 }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { order_id: OD-9120, amount_paise: 1500 } }
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: returns_matches, value: "RF-9120" }
+        - { type: returns_lacks, value: "RF-0001" }
 
 reference_md: |
   The model was never stubborn. It sent the same call again because nothing
@@ -542,4 +586,4 @@ traps:
   - An error that says only that the input was invalid, so the model sends the same call again.
   - Naming one problem at a time, so a call with two wrong fields needs two corrections and the calls run out.
   - Treating every refusal as fixable, so the model keeps retrying an order that cannot be refunded twice.
-  - Checking the amount against the table's limit alone, when the payments API can name a lower one for this order.
+  - Checking the amount with `isinstance(x, int)`, which lets `true` through as one paisa, or against the table's limit alone, when the API can name a lower one.

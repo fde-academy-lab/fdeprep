@@ -1,14 +1,14 @@
 slug: order-units-of-work-by-their-dependencies
 title: "Order units of work by their dependencies"
-day: 27
+day: 28
 skill: Order units by the dependencies a model names, and send unknown ids and loops to a person
 artefact_type: code
-difficulty: medium
+difficulty: hard
 track: agentic-sdlc
 concept:
   topic: "Units of work and bolts"
   question: "When the planner cannot find a safe order, who decides, and what are they told?"
-est_minutes: 30
+est_minutes: 45
 competencies:
   - { slug: failure-mode-analysis, weight: 1.0 }
   - { slug: system-design, weight: 0.5 }
@@ -62,8 +62,10 @@ contract_md: |
   no third ask.
 
   Check every id the map names against the plan before ordering anything.
-  Then order the units so that none comes before a unit it depends on, and
-  whenever more than one unit is ready, take the lowest id.
+  An id the plan lacks is the whole report: the ordering never runs, so no
+  loop is looked for. When every id is in the plan, order the units so that
+  none comes before a unit it depends on, and whenever more than one unit is
+  ready, take the lowest id.
 
   Some answers stop the ordering. The delivery lead decides those, so return
   `needs_person`, an empty `order`, and every reason in `problems`:
@@ -80,6 +82,15 @@ contract_md: |
 
   Budget: at most 2 model calls, and one call to `plan`. Allowed imports:
   json.
+
+defence_question: |
+  Your planner stops on every id the plan lacks and asks the delivery lead.
+  She says the model names a unit by its title about once a week, the match
+  is obvious every time, and she is tired of answering the same question.
+  Would you let the planner match a title to an id on its own? If yes, say
+  what the match has to show her so that a wrong one is caught before a
+  bolt is packed. If no, say what you would change in the ask so the model
+  stops doing it.
 
 stub_code: |
   import json
@@ -207,10 +218,10 @@ hints:
   - Keep, for each unit, the set of units it still waits on. A unit with an
     empty set is ready. Place the lowest ready id, remove it from every other
     set, and repeat until nothing is ready.
-  - When nothing is ready and units are left, each of them still waits on
-    another unit that is left. Start at the lowest, follow its lowest
-    dependency until a unit comes round again, and the units from there on
-    are the loop.
+  - When nothing is ready and units are left, some of them may only wait on
+    the loop. A unit like that has a dependency among the leftovers, and so
+    does every unit in the loop. What tells them apart is whether following
+    dependencies from a unit ever comes back to it.
 
 scenario:
   headline: "The planner put the reporting unit before the data model it reads"
@@ -245,6 +256,8 @@ diagram:
   edges:
     - { from: plan, to: model, label: every unit, step: 1 }
     - { from: model, to: reader, label: a dependency map, step: 2 }
+    - { from: reader, to: model, label: the failed reply and the shape, tone: muted }
+    - { from: reader, to: lead, label: the wrong shape twice }
     - { from: reader, to: ids, label: the shape holds, tone: success, step: 3 }
     - { from: ids, to: order, label: every id is known, tone: success, step: 4 }
     - { from: order, to: ordered, label: every unit placed, tone: success, step: 5 }
@@ -271,7 +284,7 @@ coach:
     it. The planner that broke in weeks two and three handled none of them.
   signals:
     - id: drops-unknown-ids
-      when: { code_matches: 'if\s+\w+\s+in\s+ids\b' }
+      when: { code_matches: '\bif\s+\w+\s+in\s+ids\s*[\]\}\)]' }
       say: >-
         This keeps the dependencies whose ids are in the plan and drops the
         rest without a word. Who decides what an id the plan does not have
@@ -310,6 +323,12 @@ coach:
       say: >-
         In that run the model named one dependency by a unit's title. Is a
         title an id in this plan, and who should decide which unit it meant?
+    - id: hidden-unknown-before-loop
+      when: { test_failed: an_unknown_id_is_reported_before_any_loop_is_looked_for }
+      say: >-
+        In that run the map named an id the plan lacks and two units that
+        wait on each other. The id check runs first and the ordering never
+        starts, so what should `problems` hold?
     - id: prose-reply
       when: { test_failed: adversarial_a_reply_in_prose_gets_one_more_ask }
       say: >-
@@ -323,8 +342,9 @@ coach:
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
-        Start with TODO 1 and TODO 3. Both public replies are in the right
-        shape and name only ids the plan has.
+        Start with the ask and the ordering, TODO 1 and TODO 3 in the starter
+        code. Both public replies are in the right shape and name only ids
+        the plan has.
     - id: hints-ready
       when: { failed_runs_at_least: 3 }
       say: >-
@@ -457,6 +477,29 @@ tests:
         - { type: returns_matches, value: '"unit":\s*"UW-3"' }
         - { type: returns_matches, value: 'depends on Tax rules, which is not in the plan' }
 
+  - name: an_unknown_id_is_reported_before_any_loop_is_looked_for
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order the units for the subscriptions release." }
+      llm_script:
+        - { match: "*", reply: 'Depends: {"UW-2": ["UW-1", "UW-7"], "UW-3": ["UW-4"], "UW-4": ["UW-3"]}' }
+      tools:
+        plan:
+          returns:
+            units:
+              - { id: "UW-1", title: "Plan catalogue", description: "The plans a customer can pick, with their prices." }
+              - { id: "UW-2", title: "Checkout", description: "Takes a card for the plan the customer picked, through the billing gateway." }
+              - { id: "UW-3", title: "Renewal reminders", description: "Emails the customer before a renewal, with the amount the renewal job will charge." }
+              - { id: "UW-4", title: "Renewal job", description: "Charges the card on the renewal date and tells the reminder what it charged." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"outcome":\s*"needs_person"' }
+        - { type: returns_matches, value: '"unit":\s*"UW-2"' }
+        - { type: returns_matches, value: 'depends on UW-7, which is not in the plan' }
+        - { type: returns_lacks, value: '"cycle"' }
+
   - name: adversarial_a_reply_in_prose_gets_one_more_ask
     visibility: adversarial
     fixture: malformed_on_nth
@@ -543,7 +586,10 @@ reference_md: |
   right on one plan and wrong on the next, so the check is exact and the
   person who wrote the plan resolves it. It runs before the ordering, because
   an order built on a dropped dependency is wrong in a way the ordering
-  cannot see.
+  cannot see. An unknown id is also the whole report. Until the delivery lead
+  says what it meant, the map is not one the plan can order: a unit waiting
+  on an id that never arrives is left over the way a unit in a loop is, and
+  her answer can make a loop or break one.
 
   A loop has no correct order. When two units each wait on the other, any
   order breaks one of the dependencies, and only someone who knows the work

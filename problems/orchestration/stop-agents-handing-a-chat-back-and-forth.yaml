@@ -258,6 +258,12 @@ coach:
       say: >-
         In that run the model gateway refused a call partway through the chat.
         Where did the customer end up, and with what history?
+    - id: adversarial-unknown-specialist
+      when: { test_failed: adversarial_a_handoff_to_a_specialist_nobody_runs }
+      say: >-
+        In that run a specialist handed the chat to a team that does not
+        exist. What does `read_reply` give you for that, and where did the
+        customer end up?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -445,6 +451,43 @@ tests:
               - { from: devices, to: returns, reason: "The customer also wants to send the old handset back." }
         - { type: returns_matches, value: "has your whole chat" }
 
+  - name: adversarial_a_handoff_to_a_specialist_nobody_runs
+    visibility: adversarial
+    fixture: schema_drift
+    annotation_md: |
+      Returns handed the chat to `fraud`, with a reason, and there is no
+      fraud specialist. `read_reply` returns `None` for it, the same as it
+      does for free text.
+
+      A router that unpacks every reply as a pair crashes here, after one
+      real handoff, with the customer in a chat that never answers and
+      nobody told. A reply the router cannot follow is one more way for a
+      chat to stop: the person gets the handoff that did happen and the
+      reason, and the trace shows which specialist asked for a team that
+      does not exist.
+    spec:
+      kind: agent_run
+      input: { question: '{"chat": "CH-7775", "message": "There are premium-rate calls on my bill that I never made. My handset was stolen last month and I sent you the replacement paperwork.", "first": "billing"}' }
+      llm_script:
+        - { match: { contains: "Specialist: billing" }, reply: "Handoff: returns | Billing needs to know whether a replacement handset was issued and the stolen one blocked." }
+        - { match: { contains: "Specialist: returns" }, reply: "Handoff: fraud | Calls the customer denies making after a theft are a fraud matter." }
+        - { match: "*", reply: "Answer: Thanks for waiting. A colleague will pick this up." }
+      tools:
+        human: { returns: { reply: "A member of our team has your whole chat and will reply within the hour." } }
+      budget: { max_llm_calls: 6, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: no_exception }
+        - type: calls_tool_with
+          name: human
+          args:
+            chat: "CH-7775"
+            why: no usable reply
+            history:
+              - { from: billing, to: returns, reason: "Billing needs to know whether a replacement handset was issued and the stolen one blocked." }
+        - { type: returns_matches, value: "has your whole chat" }
+        - { type: llm_calls_at_most, value: 2 }
+
 reference_md: |
   A handoff loop is two agents each making a reasonable decision. Billing
   cannot refund until the return is confirmed; returns does not issue
@@ -471,7 +514,8 @@ reference_md: |
   its reason, the last one included, and which rule stopped the chat. Without
   that history they ask the customer to start again, after 26 minutes. A
   refused or failing call is the same event from a different direction, and
-  it lands with a person the same way.
+  so is a handoff to a specialist nobody runs. Each lands with a person the
+  same way.
 
   CrewAI's collaboration guide names this failure, "Delegation Loops: agents
   delegate back and forth indefinitely", and its fix is a hierarchy: a
@@ -479,7 +523,9 @@ reference_md: |
   `allow_delegation=False` (CrewAI documentation for version 1.15.23, read 1
   October 2026). That removes the loop by taking routing away from the
   specialists. This router keeps specialists able to hand off, so it pays
-  for that freedom with a detector.
+  for that freedom with a detector. A later problem in this chapter takes
+  the other road, a supervisor that routes and remembers answers, so the two
+  fixes can be compared on the same chapter's chats.
 
 complexity: C2
 
@@ -505,4 +551,5 @@ traps:
     the budget runs out.
   - Treating any return to a specialist as a loop, when the second visit may be the one where it answers.
   - Detecting only an immediate bounce, so a circle through three specialists runs on to the cap.
-  - Sending the chat to a person with no history, or letting a failed call end the chat with nobody told.
+  - Sending the chat to a person with no history, or letting a failed call or a reply that fits neither form end the
+    chat with nobody told.

@@ -206,7 +206,7 @@ scenario:
   metrics:
     - { label: Cost of the notice, value: "₹0" }
     - { label: Old line for acting alone, value: "₹2,000" }
-    - { label: Model calls allowed, value: "0" }
+    - { label: Days to the lawyer's letter, value: "2" }
 
 diagram:
   title: Where a person sits, decided by undo first and cost second
@@ -546,6 +546,11 @@ reference_md: |
   LLM06, Excessive Agency, whose mitigations include requiring a person to
   approve high-impact actions before they are taken. The policy table is how
   "high-impact" becomes something code can check.
+
+  An `in` placement ends this run with an approval request in a queue and the
+  tool uncalled. What the rest of the run does while that request waits, and
+  what the person who opens it needs to see, are two later problems in this
+  chapter.
 
 complexity: C2
 

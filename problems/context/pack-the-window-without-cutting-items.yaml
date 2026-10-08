@@ -1,7 +1,7 @@
 slug: pack-the-window-without-cutting-items
 title: "Pack the context window without cutting items"
 day: 14
-skill: Fill a token budget by priority, leave items out whole, and name what was left out
+skill: Fill the window by priority, leave items out whole, and name what was left out
 artefact_type: code
 difficulty: hard
 track: context
@@ -144,9 +144,8 @@ hints:
     after packing. Pack against the whole window, and when anything was left
     out, pack again against the window less `NOTE_TOKENS`.
   - Write one function that packs into a given room and returns the ids it
-    took. Walk tool results, then turns, then passages. A tool result or a
-    passage that does not fit is skipped; the first turn that does not fit
-    ends the turns.
+    took, so you can run it more than once. Then decide, kind by kind, what
+    the first item that does not fit does to the ones behind it.
   - A missing or odd `tokens` value is a cost you cannot read. Treat it as too
     big to take, and never as free.
 
@@ -175,7 +174,7 @@ diagram:
   direction: lr
   nodes:
     - { id: desk, label: Desk instructions, sub: "always in, always first", kind: doc, tone: green, at: [0, 0] }
-    - { id: lookups, label: Booking lookups, sub: the facts an answer quotes, kind: tool, tone: neutral, at: [0, 1] }
+    - { id: lookups, label: Booking lookups, sub: the records an answer quotes, kind: tool, tone: neutral, at: [0, 1] }
     - { id: chat, label: Chat turns, sub: a newer turn can take one back, kind: store, tone: blue, at: [0, 2] }
     - { id: fares, label: Fare rules, sub: "ranked, some of them long", kind: doc, tone: teal, at: [0, 3] }
     - { id: builder, label: Prompt builder, sub: decides what earns a place, kind: agent, tone: purple, at: [1, 1] }
@@ -199,7 +198,7 @@ approach:
   goal: Choose what the model reads, in whole items, and tell it what is missing
   branches:
     - label: Rank what earns a place
-      leaves: [instructions always, booking facts before the chat, the chat before fare pages]
+      leaves: [instructions always, booking records before the chat, the chat before fare pages]
     - label: Keep every item whole
       detail: A cut record can say the opposite of the whole one.
       leaves: [leave it out instead, "is there a smaller item behind it?"]
@@ -217,7 +216,7 @@ coach:
     - id: note-not-paid
       when:
         code_matches: 'Left out'
-        code_lacks: '-\s*NOTE_TOKENS'
+        code_lacks: '[-+(=]\s*NOTE_TOKENS'
       say: >-
         Your prompt names what was left out, and that line costs
         `NOTE_TOKENS` of the window. Where does your packing pay for it?
@@ -264,9 +263,10 @@ coach:
         Three runs have failed. Hints open after one failed run on this tier,
         and the first one says where to look in the incident.
   wrap_up: >-
-    A window that cannot hold everything needs a decision about what goes,
-    made by priority and in whole items, and the model needs to hear it. A
-    cut item and a silent gap both read to the model as the whole story.
+    Decide what goes by priority and in whole items, and name what was left
+    out. A cut item and a silent gap both read to the model as the whole
+    story. Packing decides what fits. Rebuild the context each turn from
+    current facts, later in this chapter, decides what is still true.
 
 tests:
   - name: everything_fits_with_no_room_to_spare
@@ -544,7 +544,7 @@ reference_md: |
   was in the half that was cut.
 
   Priority answers the first cause and whole items answer the second.
-  Booking facts outrank the chat because they are what an answer has to
+  Booking records outrank the chat because they are what an answer has to
   quote, and the chat outranks fare pages because the passenger's own words
   decide what they want. An item that does not fit is left out whole, and the
   room it would have taken goes to the next item that fits, so a short rule
@@ -587,7 +587,7 @@ tools:
 example:
   case: two_passages_are_left_out_and_named
   expect: Instructions, `pnr-1` and all three turns fill 180 of the 200 tokens. Neither passage fits the
-    20 left, so the prompt names both on the Left out line, and the reply quotes 9,200 rupees.
+    20 left, so the Left out line names both and takes 10 of those 20, and the reply quotes 9,200 rupees.
 traps:
   - Taking an older turn after a newer one was left out, so a request the passenger has taken back reads
     as what they want now.

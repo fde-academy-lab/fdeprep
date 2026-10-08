@@ -19,7 +19,8 @@ allowed_imports: [json]
 
 brief_md: |
   The platform team at a bank the size of IDFC First delivers its changes in
-  AI-DLC bolts. An agent drafts each change, a spec, a rule file, a prompt or
+  bolts, the work cycles of hours or days that AI-DLC uses in place of
+  sprints. An agent drafts each change, a spec, a rule file, a prompt or
   a migration, on an engineer's instruction, and every version it writes is
   logged under that engineer's staff id. Before a bolt closes, a person who
   did not write the change approves it and cites evidence, usually a test
@@ -68,14 +69,15 @@ contract_md: |
 
   An approval holds when, read at its own time, it names the change's
   artefact and current version, no newer version of the change follows it,
-  its approver wrote no version of the change, and at least one item it
-  cites lists the change in `for`. Each change in the bolt is in one state:
+  its approver is not the `author` of any version of the change, and at
+  least one item it cites lists the change in `for`. Each change in the bolt
+  is in one state:
 
   | State | When |
   |---|---|
   | `approved` | an approval of the change holds |
   | `stale` | the approval names an earlier version than the change had at its time, or a newer version came after it |
-  | `self_approved` | the approver wrote a version of the change, any version |
+  | `self_approved` | the approver is the `author` of a version of the change, any version |
   | `no_evidence` | the approval cites nothing |
   | `wrong_evidence` | every item the approval cites is for another change |
   | `unapproved` | the change has no approval |
@@ -140,15 +142,15 @@ hints:
   - Take one approval and ask what it was a statement about. It names one
     version of one change, and it was given at one moment. What did that
     change look like at that moment?
-  - A version number can match a version written after the approval. Keep
-    each change's versions in log order, and judge an approval only against
-    the versions that came before its `t`.
   - Judge every approval of a change and keep each verdict. The first can be
     stale and the last can be the author's own sign-off, so neither one
     decides on its own.
   - Independence and evidence are both questions about sets. One is the set
-    of people who wrote any version of the change. The other is the set of
-    changes an evidence item's `for` lists.
+    of people named as `author` on any version of the change. The other is
+    the set of changes an evidence item's `for` lists.
+  - A version number says which draft was meant and nothing about when it
+    existed. Which versions had the agent written before the approval's `t`,
+    and which came after?
   - A change outside the bolt and a source that reads like an order are both
     data. Report the first under `ignored`, and leave the second unread.
 
@@ -233,7 +235,7 @@ coach:
         Every rule here is a comparison of fields in a log. What would a
         model call add, and could an auditor rerun its answer?
     - id: reads-source
-      when: { code_matches: '["'']source["'']' }
+      when: { code_matches: '\[\s*["'']source["'']\s*\]|\.get\(\s*["'']source["'']' }
       say: >-
         Your gate reads an evidence `source`, which is text anyone who runs a
         test can write. Which field says what a run covers?
@@ -646,7 +648,10 @@ reference_md: |
 
   The log is data in one more way. An approval for a change outside the bolt
   is reported under `ignored`, so the release manager sees it was read and
-  set aside, and it never raises or counts.
+  set aside, and it never raises or counts. The same move comes back later
+  in the chapter, when a test suite names an acceptance criterion that never
+  existed: a reference to something outside the record counts for nothing,
+  and the report says it was seen and set aside.
 
   No model call is needed or allowed. Every rule is a comparison of fields,
   and an auditor who reruns the gate on the same log gets the same answer.

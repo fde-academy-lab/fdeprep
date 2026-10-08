@@ -43,7 +43,7 @@ brief_md: |
   | Field extraction is right on 94 percent of fields, across the six fields | POC, 2,000 claims with fields labelled by hand |
   | The recommendation agrees with the handler's decision on 81 percent of claims, and on 91 percent of claims under ₹15,000 | POC, the same 2,000 claims |
   | Model calls cost ₹11 a claim | POC billing |
-  | Handlers who saw the output said it is faster to check than to do | Six handlers at the POC review |
+  | Six handlers checked 150 POC outputs and said it is faster to check than to do. They accepted 141 of the 150, among them the two the POC team had seeded with a wrong invoice total | POC review |
   | What handlers do when they disagree with a recommendation | Nobody has measured it |
 
   Write the plan.
@@ -67,7 +67,7 @@ word_range: [500, 800]
 required_headings: [POC, MVP, Production, What each step throws away]
 
 rubric:
-  - label: Sizes straight-through by claim value, with the leakage arithmetic shown
+  - label: Prices straight-through against what a wrong settlement loses
     weight: 25
     descriptor_md: |
       A claim settled straight through saves the ₹580 a handler costs, and a
@@ -94,7 +94,7 @@ rubric:
       answers measure extraction per claim and decisions against adjudicated
       outcomes, split into false approvals and wrong rejections, and say who
       adjudicates.
-  - label: Gates each step, and makes the MVP produce production labels
+  - label: Gates each step, and says where production's labels come from
     weight: 20
     descriptor_md: |
       Each step has exit criteria as numbers, an owner by role, and an
@@ -105,7 +105,10 @@ rubric:
       disagree, and how long checking takes. Strong answers keep a blind
       sample decided by handlers who never see the recommendation, because a
       handler who has seen it is no longer an independent label, and make
-      the MVP's adjudicated claims the production evaluation set.
+      the MVP's adjudicated claims the production evaluation set. They read
+      the two seeded claims the review handlers accepted as the first
+      measurement of what a handler does with a wrong recommendation, and as
+      the reason the blind sample exists.
   - label: Says what each step throws away, and why
     weight: 15
     descriptor_md: |
@@ -370,15 +373,16 @@ exemplars:
       the claims team can be reorganised around exceptions.
 
 hints:
-  - Before you plan a step, turn the POC's two headline numbers into what
-    they mean for one claim. How many claims have every field right, and
-    whose decision is the 81 percent measured against?
+  - Work the table for one claim. Six fields at 94 percent each is one
+    number, and 81 percent against the person who decided the claim is
+    another. Say what each one cannot tell you about that claim.
   - Price one wrong settlement sent straight through, and set it against
     what straight-through saves. Write both as a sum for one claim, then ask
     which claims the sum favours.
-  - The POC ran on closed claims, so nobody saw a handler with a
-    recommendation in front of them. Design the step that does, and make its
-    decisions the labels production will be judged on.
+  - The POC ran on closed claims, so nobody has watched a handler decide an
+    open claim with a recommendation in front of them. Design the step that
+    does, then ask which of its decisions production could still be judged
+    against.
   - For each step, write one line each for the set it is judged on, the
     metric, the number that ends it and the role that signs.
   - Give the CTO a number you would defend in front of the board, with the
@@ -529,10 +533,13 @@ reference_md: |
   claims the insurer already holds, and is the POC's real exit test.
 
   History could never show the other unknown, which is what handlers do with
-  a recommendation in front of them. That needs a live MVP where the handler
-  still decides, the recommendation is logged first, and a sample is decided
-  blind, because a handler who has read the recommendation is anchored by it
-  and stops being an independent label. Built that way, the MVP is also the
+  a recommendation in front of them. The POC review gave the first reading.
+  The POC team had seeded two claims with a wrong invoice total, and the six
+  handlers accepted both. Two claims cannot say how often that happens, so
+  measuring it needs a live MVP where the handler still decides, the
+  recommendation is logged first, and a sample is decided blind, because a
+  handler who has read the recommendation is anchored by it and stops being
+  an independent label. Built that way, the MVP is also the
   start of production's evaluation set, and its blind sample is the best
   estimate of p the insurer will have before any money moves without a
   handler.

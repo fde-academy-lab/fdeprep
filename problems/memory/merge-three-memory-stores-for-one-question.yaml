@@ -34,10 +34,11 @@ brief_md: |
   adviser recommended the fund. Her risk assessment, from March, said
   cautious.
 
-  A note's score counts matching words and runs to 3 or 4, and the index
-  scores similarity between 0 and 1, so on most days the notes take every
-  place. Write the retrieval that asks each store in its own terms, lets each
-  one be heard, and says which store was not.
+  A note's score is the number of the question's words it matches, usually
+  2 to 4. The index scores similarity between 0 and 1. The firm has written
+  down what each store is asked, how their answers share four places, and
+  what the adviser must be told when a store cannot answer. Write the
+  retrieval.
 
 contract_md: |
   Implement:
@@ -645,9 +646,14 @@ reference_md: |
 
   Ties broken by id and duplicates counted once make the context the same on
   every run, which is what lets anyone reproduce an answer that went wrong.
-  The Skipped line separates two facts the model cannot otherwise tell apart:
-  the client never said anything, and the firm could not look. The incident
-  needed the second, and the model was given the first.
+  Two earlier rungs meet here. The total order comes from Return the same
+  memories for the same question, and the failed store from Combine keyword
+  and vector search results in the context chapter, which treated a failed
+  retriever as an empty list. This problem adds the word that tells the model
+  why the list is empty. The Skipped line separates two facts the model
+  cannot otherwise tell apart: the client never said anything, and the firm
+  could not look. The incident needed the second, and the model was given
+  the first.
 
 complexity: C2
 

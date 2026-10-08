@@ -151,9 +151,9 @@ hints:
   - The order of the steps decides the counts. An unlabelled copy must not
     stand in for a labelled one, and a duplicate must never take a slot in a
     failure type's quota.
-  - A group of near-identical failures that two people fixed differently has
-    no right answer yet, so none of it can be a golden case until somebody
-    decides.
+  - A store that answers nothing has not answered an empty list. Decide what
+    your job reports when the known examples cannot be read, and what a clean
+    `already_known` count would mean then.
 
 scenario:
   headline: "61 of the golden set's 140 cases were one refund complaint"
@@ -215,7 +215,7 @@ coach:
     what has to be equal for the answer to be one.
   signals:
     - id: no-number-key
-      when: { code_lacks: 'NUMBER\.sub\(|sub\(\s*NUMBER' }
+      when: { code_lacks: 'NUMBER\.sub\(|sub\(\s*NUMBER|sub\(\s*r?["''][^"'']*(?:\\d|0-9)' }
       say: >-
         Your code never sets numbers aside before comparing two texts. Are
         two refund complaints that differ only by their order numbers one
@@ -243,6 +243,11 @@ coach:
         One failure that week was a ticket the prompt's examples were written
         from, with its numbers changed. What does your known-example check
         actually compare?
+    - id: unfixed-copy
+      when: { test_failed: an_unfixed_copy_does_not_stand_in_for_a_fixed_one }
+      say: >-
+        One complaint that week arrived twice, and the first copy was never
+        fixed. Which copy did your job keep, and does it carry a label?
     - id: disputed-label
       when: { test_failed: adversarial_two_people_labelled_one_complaint_differently }
       say: >-
@@ -522,6 +527,49 @@ tests:
         - { type: returns_matches, value: '"F-3502".*"F-3503"' }
         - { type: returns_lacks, value: '"F-3501"' }
         - { type: returns_matches, value: '"already_known":\s*1\b' }
+
+  - name: an_unfixed_copy_does_not_stand_in_for_a_fixed_one
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-W43" }
+      llm_script:
+        - { match: "*", reply: "The golden set job does not call the model." }
+      tools:
+        failures:
+          returns:
+            status: 200
+            per_type: 2
+            failures:
+              - id: "F-3801"
+                type: wrong_eta
+                text: "This is Priya Nair. Order 7731-0042 was promised by 6 pm and the chat keeps saying out for delivery. It is 10 pm."
+                customer: { name: "Priya Nair", phone: "+91 98215 76778", email: "priya.nair@example.com" }
+                agent_action: explain_policy
+                resolution: null
+              - id: "F-3802"
+                type: wrong_eta
+                text: "This is Karan Mehta. Order 8820-1193 was promised by 6 pm and the chat keeps saying out for delivery. It is 10 pm."
+                customer: { name: "Karan Mehta", phone: "+91 98216 87889", email: "karan.mehta@example.com" }
+                agent_action: explain_policy
+                resolution: { action: escalate_courier, by: "support lead" }
+              - id: "F-3803"
+                type: unsafe_advice
+                text: "Rekha Iyer here. The chat said I can take two sleeping tablets if one does not work."
+                customer: { name: "Rekha Iyer", phone: "+91 98217 98990", email: "rekha.iyer@example.com" }
+                agent_action: answer_directly
+                resolution: { action: escalate_pharmacist, by: pharmacist }
+        known_examples:
+          returns:
+            status: 200
+            examples:
+              - "The app says my prescription for amoxicillin is verified but nobody has called me. Order 2201-7716."
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"F-3802".*"F-3803"' }
+        - { type: returns_lacks, value: '"F-3801"' }
+        - { type: returns_matches, value: '"unlabelled":\s*1\b' }
+        - { type: returns_matches, value: '"duplicates":\s*0\b' }
 
   - name: adversarial_two_people_labelled_one_complaint_differently
     visibility: adversarial

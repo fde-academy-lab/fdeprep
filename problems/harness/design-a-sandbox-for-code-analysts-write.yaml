@@ -1,5 +1,5 @@
 slug: design-a-sandbox-for-code-analysts-write
-title: "Design a sandbox for code analysts write"
+title: "Design a sandbox for analysts' code"
 day: 8
 skill: Contain code you did not write, from its network to its credentials and limits
 artefact_type: design
@@ -21,8 +21,7 @@ brief_md: |
   written, or cells the agent adapts from them. The code reads parquet
   extracts of claims of up to 2 GB, which hold policyholders' names,
   addresses and vehicle registrations, and each analyst may read only their
-  own line of business. The pilot runs about 4,000 analyses a day. Most finish
-  in under two minutes, and the month-end reserving runs take up to twenty.
+  own line of business. The pilot runs about 4,000 analyses a day.
 
   In the pilot, the agent ran analyst code inside its own orchestrator
   container. On Tuesday 22 September an analyst pasted a snippet from a forum
@@ -34,10 +33,17 @@ brief_md: |
   The client wants the pilot back. Everything runs in the client's own AWS
   account, nothing may leave it, and the approved libraries are pandas, numpy,
   scikit-learn and matplotlib. Write the sandbox design you would put in front
-  of the head of security. Cover the boundary around each run, processes, the
-  network, the file system, credentials, time and memory limits, and what is
-  never staged inside. Say how you would prove it holds before the pilot
-  restarts, and what risk remains when it does.
+  of the head of security. Say what a run can reach, what it never can, how
+  you would prove that before the pilot restarts, and what risk remains when
+  it does.
+
+  One number the platform team could not settle. Most of the 4,000 daily runs
+  finish inside two minutes, and the month-end reserving runs need twenty. One
+  ceiling for every run means a cell that loops forever holds a sandbox, and
+  its memory, for as long as the longest honest run. Two ceilings mean
+  something decides which a run gets, and the cell that asks for the long one
+  was written by the analyst, or adapted by the agent. Choose, and say what the
+  choice costs.
 
   Between 400 and 650 words.
 
@@ -56,7 +62,7 @@ rubric:
       attacks. Naming a technology without saying what it separates earns
       little.
   - label: Leaves no credential within reach
-    weight: 25
+    weight: 20
     descriptor_md: |
       Strong answers name the routes to credentials that nobody put there on
       purpose: the environment, the instance metadata endpoint, a container
@@ -73,13 +79,26 @@ rubric:
       run time. Any exception is one named endpoint, and the answer says who
       enforces it.
   - label: Gives every limit a number and a reason
-    weight: 15
+    weight: 10
     descriptor_md: |
       Wall clock, memory, CPU, processes and threads, scratch disk and output
       size, each with a number sized to the workload in the brief: a 2 GB
       extract, a twenty-minute run. Strong answers say what happens at a limit,
       and that a run killed by one is reported to the analyst as such.
       Adjectives such as appropriate or sensible earn nothing here.
+  - label: Chooses one wall clock or two, and pays for it
+    weight: 10
+    descriptor_md: |
+      Either answer can earn full marks. One ceiling for every run, with its
+      cost named: a cell that never ends holds a sandbox and its memory for
+      the length of the longest honest run, so the answer bounds that with a
+      number, such as runs open per analyst, and says what month-end loses.
+      Two ceilings, with the granting party named: a person or the
+      orchestrator gives a run the long one, never the cell itself, since a
+      cell that asks for its own limit is the code raising its own limits,
+      and the answer says what the extra step costs the 4,000 daily runs. A
+      choice with no cost named earns nothing here, and so does a design that
+      lets the agent pick.
   - label: Says what is never staged inside
     weight: 15
     descriptor_md: |
@@ -102,21 +121,19 @@ exemplars:
     score: 92
     body_md: |
       The pilot leaked because analyst code ran inside the orchestrator,
-      where everything the orchestrator holds was one print statement
-      away. I would design from the opposite assumption: code in the
-      sandbox can read everything in the sandbox, so nothing worth taking
-      goes in.
+      one print statement from everything it holds. I design from the
+      opposite assumption: code in the sandbox can read everything in the
+      sandbox, so nothing worth taking goes in.
 
       Boundary. Every run gets a fresh Firecracker microVM, the
       virtualisation AWS built for Lambda, created for that run and
       destroyed after it. A container shares the host kernel with every
       other analyst's code, and the kernel is what hostile code attacks
-      first. A microVM gives each run a kernel of its own. Lambda itself
-      is out, because its 15 minute ceiling is shorter than a month-end
-      run. If the platform team would rather stay on Kubernetes, gVisor's
-      runsc runtime is the fallback: it answers the code's system calls
-      with its own kernel in user space. No warm pool keeps one analyst's
-      files for the next.
+      first. A microVM gives each run a kernel of its own. Lambda is out:
+      its 15 minute ceiling is shorter than a month-end run. On
+      Kubernetes, gVisor's runsc runtime is the fallback: a kernel in user
+      space answers the code's system calls. No warm pool keeps one
+      analyst's files for the next.
 
       Network. There is no route out. The microVM has no network device,
       only a vsock channel to the broker, so the code cannot reach the
@@ -139,13 +156,17 @@ exemplars:
       one channel, a single file of at most 50 MB as CSV, PNG or JSON, and
       the agent reads it as data and follows nothing written in it.
 
-      Limits. A wall clock of 25 minutes, five above the longest month-end
-      run. 16 GB of memory, sized from the largest extract in the pilot,
-      since a compressed parquet file grows several times over in pandas.
-      Two vCPUs. At most 64 processes and threads, enough for the
-      scikit-learn thread pool and too few for a fork bomb. One megabyte
-      of captured output. A run that hits a limit is killed, the analyst
-      is told which limit, and it does not count against their daily runs.
+      Limits. One wall clock for every run, 25 minutes, five above the
+      longest month-end run. Two ceilings need something to grant the long
+      one, and the cell asking for it was written by the analyst or the
+      agent: the code setting its own limit. The cost: a loop that never
+      ends holds 16 GB for 25 minutes, so an analyst may have three runs
+      open at once. 16 GB of memory, sized from the largest extract, since
+      a compressed parquet file grows several times over in pandas. Two
+      vCPUs. At most 64 processes and threads, enough for the scikit-learn
+      thread pool and too few for a fork bomb. One megabyte of captured
+      output. A run that hits a limit is killed and the analyst is told
+      which limit.
 
       Never inside: the model and warehouse credentials, the agent's
       system prompt and tool definitions, other analysts' data, rows this
@@ -284,8 +305,9 @@ hints:
   - Cloud hosts and most pods hand credentials to anything that asks, over a
     local address or from a mounted file. Name those routes and close each
     one, then decide how data reaches the code without a credential.
-  - Give every limit a number tied to the workload in the brief, and say what
-    the analyst sees when a run hits it.
+  - "Give every limit a number tied to the workload in the brief, and say what
+    the analyst sees when a run hits it. The wall clock is the one the brief
+    leaves open: choose, and name what the choice costs."
   - Finish with how you would prove the sandbox holds before real data goes
     into it, and the risk that remains when it does.
 
@@ -340,7 +362,7 @@ approach:
     - label: Network and files
       leaves: [no route out, inputs read-only, one capped way out]
     - label: Limits with numbers
-      leaves: [sized to a 2 GB extract and a twenty-minute run, what the analyst sees at a limit]
+      leaves: [sized to a 2 GB extract and a twenty-minute run, what the analyst sees at a limit, "one ceiling or two, and what each costs"]
     - label: Proof and what remains
       leaves: [escape attempts before go-live, the risk you cannot design away]
 
@@ -384,6 +406,13 @@ coach:
       say: >-
         Give each limit a number sized to the brief: a 2 GB extract and a
         twenty-minute run. What happens when a run hits one?
+    - id: ceiling-undefended
+      when:
+        code_matches: '(?i)wall ?clock|ceiling|time ?limit|timeout'
+        code_lacks: '(?i)\bcost|trade-?off|give up|at once|concurrent|grant'
+      say: >-
+        You chose a wall clock. The brief leaves that choice open because each
+        answer costs something. What does yours cost, and who pays it?
     - id: no-proof
       when: { code_lacks: '(?i)\btest|escape|red team|penetration' }
       say: >-
@@ -435,6 +464,14 @@ reference_md: |
   A process limit has to count threads as well, since on Linux that is what
   `RLIMIT_NPROC` counts, so it is set high enough for a library's thread pool
   and low enough to stop a fork bomb.
+
+  Whether every run gets that wall clock is the one decision the brief leaves
+  open, and either answer holds up once its cost is named. One ceiling for
+  every run lets a cell that never ends hold a sandbox and its memory until
+  the ceiling, so it needs a bound of its own, such as how many runs an
+  analyst may have open. Two ceilings hold less, and they need someone to
+  grant the long one: a person or the orchestrator, never the cell, because a
+  cell that asks for its own limit is the code raising its own limits.
 
   Proof is what the head of security is actually buying. A suite that tries
   each escape from inside the sandbox on every image build turns "we

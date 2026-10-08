@@ -1,6 +1,6 @@
 slug: find-criteria-with-no-spec-or-test
 title: "Find criteria with no spec or test"
-day: 28
+day: 27
 skill: Trace every acceptance criterion to a spec section and a test, and report each gap
 artefact_type: code
 difficulty: medium
@@ -266,9 +266,9 @@ scenario:
     suite of 31 tests. Criterion AC-6, a second approver for refunds over
     ₹10,000, had neither. Everyone read the counts, and nobody read the trace.
   stakes: >-
-    A refund rule nobody built reaches customers' money. The suite also had a
-    test naming AC-61, which does not exist, and the coverage script counted
-    it.
+    Refunds over ₹10,000 went out on one approver's say-so, and nobody knew
+    the rule was missing. The suite also had a test naming AC-61, which does
+    not exist, and the coverage script counted it.
   metrics:
     - { label: Spec sections, value: "9" }
     - { label: Tests in the suite, value: "31" }
@@ -364,6 +364,11 @@ coach:
         One test named a criterion that does not exist, next to a criterion
         with no test. Read how your code decides that a test names a
         criterion.
+    - id: wrong-case-ref
+      when: { test_failed: adversarial_a_reference_in_the_wrong_case_is_unknown }
+      say: >-
+        One test named a criterion in the wrong case. Did your trace tidy
+        the id before comparing it, and whose decision was that?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -653,16 +658,69 @@ tests:
                   - { id: "AC-5", sections: ["S-4"], tests: ["T-5"], gaps: [] }
                   - { id: "AC-6", sections: ["S-5"], tests: [], gaps: ["no_test"] }
 
+  - name: adversarial_a_reference_in_the_wrong_case_is_unknown
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      `T-6` names `ac-6`. The checker could guess it meant `AC-6`, and the
+      guess would be right here and wrong the day a spec imported from
+      another tool holds both. A trace that lowercases or strips ids before
+      comparing them makes that guess on every spec, and the second approver
+      goes to build on a test that names nothing.
+
+      Compared character for character, `ac-6` is no criterion's id. It goes
+      to `unknown_refs`, `AC-6` keeps its `no_test` gap, and someone fixes
+      the test.
+    spec:
+      kind: agent_run
+      input: { question: "Check the refunds spec a third time before build." }
+      llm_script:
+        - { match: "*", reply: "Every criterion is covered. Thirty-one tests is plenty." }
+      tools:
+        spec:
+          returns:
+            criteria:
+              - { id: "AC-4", text: "An approved refund goes back to the original payment method." }
+              - { id: "AC-5", text: "The customer gets an email when the refund is paid." }
+              - { id: "AC-6", text: "A refund over ₹10,000 needs a second approver." }
+            sections:
+              - { id: "S-3", covers: ["AC-4"] }
+              - { id: "S-4", covers: ["AC-5"] }
+              - { id: "S-5", covers: ["AC-6"] }
+            tests:
+              - { id: "T-4", criteria: ["AC-4"] }
+              - { id: "T-5", criteria: ["AC-5"] }
+              - { id: "T-6", criteria: ["ac-6"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [criteria, unknown_refs, complete]
+            properties:
+              unknown_refs: { const: [{ from: "T-6", id: "ac-6" }] }
+              complete: { const: false }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              criteria:
+                const:
+                  - { id: "AC-4", sections: ["S-3"], tests: ["T-4"], gaps: [] }
+                  - { id: "AC-5", sections: ["S-4"], tests: ["T-5"], gaps: [] }
+                  - { id: "AC-6", sections: ["S-5"], tests: [], gaps: ["no_test"] }
+
 reference_md: |
   BMAD's spec skill writes a short contract for the build to read. In
   bmad-method 6.12.1, published on 4 October 2026, its template gives every
   capability a stable id, `CAP-1` and on, and a success condition that is
   "Something a test or a real demonstration can decide". The docs page
-  "Define Requirements and a Specification", read on 8 October 2026, adds
-  that "Each story cites the spec's capability IDs". Ids that stay put and
-  get cited downstream are what make a trace possible. Checking the trace is
-  still the team's job, because the same page says the spec "does not help
-  you figure out what you want".
+  [Define Requirements and a Specification](https://docs.bmad-method.org/plan/define-requirements-and-a-specification/),
+  read on 8 October 2026, adds that "Each story cites the spec's capability
+  IDs". Ids that stay put and get cited downstream are what make a trace
+  possible. Checking the trace is still the team's job, because the same page
+  says the spec "does not help you figure out what you want".
 
   A count says how much was written. Nine sections and 31 tests sounded
   thorough, and AC-6 sat outside all of them. A trace asks two things of each
@@ -674,9 +732,9 @@ reference_md: |
 
   A reference to a criterion that does not exist is a mistake somebody has to
   fix, and it covers nothing. AC-61 was most likely meant for AC-6, and a
-  trace that matches ids as fragments of text quietly treats it that way,
-  which closes the one gap that mattered. Comparing whole ids keeps the
-  mistake in `unknown_refs`, and `complete` stays false until someone looks.
+  trace that matches ids as fragments of text treats it that way, which
+  closes the one gap that mattered. Comparing whole ids keeps the mistake in
+  `unknown_refs`, and `complete` stays false until someone looks.
 
   Two criteria with one id are the same problem seen from the other side.
   Every reference to that id is ambiguous, so both entries stay in the report

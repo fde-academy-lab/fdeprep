@@ -1,7 +1,7 @@
 slug: run-inception-for-a-dealer-ordering-agent
 title: "Run inception for a dealer-ordering agent"
 day: 24
-skill: Turn a two-line intent into questions that move scope, and units ordered by scarce days
+skill: Turn a two-line intent into questions that move scope, and units that fit eight weeks
 artefact_type: design
 difficulty: hard
 track: agentic-sdlc
@@ -41,6 +41,7 @@ brief_md: |
   | About 60 percent of orders arrive as voice notes, in four languages | Order desk, last quarter |
   | 14 percent of today's orders are corrected after booking | Order desk, last quarter |
   | The catalogue has 2,100 SKUs, many with near-duplicate names, and a wrong SKU ships | Supply chain |
+  | The order desk matches a WhatsApp number to a dealer from memory | Order desk |
   | The finance team decides credit holds, and a held order waits a day | Finance |
   | Four engineers, and one SAP consultant who is available two days a week | Head of engineering |
   | Bolts of three days | The team |
@@ -101,7 +102,7 @@ rubric:
       order is held. An answer that calls it a kick-off or a brainstorm, has
       the AI write requirements for the team to rubber-stamp, or leaves out
       SAP or finance, has missed the practice.
-  - label: Sizes units to bolts and orders them by the consultant's days
+  - label: Sizes units to bolts and lays them across the eight weeks
     weight: 25
     descriptor_md: |
       Eight weeks are 40 working days, about 13 three-day bolts for each
@@ -201,7 +202,8 @@ exemplars:
       - U3, bolts 2 and 3: read a held order's status and hand finance the
         evidence.
       - U6, bolts 4 to 6: the order desk confirms every booking, and
-        corrections are counted.
+        corrections are counted. Bolts 7 to 11 run that confirmed period,
+        and the two SAP engineers join U7.
       - U8, bolts 12 and 13: the production client, with the consultant.
 
       Order stream, two engineers:

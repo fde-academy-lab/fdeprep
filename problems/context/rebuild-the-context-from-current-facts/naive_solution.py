@@ -12,7 +12,7 @@ import re
 
 INSTRUCTIONS = (
     "You are the broadband support agent. Answer from the open tasks and the "
-    "facts below. Each fact is the newest checked result on its subject."
+    "facts below. Each fact is the newest verified result on its subject."
 )
 
 

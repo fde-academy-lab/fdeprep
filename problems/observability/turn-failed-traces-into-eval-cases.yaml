@@ -79,9 +79,8 @@ contract_md: |
      placeholder, and so does the same phone number compared by its last 10
      digits. Number each kind from 1 in the order values first appear: the
      context, then the failed step, then the expected step, each in the order
-     its values come. The data can sit at any depth of a step, and a phone
-     number can be stored as a whole number rather than as text. It becomes
-     its placeholder either way.
+     its values come. The data can sit at any depth of a step, in whatever
+     form the service that wrote the step chose.
   4. The case's `failed_step` is the failed step, and its `expected_step` is
      the review's `correct` step, both with placeholders from the same set.
   5. Leave out a case as `no_difference` when its failed step, without its
@@ -129,7 +128,7 @@ stub_code: |
          PHONE to <PHONE_k>. Same address in lower case, same placeholder;
          same number by its last 10 digits, same placeholder. Numbered by
          first appearance: context, failed step, expected step. At any
-         depth, and a phone number stored as a whole number counts.
+         depth, in whatever form the service stored it.
       4. failed_step: the failed step. expected_step: review["correct"].
       5. Failed step without its n equal to the expected step: no_difference.
          A placeholder in the expected step that the context lacks:
@@ -269,6 +268,12 @@ coach:
       say: >-
         The fix in that review differs from what the agent did only in how
         the number is written. What does your case test?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the first public case. Print the steps before the failed
+        one, the failed step and the review's correct step, before you
+        replace anything.
     - id: many-failures
       when: { failed_runs_at_least: 3 }
       say: >-

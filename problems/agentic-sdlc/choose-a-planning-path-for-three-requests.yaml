@@ -22,7 +22,8 @@ brief_md: |
 
   - Request A changes the wording of the refund-reason codes in the
     customer email template. The same codes feed the monthly complaints
-    report the company sends to the regulator.
+    report the company sends to the regulator. The next complaints report
+    goes to the regulator in week 3.
   - Request B adds a chargeback-dispute flow to the existing support agent.
     A card network's rule change takes effect at the end of week 5, and the
     flow has to be live by then.
@@ -124,9 +125,9 @@ rubric:
       of exactly that risk, which the Build a Change page's "if a bug could
       escape into production" describes. The strongest answers settle it
       with a check run before deciding, such as finding where the wording
-      is stored, and say who sees the report before it goes out. Calling A
-      trivial with no word about the report, or making it an epic, misses
-      this row.
+      is stored, and say which train A rides against the week-3 report, and
+      who reads that report before it goes out. Calling A trivial with no
+      word about the report, or making it an epic, misses this row.
   - label: Names each request's first artefact and what over-planning costs
     weight: 15
     descriptor_md: |
@@ -181,8 +182,9 @@ exemplars:
       the template, A is Trivial: the agent makes the edit, an engineer
       reviews the rendered email, and it rides the week-2 train with no BMAD
       artefact. If the report reads the wording from the same code table, A
-      is One session: `bmad-build` writes the plan, and the reviewer spends
-      an hour of her week-1 day on last month's report before and after.
+      is One session: `bmad-build` writes the plan, it rides the same train,
+      and the reviewer reads the week-3 report, the first with the new
+      wording, before it goes out.
       The risk I carry is a wrong check, so the search goes into the change.
 
       AI-DLC profile: none. Express's 10 stages would cost more than the
@@ -246,10 +248,10 @@ exemplars:
       calendar is where that shows.
 
       - Week 1: B's story-order review, to "decide which stories need a
-        checkpoint", B's requirements approval, and A's report check.
+        checkpoint", and B's requirements approval.
       - Week 2: B's checkpoint on the deadline story, and C's PRD validate.
-      - Week 3: B's checkpoint on evidence submission, and C's architecture
-        spine review.
+      - Week 3: B's checkpoint on evidence submission, C's architecture
+        spine review, and the week-3 report before it goes out.
       - Week 4, before the cut: "Verify the stories together" for B with its
         build-and-test approval, and C's first ticket-breakdown approval.
       - Week 5 onwards: C's integration checks and retrospective at each
@@ -436,9 +438,9 @@ scenario:
     onboarding agent with no PRD land in the same week, with one compliance
     reviewer between them.
   stakes: >-
-    Plan the dispute flow as a project and it misses the network's date.
-    Plan the onboarding agent as loose epics and three engineers write the
-    KYC rules three ways.
+    Miss the week-5 date and disputes run on the network's old rule. Relabel
+    a refund code and the regulator's report can change with it. One
+    reviewer's day a week has to cover all three requests.
   metrics:
     - { label: Release trains, value: every 2 weeks }
     - { label: Compliance reviewer, value: 1 day a week }
@@ -489,11 +491,6 @@ coach:
     Before you pick a path for anything, write down what else reads each
     request's change, and which train each one has to catch.
   signals:
-    - id: personas
-      when: { code_matches: '(?i)scrum\s+master|product\s+owner|\bpersonas?\b|\bQA\s+agent' }
-      say: >-
-        Your plan leans on BMAD personas. Which page shows them, in which
-        release, and on what date did you read it?
     - id: one-size
       when: { code_lacks: '(?i)\btrivial\b|one[\s-]session' }
       say: >-
@@ -504,6 +501,11 @@ coach:
       say: >-
         Request A's codes also feed a report the regulator receives. Does
         your path for A account for that, and who looks at it?
+    - id: personas
+      when: { code_matches: '(?i)scrum\s+master|product\s+owner|\bpersonas?\b|\bQA\s+agent' }
+      say: >-
+        Your plan leans on BMAD personas. Which page shows them, in which
+        release, and on what date did you read it?
     - id: no-train-arithmetic
       when: { code_lacks: '(?i)week[\s-]?4\s+train|two\s+trains|weeks\s+2,\s*4|end\s+of\s+week\s+4|last\s+train' }
       say: >-

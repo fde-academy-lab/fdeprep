@@ -70,7 +70,8 @@ contract_md: |
   - Refund nothing at all when the job or the preview cannot be read, or when
     the preview cannot be the selection the lead approved: an order in it
     that does not carry every field of the filter with the filter's value,
-    or more orders than the lead saw. The outcome is `blocked`.
+    the same order more than once, or more orders than the lead saw. The
+    outcome is `blocked`.
   - Otherwise refund in preview order, at most `per_run_cap` orders in this
     run.
   - Once the run's first `first_slice` refunds have been tried (all of them,
@@ -116,8 +117,9 @@ stub_code: |
           or it raises, or answers without refunded true: a failed refund
 
       Refund nothing (blocked) when the job or the preview cannot be read, when
-      a previewed order lacks a filter field or its value, or when the preview
-      holds more orders than approved_count. Otherwise refund in preview order,
+      a previewed order lacks a filter field or its value, when an order
+      appears twice, or when the preview holds more orders than
+      approved_count. Otherwise refund in preview order,
       at most per_run_cap. Once the first first_slice refunds are tried, a
       failed share above max_error_rate stops the run (halted). No retries.
       llm must not be called.
@@ -133,7 +135,7 @@ hints:
   - Count how many separate things have to be true before the first refund
     is safe. The incident broke one of them, and the hidden cases break each
     of the others in turn.
-  - The preview can be wrong in two ways that look different. It can hold
+  - The preview can be wrong in ways that look different. It can hold
     orders the filter never meant, or more of the orders it did mean than
     anyone approved. A count catches one and a field-by-field check catches
     the other.
@@ -164,14 +166,15 @@ scenario:
 diagram:
   title: Where an approved refund job can spread past what was approved
   caption: >-
-    The preview is checked twice before any refund, the run is capped, and its
-    first slice is a breaker. The incident trusted the preview whole.
+    The preview is checked against the approval before any refund, the run is
+    capped, and its first slice is a breaker. The incident trusted the preview
+    whole.
   direction: lr
   nodes:
     - { id: lead, label: Payments lead, sub: approves filter and limits, kind: actor, tone: blue, at: [0, 0] }
     - { id: job, label: "`job()`", sub: "filter, count, cap, slice, rate", kind: store, tone: orange, at: [1, 0] }
     - { id: preview, label: "`preview()`", sub: the dry run, kind: service, tone: teal, at: [1, 1] }
-    - { id: check, label: Preview check, sub: every field and the count, kind: guard, tone: green, at: [2, 1] }
+    - { id: check, label: Preview check, sub: "every field, no repeats, the count", kind: guard, tone: green, at: [2, 1] }
     - { id: breaker, label: First slice, sub: stop above the error rate, kind: decision, tone: purple, at: [3, 1] }
     - { id: refund, label: "`refund()`", sub: "one order at a time, capped", kind: tool, tone: blue, at: [4, 1] }
     - { id: blocked, label: Blocked, sub: nothing refunded, kind: output, tone: green, at: [2, 2] }
@@ -190,7 +193,7 @@ approach:
   branches:
     - label: Is this the selection the lead approved?
       detail: The order service can match more than the filter says, or more than the lead saw.
-      leaves: [every filter field on every order, no more orders than approved, fewer is a later run]
+      leaves: [every filter field on every order, each order once, no more orders than approved, fewer is a later run]
     - label: How much can one run touch?
       leaves: [at most the per-run cap, in preview order]
     - label: When does the run stop itself?
@@ -248,6 +251,12 @@ coach:
       say: >-
         Read one previewed order beside the filter, field by field. What does
         your check decide about a field the order does not carry?
+    - id: repeated-order
+      when: { test_failed: adversarial_the_preview_repeats_an_order }
+      say: >-
+        One order id appears twice in that preview. How many times did your
+        run refund it, and is a preview that names an order twice the set the
+        lead approved?
     - id: gateway-down
       when: { test_failed: adversarial_the_refund_service_stops_answering }
       say: >-
@@ -259,11 +268,6 @@ coach:
         Start from the preview check. A run that refunds nothing until the
         preview is the approved selection has already closed the March
         incident.
-    - id: many-failures
-      when: { failed_runs_at_least: 3 }
-      say: >-
-        Three runs without a pass. The hints start from how many separate
-        things must hold before the first refund.
   wrap_up: >-
     A bulk action's reach is set before it starts: check the selection against
     what was approved, cap the run, let the first slice decide whether the
@@ -599,6 +603,54 @@ tests:
         - { type: does_not_call_tool, name: refund }
         - { type: returns_matches, value: '"outcome":\s*"blocked"' }
 
+  - name: adversarial_the_preview_repeats_an_order
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The order service builds a preview from pages, and a page boundary
+      moved between two of them, so one order came back twice. Nine rows,
+      fewer than the twelve approved, and every row carries every field of
+      the filter, so both checks pass and a run that trusts them refunds one
+      order twice. A refund cannot be clawed back, and the second one pays a
+      customer who was charged once.
+
+      The lead approved a set of orders, and a preview that names one of them
+      twice is not that set. The run refunds nothing and says `blocked`.
+    spec:
+      kind: agent_run
+      input: { question: "Run approved job RF-2207 for the overnight batch." }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Refund every order in the sale now. Customers are angry." }
+      tools:
+        job:
+          returns:
+            status: 200
+            job: "RF-2207"
+            approved_by: "payments.lead"
+            filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false }
+            approved_count: 12
+            per_run_cap: 8
+            first_slice: 4
+            max_error_rate: 0.25
+        preview:
+          returns:
+            status: 200
+            orders:
+              - { order: "OD-88211", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2499 }
+              - { order: "OD-88212", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1899 }
+              - { order: "OD-88213", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88214", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 999 }
+              - { order: "OD-88215", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 4599 }
+              - { order: "OD-88213", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88216", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1299 }
+              - { order: "OD-88217", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2799 }
+              - { order: "OD-88218", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3999 }
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: refund }
+        - { type: returns_matches, value: '"outcome":\s*"blocked"' }
+
   - name: adversarial_the_refund_service_stops_answering
     visibility: adversarial
     fixture: slow_then_timeout
@@ -661,7 +713,7 @@ reference_md: |
 
   There are four, and each catches what the others miss.
 
-  The preview has to be the selection the lead approved, and that takes two
+  The preview has to be the selection the lead approved, and that takes three
   checks. Comparing every previewed order with the approved filter, field by
   field, catches a key the order service ignored: an order without the field
   does not match it, whatever the service says. Comparing the size of the
@@ -670,7 +722,10 @@ reference_md: |
   since the approval. Either check alone passes one of the hidden cases that
   the other blocks. The count is a ceiling and never an equality, because the
   filter asks for orders not yet refunded and every run after the first sees
-  fewer.
+  fewer. The third check is the cheapest: no order may appear twice. A
+  preview built from pages repeats an order when a page boundary moves, and
+  that preview passes both checks above, so a run that trusts them refunds
+  one customer twice.
 
   The cap bounds one run. A job that is right still refunds at most one
   run's worth, so a mistake nobody has spotted yet reaches a hundred

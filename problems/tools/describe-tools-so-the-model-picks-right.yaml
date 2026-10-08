@@ -64,7 +64,8 @@ contract_md: |
   3. When is it the wrong tool, and which tool is right then? Name that tool
      exactly as it is published. The model follows a name, not a description
      of one.
-  4. When does the money move?
+  4. When does the money move? Say it as the team does: at once, or when the
+     item reaches the warehouse.
 
   Start every prompt with `Tools:` and one line per tool,
   `<name>: <description>`, then the customer's message, and keep the tools at
@@ -133,7 +134,7 @@ stub_code: |
 
 steps:
   - id: s1
-    text: Give `cancel_order` its boundary, dispatch, and point past it to `start_return`.
+    text: Say `cancel_order` is for a placed order, stops at dispatch, and point past it to `start_return`.
     check_id: s1
   - id: s2
     text: Say that `start_return` is for delivered orders, and when its refund is paid.
@@ -154,7 +155,11 @@ step_checks:
       kind: agent_run
       input: { question: "Order OD-7004 (dispatched): please cancel it, I found it cheaper elsewhere." }
       llm_script:
-        - match: { all: [ { regex: '(?im)^cancel_order: .*dispatch' }, { regex: '(?m)^cancel_order: .*\bstart_return\b' } ] }
+        - match:
+            all:
+              - { regex: '(?im)^cancel_order: .*\bplaced\b' }
+              - { regex: '(?im)^cancel_order: .*dispatch' }
+              - { regex: '(?m)^cancel_order: .*\bstart_return\b' }
           reply: "Final Answer: Order OD-7004 has left our warehouse, so it can no longer be cancelled. Once it arrives I can book a courier to collect it."
         - { match: { contains: "CX-7004" }, reply: "Final Answer: Order OD-7004 is cancelled and refunded in full." }
         - { match: { regex: '(?m)^cancel_order: ' }, reply: "Action: cancel_order(order_id=OD-7004)" }
@@ -300,7 +305,7 @@ coach:
     back". If more than one line fits, the model is choosing by name.
   signals:
     - id: no-pointer
-      when: { code_lacks: '(?i)instead' }
+      when: { code_lacks: '(?i)instead|use (start_return|refund_item|cancel_order)' }
       say: >-
         None of your descriptions sends the model from one tool to another.
         When two tools could both give a customer money back, which line tells
@@ -321,6 +326,12 @@ coach:
         In that run the order had already been dispatched, and the model
         cancelled it. Read your line for `cancel_order` as the model did: what
         in it says the state matters?
+    - id: hidden-placed-return
+      when: { test_failed: a_placed_order_is_cancelled_whatever_word_the_customer_uses }
+      say: >-
+        In that run the order had not left the warehouse and the customer
+        said return, and the model followed the word. Which line says the
+        state `cancel_order` is right in, in the order system's own word?
     - id: hidden-faulty-item
       when: { test_failed: a_faulty_item_goes_back_before_the_money_does }
       say: >-
@@ -409,6 +420,29 @@ tests:
       assertions:
         - { type: does_not_call_tool, name: cancel_order }
         - { type: returns_matches, value: "(?i)no longer be cancelled" }
+
+  - name: a_placed_order_is_cancelled_whatever_word_the_customer_uses
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order OD-9120 (placed): I changed my mind about the lamp, I want to return it." }
+      llm_script:
+        - { match: { contains: "CX-9120" },
+            reply: "Final Answer: Order OD-9120 has not left our warehouse, so I have cancelled it. Refund CX-9120 for the full amount is on its way." }
+        - { match: { contains: "RT-9120" },
+            reply: "Final Answer: A courier will collect the lamp on Monday 5 October." }
+        - { match: { regex: '(?im)^cancel_order: .*\bplaced\b' }, reply: "Action: cancel_order(order_id=OD-9120)" }
+        - { match: { regex: '(?m)^start_return: ' }, reply: "Action: start_return(order_id=OD-9120, item=lamp)" }
+        - { match: "*", reply: "Final Answer: I cannot fix this from here. Please raise it in the app." }
+      tools:
+        cancel_order: { returns: { cancelled: true, refund_id: CX-9120 } }
+        start_return: { returns: { return_id: RT-9120, pickup: "Monday 5 October" } }
+        refund_item: { returns: { refund_id: RF-9120 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: cancel_order, args: { order_id: OD-9120 } }
+        - { type: does_not_call_tool, name: start_return }
+        - { type: returns_matches, value: "CX-9120" }
 
   - name: a_faulty_item_goes_back_before_the_money_does
     visibility: hidden

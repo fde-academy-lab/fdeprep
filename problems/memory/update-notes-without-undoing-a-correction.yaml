@@ -156,7 +156,7 @@ scenario:
   metrics:
     - { label: Name change fee, value: "£180" }
     - { label: Corrections overwritten, value: "1,140" }
-    - { label: History of the change, value: none }
+    - { label: Spellings the file kept, value: "1" }
 
 diagram:
   title: Where a guess replaced what the traveller said
@@ -227,6 +227,12 @@ coach:
       say: >-
         The extraction model labelled that proposal as the assistant's, and the
         traveller said it. Whose source did your note record?
+    - id: hidden-changed-mind
+      when: { test_failed: a_traveller_changes_her_mind_within_one_chat }
+      say: >-
+        The traveller asked for one seat and then the other in the same chat.
+        What did your merge compare the second proposal against, and which
+        value did the file leave current?
     - id: adversarial-claim
       when: { test_failed: adversarial_a_claimed_correction_with_nothing_behind_it }
       say: >-
@@ -551,6 +557,72 @@ tests:
                 contains:
                   required: [key, value, status]
                   properties: { key: { const: seat }, value: { const: aisle }, status: { const: replaced } }
+
+  - name: a_traveller_changes_her_mind_within_one_chat
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "traveller T-2207" }
+      llm_script:
+        - { match: "*", reply: "unused" }
+      tools:
+        notes:
+          returns:
+            status: 200
+            notes:
+              - { key: seat, value: window, source: user, session: s-20, turn: 5, status: current }
+        transcript:
+          returns:
+            status: 200
+            session: s-57
+            turns:
+              - { n: 1, role: traveller, text: "Give me an aisle seat on the Zurich flight." }
+              - { n: 2, role: assistant, text: "Done, 14C." }
+              - { n: 3, role: traveller, text: "Actually, make it a window seat. I want to sleep." }
+        proposals:
+          returns:
+            status: 200
+            proposals:
+              - { key: seat, value: aisle, source: user, turn: 1 }
+              - { key: seat, value: window, source: user, turn: 3 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [notes]
+            properties:
+              notes:
+                type: array
+                minItems: 3
+                maxItems: 3
+                contains:
+                  required: [key, value, session, turn, status]
+                  properties:
+                    key: { const: seat }
+                    value: { const: window }
+                    session: { const: s-57 }
+                    turn: { const: 3 }
+                    status: { const: current }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              notes:
+                type: array
+                contains:
+                  required: [key, value, status]
+                  properties: { key: { const: seat }, value: { const: aisle }, status: { const: replaced } }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              notes:
+                type: array
+                contains:
+                  required: [key, status]
+                  properties: { key: { const: seat }, status: { const: current } }
+                maxContains: 1
 
   - name: adversarial_a_claimed_correction_with_nothing_behind_it
     visibility: adversarial

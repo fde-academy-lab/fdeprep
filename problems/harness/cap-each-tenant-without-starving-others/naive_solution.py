@@ -2,10 +2,12 @@
 
 It reads the plans and checks all three limits, so the public cases pass. The
 counters go up as each run arrives, before anything decides it, so a flood of
-refused runs fills the account's minute for every other client. A client's run
-count never resets, so a client refused in its first minute stays refused for
-the rest of the batch. And the budget is checked against what is already
-spent, so the run that crosses it is sent with its whole ceiling.
+refused runs fills the account's minute for every other tenant. A tenant's run
+count never resets, so a tenant refused in its first minute stays refused for
+the rest of the batch. The budget is checked against what is already spent,
+so the run that crosses it is sent with its whole ceiling. And it looks each
+tenant's plan up by index, so one tenant with no plan raises and ends the
+batch for every run behind it.
 """
 
 import json

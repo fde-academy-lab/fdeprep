@@ -395,14 +395,14 @@ tests:
       llm_script:
         - { match: "*", reply: "Action: rebook(pnr=HG5C1V, flight=448)" }
       tools:
-        rebook: { returns: { status: 429, retry_after: "45" } }
+        rebook: { returns: { status: 429, retry_after: "30" } }
         sleep: { returns: { ok: true } }
       budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
       assertions:
         - { type: does_not_call_tool, name: sleep }
         - { type: tool_calls_at_most, value: 1 }
         - { type: returns_matches, value: '"outcome":\s*"deferred"' }
-        - { type: returns_matches, value: '"retry_after_ms":\s*45000\b' }
+        - { type: returns_matches, value: '"retry_after_ms":\s*30000\b' }
 
   - name: named_waits_add_up_against_the_deadline
     visibility: hidden
@@ -523,7 +523,7 @@ reference_md: |
   on its own, and the third one does not fit after the first two. A wait that
   does not fit is still information. Handing it back as
   `retry_after_ms` turns a spinner into a sentence the app can show: we will
-  confirm your seat in 45 seconds. A queue worker can pick the request up at
+  confirm your seat in 30 seconds. A queue worker can pick the request up at
   that moment instead of guessing.
 
   A 400 is the service answering. It said the flight had departed, and nine

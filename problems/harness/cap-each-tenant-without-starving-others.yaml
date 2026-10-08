@@ -26,15 +26,13 @@ brief_md: |
   On Monday 28 September a furniture retailer started a bulk job that re-tagged
   its old tickets: 9,000 runs queued in two minutes. The gateway had one
   limiter, sized to the provider's limit, and decided runs in arrival order.
-  It also counted each run against the minute as it arrived, before deciding
-  it, so the retailer's refused runs kept the minute full as well as its sent
-  ones. For 40 minutes every other tenant's agent was refused. A bank's
-  card-dispute agent dropped 1,100 conversations.
+  It refused most of the retailer's runs, and for 40 minutes it refused every
+  other tenant's as well, though the account never once sent more than its
+  limit. A bank's card-dispute agent dropped 1,100 conversations.
 
-  The same gateway checked a tenant's token budget against what it had
-  already spent, so the run that crossed the budget went out with its whole
-  ceiling. The retailer ended the month 31 percent over the allowance its
-  contract caps, and the platform paid for the difference.
+  The same gateway checked every run against the retailer's token budget, and
+  the retailer still ended the month 31 percent over the allowance its
+  contract caps. The platform paid for the difference.
 
   The platform team has written down what the gateway should have done. Each
   tenant has its own plan, the account's limit still applies on top, and a
@@ -147,7 +145,8 @@ scenario:
   situation: >-
     Every tenant's support agent calls the model through one gateway on one
     provider account. A furniture retailer queued 9,000 runs in two minutes,
-    and the gateway's single limiter counted every arrival, refused or not.
+    and for 40 minutes the gateway refused every other tenant, though the
+    account never sent more than its limit.
   stakes: >-
     A bank's card-dispute agent dropped 1,100 conversations, and the retailer
     ended the month 31 percent over the token allowance its contract caps.
@@ -159,9 +158,8 @@ scenario:
 diagram:
   title: Where one tenant's burst spends every tenant's minute
   caption: >-
-    Runs were counted against the shared minute as they arrived, refused or
-    not, so the flood kept the window full and every other tenant was refused
-    behind it.
+    The account's minute filled with runs the provider never saw. Find where
+    the gateway counted a run, and where it should have.
   direction: lr
   nodes:
     - { id: flood, label: Bulk re-tag job, sub: "9,000 runs in two minutes", kind: queue, tone: orange, at: [0, 0] }
@@ -179,28 +177,28 @@ diagram:
     - { from: plans, to: gateway, label: limits }
     - { from: gateway, to: tenant_limit, label: its own limits first, step: 3 }
     - { from: tenant_limit, to: account_limit, label: then the shared minute, step: 4 }
-    - { from: account_limit, to: complete, label: "sent, then counted", tone: success }
+    - { from: account_limit, to: complete, label: "decided, counted, sent", tone: success }
     - { from: tenant_limit, to: refusal, label: over its own limit, tone: success }
-    - { from: gateway, to: starved, label: counted on arrival, tone: danger }
+    - { from: gateway, to: starved, label: refused behind the flood, tone: danger }
 
 approach:
   goal: Give every tenant its own share, and make the shared one impossible to hoard
   branches:
     - label: The tenant's limits before the account's
       leaves: [its budget, its own minute, then the account's minute]
-    - label: A refusal costs nothing
-      detail: A run that is never sent counts toward no window and no budget, or a flood of refusals fills the minute.
-      leaves: [decide first, count only what is sent]
-    - label: Reserve the ceiling, charge the actual
-      leaves: ["`max_tokens` before the call", the reported tokens after it, the ceiling when nobody knows]
+    - label: "When does a run start to count?"
+      detail: A counter that moves at the wrong moment charges the wrong tenant. Decide what a refused run should change.
+      leaves: [the moment a counter moves, what a refused run changes]
+    - label: "What does a run cost before it runs?"
+      leaves: [the one number known before the call, the number known after it, what to charge when nobody knows]
     - label: Say whose limit and when
       leaves: [the tenant's own or the account's, the start of the next window, no plan means no runs]
 
 coach:
   opening: >-
     This is a screen-level problem. Before you type, follow one refused run
-    from the retailer's flood and write down every counter it should change.
-    The answer is none.
+    from the retailer's flood through the gateway and write down every counter
+    it changed. Then decide which of those it should have.
   signals:
     - id: no-tenant-limit
       when: { code_lacks: '\[\s*["'']rpm["'']\s*\]|\.get\(\s*["'']rpm["'']' }
@@ -241,6 +239,12 @@ coach:
       say: >-
         That tenant hit its limit in the first minute and came back in the
         second. Which window did your code count its later runs in?
+    - id: hidden-no-plan
+      when: { test_failed: a_tenant_with_no_plan_is_refused_and_the_rest_are_served }
+      say: >-
+        One tenant in that batch has no plan at all. What did your code do
+        when it looked that tenant up, and were the runs behind it still
+        decided?
     - id: adversarial-plans
       when: { test_failed: adversarial_the_plans_never_arrived }
       say: >-
@@ -507,6 +511,36 @@ tests:
         - { type: returns_matches, value: '"w3":\s*\{[^{}]*"retry_at_s":\s*60\b' }
         - { type: returns_matches, value: '"w4":\s*\{[^{}]*"status":\s*"done"' }
         - { type: returns_matches, value: '"w5":\s*\{[^{}]*"status":\s*"done"' }
+
+  - name: a_tenant_with_no_plan_is_refused_and_the_rest_are_served
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "batch-0928-1115" }
+      llm_script:
+        - { match: "*", reply: "I can help with that." }
+      tools:
+        batch:
+          returns:
+            status: 200
+            runs:
+              - { id: u1, tenant: harbour-bank, at_s: 2, max_tokens: 600, prompt: "Summarise card dispute 4650 for the agent" }
+              - { id: u2, tenant: maple-dental, at_s: 5, max_tokens: 500, prompt: "Draft a reply about a missed appointment" }
+              - { id: u3, tenant: harbour-bank, at_s: 9, max_tokens: 600, prompt: "Summarise card dispute 4651 for the agent" }
+        plans:
+          returns:
+            status: 200
+            account_rpm: 8
+            tenants:
+              harbour-bank: { rpm: 3, tokens: 6000 }
+        complete: { returns: { status: 200, text: "Done.", tokens: 400 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"u2":\s*\{[^{}]*"reason":\s*"no_plan"' }
+        - { type: returns_matches, value: '"u2":\s*\{[^{}]*"retry_at_s":\s*null' }
+        - { type: returns_matches, value: '"u3":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: tool_calls_at_most, value: 4 }
 
   - name: adversarial_the_plans_never_arrived
     visibility: adversarial

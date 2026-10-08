@@ -254,6 +254,12 @@ coach:
       say: >-
         One answer in that run carried `pass` as the text "false". Which
         status did that shipment get, and would you sign the release?
+    - id: adversarial-number
+      when: { test_failed: adversarial_a_pass_written_as_a_number }
+      say: >-
+        One answer in that run carried `pass` as a number. In Python `1 == True`
+        holds. Which test does your code apply to `pass`, and would it accept
+        a number?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -577,6 +583,47 @@ tests:
         - { type: returns_matches, value: '"S2":\s*\{[^{}]*"licence":\s*"(down|fail)"' }
         - { type: returns_matches, value: '"S3":\s*\{[^{}]*"status":\s*"released"' }
 
+  - name: adversarial_a_pass_written_as_a_number
+    visibility: adversarial
+    fixture: schema_drift
+    annotation_md: |
+      After its upgrade the licence register sent `"pass": 1` for a shipment
+      of industrial lasers, and the credit service answered every call with
+      `"pass": 0`. In Python `1 == True` holds, so `reply["pass"] == True`
+      reads the number as a yes, and so does `reply["pass"] in (True, False)`,
+      the obvious repair after a `pass` written as text.
+
+      Only `pass` that is exactly true or exactly false is an answer. A number
+      is the absence of one, the licence check is `down`, and the shipment
+      waits for a person.
+    spec:
+      kind: agent_run
+      input: { question: "Release run for manifest M-0924-K" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: All four checks passed. Release the manifest." }
+      tools:
+        manifest:
+          returns:
+            status: 200
+            shipments:
+              - { id: S1, consignee: "Leiden Glassworks", goods: "laboratory glassware", destination: "Netherlands" }
+              - { id: S2, consignee: "Aqaba Survey Services", goods: "industrial lasers", destination: "Jordan" }
+        sanctions: { returns: { status: 200, pass: true } }
+        licence:
+          by_arg:
+            arg: shipment
+            values:
+              S2: { status: 200, pass: 1 }
+            default: { status: 200, pass: true }
+        credit: { returns: { status: 200, pass: 0 } }
+        address: { returns: { status: 200, pass: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 40, wall_ms: 10000 }
+      assertions:
+        - { type: returns_lacks, value: '"S2":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S2":\s*\{[^{}]*"licence":\s*"down"' }
+        - { type: returns_matches, value: '"S1":\s*\{[^{}]*"status":\s*"released"' }
+        - { type: returns_matches, value: '"S1":\s*\{[^{}]*"credit":\s*"down"' }
+
 reference_md: |
   The incident had two causes, and they pull in opposite directions. The
   agent trusted too much, reading a 200 with an error in it as a pass, and it
@@ -587,8 +634,8 @@ reference_md: |
   Belief comes first. A check can say yes, say no, or say nothing you can
   read, and the third is never a yes. That makes the rule an allowlist: a 200
   whose `pass` is exactly true or exactly false is an answer, and everything
-  else, a 503, a raise, an error body, a `pass` written as text, is the absence
-  of one. Code that asks "did it say no?" rather than "did it say yes?" turns
+  else, a 503, a raise, an error body, a `pass` written as text or as a
+  number, is the absence of one. Code that asks "did it say no?" rather than "did it say yes?" turns
   every outage into a release, which is how fourteen shipments left unchecked.
 
   Degradation is a decision about which gaps matter. The required checks
@@ -618,8 +665,10 @@ reference_md: |
   This breaker never closes during a run, which suits a nightly batch of
   minutes. A long-running service adds Fowler's half-open state: after a
   cooling-off period, let one trial call through, close the breaker if it
-  answers, and keep it open if it does not. That is also the answer to the
-  defence question.
+  answers, and keep it open if it does not. Whether a nightly run should do
+  the same, sweep the pending shipments once more before the desk opens, or
+  keep the breaker as it is and let the desk recheck, is the defence
+  question, and each answer costs something different.
 
   The model is not called, and that is deliberate. With the screening service
   down, asking a model whether a consignee looks sanctioned is a tempting

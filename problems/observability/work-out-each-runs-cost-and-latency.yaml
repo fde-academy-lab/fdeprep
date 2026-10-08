@@ -254,9 +254,9 @@ hints:
   - Take each of the dashboard's two numbers and ask what the customer or the
     insurer would say it measures. Then find where your code measures
     something else.
-  - Two calls that run at the same time cost the customer the time of the
-    slower one, not the sum. And a rate you do not have is not a rate of
-    zero.
+  - Two calls that run at the same time share the same seconds, so the
+    customer waits once for both. And a rate you do not have is not a rate
+    of zero.
   - "Latency comes from two numbers per run: the smallest `start_ms` and the
     largest `end_ms`. Cost comes from every event, models at their rates and
     tools at their fees, and stops being a number the moment a model has no
@@ -368,7 +368,8 @@ coach:
   wrap_up: >-
     A latency is how long somebody waited and a cost is what somebody was
     billed. Measure the span, price every billed line, and report a missing
-    rate as unknown rather than as free.
+    rate as unknown rather than as free. A later problem in this chapter
+    reads a trace for where a failed run went wrong.
 
 tests:
   - name: prices_and_times_four_claims

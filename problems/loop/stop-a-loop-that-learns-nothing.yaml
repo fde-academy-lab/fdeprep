@@ -1,5 +1,5 @@
 slug: stop-a-loop-that-learns-nothing
-title: "Stop an agent that repeats the same call"
+title: "Stop a loop that learns nothing"
 day: 6
 skill: Tell a stuck repeat from a poll that is moving, and stop only the stuck one
 artefact_type: code
@@ -65,7 +65,8 @@ contract_md: |
 
   1. A Final Answer: return its text.
   2. No progress: a call returns what the same call returned at any earlier
-     step, so two calls that take turns count. The same call is the same tool
+     step, the step before or any step further back, so two calls that take
+     turns still count. The same call is the same tool
      with the same arguments, in whatever order the model wrote them. The
      same result is the same once `checked_at` is left out. Run the call, see
      the repeat, and stop without asking the model again. Return
@@ -252,6 +253,12 @@ coach:
       say: >-
         In that run the batch moved on every poll and never finished. Nothing
         repeated, so what in your loop ends the chat?
+    - id: adversarial-empty-poll
+      when: { test_failed: adversarial_one_poll_comes_back_empty }
+      say: >-
+        In that run one poll came back with nothing at all. What does your
+        `substance()` do with a result that is not a dict, and is nothing a
+        new answer for that call or an old one?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -263,9 +270,9 @@ coach:
         Three runs have failed. The hints open after one failed run on this
         tier, and the second one says when a repeat is a problem.
   wrap_up: >-
-    A step limit is a ceiling on the bill, not a way to see a loop is stuck.
-    Progress is a change in what the loop knows, so remember what each call
-    said, compare what matters, and keep the limit for the chat that changes
+    A step limit caps the bill and cannot see that a loop is stuck. Progress
+    is a change in what the loop knows, so remember what each call said,
+    compare what matters, and keep the limit for the chat that changes
     forever.
 
 tests:
@@ -358,6 +365,7 @@ tests:
         - { type: returns_matches, value: "check_batch" }
         - { type: returns_matches, value: 'done\W{1,4}3\b' }
         - { type: llm_calls_at_most, value: 4 }
+        - { type: returns_lacks, value: "checked_at" }
 
   - name: two_lookups_taking_turns_still_stop
     visibility: hidden
@@ -462,6 +470,44 @@ tests:
         - { type: terminates }
         - { type: llm_calls_at_most, value: 6 }
         - { type: returns_matches, value: "^Step limit reached:" }
+        - { type: tool_calls_at_most, value: 5 }
+        - { type: returns_lacks, value: "checked_at" }
+
+  - name: adversarial_one_poll_comes_back_empty
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The second poll of the batch came back with nothing at all, no state
+      and no count. The batch service's gateway does this when it times out
+      on its own side.
+
+      A `substance()` written for dicts raises on it, and the run ends with
+      the merchant told nothing. Nothing is an answer this call had not
+      given before, so the loop records it, asks the model again, and the
+      next poll says the batch has paid. Only a second empty answer to the
+      same call would be no progress.
+    spec:
+      kind: agent_run
+      input: { question: "Merchant M-9140: has my settlement for 2026-09-19 been paid?" }
+      llm_script:
+        - { match: { contains: "UTR7730918" },
+            reply: "Final Answer: Yes. Your settlement for 19 September was paid in batch B-5520, UTR UTR7730918." }
+        - { match: { call_index: 1 }, reply: "Action: get_settlement(merchant=M-9140, date=2026-09-19)" }
+        - { match: "*", reply: "Action: check_batch(batch=B-5520)" }
+      tools:
+        get_settlement: { returns: { status: in_batch, batch: B-5520 } }
+        check_batch:
+          sequence:
+            - { state: processing, done: 1, of: 3, checked_at: "14:00:00" }
+            - null
+            - { state: complete, utr: UTR7730918, checked_at: "14:01:00" }
+        search_settlements: { returns: { found: 0 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: calls_tool, name: check_batch }
+        - { type: returns_matches, value: "UTR7730918" }
+        - { type: llm_calls_at_most, value: 5 }
 
 reference_md: |
   A step limit is a ceiling on the bill. It cannot tell a stuck chat from a

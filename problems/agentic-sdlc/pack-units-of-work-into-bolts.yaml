@@ -28,10 +28,10 @@ brief_md: |
   The delivery lead's planner packs the client's units into 16-hour bolts, in
   the order her plan lists them.
 
-  On Monday the planner met a 22-hour data-migration task. Nothing in its loop
-  asked whether a task was bigger than a bolt, so it trimmed the estimate to
-  16 and packed it. The bolt ran four days, and every bolt planned after it
-  slipped.
+  On Monday the planner met a 22-hour data-migration task. Its loop had one
+  answer for a task that did not fit: write it down as the cap. The task
+  went in as 16 hours, the bolt ran four days, and every bolt planned after
+  it slipped.
 
   Write the packer. A task that fits no bolt goes back to the delivery lead,
   and no bolt ever holds more hours than its cap.
@@ -208,9 +208,10 @@ hints:
   - A task bigger than the cap fits no bolt, empty or not. Opening a new bolt
     for it moves the overrun into that bolt, and trimming its estimate hides
     it.
-  - "Compare the task's hours with `cap` before you look for a bolt for it.
-    When the task is bigger, add its id to `too_large` and `continue` to the
-    next task."
+  - 'Where the comparison sits decides whether it works. A packer that asks
+    only "does it fit the current bolt?" hears no for a 22-hour task, opens
+    a new bolt, and puts the task there alone. Ask about the cap before you
+    ask about a bolt.'
   - Bolts run in order. A unit goes in the current bolt or starts the next
     one, and an earlier bolt never takes more work, even with hours to spare.
 
@@ -300,6 +301,12 @@ coach:
         In that run one unit was bigger than a bolt, and each of its tasks fit
         on its own. Where did its first task go, and is the unit named in
         `units_split`?
+    - id: hidden-exact-cap-task
+      when: { test_failed: a_task_exactly_the_size_of_a_bolt_fills_one }
+      say: >-
+        In that run one task was exactly as long as a bolt. Fits means no
+        more than the cap. Did your packer give it a bolt of its own, or
+        send it to `too_large`?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -466,6 +473,35 @@ tests:
                 const:
                   - { n: 1, hours: 12, tasks: ["T-1", "T-2"] }
                   - { n: 2, hours: 16, tasks: ["T-3", "T-4", "T-5", "T-6"] }
+              too_large: { const: [] }
+              units_split: { const: ["UW-2"] }
+
+  - name: a_task_exactly_the_size_of_a_bolt_fills_one
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Pack the units for the ledger rebuild into bolts." }
+      llm_script:
+        - { match: "*", reply: "Trim the biggest task to the cap and pack everything into bolt 1." }
+      tools:
+        plan:
+          returns:
+            bolt_hours: 16
+            units:
+              - { id: "UW-1", tasks: [{ id: "T-1", hours: 5 }] }
+              - { id: "UW-2", tasks: [{ id: "T-2", hours: 16 }, { id: "T-3", hours: 3 }] }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [bolts, too_large, units_split]
+            properties:
+              bolts:
+                const:
+                  - { n: 1, hours: 5, tasks: ["T-1"] }
+                  - { n: 2, hours: 16, tasks: ["T-2"] }
+                  - { n: 3, hours: 3, tasks: ["T-3"] }
               too_large: { const: [] }
               units_split: { const: ["UW-2"] }
 

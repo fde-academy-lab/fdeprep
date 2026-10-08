@@ -40,9 +40,13 @@ brief_md: |
 defence_question: |
   Your share divides what is left evenly between the steps still to run. The
   client's IT lead says single sign-on matters more than anything else on the
-  form and asks you to give it whatever it needs. What would that change on a
-  night when SSO is the step that never converges, what would you put in
-  place of an even share, and what would you never let any step spend?
+  form, because without it nobody signs in on Monday, while a half-finished
+  import can be fixed by hand. Last night SSO got a share of 2 and ended
+  partial. You could weight SSO's share, move SSO to the front of the plan,
+  raise this client's budget, or keep the even share and tell the IT lead
+  why. Pick one. Say what it costs on a night when SSO is the step that never
+  converges, and what the summary tells the IT lead when your choice turns
+  out to be the wrong one.
 
 contract_md: |
   Implement:
@@ -75,7 +79,6 @@ contract_md: |
      |---|---|---|
      | `done` | the executor replied Done within its share | the text after `Done:` |
      | `partial` | the share ran out first | the step's last tool result, or null when none ran |
-     | `not_started` | its share was 0, so it made no call | null |
 
   4. Summarise with one call to `SUMMARY_PROMPT`, with one line per step,
      `<step>: <status>`, in plan order. The reply is `Summary: <text>`.
@@ -119,14 +122,15 @@ stub_code: |
 
       BUDGET model calls cover the plan, every executor call and the summary.
 
-      Before each step: share = (calls left - 1) // steps not yet run, this
-      one included. The 1 is kept for the summary. The executor asks the
-      model at most share times, with STEP_PROMPT for that step and that
-      step's own replies and results. Done within the share is "done", with
-      the Done text as its detail. A share spent without Done is "partial",
-      with the step's last tool result, or None, as its detail. A share of 0
-      is "not_started". A tool that raises gives {"error": <exception type>}.
-      A reply that is neither an Action nor Done still spends its call.
+      Before each step the share is (calls left - 1) // steps not yet run,
+      this one included, and the 1 is kept for the summary. The executor
+      asks the model at most share times, with STEP_PROMPT for that step and
+      that step's own replies and results. A step whose executor said Done
+      within the share is done, with the Done text as its detail. A share
+      spent without Done leaves the step partial, with the step's last tool
+      result, or None, as its detail. A tool that raises gives
+      {"error": <exception type>}. A reply that is neither an Action nor
+      Done still spends its call.
 
       Summarise with SUMMARY_PROMPT and one "<step>: <status>" line per step.
       Return json.dumps({"steps": {...}, "details": {...}, "summary": ...}).
@@ -200,7 +204,7 @@ approach:
     - label: Share what is left
       leaves: [divide by the steps still to run, a quick step leaves calls behind]
     - label: Say how each step ended
-      leaves: [done only on Done, partial when the share ran out, "`not_started` at a share of 0"]
+      leaves: [done only on Done, partial when the share ran out]
     - label: Count every model call
       leaves: [a reply that is not an action still costs a call, a tool that raises is a result]
 
@@ -215,7 +219,7 @@ coach:
         Every step your planner runs ends up recorded as done. What does it
         record for a step whose share ran out before the executor said Done?
     - id: no-share
-      when: { code_lacks: '(?i)share|left|remaining' }
+      when: { code_lacks: '(?i)\b(share|left|remaining)\s*=\s*[^=\s]' }
       say: >-
         Each executor keeps a count of its own. What stops one step from
         spending the calls the steps after it need, or the summary's call?

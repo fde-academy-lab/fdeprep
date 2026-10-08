@@ -156,7 +156,7 @@ scenario:
   metrics:
     - { label: Notice the contract needs, value: 90 days }
     - { label: Notice the vote chose, value: 30 days }
-    - { label: Year it was held to, value: "₹4.1 crore" }
+    - { label: Cost of the extra year, value: "₹4.1 crore" }
 
 diagram:
   title: Where two guesses outvoted one quote
@@ -235,6 +235,15 @@ coach:
       say: >-
         In that run a worker's prompt held more than its question and its one
         document. Read the prompt your code builds for the first job.
+    # Before adversarial-other-document: a check against the whole request
+    # fails both cases and this line names it, while a check against the
+    # pack fails only the next one.
+    - id: adversarial-private-note
+      when: { test_failed: adversarial_a_quote_from_the_private_note }
+      say: >-
+        In that run a worker quoted a sentence that is in the request and in
+        no document. Where did your check look, and what did the answer line
+        carry out of the building?
     - id: adversarial-other-document
       when: { test_failed: adversarial_a_quote_from_another_document }
       say: >-
@@ -354,6 +363,31 @@ tests:
       assertions:
         - { type: returns_matches, value: '^notice: 90 days \(MSA\)$' }
 
+  - name: adversarial_a_quote_from_the_private_note
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The MSA worker answered 19 lakh and quoted "Walk-away price is 19 lakh
+      a year.", which is the procurement lead's note. It is in the request
+      and in no document.
+
+      A check that looks for the quote in the request finds it and turns one
+      proved fee into a conflict line that prints the walk-away price, in a
+      summary the supplier's file will hold. The note was never any worker's
+      to see, and a quote proves a claim only against the document that
+      worker was given.
+    spec:
+      kind: agent_run
+      input: { question: '{"supplier": "Vitalis Labs", "questions": [{"id": "annual_fee", "ask": "What is the annual fee?"}], "documents": [{"id": "MSA", "text": "Ref MSA-2024-203. Master Services Agreement between the Hospital Group and Vitalis Labs. 12.4 Either party may end this Agreement at renewal by giving 60 days of written notice. 7.1 Fees are set out in each Order Form."}, {"id": "ORDER", "text": "Ref OF-2026-033. Order Form 1. Pathology results interface for 12 hospitals at 22 lakh rupees a year."}], "notes": "Walk-away price is 19 lakh a year. Never share this with the supplier."}' }
+      llm_script:
+        - { match: { contains: "Job: annual_fee in MSA" }, reply: '{"value": "19 lakh a year", "quote": "Walk-away price is 19 lakh a year."}' }
+        - { match: { contains: "Job: annual_fee in ORDER" }, reply: '{"value": "22 lakh rupees a year", "quote": "Pathology results interface for 12 hospitals at 22 lakh rupees a year."}' }
+        - { match: "*", reply: '{"value": null}' }
+      budget: { max_llm_calls: 7, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_lacks, value: '(?i)walk-away' }
+        - { type: returns_matches, value: '^annual_fee: 22 lakh rupees a year \(ORDER\)$' }
+
 reference_md: |
   One agent reading 140 pages answered from the wrong document because
   everything was in front of it at once. Splitting the work fixes that only
@@ -376,7 +410,9 @@ reference_md: |
   common failures together: the guess with no quote, the real quote that
   does not contain the value, and the quote invented for the occasion. It
   has to look in the worker's own document. A quote matched against the
-  whole pack lets a sentence about invoices prove a notice period.
+  whole pack lets a sentence about invoices prove a notice period, and one
+  matched against the request lets the walk-away price prove a fee and then
+  print it in the answer line.
 
   When proved claims still differ, the documents themselves disagree, and
   that is a finding. The data processing agreement names a sub-processor in
@@ -406,6 +442,7 @@ traps:
     question and one document.
   - Taking the answer most workers gave, so guesses that happen to agree outvote the one worker that quoted the
     contract.
-  - Checking a quote against the whole pack, so a real sentence from another document proves a claim.
+  - Checking a quote against the whole pack or the whole request, so a sentence from another document, or from the
+    private note, proves a claim.
   - Settling a disagreement between two quoted documents by count or by order, when only a person can choose
     between them.

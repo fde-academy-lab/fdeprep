@@ -2,8 +2,8 @@
 
 A check answers with exactly one thing: a 200 whose pass is true or false.
 Everything else, a 503, a raise, a 200 with an error in the body, a pass
-written as text, is the absence of an answer, and the absence of an answer is
-never a pass.
+written as text or as a number, is the absence of an answer, and the absence
+of an answer is never a pass.
 
 Each check has its own breaker, a count of failed calls in a row. A failed
 call adds one and any answer, a refusal included, resets it, because a

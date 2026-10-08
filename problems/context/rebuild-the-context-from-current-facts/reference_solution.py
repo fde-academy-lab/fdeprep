@@ -26,7 +26,7 @@ from datetime import datetime
 
 INSTRUCTIONS = (
     "You are the broadband support agent. Answer from the open tasks and the "
-    "facts below. Each fact is the newest checked result on its subject."
+    "facts below. Each fact is the newest verified result on its subject."
 )
 RECENT_TURNS = 6
 
@@ -60,9 +60,9 @@ def run_agent(question: str, llm, tools: dict) -> str:
 
     facts = {}
     for key in sorted({str(event.get("key")) for event in results if event.get("key")}):
-        checked = [event for event in results
-                   if str(event.get("key")) == key and event.get("verified") is True]
-        winner = observed_last(checked)
+        verified = [event for event in results
+                    if str(event.get("key")) == key and event.get("verified") is True]
+        winner = observed_last(verified)
         if winner is not None:
             facts[key] = winner
 

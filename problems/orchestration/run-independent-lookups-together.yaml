@@ -207,9 +207,10 @@ hints:
   - A lookup can run once everything it refers to has a result. Its round is
     one more than the latest round among those, and a plan can be three or
     more rounds deep.
-  - Assign rounds in passes over the plan until a pass assigns nothing new.
-    Then call `run_round` once per round, filling references from the results
-    gathered so far.
+  - The plan may list a lookup before the ones it refers to, so one pass over
+    the plan is not enough. Decide how you will know that every lookup has a
+    round, then call `run_round` once per round, filling references from the
+    results gathered so far.
   - Keep every result in a dict by its id as it arrives, and build the brief
     by walking `SECTIONS`, so the order results arrive in never reaches the
     page.
@@ -464,6 +465,11 @@ reference_md: |
   the schedule is the one an asynchronous executor would run, and its length
   is the latency. One lookup per round would also produce a correct brief,
   at the 14 seconds the team was trying to remove.
+
+  Here the lookups never disagree, because each one owns its field of the
+  brief. A later problem in this chapter splits one question across workers
+  that can all answer it, and the orchestrator's job becomes deciding whose
+  answer counts.
 
 complexity: C2
 

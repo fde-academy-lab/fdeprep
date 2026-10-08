@@ -567,6 +567,12 @@ reference_md: |
   The defence question is where that matters most, because an execute
   permission can run code this check never sees.
 
+  The check decides whether a call may run and says nothing about how far it
+  reaches once it does. That gap is where this chapter goes next: the problems
+  after this one ask the same question of a job that has to stay inside one
+  tenant's data, and of a bulk refund that has to stay inside what was
+  approved.
+
 complexity: C2
 
 interview_evidence:

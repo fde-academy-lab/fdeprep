@@ -222,7 +222,7 @@ scenario:
     personal laptop kept copying the sales team's shared drive.
   metrics:
     - { label: Login left live, value: 62 hours }
-    - { label: Steps needing approval, value: "1" }
+    - { label: Steps sent for approval, value: "1" }
     - { label: Steps stuck behind it, value: "4" }
 
 diagram:
@@ -508,7 +508,10 @@ reference_md: |
   from. LangGraph 1.2.12 builds the same idea into a framework:
   `interrupt()` inside a node raises, the checkpointer saves the thread, and
   `Command(resume=...)` continues it later, re-running that node from its
-  start. Either way no process sits waiting while a person thinks.
+  start. Either way no process sits waiting while a person thinks. The `held`
+  list is a promise to a later run. When IT security answers, that run has to
+  carry on from this report with their decision in force, and writing that
+  resume is a later problem in this chapter.
 
 complexity: C2
 

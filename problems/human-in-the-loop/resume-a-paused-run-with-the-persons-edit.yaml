@@ -149,9 +149,7 @@ hints:
   - A person's decision settles the paused step. The model is asked what
     comes next, never what the paused step should have been, because it would
     propose its own version again.
-  - Write every settled step into the record as it actually happened. What
-    ran, with the arguments it ran with. What a person rejected, and why.
-    What you refused.
+  - "Write every settled step into the record as it actually happened: what ran, with the arguments it ran with; what a person rejected, and why; and what you refused."
   - Two checks come before anything runs. Can the checkpoint be read, and was
     the decision made for the step that is paused? A pause lands at the next
     step boundary, so a person can be looking at a step that already ran.
@@ -245,6 +243,12 @@ coach:
       say: >-
         After the edited offer went out, the model proposed the offer again at
         its own salary. What stops one step running twice in a run?
+    - id: check-requested-twice
+      when: { test_failed: a_check_that_ran_before_the_pause_is_not_requested_again }
+      say: >-
+        After the approved offer went out, the model asked for the background
+        check again. That check ran before the pause. Does your record of what
+        already ran start at the checkpoint or at the resume?
     - id: empty-checkpoint
       when: { test_failed: adversarial_the_checkpoint_comes_back_empty }
       say: >-
@@ -511,6 +515,50 @@ tests:
         - { type: llm_calls_at_most, value: 0 }
         - { type: returns_matches, value: '"outcome":\s*"needs_person"' }
 
+  - name: a_check_that_ran_before_the_pause_is_not_requested_again
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "RUN-5575" }
+      llm_script:
+        - { match: { regex: 'Ran: schedule_onboarding' },
+            reply: "Done: Offer issued to Divya, emailed, and onboarding booked for 30 November." }
+        - { match: { regex: 'Ran: send_offer_email' },
+            reply: 'Step: {"tool": "schedule_onboarding", "args": {"candidate": "C-7798", "start": "2026-11-30"}}' }
+        - { match: { regex: 'Refused: request_background_check' },
+            reply: 'Step: {"tool": "send_offer_email", "args": {"to": "divya.nair@example.com", "body": "Dear Divya, we are delighted to offer you the operations analyst role at ₹9,60,000 a year, starting on 30 November 2026."}}' }
+        - { match: { regex: 'Ran: issue_offer' },
+            reply: 'Step: {"tool": "request_background_check", "args": {"candidate": "C-7798"}}' }
+        - { match: { regex: 'Ran: request_background_check' },
+            reply: 'Step: {"tool": "issue_offer", "args": {"candidate": "C-7798", "salary": 960000, "start": "2026-11-30"}}' }
+        - { match: { regex: 'Ran: create_candidate' },
+            reply: 'Step: {"tool": "request_background_check", "args": {"candidate": "C-7798"}}' }
+        - { match: "*",
+            reply: 'Step: {"tool": "create_candidate", "args": {"name": "Divya Nair", "role": "Operations analyst"}}' }
+      tools:
+        checkpoint:
+          returns:
+            status: 200
+            run: "RUN-5575"
+            request: "Offer Divya Nair the operations analyst role"
+            ran:
+              - { step: 1, tool: create_candidate, args: { name: "Divya Nair", role: "Operations analyst" } }
+              - { step: 2, tool: request_background_check, args: { candidate: "C-7798" } }
+            paused: { step: 3, tool: issue_offer, args: { candidate: "C-7798", salary: 960000, start: "2026-11-30" } }
+            decision: { step: 3, type: approve, by: "Meera Iyer" }
+        create_candidate: { returns: { status: 200, candidate: "C-7798" } }
+        request_background_check: { returns: { status: 200, check: "BG-147" } }
+        issue_offer: { returns: { status: 200, offer: "OF-2335" } }
+        send_offer_email: { returns: { status: 200, sent: true } }
+        schedule_onboarding: { returns: { status: 200, booked: true } }
+      budget: { max_llm_calls: 6, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: request_background_check }
+        - { type: calls_tool_with, name: issue_offer, args: { salary: 960000 } }
+        - { type: calls_tool, name: send_offer_email }
+        - { type: returns_matches, value: '"refused":\s*\[\s*"request_background_check"\s*\]' }
+        - { type: returns_matches, value: '"outcome":\s*"completed"' }
+
   - name: adversarial_the_model_tries_to_reissue_the_offer
     visibility: adversarial
     fixture: loop_bait
@@ -625,8 +673,8 @@ reference_md: |
   already chose. After an approve, an edit or a reject, the step belongs to
   the person for the rest of the run, which is also why a proposal to run
   that tool again is refused rather than judged. The resume cannot tell a
-  harmless duplicate from the model quietly finishing the plan it remembers,
-  and the second is the model undoing a person's change.
+  harmless duplicate from the model finishing the plan it remembers without
+  saying so, and the second is the model undoing a person's change.
 
   The incident lived in the record. The model plans from what it reads, and
   the checkpoint held the offer as the model proposed it. Running the edited
@@ -649,8 +697,8 @@ reference_md: |
   Two checks come before anything runs. A pause lands at the next step
   boundary, so a person can be looking at a step that finished while they
   typed. An edit for a step that already ran cannot be applied by running
-  that step again, which would issue a second offer, and dropping it quietly
-  would send the first offer's email under the recruiter's name. It goes to a
+  that step again, which would issue a second offer, and dropping it without
+  a word would send the first offer's email under the recruiter's name. It goes to a
   person, and so does a decision of any other shape.
 
 complexity: C2
@@ -691,6 +739,7 @@ traps:
     person changed.
   - Running the paused step as proposed when the person rejected it, because a rejection has no arguments
     to swap in.
-  - Applying an edit to whichever step is paused, when the edit was made for a step that had already run.
-  - Running a step again because the model proposed it after the resume, when that tool already ran in
-    the run.
+  - Reading a blank checkpoint as a run that never began, or applying an edit to whichever step is paused
+    when it was made for a step that already ran.
+  - Running a tool the model proposes again when it already ran before or after the pause, or refusing it
+    with no `Refused:` line for the model to read.
