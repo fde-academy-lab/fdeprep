@@ -286,8 +286,10 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
                              query={{ q: question.slug, mode: typed ? typedMode : mode, ...(typed ? { input: "typed" } : {}),
                                       ...(track ? { track } : {}) }} />
           {/* The room is content, drawn in the diagram tones, and appears
-              only here, while no answer runs, and on the debrief. */}
-          <div className="mb-3 overflow-hidden rounded-panel border border-border bg-surface">
+              only here, while no answer runs, and on the debrief. The frame
+              fits the drawing, as on the debrief and the interviewers page,
+              so the room never sits off to one side of an empty panel. */}
+          <div className="mb-3 w-fit max-w-full overflow-hidden rounded-panel border border-border">
             <InterviewRoom size="lobby"
                            interviewers={seated.map((person) => ({ slug: person.slug, name: person.name,
                                                                    role: person.title }))} />
