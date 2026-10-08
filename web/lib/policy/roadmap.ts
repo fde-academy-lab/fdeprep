@@ -291,9 +291,12 @@ export async function nextUp(
   const roadmap = await roadmapFor(enrolmentId, client);
   const unsolved = roadmap.items.filter((item) => !item.solved);
 
-  const pool = roadmap.optionalUnlocked
+  const ladder = roadmap.optionalUnlocked
     ? [...unsolved.filter((i) => !i.isOptional), ...unsolved.filter((i) => i.isOptional)]
     : unsolved.filter((item) => !item.isOptional);
+  // A drill has no day (docs/04 section 2.0), so it waits behind every problem
+  // on the path and becomes the next action only when nothing else is left.
+  const pool = [...ladder.filter((i) => i.day !== null), ...ladder.filter((i) => i.day === null)];
 
   if (!pool.length) return { kind: "done", items: [], roadmap };
   if (!roadmap.items.some((item) => item.attempted)) {

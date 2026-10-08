@@ -1374,6 +1374,17 @@ stages:
         acceptance:
           - Every problem merged in the last content round, and every problem written in this one, has been read by a reviewer for its story, its tier, its hints and its kit, and every edit the reviewer marked must or should is applied or skipped with a reason.
           - Every changed code problem's reference still passes every gate and its naive solution still fails a hidden test through the runner, and no prose names a day of the path, because the path moves on every re-lay.
+      - id: S12.18
+        title: Let a problem sit off the 30-day path as a chapter drill
+        type: Feature
+        status: done
+        pr: 45
+        points: 3
+        area: Content
+        finish: 2026-10-08
+        acceptance:
+          - A problem marked drill with no day validates, a drill with a day or a drill flag other than true is refused, and the path tool lays only the problems on the path and, when they do not fit, says how many days they need against the 30 there are.
+          - A drill shows in its chapter and the catalogue labelled Drill, and Home's next action and a chapter's next problem reach a drill only after every unsolved problem on the path.
           - Every new code problem's reference passes every gate and its naive solution fails a hidden test through the runner, the 30-day path is re-laid with the new problems on it, and docs/04 section 2.2 states what each tier asks for.
 
   - id: S13

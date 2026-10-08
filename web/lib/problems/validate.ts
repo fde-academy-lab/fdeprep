@@ -833,7 +833,23 @@ function validateStoryline(
   lineOf: (path: Array<string | number>) => number,
 ): void {
   const day = raw["day"];
-  if (!Number.isInteger(day) || (day as number) < 1 || (day as number) > STORYLINE.days) {
+  const drill = raw["drill"];
+  if (drill !== undefined && drill !== true) {
+    add("no_storyline",
+        `drill is ${String(drill)}. Write drill: true for a problem that sits in its chapter ` +
+        "off the 30-day path, or leave the key out.",
+        lineOf(["drill"]));
+  }
+  if (drill === true) {
+    // A drill sits in its chapter and the catalogue but on no day of the path,
+    // which holds five problems a day at most (amended 8 October 2026).
+    if (day !== undefined) {
+      add("no_storyline",
+          "a drill has no day: it sits in its chapter off the 30-day path. Remove the day, " +
+          "or remove drill: true to put the problem on the path.",
+          lineOf(["day"]));
+    }
+  } else if (!Number.isInteger(day) || (day as number) < 1 || (day as number) > STORYLINE.days) {
     add("no_storyline",
         `day is ${String(day)} and has to be a whole number from 1 to ${STORYLINE.days}: ` +
         "the day of a learner's first 30 days as an FDE this problem belongs to.",

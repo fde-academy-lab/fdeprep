@@ -204,11 +204,14 @@ function toRow(row: Record<string, any>): CatalogueRow {
  * handed over, which is how a chapter with nothing on the path keeps the
  * page's own order.
  */
-export function nextOnPath<T extends Pick<CatalogueRow, "ordinal" | "state">>(
+export function nextOnPath<T extends Pick<CatalogueRow, "ordinal" | "state" | "day">>(
   rows: readonly T[],
 ): T | undefined {
   const place = (row: T) => row.ordinal ?? Number.MAX_SAFE_INTEGER;
-  return [...rows].sort((a, b) => place(a) - place(b)).find((row) => row.state !== "solved");
+  // A drill has no day, so it comes after every problem on the path.
+  const drill = (row: T) => Number(row.day === null);
+  return [...rows].sort((a, b) => drill(a) - drill(b) || place(a) - place(b))
+    .find((row) => row.state !== "solved");
 }
 
 /**

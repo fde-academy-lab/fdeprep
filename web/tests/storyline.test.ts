@@ -26,7 +26,8 @@ describe("the storyline across the catalogue", () => {
   it("uses every one of the 30 days, with three to five problems on each", async () => {
     const perDay = new Map<number, number>();
     for (const { problem } of await catalogue()) {
-      perDay.set(problem.day!, (perDay.get(problem.day!) ?? 0) + 1);
+      if (problem.day === undefined) continue; // a drill, off the path
+      perDay.set(problem.day, (perDay.get(problem.day) ?? 0) + 1);
     }
     expect([...perDay.keys()].sort((a, b) => a - b))
       .toEqual(Array.from({ length: STORYLINE.days }, (_, i) => i + 1));
@@ -44,6 +45,7 @@ describe("the storyline across the catalogue", () => {
       "builds": "fde", "fde-practice": "fde",
     };
     const rows = (await catalogue()).map(({ problem }) => problem)
+      .filter((p) => p.day !== undefined)
       .sort((a, b) => a.day! - b.day!);
     const stages = rows.map((p) => order.indexOf(stageOf[p.track]!));
     expect(stages).toEqual([...stages].sort((a, b) => a - b));
@@ -54,6 +56,7 @@ describe("the storyline across the catalogue", () => {
     for (const { problem } of await catalogue()) {
       const build = problem.kit.build;
       if (!build) continue;
+      expect(problem.day, `${problem.slug} is a build stage, so it stays on the path`).toBeDefined();
       builds.set(build.id, [...(builds.get(build.id) ?? []), { stage: build.stage, day: problem.day! }]);
     }
     expect(builds.size).toBeGreaterThan(0);
@@ -84,6 +87,16 @@ describe("the storyline rule", () => {
       const report = validateProblemYaml(withField(source, "day", day), file, { requireKit: true });
       expect(report.errors.map((e) => e.rule)).toContain("no_storyline");
     }
+  });
+
+  it("lets a drill sit off the path, and refuses a drill that names a day", async () => {
+    const { source, file } = (await catalogue())[0]!;
+    const rules = (yaml: string) =>
+      validateProblemYaml(yaml, file, { requireKit: true }).errors.map((e) => e.rule);
+    const drill = withField(withField(source, "day", null), "drill", "true");
+    expect(rules(drill)).toEqual([]);
+    expect(rules(withField(drill, "day", "12"))).toContain("no_storyline");
+    expect(rules(withField(withField(source, "day", null), "drill", "false"))).toContain("no_storyline");
   });
 
   it("refuses a catalogue problem with no skill line", async () => {

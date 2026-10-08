@@ -13,6 +13,10 @@ the order their old days gave them, so an author's sequence survives a
 re-run. The forward deployed stage keeps its old order outright, because each
 build runs its four stages on consecutive days.
 
+A problem marked `drill: true` has no day and is left out: it sits in its
+chapter off the path (docs/04 section 2.0, amended 8 October 2026). When the
+path problems no longer fit, mark the most repetitive ones as drills.
+
 The storyline test in web/tests/storyline.test.ts holds the same limits.
 """
 
@@ -47,6 +51,8 @@ def catalogue() -> list[dict]:
         if path.parent.name == "_fixtures":
             continue
         raw = yaml.safe_load(path.read_text())
+        if raw.get("drill"):
+            continue
         rows.append({"path": path, "slug": raw["slug"], "track": raw["track"],
                      "difficulty": raw["difficulty"], "day": int(raw.get("day") or 0)})
     return rows
@@ -63,8 +69,10 @@ def split_days(counts: list[int]) -> list[int]:
             break
         days[max(room, key=lambda k: counts[k] / days[k])] += 1
     if sum(days) != DAYS:
-        raise SystemExit(f"{sum(counts)} problems in stages of {counts} cannot fill {DAYS} "
-                         f"days at {MIN_PER_DAY} to {MAX_PER_DAY} a day")
+        raise SystemExit(f"{sum(counts)} problems on the path in stages of {counts} need "
+                         f"{sum(days)} days at {MIN_PER_DAY} to {MAX_PER_DAY} a day, and the path "
+                         f"has {DAYS}. Mark problems in the most crowded stage drill: true "
+                         "(docs/04 section 2.0).")
     return days
 
 

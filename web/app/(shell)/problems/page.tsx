@@ -284,6 +284,7 @@ function Row({ row, line, dayFirst }: {
             : null}
           <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-meta">
             {!dayFirst && row.day ? <span className="tnum text-text-faint">Day {row.day}</span> : null}
+            {row.day === null ? <span className="text-text-faint">Drill</span> : null}
             <DifficultyMeter difficulty={row.difficulty} />
             <TrackLabel track={row.track} topic={row.topic} />
             <span className="text-text-faint">{TYPE_LABEL[row.artefactType] ?? row.artefactType}</span>

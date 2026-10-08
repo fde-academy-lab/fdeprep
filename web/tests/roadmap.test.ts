@@ -174,11 +174,15 @@ describe("one path order on every screen", () => {
   it("puts a row the path does not carry after every row it does, in the order it came", () => {
     // The chapter page hands its rows over in its own tier order, which is
     // the order a chapter with nothing on the path falls back to.
-    const row = (slug: string, ordinal: number | null, state: SolveState = "untouched") =>
-      ({ slug, ordinal, state });
+    const row = (slug: string, ordinal: number | null, state: SolveState = "untouched",
+                 day: number | null = 1) => ({ slug, ordinal, state, day });
     expect(nextOnPath([row("a", null), row("b", 7), row("c", 3)])?.slug).toBe("c");
     expect(nextOnPath([row("a", null), row("b", null)])?.slug).toBe("a");
     expect(nextOnPath([row("a", 1, "solved"), row("b", null)])?.slug).toBe("b");
+    // A drill has no day, so a problem on the path comes first even when the
+    // drill sits earlier in the learner's order.
+    expect(nextOnPath([row("d", 1, "untouched", null), row("b", 7)])?.slug).toBe("b");
+    expect(nextOnPath([row("d", 1, "untouched", null), row("b", 7, "solved")])?.slug).toBe("d");
   });
 });
 

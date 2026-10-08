@@ -120,6 +120,9 @@ export default async function ChapterPage({ params }: { params: Promise<{ chapte
                           <span className="mt-0.5 block text-meta text-text-dim">{renderCode(row.question)}</span>
                         ) : null}
                       </span>
+                      {row.day === null ? (
+                        <span className="shrink-0 pt-0.5 text-meta text-text-faint">Drill</span>
+                      ) : null}
                       <span className="shrink-0 pt-0.5"><DifficultyMeter difficulty={row.difficulty} /></span>
                     </Link>
                   </li>
