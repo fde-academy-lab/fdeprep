@@ -79,6 +79,27 @@ function passing(llmCalls = 4): Record<string, unknown> {
   };
 }
 
+/**
+ * A Run that passed what a Run executes: the static gate, the public cases and
+ * the step checks. The hidden and adversarial gates are skipped and there is no
+ * score, which is the only shape the result writer accepts from a Run (docs/03
+ * section 1.2); a Run result carrying hidden cases is turned into an error.
+ */
+function runPassing(llmCalls = 4): Record<string, unknown> {
+  return {
+    verdict: "pass", score: null,
+    gates: {
+      static: { status: "pass" },
+      public: { status: "pass", passed: 2, total: 2, cases: [] },
+      hidden: { status: "skipped", passed: 0, total: 0, cases: [] },
+      adversarial: { status: "skipped", passed: 0, total: 0, cases: [] },
+    },
+    budget: { llm_calls: llmCalls, tool_calls: 1, wall_ms: 5, max_llm_calls: 6,
+              within_budget: llmCalls <= 6 },
+    runner: { image_tag: "test", duration_ms: 5 },
+  };
+}
+
 /** A defence the judge passed, which reports no call budget. */
 const defencePassed = {
   verdict: "pass", score: 85,
@@ -123,9 +144,9 @@ describe("the rule, in one place", () => {
 });
 
 describe("a pass that is not a graded submit", () => {
-  it("leaves a cell at attempted after a Run passes every gate", async () => {
+  it("leaves a cell at attempted after a Run passes every gate it runs", async () => {
     const id = await problem("parse-a-tool-action");
-    await settle(await submit(id, "run"), passing());
+    await settle(await submit(id, "run"), runPassing());
     expect(new Set(await cells(id))).toEqual(new Set(["attempted"]));
   });
 
@@ -149,7 +170,7 @@ describe("a pass that is not a graded submit", () => {
 
   it("recomputes the same way, so a correction cannot promote a Run", async () => {
     const id = await problem("parse-a-tool-action");
-    await settle(await submit(id, "run"), passing());
+    await settle(await submit(id, "run"), runPassing());
     await inTransaction((client) => recomputeForEnrolment(client, learner.enrolmentId));
     expect(new Set(await cells(id))).toEqual(new Set(["attempted"]));
   });
@@ -158,7 +179,7 @@ describe("a pass that is not a graded submit", () => {
 describe("a graded submit still earns its state", () => {
   it("earns clean after a Run passed, and keeps it", async () => {
     const id = await problem("parse-a-tool-action");
-    await settle(await submit(id, "run"), passing());
+    await settle(await submit(id, "run"), runPassing());
     await settle(await submit(id, "submit", "# better"), passing());
     expect(new Set(await cells(id))).toEqual(new Set(["clean"]));
 
