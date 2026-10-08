@@ -124,7 +124,7 @@ Live runs dominate. At the 10 per day cap, the ceiling is 2,000 model conversati
 
 Probes run twice each for agreement, which doubles that line. It is worth the cost, because a prompt-surgery result that flips between submissions destroys confidence in every other result on the platform.
 
-Set an AWS Budgets alarm on the Bedrock line at a monthly figure you pick, alerting at 50 and 80 percent. Do this before the first learner signs in, not after the first surprise.
+Set an AWS Budgets alert at a monthly figure you pick, filtered on the AWS Marketplace billing entity, alerting at 50 and 80 percent. The model provider bills its charges through AWS Marketplace, so a budget filtered on the Amazon Bedrock service misses them. DEPLOY.md section 8.1 has the steps and the source. Do this before the first learner signs in.
 
 ---
 
@@ -136,7 +136,7 @@ Three, and no more, because an alarm nobody reads is worse than no alarm.
 |---|---|---|
 | Runner throttled (was: queue backing up, amended 30 September 2026) | Lambda `Throttles` on the runner above zero in 5 minutes. With no SQS queue there is no queue age; a submission waits when Lambda refuses the worker's call for want of capacity. | Check the account's concurrent executions quota in Service Quotas, then any reserved concurrency on the runner. Queue depth is on the admin Ops screen. |
 | Runner failing | Lambda error rate over 5 percent over 15 minutes | Read the last `runner_event` rows, roll back the runner image tag |
-| Token spend | AWS Budgets at 80 percent of the monthly figure | Lower the `live_daily` cap in the admin screen |
+| Token spend | The AWS Budgets alert on the AWS Marketplace billing entity reaches 80 percent of the monthly figure | Lower the `live_daily` cap in the admin screen |
 
 Route all three to a shared channel, not to one person.
 
