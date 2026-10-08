@@ -74,6 +74,41 @@ Beats are the answer pathway. Anchors are cheap string matches used for live cue
 
 Authoring rule: four to six beats. Three is not a pathway, seven is a script.
 
+Amended 9 October 2026. A question also names the loop it comes from and
+teaches how to answer it. `round` is one of six: hiring-manager-screen,
+technical-deep-dive, system-design, client-role-play, decomposition-case
+and judgement-call. `tests` is one sentence naming the competency in plain
+words. `interviewers` lists the personas that ask it, from
+`voice-interviewers/`, and the picker filters on them. `builds_on` lists
+catalogue problem slugs the question builds on, and the validator refuses
+one that is not a file under `problems/`. `framework` is a four-line card,
+answer first, evidence with a number, the trade-off to name, and what to
+say when you do not know part of it, written for this question so it is
+also the worked example. `tips` are two to four sentences people overlook.
+`interview_rounds`, optional, caps the follow-up rounds in interview mode
+at one to five; absent, the policy module sets it by difficulty. The
+scenario names a company of a named scale, in the catalogue's convention,
+never a real incident at a real company.
+
+---
+
+## 2a. The interviewers
+
+Added 9 October 2026. Nine personas live in `voice-interviewers/`, one YAML
+file each: an engineering lead, a CTO, a CEO, a solution architect, a
+senior AI engineer, a hiring manager, a client sponsor, a panel of three
+and a bar raiser. Each has a name, a role at a company of a named scale,
+what they listen for, an opening line, a follow-up style, two or three
+stress probes and an Amazon Polly voice, distinct per person and verified
+against the available voices table on 30 September 2026. The panel names
+three members, chair first. The files validate in CI and import with the
+questions into `voice_interviewer`. The learner picks an interviewer on the
+lobby; the browser sends a slug and the server resolves it, defaulting to
+the question's first. The interviewer reads the question and the opening
+line in their voice, interrupts in pressure mode in their voice, and asks
+the follow-up rounds of interview mode. Speech said more than once is
+cached once per voice and text in `voice_spoken_line`.
+
 ---
 
 ## 3. Guided mode, the cockpit
@@ -527,6 +562,8 @@ Twelve questions for the first cohort, each with beats, anchors, a rubric and th
 The client-communication questions matter most and are the ones no coding platform covers.
 
 Amended 8 October 2026: the PDLC and SDLC simulations (docs/04 section 2.0) each close on a client-communication question, explaining to the sponsor why the POC's number for the board is 58 and not 81, and defending the bolt 2 plan to a sponsor who wants dates. The set is fourteen questions, and client-communication holds five.
+
+Amended 9 October 2026: every question names its round, its competency in one sentence, the interviewers who ask it, the problems it builds on, a framework card and the tips people overlook. The table above is unchanged.
 
 ---
 

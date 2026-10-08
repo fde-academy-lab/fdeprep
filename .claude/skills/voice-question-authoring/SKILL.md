@@ -5,12 +5,14 @@ description: Author a Voice Screen interview question with beats, live cue ancho
 
 # Voice question authoring
 
-Read `docs/07-VOICE-SCREEN.md` sections 2 and 6 first.
+Read `docs/07-VOICE-SCREEN.md` sections 2, 2a and 6 first.
 
 ## The loop
 
 1. **Write the question as something a person says.** A client, an
-   interviewer, a colleague. Not a prompt.
+   interviewer, a colleague. Not a prompt. Set it at a company of a named
+   scale, in the catalogue's convention ("an e-commerce marketplace the size
+   of Flipkart"), and never at a real incident at a real company.
 2. **Speak the strong answer out loud and time it.** That duration, rounded up,
    is `total_seconds`. Do not guess it. A question budgeted from imagination is
    always too short.
@@ -27,7 +29,34 @@ Read `docs/07-VOICE-SCREEN.md` sections 2 and 6 first.
 7. **Write the rubric last**, so it describes what separated your three
    exemplars rather than what you hoped it would measure.
 8. **Write follow-ups for Pressure mode** that attack the weakest load-bearing
-   claim in the strong answer.
+   claim in the strong answer. Write two: interview mode asks them as its
+   fallback when the model is late, in order, before the interviewer's own
+   probes.
+9. **Name the round** the question comes from, one of the six in
+   `web/lib/voice/rounds.ts`: hiring-manager-screen, technical-deep-dive,
+   system-design, client-role-play, decomposition-case, judgement-call.
+10. **Write `tests`**: one sentence of at most forty words, ending in a full
+    stop, that names the competency in plain words. It starts "Whether you".
+11. **Name the interviewers** who ask it: two or three slugs from
+    `voice-interviewers/`, the one who asks it best first, because the lobby
+    defaults to the first. Every interviewer needs at least two questions.
+12. **Name what it builds on**: slugs of problems under `problems/` that a
+    learner should have solved first. The validator refuses a slug that is not
+    a file there.
+13. **Write the framework card from your strong exemplar**, four lines of at
+    most three sentences each: `answer_first`, the sentence to open with;
+    `evidence`, with a number; `trade_off`, the one to name out loud; and
+    `if_you_do_not_know`, what to say about the part you cannot answer. It is
+    also the worked example, so write it for this question.
+14. **Write two to four tips** people overlook. Each is a full sentence ending
+    in a full stop, and each ends in a consequence the learner can act on.
+15. **Set `interview_rounds`** only when the default for the difficulty would
+    be wrong. The policy module sets it otherwise: Easy 2, Medium 3, Hard 4,
+    Extreme 5.
+
+Run `npm run validate:voice` in `web/`. It checks every rule above, including
+no em or en dash and no word from `.claude/rules/02-writing.md` in anything a
+learner reads.
 
 ## Anchors are landmarks, not answers
 
