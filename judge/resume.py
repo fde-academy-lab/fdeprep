@@ -15,7 +15,7 @@ import secrets
 import time
 from typing import Any
 
-from .bedrock import Transport, failure_name, is_timeout
+from .bedrock import ThinkingUnavailable, Transport, failure_name, is_timeout
 from .follow_up import EventRefused, elapsed_ms, failed, read_deadline, timeout_for
 from .rubric import fill, load_prompt
 from .schema import JudgeOutputRejected, parse_resume_claims_output
@@ -30,6 +30,9 @@ MAX_TOKENS = 1000
 # attempt that timed out is not retried (judge/bedrock.py), because the
 # deadline it was bounded by has passed.
 RETRIES = 1
+# Off whatever JUDGE_THINKING says, as for the follow-up: the claims are read
+# while the session opens, inside an eight second deadline.
+THINKING = "disabled"
 
 
 def judge_resume_claims_event(event: dict[str, Any], transport: Transport) -> dict[str, Any]:
@@ -56,7 +59,10 @@ def judge_resume_claims_event(event: dict[str, Any], transport: Transport) -> di
     timeout_s = timeout_for(deadline_ms)
     try:
         raw = transport.complete(system=system, user=user, max_tokens=MAX_TOKENS,
-                                 timeout_s=timeout_s, retries=RETRIES)
+                                 timeout_s=timeout_s, retries=RETRIES, thinking=THINKING)
+    except ThinkingUnavailable:
+        return failed("error", "The configured model cannot turn thinking off, so the resume "
+                               "was not read.", started=started)
     except Exception as failure:  # noqa: BLE001 - the session opens without claims
         calls = transport.calls - before
         if is_timeout(failure):

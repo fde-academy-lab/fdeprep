@@ -14,7 +14,7 @@ import re
 import pytest
 
 from judge.bedrock import BedrockTransport, ScriptedTransport, is_timeout
-from judge.config import JudgeConfig
+from judge.config import ADAPTIVE_ONLY, JudgeConfig
 from judge.handler import judge_event
 
 AISHA = {
@@ -489,3 +489,41 @@ class TestTheBedrockTransport:
         with pytest.raises(RuntimeError):
             transport.complete(system="s", user="u", retries=0)
         assert transport.last_usage is None
+
+
+def adaptive_judge(*outcomes, model_id: str = "m") -> tuple[BedrockTransport, FakeBedrock]:
+    client = FakeBedrock(*outcomes)
+    config = JudgeConfig(model_id=model_id, region="r", thinking="adaptive", backoff_s=0)
+    return BedrockTransport(config, client_factory=lambda _config: client), client
+
+
+class TestThinkingIsAlwaysOff:
+    """A 200 token question inside a four second deadline has no room for
+    thinking, so the follow-up turns it off whatever JUDGE_THINKING says."""
+
+    def test_the_call_asks_for_thinking_off(self):
+        _, transport = sent_for(follow_up_event())
+        assert transport.sent[0]["thinking"] == "disabled"
+
+    def test_an_adaptive_judge_sends_the_follow_up_with_thinking_off(self):
+        transport, client = adaptive_judge(converse_reply(reply()))
+        assert judge_event(follow_up_event(), transport)["status"] == "ok"
+        [request] = client.requests
+        assert request["additionalModelRequestFields"]["thinking"] == {"type": "disabled"}
+        assert request["inferenceConfig"]["temperature"] == 0
+
+    def test_every_other_call_keeps_the_judges_own_mode(self):
+        transport, client = adaptive_judge(converse_reply("ok"))
+        transport.complete(system="s", user="u")
+        [request] = client.requests
+        assert request["additionalModelRequestFields"]["thinking"] == {"type": "adaptive"}
+        assert "temperature" not in request["inferenceConfig"]
+
+    def test_a_model_that_cannot_turn_thinking_off_is_refused_before_a_call(self):
+        """AWS answers thinking off with a 400 on these models, so the round
+        falls back at once and nothing is sent or billed."""
+        transport, client = adaptive_judge(model_id=f"us.{ADAPTIVE_ONLY[0]}test")
+        result = judge_event(follow_up_event(), transport)
+        assert (result["status"], result["reason"], result["model_calls"]) == ("error", "error", 0)
+        assert "cannot turn thinking off" in result["message"]
+        assert client.requests == []

@@ -17,7 +17,7 @@ import secrets
 import time
 from typing import Any
 
-from .bedrock import Transport, failure_name, is_timeout
+from .bedrock import ThinkingUnavailable, Transport, failure_name, is_timeout
 from .rubric import fill, load_prompt
 from .schema import FOLLOW_UP_KINDS, JudgeOutputRejected, parse_follow_up_output
 
@@ -25,6 +25,9 @@ FOLLOW_UP_PROMPT = "voice-follow-up.v1.md"
 DEFAULT_DEADLINE_MS = 4000
 MAX_TOKENS = 200
 RETRIES = 0
+# Off whatever JUDGE_THINKING says: a 200 token question inside a four second
+# deadline has no room for thinking.
+THINKING = "disabled"
 
 # The five levels of why, spelled as web/lib/voice/follow-up.ts spells them.
 WHY_LEVELS = ("specify", "evidence", "mechanism", "alternative", "limit")
@@ -220,7 +223,10 @@ def judge_follow_up_event(event: dict[str, Any], transport: Transport) -> dict[s
     timeout_s = timeout_for(deadline_ms)
     try:
         raw = transport.complete(system=system, user=user, max_tokens=MAX_TOKENS,
-                                 timeout_s=timeout_s, retries=RETRIES)
+                                 timeout_s=timeout_s, retries=RETRIES, thinking=THINKING)
+    except ThinkingUnavailable:
+        return failed("error", "The configured model cannot turn thinking off, so no "
+                               "follow-up was generated.", started=started)
     except Exception as failure:  # noqa: BLE001 - every failure is the server's fallback
         calls = transport.calls - before
         if is_timeout(failure):

@@ -15,7 +15,7 @@ import re
 import pytest
 
 from judge.bedrock import BedrockTransport, ScriptedTransport, failure_name
-from judge.config import JudgeConfig
+from judge.config import ADAPTIVE_ONLY, JudgeConfig
 from judge.handler import judge_event
 from judge.resume import MAX_TOKENS, RESUME_MAX_CHARS
 
@@ -260,3 +260,33 @@ class TestTheOneRetry:
         transport, client = bedrock(RuntimeError("down"), RuntimeError("still down"))
         result = judge_event(resume_event(), transport)
         assert (result["reason"], result["model_calls"], len(client.requests)) == ("error", 2, 2)
+
+
+def adaptive_judge(*outcomes, model_id: str = "m") -> tuple[BedrockTransport, FakeBedrock]:
+    client = FakeBedrock(*outcomes)
+    config = JudgeConfig(model_id=model_id, region="r", thinking="adaptive", backoff_s=0)
+    return BedrockTransport(config, client_factory=lambda _config: client), client
+
+
+class TestThinkingIsAlwaysOff:
+    """The claims are read while the session opens, inside an eight second
+    deadline, so the call turns thinking off whatever JUDGE_THINKING says."""
+
+    def test_the_call_asks_for_thinking_off(self):
+        _, transport = run(resume_event(), claims_reply(*CLAIMS))
+        assert transport.sent[0]["thinking"] == "disabled"
+
+    def test_an_adaptive_judge_reads_the_resume_with_thinking_off(self):
+        transport, client = adaptive_judge(converse_reply(claims_reply(*CLAIMS)))
+        assert judge_event(resume_event(), transport)["claims"] == CLAIMS
+        [request] = client.requests
+        assert request["additionalModelRequestFields"]["thinking"] == {"type": "disabled"}
+        assert request["inferenceConfig"]["temperature"] == 0
+
+    def test_a_model_that_cannot_turn_thinking_off_is_refused_before_a_call(self):
+        transport, client = adaptive_judge(model_id=f"us.{ADAPTIVE_ONLY[0]}test")
+        result = judge_event(resume_event(), transport)
+        assert (result["status"], result["reason"], result["model_calls"]) == ("error", "error", 0)
+        assert "cannot turn thinking off" in result["message"]
+        assert client.requests == []
+        assert SENTINEL not in json.dumps(result)

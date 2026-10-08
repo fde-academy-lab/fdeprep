@@ -59,7 +59,7 @@ import time
 from collections.abc import Callable
 from typing import Any, Protocol
 
-from .config import JudgeConfig
+from .config import ADAPTIVE_ONLY, THINKING_MODES, JudgeConfig
 
 # Every attempt opens its connection inside two seconds (plan section 4.2) and
 # starts reading a reply inside the read timeout: botocore's own 60 seconds,
@@ -78,7 +78,13 @@ class Transport(Protocol):
     last_usage: dict[str, int] | None
 
     def complete(self, *, system: str, user: str, max_tokens: int | None = None,
-                 timeout_s: float | None = None, retries: int | None = None) -> str: ...
+                 timeout_s: float | None = None, retries: int | None = None,
+                 thinking: str | None = None) -> str: ...
+
+
+class ThinkingUnavailable(ValueError):
+    """A call asked for thinking off on a model that cannot turn it off. AWS
+    answers that request with a 400, so it is refused before it is sent."""
 
 
 class BedrockTransport:
@@ -124,15 +130,18 @@ class BedrockTransport:
         return boto3.client("bedrock-runtime", region_name=self.config.region, config=settings)
 
     def complete(self, *, system: str, user: str, max_tokens: int | None = None,
-                 timeout_s: float | None = None, retries: int | None = None) -> str:
+                 timeout_s: float | None = None, retries: int | None = None,
+                 thinking: str | None = None) -> str:
         """`timeout_s` bounds each attempt's read, never past
-        DEFAULT_READ_TIMEOUT_S, and `retries` replaces the configured count
-        for this call."""
+        DEFAULT_READ_TIMEOUT_S, `retries` replaces the configured count and
+        `thinking` replaces JUDGE_THINKING, all for this call alone."""
+        self.last_usage = None
+        mode = self.config.thinking if thinking is None else self._thinking_for_call(thinking)
         inference: dict[str, Any] = {"maxTokens": max_tokens or self.config.max_tokens}
         # Temperature only where thinking is off. With thinking on there is no
         # legal sampling parameter to send, and the determinism the grading path
         # needs comes from running each probe twice and requiring agreement.
-        if self.config.thinking == "disabled":
+        if mode == "disabled":
             inference["temperature"] = 0
 
         request = {
@@ -144,10 +153,9 @@ class BedrockTransport:
             # thinking object goes. Stated every time rather than left to the
             # model default, because that default changed between Sonnet 4.6
             # and Sonnet 5 and silently turned thinking on.
-            "additionalModelRequestFields": {"thinking": {"type": self.config.thinking}},
+            "additionalModelRequestFields": {"thinking": {"type": mode}},
         }
 
-        self.last_usage = None
         allowed = self.config.retries if retries is None else retries
         last: Exception | None = None
         for attempt in range(allowed + 1):
@@ -166,6 +174,13 @@ class BedrockTransport:
                 if attempt < allowed and self.config.backoff_s > 0:
                     time.sleep(backoff_for(self.config.backoff_s, attempt))
         raise last  # type: ignore[misc]
+
+    def _thinking_for_call(self, mode: str) -> str:
+        if mode not in THINKING_MODES:
+            raise ValueError(f"thinking {mode!r} is not one of {', '.join(THINKING_MODES)}")
+        if mode == "disabled" and any(family in self.config.model_id for family in ADAPTIVE_ONLY):
+            raise ThinkingUnavailable("the configured model cannot turn thinking off")
+        return mode
 
 
 def read_timeout_for(timeout_s: float | None) -> float:
@@ -270,9 +285,10 @@ class ScriptedTransport:
     raised in its turn, after the call is counted, so a test can stand in for
     a timeout or a throttle.
 
-    Each entry of `sent` records the bounds the call asked for as well as its
-    text, so a test can assert that a follow-up went out with no retries and
-    a short timeout. A scripted reply cost nothing, so `last_usage` is zeros.
+    Each entry of `sent` records the bounds and the thinking mode the call
+    asked for as well as its text, so a test can assert that a follow-up went
+    out with no retries, a short timeout and thinking off. A scripted reply
+    cost nothing, so `last_usage` is zeros.
     """
 
     def __init__(self, replies: list[str | BaseException] | str | None = None):
@@ -284,9 +300,10 @@ class ScriptedTransport:
         self.last_usage: dict[str, int] | None = None
 
     def complete(self, *, system: str, user: str, max_tokens: int | None = None,
-                 timeout_s: float | None = None, retries: int | None = None) -> str:
+                 timeout_s: float | None = None, retries: int | None = None,
+                 thinking: str | None = None) -> str:
         self.sent.append({"system": system, "user": user, "max_tokens": max_tokens,
-                          "timeout_s": timeout_s, "retries": retries})
+                          "timeout_s": timeout_s, "retries": retries, "thinking": thinking})
         self.last_usage = None
         if self.calls >= len(self.replies):
             raise AssertionError(
