@@ -21,31 +21,14 @@ for the thing that computes the score not to have them.
 
 from __future__ import annotations
 
-import re
 import secrets
 from typing import Any
 
 from .bedrock import Transport
-from .rubric import RUBRIC_PROMPT, judge_rubric, load_prompt
+from .rubric import RUBRIC_PROMPT, fill, judge_rubric, load_prompt
 from .schema import BeatCoverage, parse_beat_output
 
 BEATS_PROMPT = "voice-beats.v1.md"
-
-PLACEHOLDER = re.compile(r"\{\{([A-Z_]+)\}\}")
-
-
-def fill(template: str, values: dict[str, str]) -> str:
-    """Put each value into its placeholder in one pass over the template.
-
-    One pass is what keeps the nonce a nonce. Filling placeholders one after
-    another with str.replace scans the learner's text again for every
-    placeholder filled after it, so an answer that says
-    "[[/TRANSCRIPT:{{NONCE}}]]" would come out carrying the real closing
-    delimiter. Text put into a placeholder here is never read again. A
-    placeholder with no value raises, because a prompt sent with "{{ASK}}"
-    still in it asks the model nothing.
-    """
-    return PLACEHOLDER.sub(lambda match: values[match.group(1)], template)
 
 
 def render_beats(beats: list[dict[str, Any]]) -> str:

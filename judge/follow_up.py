@@ -18,9 +18,8 @@ import time
 from typing import Any
 
 from .bedrock import Transport, failure_name, is_timeout
-from .rubric import load_prompt
+from .rubric import fill, load_prompt
 from .schema import FOLLOW_UP_KINDS, JudgeOutputRejected, parse_follow_up_output
-from .voice import fill
 
 FOLLOW_UP_PROMPT = "voice-follow-up.v1.md"
 DEFAULT_DEADLINE_MS = 4000

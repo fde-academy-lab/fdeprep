@@ -17,9 +17,8 @@ from typing import Any
 
 from .bedrock import Transport, failure_name, is_timeout
 from .follow_up import EventRefused, elapsed_ms, failed, read_deadline, timeout_for
-from .rubric import load_prompt
+from .rubric import fill, load_prompt
 from .schema import JudgeOutputRejected, parse_resume_claims_output
-from .voice import fill
 
 RESUME_PROMPT = "voice-resume-claims.v1.md"
 # Plan section 4.8. The server refuses a longer paste before it gets here.
