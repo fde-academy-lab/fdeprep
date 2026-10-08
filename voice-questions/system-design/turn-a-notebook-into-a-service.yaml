@@ -5,10 +5,26 @@ difficulty: medium
 total_seconds: 140
 competencies: [system-design, cost-and-latency, client-communication]
 
+round: system-design
+tests: Whether you put the contract before the code, name where notebook state hides and what the second request sees, and protect the behaviour that already works.
+interviewers: [solution-architect, engineering-lead, hiring-manager]
+builds_on: [key-the-cache-on-the-whole-request, give-every-customer-their-own-thread, record-every-call-the-agent-makes]
+
 prompt_text: |
-  Their data scientist has a notebook that does the extraction, and it works.
-  They want it behind an endpoint by the end of the month. Walk me through
-  what that actually involves.
+  At a pharmacy chain the size of Apollo Pharmacy, their data scientist has
+  a notebook that extracts the lines of a prescription, and it works. They
+  want it behind an endpoint by the end of the month. Walk me through what
+  that involves.
+
+framework:
+  answer_first: The notebook proves the approach on the inputs she tried and proves nothing about the second request. The first thing I write is the contract. What goes in, what comes back, what errors look like, and a version.
+  evidence: Fifty real inputs with the notebook's outputs recorded in week one. That is the only specification of correct behaviour anyone has, and it becomes the regression suite.
+  trade_off: Writing the contract first costs a few days before any code moves. Skipping it means the first integration turns an accidental shape into a promise you have to keep.
+  if_you_do_not_know: If you cannot say where the state hides, say what you would look for. A client created at the top, a variable that accumulates, a cached dataframe, and the second request is where each one shows.
+tips:
+  - Say what the notebook is and is not evidence of before you list the work. It has only ever run one request at a time with her watching.
+  - Name the observability by the question it answers. Why was this request slow, and why did this one cost four dollars. A list of tools answers neither.
+  - End of the month is a question about traffic. Ask how many requests a minute before you agree to the date.
 
 beats:
   - id: b1

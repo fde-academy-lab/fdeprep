@@ -5,10 +5,26 @@ difficulty: hard
 total_seconds: 240
 competencies: [client-communication, evaluation-design, failure-mode-analysis]
 
+round: client-role-play
+tests: Whether you can say what a flattering number measures, replace it with the comparison that holds, and hand the sponsor a sentence she can say without being wrong.
+interviewers: [client, ceo, panel]
+builds_on: [fund-the-agent-5-score-the-poc-on-both-groups, prove-whether-the-pilot-earned-expansion]
+
 prompt_text: |
-  The head of customer service has put the POC's 81 percent on Friday's
-  board slide. You have the whole-group numbers: 58 against 49. She is on the
-  call now. Tell her what the board should hear.
+  You are the FDE on the field-service agent at an appliance maker the size
+  of Voltas. The head of customer service has put the POC's 81 percent on
+  Friday's board slide. You have the whole-group numbers: 58 against 49. She
+  is on the call now. Tell her what the board should hear.
+
+framework:
+  answer_first: The 81 is true and it measures the customers who answered the chat. The POC's result is 58 against 49 across every request, and that is the number nobody can pull apart.
+  evidence: 1,067 of 1,840 repaired within three days against 877 of 1,790 held back, nine points, in the same weeks and cities. The 22 percent for the people who never finished the chat is a number she will be asked about, so give it to her first.
+  trade_off: The 81 flatters and breaks when someone checks it. The 58 is smaller and survives. She can keep the 81 as a second line if she says what it counts.
+  if_you_do_not_know: If you cannot explain the number for the people who did not reply, say what you know about who they are and what you would check, and do not concede a harm the data does not show.
+tips:
+  - Say what the 81 counts before you say what the slide gets wrong. She put it on the slide, and the order decides whether she hears you.
+  - The held-back group is the comparison because requests were split at random in the same weeks. Last summer's 4.3 days is the season.
+  - Give her the sentence for Friday in her words, and say that nobody has to hear that anything was wrong.
 
 beats:
   - id: b1

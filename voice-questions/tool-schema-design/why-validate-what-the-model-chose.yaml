@@ -5,10 +5,26 @@ difficulty: easy
 total_seconds: 125
 competencies: [tool-schema-design, prompt-hardening, agent-loop]
 
+round: hiring-manager-screen
+tests: Whether you place the model's output on the untrusted side, separate shape from meaning from permission, and say what a rejection does next.
+interviewers: [hiring-manager, engineering-lead, senior-ai-engineer]
+builds_on: [reject-invalid-action-arguments, validate-and-repair-once, write-errors-the-model-can-fix, check-the-policy-before-the-action-runs]
+
 prompt_text: |
-  Their engineer asks why you have put a validation layer between the model
-  and the tools. The model already knows the schema, it is in the tool
-  definition, and he thinks the layer is duplicated work.
+  You are building a refunds agent for a payments company the size of
+  Razorpay. Their engineer asks why you have put a validation layer between
+  the model and the tools. The model already knows the schema, it is in the
+  tool definition, and he thinks the layer is duplicated work.
+
+framework:
+  answer_first: The schema in the tool definition is a description of what you would like. Nothing enforces it on the way out, so the layer is the only enforcement there is.
+  evidence: A refund amount sent as the boolean true passes an integer check in Python, because bool subclasses int, and you refund one penny with a success response. One concrete failure beats three principles.
+  trade_off: The layer costs one extra model call when it rejects a payload and names the field. Without it the cost is an incident nobody logs.
+  if_you_do_not_know: If you cannot think of a failure on the spot, say the three things you check, shape, meaning and permission, and give one example of the last two.
+tips:
+  - The model usually gets it right, and that is the problem, because you find out on the day it does not.
+  - Say what happens on rejection. Name the field, put it back in front of the model, do not raise. A rejection that raises gives the caller a stack trace, and one that logs silently gets the same payload again.
+  - When he says a typed library could coerce instead, say what coercion hides. A value that was wrong becomes a value that looks right.
 
 beats:
   - id: b1

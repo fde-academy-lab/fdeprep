@@ -5,10 +5,26 @@ difficulty: hard
 total_seconds: 140
 competencies: [agent-loop, system-design, cost-and-latency]
 
+round: judgement-call
+tests: Whether you ask what the current agent gets wrong before you redesign it, and can say what a split costs and what it leaves untouched.
+interviewers: [cto, solution-architect, bar-raiser]
+builds_on: [argue-one-agent-over-a-five-agent-crew, hand-each-specialist-the-facts-it-needs, stop-agents-handing-a-chat-back-and-forth]
+
 prompt_text: |
-  Their team wants to split the one agent into four specialists: a retrieval
-  agent, a planning agent, a writing agent and a reviewer. They have read that
-  this is how you get better results. Tell them what you think.
+  The team that runs the reply-drafting agent at a marketplace the size of
+  Meesho wants to split it into four specialists: a retrieval agent, a
+  planning agent, a writing agent and a reviewer. They have read that this
+  is how you get better results. Tell them what you think.
+
+framework:
+  answer_first: Before I split anything I want to know which cases fail today. Four agents is an answer, and nobody has stated the question.
+  evidence: Name the costs with a number where you can. Roughly four times the tokens, latency that stacks because the agents run in sequence, and whatever the retrieval agent knew that the writer never sees.
+  trade_off: A split earns its place when two parts need different permissions or tools. It costs you context at every handover and gives you a new problem when the specialists disagree.
+  if_you_do_not_know: If you have no baseline, say that the first job is to get one, and propose the one change you would test on its own, which is usually the reviewer.
+tips:
+  - Ask the baseline question and then answer anyway. Asking it as a way of avoiding an opinion reads as evasion.
+  - If the retrieval is wrong, four agents are wrong four times. Say which failures the split inherits.
+  - Give the case where you would split, with a reason that survives the quality argument. Refusing to split is a side, and the interviewer wants a position.
 
 beats:
   - id: b1

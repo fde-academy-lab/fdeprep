@@ -5,10 +5,26 @@ difficulty: medium
 total_seconds: 135
 competencies: [agent-loop, system-design, client-communication]
 
+round: technical-deep-dive
+tests: Whether you can name the one thing that decides between an agent and a workflow, and settle it on their traffic.
+interviewers: [engineering-lead, solution-architect, senior-ai-engineer]
+builds_on: [choose-a-workflow-before-another-agent, route-tickets-with-rules, escalate-to-a-model-below-a-confidence-bar]
+
 prompt_text: |
-  Their engineering lead says this could be a state machine, and that it would
-  be cheaper to run and easier to debug. He is not being difficult. Answer him
-  as you would in the room.
+  You have proposed an agent to triage delivery complaints at an e-commerce
+  marketplace the size of Flipkart. Their engineering lead says the triage
+  could be a state machine, cheaper to run and easier to debug. He is not
+  being difficult. Answer him as you would in the room.
+
+framework:
+  answer_first: He is right for most tickets. The question that decides it is who picks the next step, and when.
+  evidence: Count the distinct paths in last quarter's tickets. Three paths is a workflow. Forty and growing is the number that argues for an agent.
+  trade_off: An agent buys you the branches you did not draw, and it costs you reproducible debugging and a per-ticket model bill. Say which you are buying.
+  if_you_do_not_know: If you do not know their ticket mix, say so, name the count you would run, and say which way you expect it to go.
+tips:
+  - Concede the case for the workflow in your first sentence. An interviewer who hears you argue for agents on principle stops listening.
+  - Keep the step budget, the tool allowlist and argument validation in both designs. Offering determinism as the workflow's advantage gives away something you never had to give.
+  - End with something checkable on their system. A proposal to count paths beats an opinion about agents.
 
 beats:
   - id: b1
