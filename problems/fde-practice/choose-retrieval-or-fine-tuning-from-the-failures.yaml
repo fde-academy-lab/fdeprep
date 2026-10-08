@@ -14,6 +14,8 @@ competencies:
   - { slug: failure-mode-analysis, weight: 1.0 }
   - { slug: client-communication, weight: 0.5 }
 
+constraints: ["every Monday", "regulator", "60,000", "212", "monthly"]
+
 brief_md: |
   A travel insurer uses an assistant you built to draft claim decision
   letters. It retrieves the policy wording for the customer's product and

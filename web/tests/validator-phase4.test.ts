@@ -63,7 +63,8 @@ est_minutes: 40
 competencies:
   - { slug: evaluation-design, weight: 1.0 }
 brief_md: |
-  A situation someone is in.
+  A situation someone is in, with a launch in two weeks.
+constraints: ["two weeks"]
 word_range: [40, 400]
 required_headings: []
 rubric:
@@ -238,5 +239,50 @@ describe("design problems", () => {
     expect(rules(edge)).not.toContain("exemplar_out_of_range");
     const under = DESIGN.replace(`body_md: "${words(40)}"`, `body_md: "${words(39)}"`);
     expect(rules(under)).toContain("exemplar_out_of_range");
+  });
+});
+
+describe("the constraints a C3 or C4 design answer is read against", () => {
+  // S15.2. names_no_constraint compares an answer with the problem's list,
+  // and with no list it stays silent on every answer, so from C3 up the
+  // validator requires one.
+  const without = DESIGN.replace('constraints: ["two weeks"]\n', "");
+
+  it("rejects a C4 design problem with no constraints, naming what to add", () => {
+    const report = validateProblemYaml(without, "f.yaml");
+    const error = report.errors.find((e) => e.rule === "no_constraints");
+    expect(error).toBeDefined();
+    // The message is the next action: which field, where its terms come
+    // from, and the bar each term has to clear.
+    expect(error!.message).toContain("Add constraints");
+    expect(error!.message).toContain("strong exemplar");
+    // Pointed at the level that asks for the list, since there is no list line.
+    expect(error!.line).toBe(without.split("\n").indexOf("complexity: C4") + 1);
+  });
+
+  it("rejects one at C3 too, and an empty list the same as a missing one", () => {
+    expect(rules(without.replace("complexity: C4", "complexity: C3"))).toContain("no_constraints");
+    const empty = DESIGN.replace('constraints: ["two weeks"]', "constraints: []");
+    const error = validateProblemYaml(empty, "f.yaml").errors
+      .find((e) => e.rule === "no_constraints");
+    expect(error!.line).toBe(empty.split("\n").indexOf("constraints: []") + 1);
+  });
+
+  it("asks nothing of a C1 or C2 design problem, or of a C3 prompt problem", () => {
+    // A C2 answer applies one technique, and a prompt answer is read by its
+    // rules and probes. The heuristic reads design answers only.
+    expect(rules(without.replace("complexity: C4", "complexity: C2"))).not.toContain("no_constraints");
+    expect(rules(PROMPT)).not.toContain("no_constraints");
+  });
+
+  it("rejects a term the rule would skip or that would silence it", () => {
+    // An unquoted number loads as a number, which the heuristic drops, and an
+    // empty term sits inside every answer, so the rule could never fire.
+    for (const list of ["[400]", '["two weeks", ""]', '["  "]', '"two weeks"', "[{ two: weeks }]"]) {
+      const source = DESIGN.replace('constraints: ["two weeks"]', `constraints: ${list}`);
+      expect(rules(source), list).toContain("bad_constraint");
+    }
+    const quoted = DESIGN.replace('constraints: ["two weeks"]', 'constraints: ["400", "two weeks"]');
+    expect(rules(quoted)).toEqual([]);
   });
 });

@@ -14,7 +14,7 @@ import {
   ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, STORYLINE_DAYS, TRACKS, VISIBILITIES,
 } from "./vocabulary.ts";
 import {
-  COMPLEXITIES, defaultComplexity, isComplexity, panelFor,
+  COMPLEXITIES, defaultComplexity, isComplexity, needsConstraints, panelFor,
 } from "../policy/complexity.ts";
 import { validateKit, type Kit, type KitRule } from "./kit.ts";
 
@@ -29,7 +29,7 @@ export type Rule =
   | "bad_complexity" | "panel_without_static" | "panel_mismatch"
   | "unknown_heuristic" | "heuristic_wrong_artefact"
   | "no_complexity" | "no_interview_evidence" | "unknown_track" | "exemplar_out_of_range"
-  | "no_storyline"
+  | "no_storyline" | "no_constraints" | "bad_constraint"
   | KitRule;
 
 export interface ValidationError {
@@ -985,11 +985,63 @@ function validatePrompt(
   });
 }
 
+/**
+ * The brief's constraints, which `names_no_constraint` reads. docs/10 section 4.
+ *
+ * From C3 up a design answer argues under the client's constraints, and the
+ * rule that checks it engaged with them stays silent on every answer when the
+ * problem lists none. The rule matches each term inside the answer, ignoring
+ * case, so a term only works as quoted text: YAML loads an unquoted number as
+ * a number, which the rule skips, and an empty term sits inside every answer
+ * and silences the rule for good.
+ */
+function validateConstraints(
+  raw: Record<string, unknown>,
+  lineOf: (path: Array<string | number>) => number,
+  add: (rule: Rule, message: string, line: number) => void,
+): void {
+  const declared = raw["constraints"];
+  const level = raw["complexity"];
+  if (declared === undefined || (Array.isArray(declared) && declared.length === 0)) {
+    if (isComplexity(level) && needsConstraints(level)) {
+      add("no_constraints",
+          `complexity ${level} asks for an argument under the client's constraints, and this ` +
+          "design problem lists none, so names_no_constraint has nothing to check an answer " +
+          "against. Add constraints: a list of terms from the brief (a date, a budget, a team " +
+          "size, a rule it states), each one named word for word in the strong exemplar.",
+          lineOf([declared === undefined ? "complexity" : "constraints"]));
+    }
+    return;
+  }
+  if (!Array.isArray(declared)) {
+    add("bad_constraint",
+        "constraints is not a list. Write it as a list of quoted terms from the brief, " +
+        'such as constraints: ["two weeks", "200 dollar"].', lineOf(["constraints"]));
+    return;
+  }
+  declared.forEach((term, index) => {
+    if (typeof term !== "string") {
+      add("bad_constraint",
+          `constraint ${index + 1} is not quoted text, so names_no_constraint skips it. ` +
+          'Quote every term, as in "400" or "6 am": YAML reads an unquoted number as a ' +
+          "number and an unquoted colon as a mapping.",
+          lineOf(["constraints", index]));
+    } else if (!term.trim()) {
+      add("bad_constraint",
+          `constraint ${index + 1} is empty. An empty term sits inside every answer, so ` +
+          "names_no_constraint could never fire. Write the term or delete the entry.",
+          lineOf(["constraints", index]));
+    }
+  });
+}
+
 function validateDesign(
   raw: Record<string, unknown>,
   lineOf: (path: Array<string | number>) => number,
   add: (rule: Rule, message: string, line: number) => void,
 ): void {
+  validateConstraints(raw, lineOf, add);
+
   const range = raw["word_range"];
   const ok = Array.isArray(range) && range.length === 2 &&
     typeof range[0] === "number" && typeof range[1] === "number" && range[0] < range[1];

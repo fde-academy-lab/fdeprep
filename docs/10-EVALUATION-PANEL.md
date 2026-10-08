@@ -132,7 +132,7 @@ Heuristics produce findings and never produce a terminal fail on their own, beca
 
 The registry lives in `web/lib/eval/heuristics.ts` and runs inside panelist 1. It runs after the gates rather than before them, which does not soften the deterministic-first rule in `CLAUDE.md`: that rule exists so a cheap check can save a model call, and a rule that cannot fail a submission can never save one.
 
-Every threshold was measured against the catalogue rather than chosen: first on 21 September 2026, when it held 25 problems, and again on 30 September 2026, when it held 92 problems and 12 voice questions. The figures below are from 30 September, and every threshold held.
+Every threshold was measured against the catalogue rather than chosen: first on 21 September 2026, when it held 25 problems, and again on 30 September 2026, when it held 92 problems and 12 voice questions. The figures below are from 30 September, and every threshold held. The `names_no_constraint` row is from 8 October 2026, when its lists were written.
 
 | Rule | Threshold | What the measurement said |
 |---|---|---|
@@ -140,7 +140,7 @@ Every threshold was measured against the catalogue rather than chosen: first on 
 | `single_paragraph` | 400 words in one paragraph | No authored design exemplar is a single paragraph. The longest is 606 words in eight. |
 | `budget_ignored` | More than twice the declared budget | Straight from this table. |
 | `no_tradeoff_language` | No marker from a deliberately narrow list | `but` and `while` appear in nearly every answer of any quality, so including them makes the rule unable to fire at all. As the list stands it fires on none of the 12 strong C4 design exemplars and on 6 of the 12 adequate ones. |
-| `names_no_constraint` | No constraint term appears in the answer | Needs a `constraints` list, which no problem authors yet, so it is silent until one does. |
+| `names_no_constraint` | No constraint term appears in the answer | Every one of the 28 C3 and C4 design problems declares a `constraints` list, and the validator refuses one that does not. The terms restate the problem's scenario, and its strong exemplar names at least one of them word for word. Measured on 8 October 2026, the rule fires on none of the 28 strong exemplars, none of the 28 adequate ones and 4 of the 28 weak ones. |
 
 `restates_the_brief` cannot tell an unedited original prompt from the best authored answer, since 0.45 and 0.44 are the same number for this purpose. The static gate is what stops an unedited prompt submission: each of the nine catalogue prompt problems has a `must_remove` rule whose text is in the original, or a `max_words` limit the original breaks, which is 411 words against 250 on `compress-a-prompt-without-losing-a-constraint`. The rule's job is the answer that pastes the brief back.
 
@@ -448,6 +448,7 @@ Checked in CI on every problem, per the rule in `CLAUDE.md` that problem YAML is
 | Every heuristic named in a problem exists in the heuristic registry. | An author inventing a heuristic inline produces a rule that fails at run time in front of a learner. |
 | A heuristic a problem names can read that problem's artefact. | The same mistake wearing a better disguise: the name exists, so nothing looks wrong, and the rule never runs. |
 | Every design problem has at least three graded exemplars. | P2's nearest-neighbour vote needs anchors. This rule already exists and now has a second reason. |
+| A C3 or C4 design problem declares a `constraints` list of quoted, non-empty terms. | Without one, `names_no_constraint` has nothing to compare an answer against and stays silent on every answer. Added 8 October 2026. |
 | Every problem declares `interview_evidence` with a non-empty `asked_as`. | Section 12. |
 
 Per the standing rule, any new heuristic ships with a fixture, a unit test and a registry entry, or it does not ship.
@@ -477,9 +478,9 @@ The validator checks the fields exist and are non-empty. It cannot check that a 
 
 `analytics/` reports coverage across rounds, which is how you find out that the catalogue has drifted toward written problems while learners keep failing oral rounds.
 
-The catalogue declares 22 `written` and 3 `both`, and no problem declares `oral`. That is correct rather than a gap: a problem's artefact is code, a prompt or a written argument, and the oral round is covered by `voice-questions/` instead. The number is worth watching all the same, because it is the measurement that would show the two halves drifting apart.
+Measured on 8 October 2026 from `interview_evidence.round`, the field the validator reads, the 173 catalogue problems declare 76 `written`, 61 `both` and 36 `oral`. The 13 fixtures under `problems/_fixtures` all declare `written` and are left out of that count. When the catalogue held 25 problems it declared 22 `written` and 3 `both`, and none `oral`. The spoken round itself is practised in `voice-questions/`, and the split is worth watching, because it is the measurement that would show the two halves drifting apart.
 
-Fifteen of the 25 `asked_as` questions are adapted from `docs/source-pack/09-interview-bank.json`, which labels every entry "Original interview-style practice; actual employer frequency unverified". Each one that borrows from it inherits that caveat in its `source`. The other ten say "author judgement" and name no evidence, because there is none.
+On the same day, 66 of the 173 `source` fields name an entry in `docs/source-pack/09-interview-bank.json`, which labels every entry "Original interview-style practice; actual employer frequency unverified", and all 66 repeat that caveat. 115 say "author judgement", eight of them beside the nearest bank entry. When the catalogue held 25 problems, fifteen questions came from the bank and ten from author judgement.
 
 ---
 

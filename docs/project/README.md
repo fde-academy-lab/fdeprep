@@ -46,7 +46,7 @@ gantt
   S12 Problem pages v2 :s12, 2026-09-30, 9d
   S13 Voice interviewer v2, step 1 :s13, 2026-09-30, 9d
   S14 Voice interviewer v2, step 2 :active, s14, 2026-10-07, 6d
-  S15 First cohort :s15, 2026-10-12, 50d
+  S15 First cohort :active, s15, 2026-10-08, 54d
   S16 Second version :s16, 2026-12-01, 121d
   S17 Redesign, one position and one next action :s17, 2026-10-08, 12d
   S18 Agentic patterns and depth content :s18, 2026-10-08, 12d
