@@ -1929,6 +1929,17 @@ stages:
           - A row opens /admin/learners/<id>, read-only, with the readiness line, the heatmap Progress draws from the same component, the attempts with a trace link each and the past answers with scores; faculty and admins open it, and a learner gets the admin layout's 404.
           - Ops lists the seed's four stuck submissions and four stuck voice answers with why each waits, then the last seven days and the switches, and every admin tab's title equals its h1.
           - No prompt(), confirm() or alert() is left under web/app; each is a dialog on the native dialog element with the route's refusal as its error line, and every admin control comes from components/ui/field.tsx. In a browser, Tab stays in each dialog, Escape closes it and focus returns to the button that opened it.
+      - id: S17.5
+        title: "Rewrite the README as the product's front page: how to use it, the spec at a glance, the architecture and the stages"
+        type: Task
+        status: in_progress
+        points: 8
+        area: Docs and process
+        finish: 2026-10-09
+        acceptance:
+          - README.md opens with what the product is, who it is for and seven labelled screenshots captured from the seeded development database, then the functional requirements, the non-functional requirements, the constraints and the assumptions as tables whose rows name the document each comes from.
+          - The architecture is drawn in Mermaid that GitHub renders, as C4 context, container and component flowcharts, a deployment view, the trust boundaries, the code submission and voice answer sequences, the submission and voice session states and two entity relationship diagrams taken from the migrations, each validated before the commit.
+          - The stages of development, the modes, the local run, the three deploy routes, the fix table and the test suites are current on the day of writing, every figure is marked as a fact or an estimate, and DEPLOY.md, SETUP.md and docs/project are linked rather than copied.
 
   - id: S18
     name: Agentic patterns and depth content

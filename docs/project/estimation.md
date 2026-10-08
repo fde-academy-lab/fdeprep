@@ -50,10 +50,10 @@ Each stage has an optimistic, a likely and a pessimistic figure in person-days. 
 | S14 Voice interviewer v2, step 2 | 37 | 10 | 18 | 35 | 19.5 | 4.2 |
 | S15 First cohort | 73 | 25 | 40 | 70 | 42.5 | 7.5 |
 | S16 Second version | 50 | 30 | 55 | 100 | 58.3 | 11.7 |
-| S17 Redesign, one position and one next action | 26 | 6 | 8 | 13 | 8.5 | 1.2 |
+| S17 Redesign, one position and one next action | 34 | 6 | 8 | 13 | 8.5 | 1.2 |
 | S18 Agentic patterns and depth content | 13 | 6 | 8 | 13 | 8.5 | 1.2 |
 | All built stages | 360 |  |  |  | 203.3 | 14.4 |
-| All planned stages | 473 |  |  |  | 177.8 | 15.2 |
+| All planned stages | 481 |  |  |  | 177.8 | 15.2 |
 <!-- /generated:estimates -->
 
 ## How fast the build moved
@@ -91,7 +91,7 @@ Two readings for each planned epic. The first assumes the build's own pace holds
 | S14 Voice interviewer v2, step 2 | 37 | 0.9 | 20 |
 | S15 First cohort | 73 | 1.8 | 42 |
 | S16 Second version | 50 | 1.2 | 58 |
-| S17 Redesign, one position and one next action | 26 | 0.7 | 8 |
+| S17 Redesign, one position and one next action | 34 | 0.8 | 8 |
 | S18 Agentic patterns and depth content | 13 | 0.3 | 8 |
 <!-- /generated:forecast -->
 

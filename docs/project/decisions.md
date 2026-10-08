@@ -4,7 +4,7 @@ The decisions that shaped the build, in the order they were made. Each records w
 
 | ID | Date | Decision | Instead of | Why | What it costs | Where |
 |---|---|---|---|---|---|---|
-| D1 | 14 Sep | Write the whole specification before any code, and treat it as authoritative. | Building from a short brief and learning as it goes. | A disagreement between code and plan gets raised against a written contract instead of settled silently. | 2,843 lines before the first thing could be learned from running code. | README section 7.2 |
+| D1 | 14 Sep | Write the whole specification before any code, and treat it as authoritative. | Building from a short brief and learning as it goes. | A disagreement between code and plan gets raised against a written contract instead of settled silently. | 2,843 lines before the first thing could be learned from running code. | [delivery-history.md](delivery-history.md), S0 |
 | D2 | 14 Sep | Grade code against a scripted model, deterministically. | Grading with a live model. | A verdict anyone can reproduce can be appealed, and the model bill does not grow with practice. | A scripted tool cannot compute from its arguments, so some behaviours need a named fixture in the runner. | docs/00, docs/03 |
 | D3 | 14 Sep | PostgreSQL, GitHub sign-in and Lambda containers. | DynamoDB, Cognito and a sandbox priced per session, which an earlier build pack chose. | The workload is joins and aggregates, the learners already live on GitHub, and a Lambda costs nothing idle. | One more database to operate. | docs/09 |
 | D4 | 14 Sep | One policy module decides everything that depends on difficulty, and a lint rule enforces it. | Checks spread across screens. | Difficulty behaviour changed four times during the build, and every change touched one file. | A new rule has to be expressed in the policy module's terms. | PR #3 |
@@ -19,7 +19,7 @@ The decisions that shaped the build, in the order they were made. Each records w
 
 ## Deliberately not built
 
-A roadmap that only grows is one nobody trusts, so these are recorded as decisions too. The argument for each is in README section 8.4.
+A roadmap that only grows is one nobody trusts, so these are recorded as decisions too. The argument for each is in the README under [What stays unbuilt](../../README.md#what-stays-unbuilt).
 
 | Not building | Because |
 |---|---|
