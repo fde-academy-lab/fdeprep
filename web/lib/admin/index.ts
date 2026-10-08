@@ -276,6 +276,18 @@ export async function requeueSubmission(
   void send;
 }
 
+/**
+ * Every scope a counter can be cleared for, the voice allowances among them,
+ * and the one list the Ops dialog and the counters route both read. A record
+ * over Scope, so a scope added to the policy module stops the build until it
+ * is listed here.
+ */
+const CLEARABLE: Record<Scope, true> = {
+  run_hourly: true, submit_daily: true, live_daily: true, rehearsal_weekly: true,
+  defence_daily: true, voice_guided_daily: true, voice_unguided_daily: true,
+};
+export const COUNTER_SCOPES = Object.keys(CLEARABLE) as Scope[];
+
 export interface CounterTarget {
   enrolmentId: number;
   scope: Scope;

@@ -1,14 +1,10 @@
 /** Clear a rate limit counter. Admin only, reason mandatory, written to audit_log. */
 import { NextResponse } from "next/server";
-import { clearCounter, ReasonRequired } from "@/lib/admin";
+import { clearCounter, COUNTER_SCOPES, ReasonRequired } from "@/lib/admin";
 import { Forbidden, requireAdmin } from "@/lib/admin/guard";
 import type { Scope } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
-
-const SCOPES: Scope[] = [
-  "run_hourly", "submit_daily", "live_daily", "rehearsal_weekly", "defence_daily",
-];
 
 export async function POST(request: Request) {
   try {
@@ -16,9 +12,9 @@ export async function POST(request: Request) {
     const body = (await request.json()) as
       { enrolmentId?: number; scope?: string; problemId?: number; reason?: string };
 
-    if (!body.enrolmentId || !SCOPES.includes(body.scope as Scope)) {
+    if (!body.enrolmentId || !COUNTER_SCOPES.includes(body.scope as Scope)) {
       return NextResponse.json(
-        { message: `Needs an enrolmentId and one of ${SCOPES.join(", ")}.` }, { status: 400 });
+        { message: `Needs an enrolmentId and one of ${COUNTER_SCOPES.join(", ")}.` }, { status: 400 });
     }
 
     const cleared = await clearCounter(

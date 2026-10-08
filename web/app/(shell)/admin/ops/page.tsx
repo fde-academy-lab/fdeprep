@@ -3,89 +3,174 @@
  * spend today, cap overrides.
  *
  * Laid out in the order the docs/05 runbook reads: the numbers that decide
- * whether anything is wrong, then the stuck list that the runbook's first
- * procedure acts on, then the two switches.
+ * whether anything is wrong, then the stuck submissions that the runbook's
+ * first procedure acts on, the voice answers nobody scored, the last seven
+ * days, and the two switches. Admin only.
  */
 import type { Metadata } from "next";
-import { opsSnapshot, QUEUE_DEPTH_ALARM, STUCK_AFTER_MINUTES, waitingLabel } from "@/lib/admin/ops";
+import { notFound } from "next/navigation";
+import { CircleCheck, Mic, TriangleAlert } from "lucide-react";
+import { COUNTER_SCOPES } from "@/lib/admin";
+import { permits } from "@/lib/admin/guard";
+import {
+  opsSnapshot, QUEUE_DEPTH_ALARM, sevenDays, STUCK_AFTER_MINUTES, waitingLabel,
+} from "@/lib/admin/ops";
+import { currentLearner } from "@/lib/session/current";
+import { ButtonLink } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeading, SectionHeading } from "@/components/ui/page";
+import { StatStrip } from "@/components/ui/stat-strip";
+import { Cell, Head, NumCell, Row, Table } from "@/components/ui/table";
 import { Requeue, Switches } from "./controls";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Ops" };
 
+const WHY = { scorer_not_running: "scorer not running", judge_gave_up: "judge gave up" } as const;
+
+/** "8 Oct 14:02": written here, so the browser cannot render it in another time zone. */
+function since(iso: string): string {
+  const at = new Date(iso);
+  const day = at.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const time = at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+  return `${day} ${time}`;
+}
+
+/** "Thu 8 Oct", from a YYYY-MM-DD the database wrote, read as that calendar day. */
+function day(date: string): string {
+  return new Date(`${date}T12:00:00Z`).toLocaleDateString("en-GB",
+    { weekday: "short", day: "numeric", month: "short", timeZone: "UTC" });
+}
+
 export default async function OpsPage() {
-  const snapshot = await opsSnapshot();
+  const learner = await currentLearner();
+  if (!permits(learner.role, "admin")) notFound();
+  const [snapshot, days] = await Promise.all([opsSnapshot(), sevenDays()]);
 
   return (
-    <main className="px-4 py-4">
-      <h1 className="mb-3">Ops</h1>
+    <>
+      <PageHeading title="Ops" />
 
       {snapshot.degraded.on ? (
-        <p className="mb-4 rounded border border-warn px-3 py-2 text-warn">
+        <p role="status" className="flex items-center gap-2 rounded-control border border-warn/40 bg-warn-soft
+                                    px-3 py-2 text-text">
+          <TriangleAlert aria-hidden className="size-4 shrink-0 text-warn" />
           Degraded mode is on. Submit is closed for every learner. {snapshot.degraded.reason}
         </p>
       ) : null}
 
-      <dl className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Stat label="Submissions queued" value={snapshot.queueDepth}
-              warn={snapshot.queueBackingUp}
-              note={snapshot.queueBackingUp
-                ? `over ${QUEUE_DEPTH_ALARM}, the queue is draining`
-                : "draining normally"} />
-        <Stat label="Judgements queued" value={snapshot.judgeDepth} />
-        <Stat label="Runner errors, last hour"
-              value={`${Math.round(snapshot.errorRate * 100)}%`}
-              warn={snapshot.errorRate > 0.05}
-              note={`${snapshot.errorCount} of ${snapshot.eventCount} events`} />
-        <Stat label="Live model calls today" value={snapshot.liveCallsToday} />
-      </dl>
+      <StatStrip cells={[
+        {
+          label: "Submissions queued",
+          value: <span className={snapshot.queueBackingUp ? "text-warn" : undefined}>{snapshot.queueDepth}</span>,
+          note: snapshot.queueBackingUp
+            ? `over ${QUEUE_DEPTH_ALARM}, the queue is draining` : "draining normally",
+        },
+        { label: "Judgements queued", value: snapshot.judgeDepth },
+        {
+          label: "Runner errors, last hour",
+          value: <span className={snapshot.errorRate > 0.05 ? "text-warn" : undefined}>
+            {Math.round(snapshot.errorRate * 100)}%
+          </span>,
+          note: `${snapshot.errorCount} of ${snapshot.eventCount} events`,
+        },
+        { label: "Live model calls today", value: snapshot.liveCallsToday },
+      ]} />
 
-      <section className="mb-6">
-        <h2 className="mb-2 text-text-dim">
-          STUCK, over {STUCK_AFTER_MINUTES} minutes with no verdict
-        </h2>
+      <section aria-labelledby="stuck">
+        <SectionHeading id="stuck"
+                        title={`Stuck submissions, over ${STUCK_AFTER_MINUTES} minutes with no verdict`} />
         {snapshot.stuck.length ? (
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-text-dim">
-                {["Submission", "Learner", "Problem", "Waiting", ""].map((head) => (
-                  <th key={head} scope="col" className="py-1 pr-4 font-normal">{head}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {snapshot.stuck.map((row) => (
-                <tr key={row.id} className="border-t border-border">
-                  <td className="tnum py-2 pr-4">#{row.id}</td>
-                  <td className="py-2 pr-4">{row.login}</td>
-                  <td className="py-2 pr-4">{row.slug}</td>
-                  <td className="tnum py-2 pr-4 text-warn">{waitingLabel(row.waitingMinutes)}</td>
-                  <td className="py-2"><Requeue submissionId={row.id} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <Table className="mt-4" widths={[140, 240, null, 140, 120]} head={
+            <Head>
+              <Cell head>Submission</Cell>
+              <Cell head>Learner</Cell>
+              <Cell head>Problem</Cell>
+              <NumCell head>Waiting</NumCell>
+              <Cell head><span className="sr-only">Action</span></Cell>
+            </Head>
+          }>
+            {snapshot.stuck.map((row) => (
+              <Row key={row.id}>
+                <Cell className="tnum">#{row.id}</Cell>
+                <Cell>{row.login}</Cell>
+                <Cell className="truncate text-text-dim">{row.slug}</Cell>
+                <NumCell className="text-warn">{waitingLabel(row.waitingMinutes)}</NumCell>
+                <Cell className="py-0.5! text-right"><Requeue submissionId={row.id} /></Cell>
+              </Row>
+            ))}
+          </Table>
         ) : (
-          <p className="text-text-dim">
-            Nothing is stuck. A submission appears here after {STUCK_AFTER_MINUTES} minutes
-            without a verdict.
-          </p>
+          <EmptyState icon={CircleCheck} className="mt-4"
+                      action={<ButtonLink href="/admin/submissions" size="sm">Open Submissions</ButtonLink>}>
+            Nothing is stuck. If a learner reports a wait, find their submission under Submissions.
+          </EmptyState>
         )}
       </section>
 
-      <Switches degraded={snapshot.degraded} />
-    </main>
-  );
-}
+      <section aria-labelledby="stuck-voice">
+        <SectionHeading id="stuck-voice" title="Stuck voice answers, finished over an hour ago with no score" />
+        <p className="mt-1 text-text-dim">
+          The scorer is <code className="font-mono text-meta text-text">npm run scorevoice</code> on the
+          worker host. A row that says the judge gave up has had its allowance returned.
+        </p>
+        {snapshot.stuckVoice.length ? (
+          <Table className="mt-4" widths={[140, 240, null, 140, 180]} head={
+            <Head>
+              <Cell head>Session</Cell>
+              <Cell head>Learner</Cell>
+              <Cell head>Question</Cell>
+              <NumCell head>Finished</NumCell>
+              <Cell head>Why</Cell>
+            </Head>
+          }>
+            {snapshot.stuckVoice.map((row) => (
+              <Row key={row.id}>
+                <Cell className="tnum">#{row.id}</Cell>
+                <Cell>{row.login}</Cell>
+                <Cell className="truncate text-text-dim">{row.questionTitle}</Cell>
+                <NumCell className="text-text-dim">{waitingLabel(row.waitingMinutes)} ago</NumCell>
+                <Cell className="text-warn">{WHY[row.why]}</Cell>
+              </Row>
+            ))}
+          </Table>
+        ) : (
+          <EmptyState icon={Mic} className="mt-4">
+            No voice answer is waiting. One appears here after an hour without a score.
+          </EmptyState>
+        )}
+      </section>
 
-function Stat({ label, value, note, warn }: {
-  label: string; value: string | number; note?: string; warn?: boolean;
-}) {
-  return (
-    <div className="rounded border border-border p-3">
-      <dt className="text-text-dim">{label}</dt>
-      <dd className={`tnum text-2xl ${warn ? "text-warn" : ""}`}>{value}</dd>
-      {note ? <dd className="text-text-faint">{note}</dd> : null}
-    </div>
+      <section aria-labelledby="days">
+        <SectionHeading id="days" title="Last seven days" />
+        <Table className="mt-4" head={
+          <Head>
+            <Cell head>Date</Cell>
+            <NumCell head>Runs</NumCell>
+            <NumCell head>Submits</NumCell>
+            <NumCell head>Passed</NumCell>
+            <NumCell head>Failed</NumCell>
+            <NumCell head>Errors</NumCell>
+            <NumCell head>Voice answers</NumCell>
+          </Head>
+        }>
+          {days.map((row) => (
+            <Row key={row.date}>
+              <Cell className="whitespace-nowrap">{day(row.date)}</Cell>
+              <NumCell className="text-text-dim">{row.runs}</NumCell>
+              <NumCell className="text-text-dim">{row.submits}</NumCell>
+              <NumCell className="text-text-dim">{row.passed}</NumCell>
+              <NumCell className="text-text-dim">{row.failed}</NumCell>
+              <NumCell className={row.errors ? "text-warn" : "text-text-dim"}>{row.errors}</NumCell>
+              <NumCell className="text-text-dim">{row.voiceAnswers}</NumCell>
+            </Row>
+          ))}
+        </Table>
+      </section>
+
+      <Switches degraded={{ on: snapshot.degraded.on }}
+                since={snapshot.degraded.since ? since(snapshot.degraded.since) : null}
+                scopes={COUNTER_SCOPES} />
+    </>
   );
 }

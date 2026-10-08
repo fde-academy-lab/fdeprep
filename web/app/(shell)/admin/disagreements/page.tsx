@@ -11,9 +11,15 @@
  * `held`, one panelist said so and another said something two steps away.
  */
 import Link from "next/link";
-import type { Metadata } from "next";
-import { disagreementQueue, type QueueFilter } from "@/lib/eval/review";
+import type { Metadata, Route } from "next";
+import { Scale, SearchX } from "lucide-react";
+import { disagreementQueue, type Disposition, type QueueFilter } from "@/lib/eval/review";
 import { relativeDay } from "@/lib/progress/summary";
+import { Button, ButtonLink } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Field, Input, Select } from "@/components/ui/field";
+import { PageHeading } from "@/components/ui/page";
+import { Cell, Head, NumCell, Row, Table } from "@/components/ui/table";
 import { OverrideAction, ReviewActions } from "./review-button";
 
 export const dynamic = "force-dynamic";
@@ -26,6 +32,13 @@ const FILTERS: Array<{ value: QueueFilter; label: string }> = [
   { value: "upheld", label: "Upheld" },
   { value: "all", label: "All" },
 ];
+
+/** A decided row names its reading the way the Show filter does. */
+const DECIDED: Readonly<Record<Disposition, string>> = {
+  upheld: "Upheld",
+  disputed: "Band disputed",
+  problem_flagged: "Problem flagged",
+};
 
 type Params = Record<string, string | string[] | undefined>;
 const one = (params: Params, key: string) =>
@@ -41,7 +54,7 @@ export default async function DisagreementsPage({ searchParams }: {
   const params = await searchParams;
   const chosen = one(params, "show");
   const disposition: QueueFilter = isFilter(chosen) ? chosen : "open";
-  const slug = one(params, "slug");
+  const slug = one(params, "slug").trim();
 
   const queue = await disagreementQueue({
     disposition,
@@ -49,97 +62,96 @@ export default async function DisagreementsPage({ searchParams }: {
   });
 
   return (
-    <main className="px-4 py-4">
-      <h1 className="mb-1">Disagreements</h1>
-      <p className="mb-4 max-w-2xl text-text-dim">
-        Two panelists landed more than one band apart on these answers. The learner
-        was given the lower of the two. Decide whether that was right.
-      </p>
+    <>
+      <PageHeading title="Disagreements"
+                   line="Two panelists landed more than one band apart on these answers. The learner was given the lower of the two. Decide whether that was right." />
 
-      <form className="mb-4 flex flex-wrap items-end gap-3" method="get">
-        <label className="flex flex-col">
-          <span className="text-text-dim">Show</span>
-          <select name="show" defaultValue={disposition}
-                  className="rounded border border-border bg-bg px-2 py-1">
+      <form method="get" className="flex flex-wrap items-end gap-3">
+        <Field label="Show" className="w-44">
+          <Select name="show" defaultValue={disposition}>
             {FILTERS.map((filter) => (
               <option key={filter.value} value={filter.value}>{filter.label}</option>
             ))}
-          </select>
-        </label>
-        <label className="flex flex-col">
-          <span className="text-text-dim">Problem</span>
-          <input name="slug" defaultValue={slug} placeholder="slug"
-                 className="rounded border border-border bg-bg px-2 py-1" />
-        </label>
-        <button type="submit" className="rounded border border-border px-3 py-1
-                                         hover:border-accent">Filter</button>
+          </Select>
+        </Field>
+        <Field label="Problem" className="w-72">
+          <Input name="slug" defaultValue={slug} placeholder="slug" autoComplete="off" spellCheck={false} />
+        </Field>
+        <Button type="submit">Filter</Button>
       </form>
 
-      <p className="tnum mb-2 text-text-dim">
-        {queue.rows.length} shown, {queue.open} still to review
-      </p>
-
       {queue.rows.length === 0 ? (
-        <p className="rounded border border-border px-3 py-4 text-text-dim">
-          {disposition === "open"
-            ? "Nothing to review. Every disagreement the panel recorded has been read."
-            : "No rows under this filter. Switch Show to Open to work the queue."}
-        </p>
+        disposition === "open" && !slug ? (
+          <EmptyState icon={Scale}>
+            Nothing to review. A new row appears here when two panelists land two bands apart.
+          </EmptyState>
+        ) : (
+          <EmptyState icon={SearchX}
+                      action={<ButtonLink href="/admin/disagreements" size="sm">Show open</ButtonLink>}>
+            No rows under this filter. Switch Show to Open to work the queue.
+          </EmptyState>
+        )
       ) : (
-        <table className="w-full text-left">
-          <thead>
-            <tr className="text-text-dim">
-              {["When", "Learner", "Problem", "Level", "The argument",
-                "Given", "Score", "Decided"].map((head) => (
-                <th key={head} scope="col" className="py-1 pr-4 font-normal">{head}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
+        <section aria-label="Disagreements found" className="space-y-3">
+          <p className="tnum text-text-dim">
+            {queue.rows.length} shown, {queue.open} still to review
+          </p>
+          <Table head={
+            <Head>
+              <Cell head>When</Cell>
+              <Cell head>Learner</Cell>
+              <Cell head>Problem</Cell>
+              <Cell head>Level</Cell>
+              <Cell head>The argument</Cell>
+              <Cell head>Given</Cell>
+              <NumCell head>Score</NumCell>
+              <Cell head>Decided</Cell>
+            </Head>
+          }>
             {queue.rows.map((row) => (
-              <tr key={row.evaluationId} className="border-t border-border align-top">
-                <td className="py-2 pr-4 text-text-dim">{relativeDay(row.createdAt)}</td>
-                <td className="py-2 pr-4">{row.login}</td>
-                <td className="py-2 pr-4">
-                  <Link href={`/admin/submissions?slug=${row.slug}`}
-                        className="hover:text-accent">{row.title}</Link>
-                </td>
-                <td className="tnum py-2 pr-4 text-text-dim">{row.complexity}</td>
-                <td className="py-2 pr-4">
+              <Row key={row.evaluationId} className="align-top">
+                <Cell className="whitespace-nowrap text-text-dim">{relativeDay(row.createdAt)}</Cell>
+                <Cell className="whitespace-nowrap text-text">{row.login}</Cell>
+                <Cell>
+                  <Link href={`/admin/submissions?slug=${row.slug}` as Route}
+                        className="text-text hover:text-accent">{row.title}</Link>
+                </Cell>
+                <Cell className="tnum text-text-dim">{row.complexity}</Cell>
+                <Cell>
                   {/* Who said what is the row's reason for existing. A reviewer
                       seeing only "weak against strong" cannot tell the judge
                       being overruled from the judge overruling. */}
                   {Object.entries(row.byPanelist).map(([panelist, band]) => (
-                    <div key={panelist} className="text-text-dim">
+                    <div key={panelist} className="whitespace-nowrap text-text-dim">
                       {panelist} said <span className="text-text">{band}</span>
                     </div>
                   ))}
-                </td>
-                <td className="py-2 pr-4 text-warn">{row.held}</td>
-                <td className="tnum py-2 pr-4">{row.score ?? "-"}</td>
-                <td className="py-2 pr-4">
+                </Cell>
+                <Cell className="text-warn">{row.held}</Cell>
+                <NumCell className="text-text">{row.score}</NumCell>
+                <Cell>
                   {row.review ? (
-                    <div>
-                      <div>{row.review.disposition}</div>
-                      <div className="mb-1 text-text-faint">
+                    <div className="space-y-1">
+                      <div className="text-text">{DECIDED[row.review.disposition]}</div>
+                      <div className="text-meta text-text-faint">
                         {row.review.reviewer}: {row.review.note}
                       </div>
                       {/* A grade somebody has already called wrong is the one
                           worth offering to fix, so the action appears here
                           rather than beside every unread row. */}
-                      {row.review.disposition === "disputed" && (
+                      {row.review.disposition === "disputed" ? (
                         <OverrideAction evaluationId={row.evaluationId} held={row.held} />
-                      )}
+                      ) : null}
                     </div>
                   ) : (
                     <ReviewActions evaluationId={row.evaluationId} />
                   )}
-                </td>
-              </tr>
+                </Cell>
+              </Row>
             ))}
-          </tbody>
-        </table>
+          </Table>
+        </section>
       )}
-    </main>
+    </>
   );
 }

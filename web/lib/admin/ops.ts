@@ -61,6 +61,56 @@ export interface OpsSnapshot {
   degraded: DegradedMode;
 }
 
+/**
+ * One day of practice across the platform. A run is `run` or `live`; every
+ * other kind is a submit, rehearsal and defence submits included. Passed and
+ * Failed count submits, since a run that passes solves nothing, and Errors
+ * counts every kind, since an error is the platform's whichever button made it.
+ * A voice answer is a session started that day, the moment last activity reads.
+ */
+export interface DayRow {
+  /** YYYY-MM-DD in the database's time zone. */
+  date: string;
+  runs: number;
+  submits: number;
+  passed: number;
+  failed: number;
+  errors: number;
+  voiceAnswers: number;
+}
+
+/** Today and the six days before it, newest first, with a row for a day with nothing in it. */
+export async function sevenDays(client: Pool | PoolClient = db()): Promise<DayRow[]> {
+  const { rows } = await client.query<{
+    day: string; runs: string; submits: string; passed: string; failed: string; errors: string;
+    voice: string;
+  }>(
+    `with days as (
+       select generate_series(current_date - 6, current_date, interval '1 day')::date as day
+     )
+     select to_char(d.day, 'YYYY-MM-DD') as day,
+            count(s.id) filter (where s.kind in ('run', 'live')) as runs,
+            count(s.id) filter (where s.kind not in ('run', 'live')) as submits,
+            count(s.id) filter (where s.kind not in ('run', 'live') and s.verdict = 'pass') as passed,
+            count(s.id) filter (where s.kind not in ('run', 'live') and s.verdict = 'fail') as failed,
+            count(s.id) filter (where s.verdict = 'error') as errors,
+            (select count(*) from voice_session v
+              where v.started_at >= d.day and v.started_at < d.day + 1) as voice
+       from days d
+       left join submission s on s.queued_at >= d.day and s.queued_at < d.day + 1
+      group by d.day
+      order by d.day desc`);
+  return rows.map((row) => ({
+    date: row.day,
+    runs: Number(row.runs),
+    submits: Number(row.submits),
+    passed: Number(row.passed),
+    failed: Number(row.failed),
+    errors: Number(row.errors),
+    voiceAnswers: Number(row.voice),
+  }));
+}
+
 /** A wait as Ops shows it: "9m" under an hour, "3h 2m" under a day, "2d 0h" after that. */
 export function waitingLabel(minutes: number): string {
   if (minutes < 60) return `${minutes}m`;
