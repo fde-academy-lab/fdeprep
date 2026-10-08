@@ -6,7 +6,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "../lib/db/pool.ts";
 import { createSubmission, RateLimitError } from "../lib/submissions/create.ts";
-import { dispatchOnce } from "../lib/queue/dispatcher.ts";
+import { dispatchOnce, reapExpiredLeases } from "../lib/queue/dispatcher.ts";
 import { receive, send } from "../lib/queue/shim.ts";
 import { writeResult } from "../lib/queue/result-writer.ts";
 import { listProblems } from "../lib/problems/catalogue.ts";
@@ -282,6 +282,31 @@ describe("the lease and fencing token from docs/03 section 9.3", () => {
       `select count from rate_limit_counter where enrolment_id = $1 and scope = 'run_hourly'
         order by window_start`, [learner.enrolmentId]);
     expect(rows.map((row) => row.count)).toEqual([1, 0]);
+  });
+
+  it("gives the unit back when an expired lease is reaped as an error", async () => {
+    // docs/03 section 9.3 marks an orphaned submission error, and section 8
+    // says an error never consumes an allowance. The reaper tells the learner
+    // the attempt was not counted, so the counter has to agree, and a runner
+    // that reports late is refused rather than refunding a second time.
+    const { submission, message } = await queued();
+    await db().query(
+      "update submission set lease_expires_at = now() - interval '1 second' where id = $1",
+      [submission.id]);
+    expect(await reapExpiredLeases()).toBe(1);
+    expect(await writeResult({
+      submission_id: submission.id,
+      lease_token: message.body["lease_token"] as string,
+      fencing_token: Number(message.body["fencing_token"]),
+      body_sha256: message.body["body_sha256"] as string,
+      result: { ...RESULT, verdict: "error" },
+    })).toBe(false);
+
+    const { rows } = await db().query<{ verdict: string; count: number }>(
+      `select s.verdict, c.count from submission s, rate_limit_counter c
+        where s.id = $1 and c.enrolment_id = $2 and c.scope = 'run_hourly'`,
+      [submission.id, learner.enrolmentId]);
+    expect(rows).toEqual([{ verdict: "error", count: 0 }]);
   });
 
   it("gives nothing back when the claim's window is already at zero", async () => {
