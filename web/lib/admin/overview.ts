@@ -13,24 +13,19 @@
  */
 import type { Pool, PoolClient } from "pg";
 import { db } from "../db/pool.ts";
+import { stuckAttemptSql } from "../analytics/stuck.ts";
 import { disagreementQueue } from "../eval/review.ts";
 import { readinessForMany, type Readiness } from "../progress/readiness.ts";
 import type { Persona } from "../policy/roadmap.ts";
 import { lastActivitySql } from "./activity.ts";
 
 /**
- * docs/00 section 8 and docs/11 section 4: a learner and problem pair is stuck
- * at three or more failed submits with no pass. A pass at any point clears it,
- * which is docs/11's acceptance 5. A run is practice and does not count.
+ * How many rows this learner has on the stuck list (docs/11 section 4): the
+ * same condition lib/analytics/stuck.ts lists them by, counted per learner.
+ * Expects the enrolment aliased `e`.
  */
-export const STUCK_AT_FAILED_SUBMITS = 3;
-
-/** Expects the enrolment aliased `e`. */
 const stuckSql = `(select count(*) from attempt a
-   where a.enrolment_id = e.id and a.solved_at is null
-     and (select count(*) from submission s
-           where s.attempt_id = a.id and s.kind = 'submit' and s.verdict = 'fail')
-         >= ${STUCK_AT_FAILED_SUBMITS})::int`;
+   where a.enrolment_id = e.id and ${stuckAttemptSql})::int`;
 
 export type EnrolmentState = "active" | "paused" | "ended";
 

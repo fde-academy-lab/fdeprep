@@ -3,9 +3,13 @@
  * spend today, cap overrides.
  *
  * Laid out in the order the docs/05 runbook reads: the numbers that decide
- * whether anything is wrong, then the stuck submissions that the runbook's
- * first procedure acts on, the voice answers nobody scored, the last seven
- * days, and the two switches. Admin only.
+ * whether anything is wrong, then the submissions waiting with no verdict that
+ * the runbook's first procedure acts on, the voice answers waiting for a score,
+ * the last seven days, and the two switches. Admin only.
+ *
+ * "Waiting" is this screen's word for a row the queue has not finished. "Stuck"
+ * means a learner and problem pair with three failed submits and no pass, on
+ * the Overview and the Cohort screen, and never this (docs/11 section 4).
  */
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -77,9 +81,9 @@ export default async function OpsPage() {
         { label: "Live model calls today", value: snapshot.liveCallsToday },
       ]} />
 
-      <section aria-labelledby="stuck">
-        <SectionHeading id="stuck"
-                        title={`Stuck submissions, over ${STUCK_AFTER_MINUTES} minutes with no verdict`} />
+      <section aria-labelledby="waiting">
+        <SectionHeading id="waiting"
+                        title={`Waiting submissions, over ${STUCK_AFTER_MINUTES} minutes with no verdict`} />
         {snapshot.stuck.length ? (
           <Table className="mt-4" widths={[140, 240, null, 140, 120]} head={
             <Head>
@@ -103,13 +107,13 @@ export default async function OpsPage() {
         ) : (
           <EmptyState icon={CircleCheck} className="mt-4"
                       action={<ButtonLink href="/admin/submissions" size="sm">Open Submissions</ButtonLink>}>
-            Nothing is stuck. If a learner reports a wait, find their submission under Submissions.
+            Nothing is waiting. If a learner reports a wait, find their submission under Submissions.
           </EmptyState>
         )}
       </section>
 
-      <section aria-labelledby="stuck-voice">
-        <SectionHeading id="stuck-voice" title="Stuck voice answers, finished over an hour ago with no score" />
+      <section aria-labelledby="waiting-voice">
+        <SectionHeading id="waiting-voice" title="Waiting voice answers, finished over an hour ago with no score" />
         <p className="mt-1 text-text-dim">
           The scorer is <code className="font-mono text-meta text-text">npm run scorevoice</code> on the
           worker host. A row that says the judge gave up has had its allowance returned.

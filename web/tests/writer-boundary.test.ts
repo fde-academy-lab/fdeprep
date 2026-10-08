@@ -278,10 +278,10 @@ describe("only eval/ writes a grade, a band or a competency state", () => {
     expect([...found].sort()).toEqual(Object.keys(COMPUTED).sort());
   });
 
-  it("finds no write of any kind under lib/progress/", async () => {
+  it("finds no write of any kind under lib/progress/ or lib/analytics/", async () => {
     for (const write of (await sources()).flatMap(({ file, text }) => writes(file, text))) {
       expect(write.file, `${write.file}: ${write.verb} ${write.table}`)
-        .not.toMatch(/^lib\/progress\//);
+        .not.toMatch(/^lib\/(progress|analytics)\//);
     }
   });
 
@@ -293,9 +293,9 @@ describe("only eval/ writes a grade, a band or a competency state", () => {
     }
   });
 
-  it("gives progress/ no scoring import: types from lib/eval/ and nothing that runs", async () => {
+  it("gives progress/ and analytics/ no scoring import: types from lib/eval/ and nothing that runs", async () => {
     for (const { file, text } of await sources()) {
-      if (!file.startsWith("lib/progress/")) continue;
+      if (!/^lib\/(progress|analytics)\//.test(file)) continue;
       for (const match of text.matchAll(/^import\s+(type\s+)?[^;]*?from\s+["']([^"']+)["']/gm)) {
         if (!/(^|\/)eval\//.test(match[2]!)) continue;
         expect(match[1], `${file} imports a value from ${match[2]}`).toBe("type ");
