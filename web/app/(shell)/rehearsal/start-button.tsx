@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DialogForm, request } from "@/components/ui/dialog";
 
 interface Props {
   durationMinutes: number;
@@ -20,39 +21,30 @@ interface Props {
 
 export default function StartButton(props: Props) {
   const router = useRouter();
-  const [starting, setStarting] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-
-  const start = async () => {
-    const agreed = confirm(
-      `Start a ${props.durationMinutes} minute rehearsal over ${props.problemCount} problems?\n\n` +
-      `You have ${props.remaining} left this week, and starting spends one whether or not ` +
-      "you finish.");
-    if (!agreed) return;
-
-    setStarting(true);
-    setNotice(null);
-    const response = await fetch("/api/rehearsal", { method: "POST" });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { message?: string };
-      setNotice(body.message ?? "That did not start. Try again.");
-      setStarting(false);
-      return;
-    }
-    const { id } = (await response.json()) as { id: number };
-    router.push(`/rehearsal/${id}`);
-  };
+  const [asking, setAsking] = useState(false);
 
   return (
     <div>
-      <Button variant="primary" size="lg" onClick={start} disabled={starting}>
-        <Play aria-hidden /> {starting ? "Starting" : "Start a rehearsal"}
+      <Button variant="primary" size="lg" onClick={() => setAsking(true)}>
+        <Play aria-hidden /> Start a rehearsal
       </Button>
-      {notice ? (
-        <p role="alert" className="mt-3 rounded-control border border-warn/40 bg-warn-soft px-3 py-2 text-text">
-          {notice}
+      <DialogForm open={asking} onClose={() => setAsking(false)} title="Start a rehearsal"
+                  submitLabel="Start" busyLabel="Starting"
+                  onSubmit={async () => {
+                    const { response, data } = await request("/api/rehearsal", { method: "POST" });
+                    // The route's own sentence, such as the cap's, is the one a learner can act on.
+                    if (!response.ok) {
+                      throw new Error(typeof data?.["message"] === "string" ? data["message"]
+                        : "That did not start. Try again.");
+                    }
+                    router.push(`/rehearsal/${String(data?.["id"])}`);
+                    return null;
+                  }}>
+        <p>
+          Start a {props.durationMinutes} minute rehearsal over {props.problemCount} problems? You
+          have {props.remaining} left this week, and starting spends one whether or not you finish.
         </p>
-      ) : null}
+      </DialogForm>
     </div>
   );
 }

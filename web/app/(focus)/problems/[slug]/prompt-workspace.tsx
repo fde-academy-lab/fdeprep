@@ -20,6 +20,7 @@ import type { PaletteProblem } from "@/lib/problems/catalogue";
 import type { AttemptHistory, PastSubmission, WorkspaceProblem } from "@/lib/problems/workspace";
 import type { PalettePage } from "@/components/shell/command-palette";
 import { Button } from "@/components/ui/button";
+import { giveUp, submitOnce, useConfirm } from "@/components/workspace/confirm";
 import { Markdown } from "@/components/ui/markdown";
 import { renderCode } from "@/components/ui/code";
 import { StatusIcon } from "@/components/ui/status";
@@ -79,6 +80,7 @@ export default function PromptWorkspace(props: Props) {
   const [gateNotice, setGateNotice] = useState<string | null>(null);
   const [settledKey, setSettledKey] = useState(0);
   const [past, setPast] = useState<PastSubmission[]>(props.history.submissions);
+  const [ask, confirmation] = useConfirm();
 
   const refreshPolicy = useCallback(async () => {
     const response = await fetch(`/api/problems/${problem.id}/policy`);
@@ -142,15 +144,16 @@ export default function PromptWorkspace(props: Props) {
 
   const submit = useCallback(() => {
     if (running || !policy.submit.allowed) return;
-    if (policy.confirmBeforeSubmit && !confirm(props.rehearsalId
-      ? "One submit per problem in a rehearsal. Submit this one?"
-      : "This is your only submit today on an Extreme problem. Submit it?")) return;
-    void send("submit", draft.live, { rehearsalId: props.rehearsalId });
-  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, props.rehearsalId, send, draft]);
+    const go = () => void send("submit", draft.live, { rehearsalId: props.rehearsalId });
+    if (policy.confirmBeforeSubmit) ask(submitOnce(Boolean(props.rehearsalId), go));
+    else go();
+  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, props.rehearsalId, send, draft, ask]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
+      // Nothing runs behind an open dialog, such as the question before a submit.
+      if (document.querySelector("dialog[open]")) return;
       event.preventDefault();
       event.stopPropagation();
       if (event.shiftKey) submit(); else setChecked(true);
@@ -218,13 +221,10 @@ export default function PromptWorkspace(props: Props) {
                       ) : null}
                       coachLog={policy.coach.enabled ? coach.log : null}
                       giveUp={policy.giveUp}
-                      onGiveUp={() => {
-                        if (!confirm("Give up on this problem? The walkthrough opens and the choice is recorded on your attempt.")) return;
-                        void act("give-up", {
-                          method: "POST", headers: { "content-type": "application/json" },
-                          body: JSON.stringify({ reason: note || null }),
-                        }).then(() => setTab("brief"));
-                      }} />
+                      onGiveUp={() => ask(giveUp(() => void act("give-up", {
+                        method: "POST", headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ reason: note || null }),
+                      }).then(() => setTab("brief"))))} />
         ) : (
           <AttemptsPanel submissions={past}
                          empty="Nothing submitted yet. Press Submit, or Cmd Shift Enter, to send your prompt for grading. Every submit lands here with its result." />
@@ -315,6 +315,7 @@ export default function PromptWorkspace(props: Props) {
       <WorkspaceLayout storageKey={`fdeprep.split.${problem.id}`} left={left} editor={editor}
                        dock={dock} editorLabel="Prompt" editorShare={60}
                        dockSignal={`${view?.id ?? ""}:${view?.status ?? ""}:${coach.current?.say ?? ""}:${notice ?? ""}`} />
+      {confirmation}
     </div>
   );
 }

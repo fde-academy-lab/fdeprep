@@ -2,59 +2,27 @@
  * Screen S9, progress.
  *
  * It opens on the readiness line, the same object Home draws from the same
- * query (docs/12 section 2), then the heatmap behind it and the attempts
- * behind that.
- *
- * The heatmap is the readiness signal, so the fourth state is drawn
- * differently from the other three: docs/02 section 7 counts clean only, and a
- * grid where passed and clean look alike hides the distinction the whole
- * scoring model exists to make. Every cell carries a glyph as well as a
- * colour, so the grid reads the same to someone who cannot tell the colours
- * apart.
+ * query (docs/12 section 2), then the heatmap behind it, drawn by the
+ * component the admin learner page also uses, and the attempts behind that.
  */
 import Link from "next/link";
 import type { Metadata, Route } from "next";
-import { Check, CircleDot, Download, Grid2x2, History as HistoryIcon, Minus } from "lucide-react";
-import { attemptHistory, heatmap, type HeatCell } from "@/lib/progress";
+import { Download, Grid2x2, History as HistoryIcon } from "lucide-react";
+import { attemptHistory, heatmap } from "@/lib/progress";
 import { readinessFor } from "@/lib/progress/readiness";
 import { currentLearner } from "@/lib/session/current";
-import { DIFFICULTIES, difficultyLabel } from "@/lib/policy/tiers";
 import { relativeDay } from "@/lib/progress/summary";
+import { CompetencyHeatmap, untouched } from "@/components/progress/heatmap";
 import { ReadinessLine } from "@/components/progress/readiness-line";
 import { DifficultyMeter } from "@/components/ui/difficulty";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ButtonLink } from "@/components/ui/button";
 import { Page, PageHeading, SectionHeading } from "@/components/ui/page";
 import { StatusIcon } from "@/components/ui/status";
-// The heatmap keeps its own Cell, so the table's is imported by another name.
 import { Cell as TableCell, Head, NumCell, Row, Table } from "@/components/ui/table";
-import { cn } from "@/components/ui/cn";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Progress" };
-
-const CELL: Record<string, { label: string; box: string; icon: React.ReactNode }> = {
-  untouched: {
-    label: "Not attempted",
-    box: "border-dashed border-border-strong bg-transparent text-text-faint",
-    icon: null,
-  },
-  attempted: {
-    label: "Attempted, no pass",
-    box: "border-warn/40 bg-warn-soft text-warn",
-    icon: <CircleDot aria-hidden className="size-3.5" />,
-  },
-  passed: {
-    label: "Passed",
-    box: "border-info/40 bg-accent-soft text-info",
-    icon: <Minus aria-hidden className="size-3.5" strokeWidth={3} />,
-  },
-  clean: {
-    label: "Passed clean",
-    box: "border-pass/50 bg-pass-soft text-pass",
-    icon: <Check aria-hidden className="size-3.5" strokeWidth={3} />,
-  },
-};
 
 export default async function ProgressPage() {
   const learner = await currentLearner();
@@ -63,7 +31,6 @@ export default async function ProgressPage() {
     attemptHistory(learner.enrolmentId),
     readinessFor(learner.enrolmentId),
   ]);
-  const untouched = grid.rows.every((row) => row.cells.every((cell) => cell.state === "untouched"));
 
   return (
     <Page>
@@ -79,51 +46,15 @@ export default async function ProgressPage() {
 
       <ReadinessLine readiness={readiness} heatmapLink={false} />
 
-      <section>
-        <h2 className="text-title font-semibold tracking-[-0.01em] text-text">Competency heatmap</h2>
-        <div className="mt-4 overflow-x-auto rounded-panel border border-border bg-surface">
-          <table className="w-full min-w-[560px] border-collapse text-left">
-            <thead>
-              <tr className="border-b border-border">
-                <th scope="col" className="px-4 py-3 text-meta font-medium text-text-faint">Competency</th>
-                {DIFFICULTIES.map((difficulty) => (
-                  <th key={difficulty} scope="col" className="px-2 py-3 text-center text-meta font-medium text-text-faint">
-                    <span className="inline-flex items-center gap-1.5">
-                      <DifficultyMeter difficulty={difficulty} label={false} />
-                      {difficultyLabel(difficulty)}
-                    </span>
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {grid.rows.map((row) => (
-                <tr key={row.slug} className="border-b border-border last:border-b-0">
-                  <th scope="row" className="px-4 py-2 font-normal text-text">{sentence(row.name)}</th>
-                  {row.cells.map((cell) => <Cell key={cell.difficulty} cell={cell} />)}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <ul className="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-meta text-text-dim">
-          {Object.entries(CELL).map(([state, look]) => (
-            <li key={state} className="flex items-center gap-2">
-              <span aria-hidden className={cn("grid size-5 place-items-center rounded-[5px] border", look.box)}>
-                {look.icon}
-              </span>
-              {look.label}
-            </li>
-          ))}
-        </ul>
-        {untouched ? (
+      <CompetencyHeatmap grid={grid}>
+        {untouched(grid) ? (
           <EmptyState icon={Grid2x2} className="mt-4"
                       action={<ButtonLink href="/" size="sm" variant="primary">Open your path</ButtonLink>}>
             Every cell is empty. Pass a problem with no hints and inside its call budget, and its
             competencies fill in here.
           </EmptyState>
         ) : null}
-      </section>
+      </CompetencyHeatmap>
 
       <section aria-labelledby="history">
         <SectionHeading id="history"
@@ -188,23 +119,4 @@ export default async function ProgressPage() {
       </section>
     </Page>
   );
-}
-
-function Cell({ cell }: { cell: HeatCell }) {
-  const look = CELL[cell.state]!;
-  return (
-    <td className="px-2 py-2 text-center">
-      <span title={`${difficultyLabel(cell.difficulty)}: ${look.label}`}
-            className={cn("mx-auto grid h-7 w-full max-w-24 place-items-center rounded-control border",
-                          look.box)}>
-        {look.icon}
-        <span className="sr-only">{difficultyLabel(cell.difficulty)}: {look.label}</span>
-      </span>
-    </td>
-  );
-}
-
-/** "state and memory" reads as a label; "State And Memory" reads as a heading shouting. */
-function sentence(name: string): string {
-  return name.charAt(0).toUpperCase() + name.slice(1);
 }

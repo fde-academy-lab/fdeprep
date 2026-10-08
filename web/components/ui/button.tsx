@@ -7,7 +7,7 @@ import Link from "next/link";
 import type { ComponentProps } from "react";
 import { cn } from "./cn";
 
-export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
+export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger" | "warn";
 export type ButtonSize = "sm" | "md" | "lg";
 
 const BASE =
@@ -22,6 +22,8 @@ const VARIANTS: Record<ButtonVariant, string> = {
     "hover:bg-surface-3",
   ghost: "text-text-dim hover:bg-surface-2 hover:text-text",
   danger: "border border-fail/40 text-fail hover:bg-fail-soft",
+  /** docs/08 gives warn to degraded mode; the switch that throws it wears it. */
+  warn: "border border-warn/50 text-warn hover:bg-warn-soft",
 };
 
 const SIZES: Record<ButtonSize, string> = {

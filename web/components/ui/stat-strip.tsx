@@ -11,7 +11,8 @@ const COLUMNS = ["", "grid-cols-1", "grid-cols-2", "grid-cols-3", "grid-cols-4",
                  "grid-cols-6"] as const;
 
 export function StatStrip({ cells, columns, className }: {
-  cells: ReadonlyArray<{ label: string; value: ReactNode }>;
+  /** A note is a line under the figure saying what it means, such as "draining normally". */
+  cells: ReadonlyArray<{ label: string; value: ReactNode; note?: ReactNode }>;
   /** A grid-cols class in place of equal columns, for a value too long to share a quarter. */
   columns?: string;
   className?: string;
@@ -25,6 +26,7 @@ export function StatStrip({ cells, columns, className }: {
           <dd className="tnum text-title font-semibold tracking-[-0.01em] text-text">
             {cell.value}
           </dd>
+          {cell.note ? <dd className="mt-0.5 text-meta text-text-faint">{cell.note}</dd> : null}
         </div>
       ))}
     </dl>
