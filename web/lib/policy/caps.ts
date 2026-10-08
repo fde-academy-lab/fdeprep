@@ -268,25 +268,35 @@ export const VOICE_FREE_SHORT_ANSWERS_PER_DAY = 6;
  * docs/03 section 8: an error verdict never consumes an allowance. A learner
  * who loses their one daily Extreme attempt to infrastructure stops trusting
  * every score.
+ *
+ * The unit goes back to the window that was open when the submission was
+ * queued, and only that one, which is release()'s rule above. It used to come
+ * off every window for the learner and the problem, so one error rewrote the
+ * count of every earlier day.
  */
 export async function refund(client: PoolClient, submissionId: number): Promise<void> {
   await client.query(
-    `update rate_limit_counter c
-        set count = greatest(0, c.count - 1)
-       from submission s
-       join attempt a on a.id = s.attempt_id
-       join problem_version v on v.id = s.problem_version_id
-      where s.id = $1
-        and c.enrolment_id = a.enrolment_id
-        and c.scope = (case s.kind
-              when 'run' then 'run_hourly'
-              when 'submit' then 'submit_daily'
-              when 'live' then 'live_daily'
-              when 'defence' then 'defence_daily'
-              else 'rehearsal_weekly' end)::limit_scope
-        and c.problem_id is not distinct from (
-              case when s.kind in ('run','submit') then v.problem_id else null end)
-        and c.count > 0`,
+    `update rate_limit_counter set count = count - 1
+      where id = (
+        select c.id
+          from submission s
+          join attempt a on a.id = s.attempt_id
+          join problem_version v on v.id = s.problem_version_id
+          join rate_limit_counter c
+            on c.enrolment_id = a.enrolment_id
+           and c.scope = (case s.kind
+                 when 'run' then 'run_hourly'
+                 when 'submit' then 'submit_daily'
+                 when 'live' then 'live_daily'
+                 when 'defence' then 'defence_daily'
+                 else 'rehearsal_weekly' end)::limit_scope
+           and c.problem_id is not distinct from (
+                 case when s.kind in ('run','submit') then v.problem_id else null end)
+         where s.id = $1
+           and c.window_start <= s.queued_at
+           and c.count > 0
+         order by c.window_start desc
+         limit 1)`,
     [submissionId]);
 }
 

@@ -252,6 +252,37 @@ describe("the lease and fencing token from docs/03 section 9.3", () => {
       [learner.enrolmentId]);
     expect(after.rows[0]!.count).toBe(before.rows[0]!.count - 1);
   });
+
+  it("gives the unit back to the window it came from and leaves earlier windows alone", async () => {
+    // Found by the seed, which keeps ninety days of counter windows: the
+    // refund took one off every window for the learner and the problem, so
+    // one error rewrote the count of every earlier day.
+    await queued();
+    await db().query(
+      `update rate_limit_counter set window_start = window_start - interval '2 hours'
+        where enrolment_id = $1 and scope = 'run_hourly'`, [learner.enrolmentId]);
+
+    const problem = await problemBySlug("echo-the-question");
+    const later = await createSubmission({
+      enrolmentId: learner.enrolmentId, cohortId: learner.cohortId,
+      problemId: Number(problem.id), kind: "run", body: "b",
+    });
+    await dispatchOnce();
+    const message = (await receive("submissions", 10))
+      .find((m) => Number(m.body["submission_id"]) === later.id)!;
+    await writeResult({
+      submission_id: later.id,
+      lease_token: message.body["lease_token"] as string,
+      fencing_token: Number(message.body["fencing_token"]),
+      body_sha256: message.body["body_sha256"] as string,
+      result: { ...RESULT, verdict: "error" },
+    });
+
+    const { rows } = await db().query<{ count: number }>(
+      `select count from rate_limit_counter where enrolment_id = $1 and scope = 'run_hourly'
+        order by window_start`, [learner.enrolmentId]);
+    expect(rows.map((row) => row.count)).toEqual([1, 0]);
+  });
 });
 
 describe("acceptance 4: the result survives the browser closing", () => {
