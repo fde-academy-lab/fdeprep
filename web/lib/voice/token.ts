@@ -25,7 +25,14 @@ export type VoiceTokenClaims = {
   eid: number;
   /** voice_question.id. */
   qid: number;
-  mode: "guided" | "unguided" | "pressure";
+  mode: "guided" | "unguided" | "pressure" | "interview";
+  /**
+   * Interview mode only: which turn this connection carries, 1 for the first
+   * follow-up round. docs/07 section 5a: every reply is its own connection
+   * with its own sixty second token. The authorizer checks the signature and
+   * ignores this; the turn is the application's to match.
+   */
+  turn?: number;
   /** Unix seconds. */
   exp: number;
 };
