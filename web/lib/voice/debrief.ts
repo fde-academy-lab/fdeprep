@@ -24,6 +24,7 @@ import {
 import { loadQuestion, type VoiceQuestion } from "./question.ts";
 import { MAX_JUDGE_ATTEMPTS } from "./score.ts";
 import type { VoiceMode } from "./run.ts";
+import { debriefRounds, type DebriefRound } from "./turns.ts";
 
 export class DebriefNotFound extends Error {
   readonly status = 404;
@@ -78,11 +79,16 @@ export type Debrief = {
    *  which has no speech to report on. */
   delivery: Delivery | null;
   audio: { available: boolean; deletedAt: string | null; shared: boolean };
+  /** Interview mode's follow-up rounds, in order, with who asked each. The
+   *  `staff` fields, how each round was made and how long it took, are
+   *  present only when the reader is faculty or an admin. */
+  rounds: DebriefRound[];
 };
 
 export async function loadDebrief(
   sessionId: number,
   enrolmentId: number,
+  options: { staff?: boolean } = {},
 ): Promise<Debrief> {
   const pool = db();
 
@@ -94,12 +100,12 @@ export async function loadDebrief(
     pace_score: string | null; score: string | null;
     delivery: Delivery | null; judge_result: { summary?: string; skipped?: string } | null;
     audio_s3_key: string | null; audio_deleted_at: Date | null; shared: boolean;
-    judge_attempts: number; interviewer_slug: string | null;
+    judge_attempts: number; interviewer_slug: string | null; answer_finished_at: Date | null;
   }>(
     `select s.id, s.mode, s.voice_question_id, s.input, s.started_at, s.finished_at, s.scored_at,
             s.transcript, s.transcript_segments, s.content_score, s.structure_score,
             s.pace_score, s.score, s.delivery, s.judge_result, s.judge_attempts,
-            s.audio_s3_key, s.audio_deleted_at, s.interviewer_slug,
+            s.audio_s3_key, s.audio_deleted_at, s.interviewer_slug, s.answer_finished_at,
             coalesce(sh.id is not null and sh.withdrawn_at is null, false) as shared
        from voice_session s
        left join voice_session_share sh on sh.voice_session_id = s.id
@@ -149,6 +155,9 @@ export async function loadDebrief(
 
   const segments = row.transcript_segments ?? [];
   const finishedAt = row.finished_at;
+  // The main answer's own end: an interview closes after its rounds, and the
+  // replay and the clock are about the answer.
+  const answerEnded = row.answer_finished_at ?? finishedAt;
 
   const typed = row.input === "typed";
   const notCounted = row.judge_result?.skipped === "did_not_count";
@@ -162,7 +171,7 @@ export async function loadDebrief(
     interviewer: interviewer ? labelOf(interviewer) : null,
     startedAt: row.started_at.toISOString(),
     finishedAt: finishedAt ? finishedAt.toISOString() : null,
-    durationMs: finishedAt ? finishedAt.getTime() - row.started_at.getTime() : 0,
+    durationMs: answerEnded ? answerEnded.getTime() - row.started_at.getTime() : 0,
     scored,
     notCounted,
     judgeGaveUp: row.finished_at !== null && row.scored_at === null &&
@@ -192,6 +201,7 @@ export async function loadDebrief(
       deletedAt: row.audio_deleted_at ? row.audio_deleted_at.toISOString() : null,
       shared: row.shared,
     },
+    rounds: row.mode === "interview" ? await debriefRounds(sessionId, options.staff === true) : [],
   };
 }
 

@@ -19,19 +19,28 @@ import { RateLimitError } from "@/lib/policy/caps";
 import { ConsentRequired } from "@/lib/voice/consent";
 import { InterviewerNotFound } from "@/lib/voice/interviewers";
 import { QuestionNotFound, resolvePublishedQuestion } from "@/lib/voice/question";
+import { ResumeRefused } from "@/lib/voice/resume";
 import { startVoiceSession, VoiceNotConfigured, type VoiceMode } from "@/lib/voice/start";
 import { learnerOrNull } from "@/lib/session/current";
 
 export const dynamic = "force-dynamic";
 
-const MODES: VoiceMode[] = ["guided", "unguided", "pressure"];
+const MODES: VoiceMode[] = ["guided", "unguided", "pressure", "interview"];
 
+/**
+ * Interview mode may carry a pasted resume (docs/07 section 9, as amended
+ * for S14.2). It is read here only in that mode, passed on once, and never
+ * written: no failure below names the body, and the one that can follow it,
+ * the claims step, logs a fixed sentence of its own.
+ */
 export async function POST(request: Request) {
   try {
     const learner = await learnerOrNull();
     if (!learner) return signedOut();
 
-    const body = await jsonBody<{ mode?: string; question?: string; interviewer?: unknown }>(request);
+    const body = await jsonBody<{
+      mode?: string; question?: string; interviewer?: unknown; resume?: unknown;
+    }>(request);
     const mode = MODES.find((candidate) => candidate === body?.mode);
     if (!mode) {
       return NextResponse.json(
@@ -54,9 +63,13 @@ export async function POST(request: Request) {
       // A slug and nothing more. Anything else in the field is ignored, and
       // the question's first interviewer asks instead.
       interviewerSlug: typeof body.interviewer === "string" && body.interviewer ? body.interviewer : null,
+      resume: mode === "interview" && typeof body.resume === "string" ? body.resume : null,
     });
     return NextResponse.json(started);
   } catch (error) {
+    if (error instanceof ResumeRefused) {
+      return NextResponse.json({ message: error.message }, { status: error.status });
+    }
     if (error instanceof QuestionNotFound) {
       return NextResponse.json(
         { message: "That question is not published any more. Pick another from the Voice page." },

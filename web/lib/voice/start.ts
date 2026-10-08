@@ -5,26 +5,50 @@
  * signed into the token. The browser receives a URL and an opaque string; it
  * cannot name an enrolment, a question, a mode or a session, which is what
  * keeps the consent gate and the caps real rather than advisory.
+ *
+ * Interview mode, docs/07 section 5a, adds three things here. The cap on
+ * follow-up rounds is resolved now, from the question or the policy default
+ * for its difficulty, and written on the row, so a content change never
+ * changes a running session. A pasted resume becomes claims before the row
+ * is written, and the claims go into the same transaction that opens it; the
+ * text itself is a parameter and nothing else. And once the row exists the
+ * judge is warmed and the fallback lines are spoken, in the background of
+ * this request, so the first round does not wait on either.
  */
 import { db, inTransaction } from "../db/pool.ts";
 import { logOnce } from "../log-once.ts";
-import { consume, voiceScope } from "../policy/caps.ts";
+import { allowanceFor, consume, RateLimitError, voiceScope } from "../policy/caps.ts";
+import type { Difficulty } from "../policy/tiers.ts";
+import { interviewRoundsFor } from "../policy/voice.ts";
+import { inBackground } from "./background.ts";
+import { SAMPLE_RATE, socketUrl, tokenSecret, VoiceNotConfigured } from "./config.ts";
 import { requireConsent } from "./consent.ts";
 import { InterviewerNotFound, resolveInterviewer } from "./interviewers.ts";
+import { callJudge, judgeIsDeployed, type JudgeCall } from "./judge-call.ts";
+import { checkResume, extractClaims } from "./resume.ts";
+import type { VoiceMode } from "./run.ts";
 import { mintVoiceToken } from "./token.ts";
+import { warmFallbackLines } from "./turns.ts";
 
-export type VoiceMode = "guided" | "unguided" | "pressure";
+export type { VoiceMode };
+export { VoiceNotConfigured };
 
 export type StartedSession = {
   sessionId: number;
   token: string;
   socketUrl: string;
   sampleRate: number;
+  /** Interview mode only. */
+  interview?: {
+    /** The cap on follow-up rounds this session runs with. */
+    rounds: number;
+    /** How many claims the pasted resume gave, 0 when none was pasted or it
+     *  could not be read. */
+    resumeClaims: number;
+    /** A sentence for the learner when a pasted resume could not be read. */
+    resumeNote: string | null;
+  };
 };
-
-export class VoiceNotConfigured extends Error {
-  readonly status = 503;
-}
 
 /**
  * Whether graded voice sessions can open on this deployment at all.
@@ -48,26 +72,15 @@ export function logVoiceNotSetUp(missing: readonly string[]): void {
           "in infra/. docs/05 has the deploy steps.");
 }
 
-function socketUrl(): string {
-  const url = process.env.VOICE_SOCKET_URL;
-  if (!url) {
-    throw new VoiceNotConfigured(
-      "The voice socket is not configured. Set VOICE_SOCKET_URL to the WebSocket endpoint " +
-        "before opening a session.",
-    );
-  }
-  return url;
-}
-
-function secret(): string {
-  const value = process.env.VOICE_TOKEN_SECRET;
-  if (!value) {
-    throw new VoiceNotConfigured(
-      "The voice socket is not configured. Set VOICE_TOKEN_SECRET to the same value the " +
-        "authorizer holds before opening a session.",
-    );
-  }
-  return value;
+/** The cap on follow-up rounds an interview session on this question runs
+ *  with. The policy module decides from the difficulty when the question does
+ *  not say; nothing here reads the difficulty. */
+export async function interviewRoundsForQuestion(questionId: number): Promise<number> {
+  const { rows } = await db().query<{ difficulty: Difficulty; interview_rounds: number | null }>(
+    "select difficulty, interview_rounds from voice_question where id = $1", [questionId]);
+  const row = rows[0];
+  if (!row) throw new Error(`No voice question ${questionId}.`);
+  return interviewRoundsFor({ difficulty: row.difficulty, interviewRounds: row.interview_rounds });
 }
 
 /**
@@ -82,21 +95,47 @@ function secret(): string {
  * `capped: false` is for the faculty transport check alone, which carries no
  * answer and is not scored.
  */
-export async function startVoiceSession(input: {
-  enrolmentId: number;
-  cohortId: number;
-  voiceQuestionId: number;
-  mode: VoiceMode;
-  capped?: boolean;
-  /** The slug the browser sent, resolved here. Absent means the question's
-   *  first interviewer. */
-  interviewerSlug?: string | null;
-}): Promise<StartedSession> {
+export async function startVoiceSession(
+  input: {
+    enrolmentId: number;
+    cohortId: number;
+    voiceQuestionId: number;
+    mode: VoiceMode;
+    capped?: boolean;
+    /** The slug the browser sent, resolved here. Absent means the question's
+     *  first interviewer. */
+    interviewerSlug?: string | null;
+    /** Interview mode only: the pasted resume, at most 12,000 characters.
+     *  Read once, sent once to the judge, and never written. */
+    resume?: string | null;
+  },
+  options: { judge?: JudgeCall; resumeDeadlineMs?: number } = {},
+): Promise<StartedSession> {
   // Order matters. Every refusal costs nothing and leaves no row behind.
   await requireConsent(input.enrolmentId);
   const url = socketUrl();
-  const signing = secret();
+  const signing = tokenSecret();
   const interviewer = await sessionInterviewer(input.voiceQuestionId, input.interviewerSlug);
+
+  const interview = input.mode === "interview";
+  const rounds = interview ? await interviewRoundsForQuestion(input.voiceQuestionId) : null;
+  // Refused for its length before anything else is spent on it.
+  const resume = interview ? checkResume(input.resume) : null;
+  let claims: string[] = [];
+  let resumeNote: string | null = null;
+  if (resume !== null) {
+    // An allowance already spent is refused before the paste costs a model
+    // call. The claim below is still the gate.
+    if (input.capped !== false) {
+      const left = await allowanceFor({ enrolmentId: input.enrolmentId, scope: voiceScope(input.mode) });
+      if (left.max !== null && left.remaining <= 0) {
+        throw new RateLimitError(left.scope, left.max, left.resetInS ?? left.windowS);
+      }
+    }
+    ({ claims, note: resumeNote } = await extractClaims(resume, {
+      judge: options.judge, deadlineMs: options.resumeDeadlineMs,
+    }));
+  }
 
   const sessionId = await inTransaction(async (client) => {
     if (input.capped !== false) {
@@ -104,13 +143,27 @@ export async function startVoiceSession(input: {
     }
     const { rows } = await client.query<{ id: string }>(
       `insert into voice_session
-         (enrolment_id, voice_question_id, cohort_id, mode, spent_allowance, interviewer_slug)
-       values ($1, $2, $3, $4, $5, $6) returning id`,
+         (enrolment_id, voice_question_id, cohort_id, mode, spent_allowance, interviewer_slug,
+          interview_rounds, resume_claims, resume_claims_at)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, case when $8::jsonb is null then null else now() end)
+       returning id`,
       [input.enrolmentId, input.voiceQuestionId, input.cohortId, input.mode,
-       input.capped !== false, interviewer],
+       input.capped !== false, interviewer, rounds,
+       claims.length > 0 ? JSON.stringify(claims) : null],
     );
     return Number(rows[0]!.id);
   });
+
+  if (interview) {
+    // A deployed judge that has not run for a while starts cold, and the
+    // first round would always fall back. A ping now warms it while the
+    // learner gives the main answer. A local subprocess needs no warming.
+    if (judgeIsDeployed()) {
+      const judge = options.judge ?? callJudge;
+      inBackground("warming the judge", () => judge({ artefact_type: "ping" }));
+    }
+    inBackground("speaking the fallback lines", () => warmFallbackLines(sessionId));
+  }
 
   return {
     sessionId,
@@ -124,7 +177,9 @@ export async function startVoiceSession(input: {
       signing,
     ),
     socketUrl: url,
-    sampleRate: 16_000,
+    sampleRate: SAMPLE_RATE,
+    ...(interview && rounds !== null
+      ? { interview: { rounds, resumeClaims: claims.length, resumeNote } } : {}),
   };
 }
 

@@ -21,7 +21,8 @@ import {
   MAX_JUDGE_ATTEMPTS, scoreTypedAnswer, scoreVoiceSession, type BeatOutcome,
 } from "./score.ts";
 import type { PaceState } from "./cues.ts";
-import type { VoiceMode } from "./start.ts";
+import type { VoiceMode } from "./run.ts";
+import { scoredRounds } from "./turns.ts";
 
 export type ScoreOptions = JudgeOptions & {
   limit?: number;
@@ -32,17 +33,21 @@ export type ScoreOptions = JudgeOptions & {
 type SessionRow = {
   id: string;
   voice_question_id: string;
+  mode: VoiceMode;
   input: "spoken" | "typed";
   transcript: string | null;
   transcript_segments: Segment[] | null;
   started_at: Date;
   finished_at: Date;
+  /** Interview mode: where the main answer ended. finished_at is the close
+   *  of the whole interview, after its rounds. */
+  answer_finished_at: Date | null;
 };
 
 export async function scoreVoiceOnce(options: ScoreOptions = {}): Promise<number> {
   const { rows } = await db().query<SessionRow>(
-    `select id, voice_question_id, input, transcript, transcript_segments, started_at,
-            finished_at
+    `select id, voice_question_id, mode, input, transcript, transcript_segments, started_at,
+            finished_at, answer_finished_at
        from voice_session
       where finished_at is not null and scored_at is null and judge_attempts < $2
         and ($3::bigint is null or id = $3)
@@ -76,6 +81,12 @@ async function scoreSession(row: SessionRow, options: ScoreOptions): Promise<voi
 
   const question = await loadQuestion(Number(row.voice_question_id));
   const rubric = await loadRubric(Number(row.voice_question_id));
+  // docs/07 section 5a: in interview mode the rubric reads the main answer
+  // and every scored round, each labelled with who asked. The beats are
+  // judged on the main answer alone, which stays the event's transcript.
+  // scoredRounds returns the why and stress rounds only, and every round
+  // carries its kind, as the judge requires.
+  const followUps = row.mode === "interview" ? await scoredRounds(sessionId) : [];
 
   let result: Record<string, unknown>;
   try {
@@ -88,6 +99,7 @@ async function scoreSession(row: SessionRow, options: ScoreOptions): Promise<voi
           rubric: rubric.criteria,
           exemplars: rubric.exemplars,
         },
+        ...(followUps.length > 0 ? { follow_ups: followUps } : {}),
       },
       options,
     );
@@ -212,7 +224,9 @@ async function writeScore(
       ordinal: beat.ordinal,
     }));
 
-    const durationMs = row.finished_at.getTime() - row.started_at.getTime();
+    // The main answer's own clock: pace is about the answer, and an interview
+    // closes only after its rounds.
+    const durationMs = (row.answer_finished_at ?? row.finished_at).getTime() - row.started_at.getTime();
     const contentPoints = Number(result.content_points ?? 0);
     // A typed answer has no timings, so it is scored without pace rather
     // than handed a pace score computed from a clock that never ran.

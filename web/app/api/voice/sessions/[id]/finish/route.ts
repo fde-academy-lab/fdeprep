@@ -8,6 +8,12 @@
  * export. The session id is checked against the learner's own enrolment, so a
  * browser cannot close somebody else's sitting.
  *
+ * In interview mode (docs/07 section 5a) a main answer that counted leaves
+ * the session open, and the reply carries the first follow-up round: who
+ * asks, where its audio is, and the token for the reply's own connection.
+ * The round is planned and asked here, after the learner has stopped
+ * speaking. A retry of a main answer already stored gets the same round back.
+ *
  * Every reply is JSON, failures included, because the cockpit decides from
  * the status whether the answer is saved, and tries again on a 500.
  * lib/voice/save.ts reads it; lib/http/failure.ts says why.
@@ -15,11 +21,13 @@
 import { NextResponse } from "next/server";
 import { jsonBody, signedOut, unexpected } from "@/lib/http/failure";
 import { finishSession, SessionNotOpen, type TimelineIn } from "@/lib/voice/persist";
+import { endInterview, pendingRound } from "@/lib/voice/turns";
 import { learnerOrNull } from "@/lib/session/current";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const receivedAt = Date.now();
   const { id } = await params;
   try {
     const learner = await learnerOrNull();
@@ -35,14 +43,25 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       return NextResponse.json({ message: "Needs a timeline." }, { status: 400 });
     }
 
-    await finishSession({
+    const { rounds } = await finishSession({
       sessionId: Number(id),
       enrolmentId: learner.enrolmentId,
       transcript: body.transcript ?? "",
       segments: Array.isArray(body.segments) ? body.segments : [],
       timeline: body.timeline,
     });
-    return NextResponse.json({ finished: Number(id) });
+    if (!rounds) return NextResponse.json({ finished: Number(id) });
+    // The answer is saved before any of this runs, so a round that cannot be
+    // asked still leaves a saved answer: the interview closes and is scored,
+    // and the cockpit shows the answer as recorded.
+    try {
+      const turn = await pendingRound(Number(id), { receivedAt });
+      return NextResponse.json({ finished: Number(id), turn });
+    } catch (error) {
+      console.error(`opening the first round of voice session ${id} failed:`, error);
+      await endInterview(Number(id));
+      return NextResponse.json({ finished: Number(id), turn: null });
+    }
   } catch (error) {
     if (error instanceof SessionNotOpen) {
       return NextResponse.json({ message: error.message }, { status: error.status });

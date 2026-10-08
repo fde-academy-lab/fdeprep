@@ -50,6 +50,13 @@ export async function submitTypedAnswer(input: {
       "Pressure needs a spoken answer, because the interviewer interrupts out loud. " +
         "Type a guided answer instead. Nothing was saved.");
   }
+  // Interview mode is a conversation out loud: the follow-ups are spoken and
+  // each reply is heard. docs/07 section 5a.
+  if (input.mode === "interview") {
+    throw new TypedAnswerRefused(
+      "Interview mode needs a spoken answer, because the interviewer follows up out loud. " +
+        "Type a guided answer instead. Nothing was saved.");
+  }
 
   return inTransaction(async (client) => {
     const { rows: questions } = await client.query<{ total_seconds: number }>(
