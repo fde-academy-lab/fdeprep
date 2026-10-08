@@ -1695,7 +1695,7 @@ stages:
     name: First cohort
     kind: roadmap
     horizon: later
-    start: 2026-10-12
+    start: 2026-10-08
     finish: 2026-11-30
     area: Evaluation panel
     priority: P2
@@ -1792,6 +1792,30 @@ stages:
         finish: 2026-11-30
         acceptance:
           - New problems target the three topics with the lowest pass rate in the first cohort.
+      - id: S15.10
+        title: Make a Run execute the public cases only, as the spec always said
+        type: Bug
+        status: done
+        points: 5
+        area: Grading and judge
+        priority: P0
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The worker built the runner's event without the submission kind and
+          the handler never read one, so every Run executed the public, hidden
+          and adversarial cases and reported pass only when all three passed.
+          At the Run allowance of 30 an hour that told a learner whether the
+          hidden battery passed, which made Run an oracle for unpublished cases
+          and stepped round the Extreme tier's one submit a day. The judge had
+          the same gap: a Run on a prompt or design problem bought the probes
+          and the rubric at the Run allowance.
+        acceptance:
+          - A Run executes the static gate, the public cases and the step checks, and never stages, executes or reports a hidden or adversarial case.
+          - A Run of code that passes public and fails hidden reports the public result, with no hidden or adversarial count, case name, message, trace or score.
+          - A Submit and a rehearsal submit still run the full battery, and a defence still goes to the judge.
+          - The result writer turns a Run result in which a hidden case ran into an error that consumes nothing, and a Run on a prompt or design problem is refused.
+          - A passing rehearsal submit marks the attempt solved, as a passing submit does.
 
   - id: S16
     name: Second version

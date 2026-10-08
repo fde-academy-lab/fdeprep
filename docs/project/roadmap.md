@@ -30,7 +30,7 @@ The order you will see built is the one the product owner set on 30 September: t
 
 | Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
 |---|---|---|---|---|---|---|
-| S15 First cohort | The platform exists to produce one signal a placement team trusts, and today that signal is implied instead of computed. | 73 | 42 (28 to 58) | 136 | 12 Oct to 30 Nov 2026 | Medium |
+| S15 First cohort | The platform exists to produce one signal a placement team trusts, and today that signal is implied instead of computed. | 78 | 42 (28 to 58) | 136 | 8 Oct to 30 Nov 2026 | Medium |
 | S16 Second version | Each item answers a need the first cohort is expected to expose, and none of them is worth building before that cohort confirms it. | 50 | 58 (35 to 82) | 62 | 1 Dec to 31 Mar 2027 | Medium |
 <!-- /generated:roadmap -->
 
@@ -113,6 +113,7 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S15.7 | Move the competency write into eval/, and make progress a pure reader | Task | 5 | Planned | Only eval/ writes a grade, a band or a competency state, and a test fails if anything else does. |
 | S15.8 | Compute the readiness signal with its four counts and three bands | Feature | 8 | Planned | Each learner has a readiness band computed from the four counts in docs/12, shown to the learner and to placement. |
 | S15.9 | Write more content where the cohort actually fails | Task | 13 | Planned | New problems target the three topics with the lowest pass rate in the first cohort. |
+| S15.10 | Make a Run execute the public cases only, as the spec always said | Bug | 5 | Done | A Run executes the static gate, the public cases and the step checks, and never stages, executes or reports a hidden or adversarial case.<br>A Run of code that passes public and fails hidden reports the public result, with no hidden or adversarial count, case name, message, trace or score.<br>A Submit and a rehearsal submit still run the full battery, and a defence still goes to the judge.<br>The result writer turns a Run result in which a hidden case ran into an error that consumes nothing, and a Run on a prompt or design problem is refused.<br>A passing rehearsal submit marks the attempt solved, as a passing submit does. |
 | S16.1 | A problem family where the agent drives a real browser | Feature | 21 | Planned | A learner's agent fills a form or extracts data in a real browser, graded deterministically. |
 | S16.2 | An export built for placement instead of a CSV | Feature | 8 | Planned | A placement team reads a learner's readiness without re-interpreting a spreadsheet. |
 | S16.3 | Run several cohorts and tracks at once | Feature | 8 | Planned | Two cohorts on different tracks run at the same time without either seeing the other. |
