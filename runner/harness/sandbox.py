@@ -102,7 +102,16 @@ def _preload(names) -> None:
         try:
             _importlib.import_module(str(name))
         except Exception:
-            pass
+            # `from pkg import name` may name an attribute the package resolves
+            # on first access, and resolving it loads modules of its own:
+            # langchain_core.tools loads its tool classes, and asyncio with
+            # them, that way. Fetching it here loads them before the blocker.
+            parent, _, attr = str(name).rpartition(".")
+            if parent:
+                try:
+                    getattr(_importlib.import_module(parent), attr)
+                except Exception:
+                    pass
 
 
 def kept_modules(preload) -> frozenset[str]:

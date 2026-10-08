@@ -143,6 +143,88 @@ def test_a_checkpointed_graph_needs_no_thread():
     assert out.stdout.strip() == "2"
 
 
+TOOL_ONLY = '''
+from langchain_core.tools import tool
+
+
+@tool
+def refund(order_id: str, amount_cents: int) -> str:
+    """Refund an order."""
+    return str(amount_cents)
+
+
+def run_agent(question, llm, tools):
+    try:
+        refund.invoke({"order_id": "A1", "amount_cents": 23.5})
+        checked = "accepted"
+    except Exception as exc:
+        checked = type(exc).__name__
+    return checked + "|" + refund.invoke({"order_id": "A1", "amount_cents": "2350"})
+'''
+
+
+def test_a_tool_runs_in_the_sandbox_when_no_graph_is_imported():
+    """LangChain core loads langsmith's run helpers, and with them asyncio, on a
+    tool's first call, and pydantic loads importlib.metadata when it builds the
+    tool's schema. Importing langgraph loads all of them up front, which hid
+    this until a tools problem imported langchain_core alone (8 October 2026)."""
+    problem = from_dict({
+        "slug": "tool-only", "artefact_type": "code", "difficulty": "easy",
+        "call_budget": 2, "allowed_imports": ["langchain_core"],
+        "tests": [{"name": "validates", "visibility": "public", "spec": {
+            "kind": "agent_run", "input": {"question": "go"},
+            "llm_script": [{"match": "*", "reply": "x"}],
+            "budget": {"max_llm_calls": 2, "max_tool_calls": 2, "wall_ms": 10000},
+            "assertions": [{"type": "returns_equals", "value": "ValidationError|2350"}],
+        }}],
+    })
+    result = run_battery(problem, TOOL_ONLY)
+    assert result["gates"]["public"]["status"] == "pass", result["gates"]["public"]
+
+
+MODEL_ONLY = '''
+from pydantic import BaseModel, ValidationError
+
+
+class Refund(BaseModel):
+    order_id: str
+    amount_cents: int
+
+
+def run_agent(question, llm, tools):
+    try:
+        Refund(order_id="A1", amount_cents=23.5)
+        checked = "accepted"
+    except ValidationError:
+        checked = "ValidationError"
+    return checked + "|" + str(Refund(order_id="A1", amount_cents="2350").amount_cents)
+'''
+
+
+def test_a_pydantic_model_validates_in_the_sandbox():
+    """pydantic imports importlib.metadata when it builds its first model,
+    which the blocker refused for a solution that imported nothing else."""
+    problem = from_dict({
+        "slug": "model-only", "artefact_type": "code", "difficulty": "easy",
+        "call_budget": 2, "allowed_imports": ["pydantic"],
+        "tests": [{"name": "validates", "visibility": "public", "spec": {
+            "kind": "agent_run", "input": {"question": "go"},
+            "llm_script": [{"match": "*", "reply": "x"}],
+            "budget": {"max_llm_calls": 2, "max_tool_calls": 2, "wall_ms": 10000},
+            "assertions": [{"type": "returns_equals", "value": "ValidationError|2350"}],
+        }}],
+    })
+    result = run_battery(problem, MODEL_ONLY)
+    assert result["gates"]["public"]["status"] == "pass", result["gates"]["public"]
+
+
+def test_the_preload_adds_what_a_framework_loads_on_first_use():
+    assert "langsmith.run_helpers" in _imports_to_preload(TOOL_ONLY, ["langchain_core"])
+    assert "importlib.metadata" in _imports_to_preload(MODEL_ONLY, ["pydantic"])
+    plain = _imports_to_preload("import json\n", [])
+    assert "langsmith.run_helpers" not in plain and "importlib.metadata" not in plain
+
+
 def test_the_preload_names_the_submodule_a_solution_imports():
     names = _imports_to_preload(GRAPH, ["langgraph", "langchain_core"])
     assert "langgraph.graph" in names

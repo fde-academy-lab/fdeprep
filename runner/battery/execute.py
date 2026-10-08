@@ -178,6 +178,18 @@ def _step_status(step_id: str, held: dict[str, bool], baseline: frozenset[str]) 
     return "unchecked" if step_id in baseline else "pass"
 
 
+# What a framework imports on first use rather than as it loads. LangChain
+# core loads langsmith's run helpers, and asyncio with them, on a tool's first
+# call, and pydantic loads importlib.metadata when it builds its first model.
+# Importing langgraph loads both up front, so this gives a solution that names
+# only langchain_core or pydantic the sandbox a LangGraph solution already has
+# (8 October 2026).
+FIRST_USE = {
+    "langchain_core": ("langsmith.run_helpers",),
+    "pydantic": ("importlib.metadata",),
+}
+
+
 def _imports_to_preload(source: str, allowed_imports) -> list[str]:
     """The modules this solution imports that the gate allows, by their full names.
 
@@ -200,7 +212,10 @@ def _imports_to_preload(source: str, allowed_imports) -> list[str]:
             wanted.add(node.module)
             wanted.update(f"{node.module}.{alias.name}" for alias in node.names
                           if alias.name != "*")
-    return sorted(name for name in wanted if name.split(".")[0] in allowed)
+    names = {name for name in wanted if name.split(".")[0] in allowed}
+    for root in {name.split(".")[0] for name in names}:
+        names.update(FIRST_USE.get(root, ()))
+    return sorted(names)
 
 
 def _close_trace(trace: Trace, document: dict[str, Any]) -> None:

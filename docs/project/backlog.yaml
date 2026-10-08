@@ -1385,6 +1385,18 @@ stages:
         acceptance:
           - A problem marked drill with no day validates, a drill with a day or a drill flag other than true is refused, and the path tool lays only the problems on the path and, when they do not fit, says how many days they need against the 30 there are.
           - A drill shows in its chapter and the catalogue labelled Drill, and Home's next action and a chapter's next problem reach a drill only after every unsolved problem on the path.
+      - id: S12.19
+        title: Let a solution use LangChain core or pydantic without LangGraph in the sandbox
+        type: Bug
+        status: done
+        pr: 45
+        points: 3
+        area: Runner and sandbox
+        finish: 2026-10-08
+        found_by: Running it
+        acceptance:
+          - A solution that imports only langchain_core can define a tool, have its arguments refused and run it inside the real sandbox, and a solution that imports only pydantic can build and validate a model there, each with a test that failed before the fix.
+          - The preload loads only what LangGraph solutions already load, the static gate still refuses import asyncio and import importlib, and the tool-schema problem's reference passes every gate as root and as an unprivileged user.
           - Every new code problem's reference passes every gate and its naive solution fails a hidden test through the runner, the 30-day path is re-laid with the new problems on it, and docs/04 section 2.2 states what each tier asks for.
 
   - id: S13
