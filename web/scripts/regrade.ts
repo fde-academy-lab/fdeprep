@@ -78,7 +78,7 @@ export function describe(
   ];
 
   if (!report.candidates.length) {
-    lines.push("Nothing to regrade. Every submission that selection covers is graded already.");
+    lines.push("Nothing to regrade. No submission's newest evaluation matches that selection.");
     return lines;
   }
 

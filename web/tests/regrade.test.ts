@@ -208,7 +208,7 @@ describe("a regrade", () => {
     expect(view).not.toContain("judge_prompt");
   });
 
-  it("never turns a failed answer into a pass, however the new prompt reads it", async () => {
+  it("never turns a failed answer into a pass, whatever the new prompt makes of it", async () => {
     const { submissionId } = await graded(judged(40, "rubric.v1.md"));
 
     await runRegrade({

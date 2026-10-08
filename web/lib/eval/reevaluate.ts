@@ -104,7 +104,7 @@ export interface DrainOptions {
  * only when the record holds no score.
  *
  * Only a complete evaluation is appended. A re-run that would still be partial
- * writes nothing, so one outage is one partial row however long it lasts, and
+ * writes nothing, so one outage is one partial row for as long as it lasts, and
  * the partial rate analytics/ reports counts outages rather than retries. The
  * caller decides when to try again.
  */
