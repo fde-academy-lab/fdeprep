@@ -2,13 +2,13 @@
 
 FDE Prep is a practice and assessment platform for people training to be forward deployed engineers who build AI agents: FDE Academy cohorts first, and anyone preparing for an agent engineering screen. A learner writes agent code, repairs system prompts, argues designs in writing and answers interview questions out loud, and every answer is graded the same way each time, so the readiness number a placement team reads means what it says.
 
-Stage: beta candidate. Pull request #46, in review on 9 October 2026 (India time, as every date in this repository), adds interview mode with nine interviewers and ten problems on top of #45, which merged the same day. The platform runs end to end on a laptop and has not been deployed anywhere yet; the beta launch on AWS waits on an AWS account.
+Stage: beta candidate. Pull request #46 merged on 9 October 2026 (India time, as every date in this repository) with interview mode, nine interviewers and ten problems, and pull request #47, in review the same day, adds the first cohort's tooling on top of it: one writer of every grade, cohort analytics, the report card and a regrade for when a judge prompt changes. The platform runs end to end on a laptop and has not been deployed anywhere yet; the beta launch on AWS waits on an AWS account.
 
 | | |
 |---|---|
-| Built | 14 September to 9 October 2026, in 45 merged pull requests with the 46th in review, and 101 commits in this page's history. A fact from git, measured on 9 October 2026. |
-| Size | 36,874 lines of TypeScript in `web/` outside its tests, 1,802 in `voice/` and 1,231 in `infra/`; 5,440 lines of Python in `runner/`, `judge/` and `embed/`; 93,836 lines of problem YAML and 2,505 of voice questions and interviewers. A fact, counted with `wc -l` on 9 October 2026. |
-| Tests | 3,079 passed across four suites on 9 October 2026: 1,051 web, 1,963 Python with 69 more skipped where a model or a credential is absent, 28 voice and 37 infrastructure. |
+| Built | 14 September to 9 October 2026, in 46 merged pull requests with the 47th in review, and 139 commits in this page's history. A fact from git, measured on 9 October 2026. |
+| Size | 40,331 lines of TypeScript in `web/` outside its tests, 1,802 in `voice/` and 1,231 in `infra/`; 5,461 lines of Python in `runner/`, `judge/` and `embed/`; 93,880 lines of problem YAML and 2,505 of voice questions and interviewers. A fact, counted with `wc -l` on 9 October 2026. |
+| Tests | 3,169 passed across four suites on 9 October 2026: 1,130 web, 1,974 Python with 69 more skipped where a model or a credential is absent, 28 voice and 37 infrastructure. |
 | Content | 173 problems in 14 chapters, of which 150 sit on the 30-day path and 23 are drills, 14 voice questions and 9 interviewers. Each one validates in CI, and every problem was solved by its author before it shipped. A fact from `npm run import:content` on 9 October 2026. |
 | State | Runs on a laptop with `docker compose up`, or with Node, Python and PostgreSQL. Deployable to AWS by following [DEPLOY.md](DEPLOY.md). |
 | Record | [docs/project](docs/project/README.md) holds the delivery history, the roadmap with estimates, the risks and the decisions. |
@@ -38,9 +38,9 @@ Eight screens, in the order a learner meets them. The pictures come from `script
 
 ### 1. Open Home and take the next action
 
-![Home: a position strip, three Next up cards, four competency bars, the readiness line with its four counts, and the last five finished attempts](docs/images/home.png)
+![Home: a position strip, three Next up cards, four competency bars, the readiness line with the written and oral problems practised and its four counts, and the last five finished attempts](docs/images/home.png)
 
-Home opens on where you stand and one thing to do next. The strip (1) shows your track, your persona, the day you have reached on the 30-day storyline and how many problems you have solved. Next up (2) holds the three problems next on your path, with the one you left unfinished first. Your competencies (3) shows your two strongest and your two weakest. Readiness (4) is the number placement reads, with its four counts beside it. Recent activity (5) lists your last five finished attempts.
+Home opens on where you stand and one thing to do next. The strip (1) shows your track, your persona, the day you have reached on the 30-day storyline and how many problems you have solved. Next up (2) holds the three problems next on your path, with the one you left unfinished first. Your competencies (3) shows your two strongest and your two weakest. Readiness (4) is the number placement reads, with how many written and oral problems you have practised beside it, so a learner who is screen ready on written problems alone can see it, and its four counts under it. Recent activity (5) lists your last five finished attempts.
 
 ### 2. Find a problem on the chapter map
 
@@ -74,24 +74,24 @@ A debrief says who asked (1), then the score and its three axes (2): content fro
 
 ### 7. Check your readiness
 
-![Progress: readiness at 17 percent with clean, passed, attempted and untouched counts; the competency heatmap of thirteen competencies by four tiers; the attempt history; the CSV export](docs/images/progress.png)
+![Progress: readiness at 17 percent with the practised counts and the clean, passed, attempted and untouched counts; the competency heatmap of thirteen competencies by four tiers; the attempt history; the CSV export](docs/images/progress.png)
 
-Progress opens on the readiness line (1), the same object Home draws from the same query. The heatmap (2) is thirteen competencies by four tiers, and only a clean pass, with no hints and inside the call budget, counts toward readiness. The attempt history (3) lists every problem with its submits, its hints and its best budget. Export CSV (4) is the file a cohort tracker reads.
+Progress opens on the readiness line (1), the same object Home draws from the same query, with the written and oral problems practised beside the band. The heatmap (2) is thirteen competencies by four tiers, and only a clean pass on a submit, with no hints and inside the call budget, counts toward readiness; a Run that passes, a live run or a defence earns attempted at most. The attempt history (3) lists every problem with its submits, its hints and its best budget. Export CSV (4) is the file a cohort tracker reads.
 
 ### 8. Watch the cohort
 
-![Admin Overview: four cohort numbers, then one row per learner with persona, day reached, readiness and its counts, last activity and the stuck count](docs/images/admin-overview.png)
+![Admin Overview: the admin tabs, an Export CSV button, four cohort numbers, then one row per learner with persona, day reached, readiness and its counts, last activity and the stuck count](docs/images/admin-overview.png)
 
-Faculty and admins open Admin on the Overview, with the other sections as tabs (1). Four numbers (2) summarise the week. One row per learner follows, sortable by activity, readiness or stuck count from the column headers (3), and a row (4) opens that learner's page with the same heatmap, every attempt with its trace and every past answer.
+Faculty and admins open Admin on the Overview, with the other sections as tabs (1): Cohort, Roster, Problems, Submissions, Disagreements, Calibration, Panel and Ops. Four numbers (2) summarise the week, and Export CSV beside the title downloads the cohort standing, with the date and the row count on its first line. One row per learner follows, sortable by activity, readiness or stuck count from the column headers (3), and a row (4) opens that learner's page with the same heatmap, every attempt with its trace, every past answer, and the report cards issued for them, with the button that issues one.
 
 ## Who it is for
 
 | Who | What they do with it |
 |---|---|
 | Learners in an FDE Academy cohort | They work the 30-day path, rehearse under screen conditions, answer questions out loud to an interviewer who follows up, and read their own readiness. |
-| Faculty | They read any learner's submissions and traces, work the queue of answers the panel argued over, correct a grade, and watch the cohort on the Overview. |
-| Placement teams | They read readiness with its four counts and the attempt history, exported as CSV today and as a dated report card once [docs/11](docs/11-ANALYTICS-AND-REPORT-CARD.md) is built. |
-| Operators | They publish content, run the worker and the voice scorer, watch the queue on Ops, pause grading, requeue a stuck submission and deploy from [DEPLOY.md](DEPLOY.md). |
+| Faculty | They read any learner's submissions and traces, and every evaluation an answer has had with the judge prompt that graded it; they work the queue of answers the panel argued over, correct a grade, watch the cohort on the Overview, read who is stuck and which competency the cohort has not passed, read the calibration report before the next cohort, and issue a report card. |
+| Placement teams | They read readiness with its four counts and the interview rounds practised beside it, the attempt history and the cohort standing as CSV, and a report card that faculty issue: a dated snapshot with a SHA-256 that proves it has not changed, downloaded as Markdown. |
+| Operators | They publish content, run the worker and the voice scorer, watch the queue on Ops and the panel's health, pause grading, requeue a waiting submission, regrade after a judge prompt changes, and deploy from [DEPLOY.md](DEPLOY.md). |
 | Management | They read [docs/project](docs/project/README.md) for what was built, when, how big it was and what comes next. |
 | Anyone outside FDE Academy preparing for a forward deployed or agent engineering role | They run it on a laptop with `AUTH_DEV_LEARNER=1` and work the same 173 problems, 14 questions and nine interviewers. The sign-in wall is the only thing they skip. |
 
@@ -106,15 +106,18 @@ Faculty and admins open Admin on the Overview, with the other sections as tabs (
 | Prompt surgery | Static rules with zero model calls, then probes run twice each for agreement, then the rubric judge. | `web/lib/gate`, `judge/`; [docs/03](docs/03-RUNNER-AND-GRADING.md) section 4.2 |
 | Design arguments and the defence | A written answer graded against three exemplars, and on Hard and Extreme a 120-word defence of the design after a pass. | `judge/prompts`, `web/app/(focus)/problems/[slug]`; [docs/03](docs/03-RUNNER-AND-GRADING.md) sections 4.3 and 4.4 |
 | The judge | One Lambda for every model call: prompt probes, the rubric judge, the voice beats and, since pull request #46, the follow-up and resume-claims events of interview mode, each call bounded and its token usage recorded. Every prompt is filled in one pass, so a learner's literal `{{NONCE}}` can no longer close the data delimiter. | `judge/`, `judge/prompts/`; [docs/03](docs/03-RUNNER-AND-GRADING.md) section 4, [docs/07](docs/07-VOICE-SCREEN.md) section 5a |
-| The evaluation panel | Three evaluators and one voice: deterministic checks and heuristics, a band from the nearest graded answers with no model call, and the judge's findings. Disagreement is reported and never averaged. | `web/lib/eval`; [docs/10](docs/10-EVALUATION-PANEL.md) |
-| Faculty review and override | A queue of the answers the panel argued over, a disposition with a note, and a correction that moves the verdict, the score and the heatmap and tells the learner. | `/admin/disagreements`; [docs/10](docs/10-EVALUATION-PANEL.md) section 7 |
+| The evaluation panel | Three evaluators and one voice: deterministic checks and heuristics, a band from the nearest graded answers with no model call, and the judge's findings. Disagreement is reported and never averaged. Every evaluation names the judge prompt that graded it, the judge worker re-runs a partial evaluation for free, three a tick, and `npm run regrade` grades earlier submissions again when a prompt changes, moving a band and never a verdict. | `web/lib/eval`, `npm run regrade`; [docs/10](docs/10-EVALUATION-PANEL.md) sections 9 and 10 |
+| One writer of every grade | `web/lib/eval/` is the only writer of `evaluation`, `evaluation_review` and `competency_score`. The result writer and the voice scorer keep their own grade columns and are named for it, a test reads every file under `web/lib`, `web/app` and `web/scripts` and fails on any other writer, and only a submit or a rehearsal submit can earn a passed or clean cell. | `web/lib/eval/competency.ts`, `web/tests/writer-boundary.test.ts`, migration 026; [docs/10](docs/10-EVALUATION-PANEL.md) section 13 |
+| Faculty review and override | A queue of the answers the panel argued over, a disposition with a note, a correction that moves the verdict, the score and the heatmap and tells the learner, and every evaluation a submission has had, newest first, with its prompt and what each panelist said. | `/admin/disagreements`, `/admin/submissions/[id]`; [docs/10](docs/10-EVALUATION-PANEL.md) sections 7 and 10 |
 | The Voice Screen | Answer a spoken interview question in guided, unguided, pressure or interview mode, asked by one of nine interviewers or a panel of three. In interview mode the interviewer follows up on what you said for up to five rounds, and can ask about a resume you paste. Consent and a microphone check come first, the cockpit holds five instruments, and a typed answer is there when the microphone is not. | `/voice/session`, `web/app/(focus)/voice`, `voice/`; [docs/07](docs/07-VOICE-SCREEN.md) |
 | The interviewers | Read who the nine interviewers are, what each listens for and which questions each asks. | `/voice/interviewers`; [docs/07](docs/07-VOICE-SCREEN.md) section 2a |
 | The voice debrief | Read a voice debrief with beat timings, pace, filler counts, a rubric score and, after an interview, who asked each follow-up and what you replied. | `/voice/sessions/[id]`; [docs/07](docs/07-VOICE-SCREEN.md) section 6 |
 | Rehearsal | A timed sitting under screen conditions, two a week, with a report. | `/rehearsal`; [docs/00](docs/00-PRD.md) section 7.4 |
-| Progress and readiness | A heatmap of thirteen competencies by four tiers, a readiness percentage with its four counts and three bands, and a CSV export. | `web/lib/progress`; [docs/12](docs/12-PROGRESS-AND-READINESS.md) |
-| Admin and operations | A roster with CSV persona upload and one-time invites, submissions with every trace, Ops with queue depth, today's interview rounds with their 95th percentile gap and fallback share, a degraded-mode switch, requeue and counter clears, each writing an audit row. | `/admin/*`; [docs/01](docs/01-WIREFRAMES.md) S10, [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 |
-| Content as code | Problems, questions and interviewers are YAML in Git, validated in CI, published by one command and versioned, so a submission always points at the version it ran against. The 173 problems cover the loop, tools, the harness, context, memory, orchestration, guardrails, human in the loop, evals, observability, the agentic PDLC and SDLC, end-to-end builds and client delivery. The ten newest add a peer handoff with Command, a critic loop that keeps the best draft, a map-reduce with Send, an A2A task handoff, episodic and procedural memory, rerank depth, a bounded graph walk, n8n against a graph or plain code, and a model change inside a sealed network. | `problems/`, `voice-questions/`, `voice-interviewers/`; [docs/04](docs/04-PROBLEM-AUTHORING.md) |
+| Progress and readiness | A heatmap of thirteen competencies by four tiers, a readiness percentage with its four counts and three bands, the written and oral problems practised beside it, and a CSV export. | `web/lib/progress`; [docs/12](docs/12-PROGRESS-AND-READINESS.md) |
+| Cohort analytics | The stuck list by learner and problem, the competency gaps with the lowest pass rate named in a sentence, interview coverage by round, a calibration report that names the problem, the signal, the number, the sample and what to check first, panel health with the partial rate and the re-evaluation backlog, and the cohort standing as a dated CSV. Every number is read from what `eval/` wrote, and the module computes no grade. | `web/lib/analytics`, `/admin/cohort`, `/admin/calibration`, `/admin/panel`; [docs/11](docs/11-ANALYTICS-AND-REPORT-CARD.md) sections 4 to 7 |
+| The report card | A dated snapshot of one learner for a placement team, issued by faculty from the learner's page, stored as canonical JSON with its SHA-256, refused any update by the database, and downloaded as Markdown with the date, the hash and the snapshot on it, so anyone holding the card can check it. | `web/lib/analytics/report-card.ts`, migration 024; [docs/11](docs/11-ANALYTICS-AND-REPORT-CARD.md) section 3 |
+| Admin and operations | A roster with CSV persona upload and one-time invites, submissions with every trace and every evaluation, the Cohort, Calibration and Panel screens, Ops with queue depth, today's interview rounds with their 95th percentile gap and fallback share, a degraded-mode switch, requeue and counter clears, each writing an audit row. | `/admin/*`; [docs/01](docs/01-WIREFRAMES.md) S10, [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 |
+| Content as code | Problems, questions and interviewers are YAML in Git, validated in CI, published by one command and versioned, so a submission always points at the version it ran against. A C3 or C4 design problem lists the constraints its answer has to engage with, and the validator refuses one without. The 173 problems cover the loop, tools, the harness, context, memory, orchestration, guardrails, human in the loop, evals, observability, the agentic PDLC and SDLC, end-to-end builds and client delivery. The ten newest add a peer handoff with Command, a critic loop that keeps the best draft, a map-reduce with Send, an A2A task handoff, episodic and procedural memory, rerank depth, a bounded graph walk, n8n against a graph or plain code, and a model change inside a sealed network. | `problems/`, `voice-questions/`, `voice-interviewers/`; [docs/04](docs/04-PROBLEM-AUTHORING.md) |
 | A delivery record | Every stage and story in one file that CI checks, rendered to pages for management and synced to a GitHub Project. | `docs/project/backlog.yaml`, `tools/project_sync.py` |
 
 ## Modes
@@ -155,7 +158,7 @@ Difficulty decides how much support a learner gets. It never decides which probl
 
 ## Stages of development
 
-The build ran as ten stages from the specification to the beta candidate, then six more after it, with the beta launch waiting on an AWS account. A stage is what an enterprise team would call an epic. Dates are facts from git, in India time, and points are estimates on a relative scale that [docs/project/estimation.md](docs/project/estimation.md) explains.
+The build ran as ten stages from the specification to the beta candidate, then seven more after it, with the beta launch waiting on an AWS account. A stage is what an enterprise team would call an epic. Dates are facts from git, in India time, and points are estimates on a relative scale that [docs/project/estimation.md](docs/project/estimation.md) explains.
 
 ```mermaid
 timeline
@@ -180,8 +183,9 @@ timeline
                          : S17 Redesign, one position and one next action
     8 and 9 Oct 2026, pull request 46 : S14 Voice interviewer v2, step 2, interview mode
                                       : S18 Agentic patterns and depth content, ten problems
+    8 and 9 Oct 2026, pull request 47 : S15 First cohort, six of nine stories, one writer of every grade, analytics, the report card and the regrade
     Planned : S11 Beta launch on AWS
-            : S15 First cohort
+            : S15 First cohort, the diagnostic, the import screen and more content
             : S16 Second version
 ```
 
@@ -202,8 +206,9 @@ timeline
 | S17 Redesign, one position and one next action | 8 and 9 October 2026 | #45 | A seed that fills a database through `eval/`, readiness read everywhere from one query, one name per place, Home and Problems opening on one position and one next action, and the admin Overview. |
 | S14 Voice interviewer v2, step 2 | 8 and 9 October 2026 | #46 | Interview mode: follow-up rounds planned on the server and worded by the judge under a four-second deadline with the authored bank as the fallback, a pasted resume turned into claims and never written, a panel of three that takes turns, the pixel interview room in the lobby and the debrief, and docs/07 and the consent screen amended. Pricing and timing ten real sessions (S14.5) waits for the first deploy. |
 | S18 Agentic patterns and depth content | 8 and 9 October 2026 | #46 | Ten problems the catalogue was missing: a peer handoff with Command, a critic loop that keeps the best draft, a map-reduce with Send, an A2A task handoff, episodic and procedural memory, rerank depth, a bounded graph walk, n8n against a graph or plain code, and a model change inside a sealed network. Nine are drills. |
-| S11 Beta launch | Forecast 1 to 9 October 2026, waiting on an AWS account | [DEPLOY.md](DEPLOY.md) landed in #45 | Deploy route C, prove each of the four live integrations once, run the restore drill, brief a second operator, set the budget alarm and run the burst test. |
-| S15 and S16 | Planned | None yet | A diagnostic that sets personas, analytics, the report card and content aimed at what the cohort fails; then a browser problem family, a placement export, several cohorts at once, peer review and a mobile reading view. |
+| S15 First cohort | 8 and 9 October 2026, with three stories still planned | #47 | One writer of every grade, with a test that reads the application for any other and a reader role behind it; cohort analytics, with the stuck list, the competency gaps, interview coverage, the calibration report, panel health and the cohort standing CSV; the report card as a dated, hashed snapshot; the judge prompt on every evaluation, `npm run regrade`, a judge worker that pays off partial evaluations, and the panelist 3 fix, since it read a score field the judge never writes and had sent every real design, prompt and defence evaluation to partial; constraint lists on all 28 C3 and C4 design problems, so `names_no_constraint` fires; and the readiness signal, built with the redesign, recorded as delivered. The diagnostic that sets personas (S15.1), an import screen that works on a deployment (S15.4) and content aimed at what the cohort fails (S15.9) stay planned. |
+| S11 Beta launch | Forecast 1 to 9 October 2026, waiting on an AWS account | [DEPLOY.md](DEPLOY.md) landed in #45 | Deploy route C, prove each of the four live integrations once, run the restore drill written in DEPLOY.md 8.2, brief a second operator, set the budget alert on the Marketplace billing entity and run the burst test. |
+| S16 Second version | Planned | None yet | A browser problem family, a placement export, several cohorts at once, peer review and a mobile reading view. |
 
 [docs/project/delivery-history.md](docs/project/delivery-history.md) has every story in every stage with the pull request that delivered it, and [docs/project/roadmap.md](docs/project/roadmap.md) has the planned stages with their estimates and RICE scores.
 
@@ -225,18 +230,18 @@ The specification lives in `docs/` and is authoritative. When this page and a do
 | Document | What it decides | Read it when |
 |---|---|---|
 | [docs/00 Product requirements](docs/00-PRD.md) | Users and access, the problem object, the scaffold ladder, caps, the scripted model, the adversarial battery, rehearsal, progress and the acceptance list for v1. | Always, in the first session of any phase. |
-| [docs/01 Wireframes](docs/01-WIREFRAMES.md) | Ten screens as region maps with their behaviour, and the visual direction. | Building any screen. |
-| [docs/02 Data model](docs/02-DATA-MODEL.md) | Every table, the rate limit policy rows, the competency states and retention. | Touching the schema or a query. |
+| [docs/01 Wireframes](docs/01-WIREFRAMES.md) | Ten screens as region maps with their behaviour, the admin Overview and the analytics screens as amended, and the visual direction. | Building any screen. |
+| [docs/02 Data model](docs/02-DATA-MODEL.md) | Every table, the rate limit policy rows, the competency states and which kinds earn them, the evaluation record, report cards, the reader role and retention. | Touching the schema or a query. |
 | [docs/03 Runner and grading](docs/03-RUNNER-AND-GRADING.md) | The execution model, the mock LLM contract, the fixture library, the gates per artefact, the result contract, the trace format, security, failure handling, the outbox, the lease and the step protocol. | Anything in `runner/` or `judge/`, and before touching grading anywhere. |
-| [docs/04 Problem authoring](docs/04-PROBLEM-AUTHORING.md) | The validator rules, the YAML schema, the kit on every problem, three worked problems and the authoring checklist. | Anything that reads or validates problem YAML. |
-| [docs/05 Deployment and operations](docs/05-DEPLOY-AND-OPS.md) | The architecture as amended for the beta, the environments, the CDK stack, the cost shape, the three alarms, the runbook and the cost runbook for interview mode. | Anything in `infra/` or `.github/workflows/`. |
+| [docs/04 Problem authoring](docs/04-PROBLEM-AUTHORING.md) | The validator rules, the YAML schema, the kit on every problem, the constraints list on a C3 or C4 design problem, three worked problems and the authoring checklist. | Anything that reads or validates problem YAML. |
+| [docs/05 Deployment and operations](docs/05-DEPLOY-AND-OPS.md) | The architecture as amended for the beta, the environments, the CDK stack, the cost shape, the three alarms, the runbook with the regrade and the restore, and the cost runbook for interview mode. | Anything in `infra/` or `.github/workflows/`. |
 | [docs/06 Build plan](docs/06-BUILD-PLAN.md) | Phases 0 to 8 with acceptance criteria, the standing rules and what to cut first. | The start of every phase. |
 | [docs/07 Voice Screen](docs/07-VOICE-SCREEN.md) | The question object and its loop fields, the nine interviewers, the cockpit, the four modes with interview mode's rounds, scoring, the fairness rule, the technical design, the schema, privacy, caps and acceptance. | Anything in the voice module. |
 | [docs/08 Design system](docs/08-DESIGN-SYSTEM.md) | Type, colour, icons, motion, density, components and the accessibility floor. | Any styling, type, colour, icon or motion decision. |
 | [docs/09 Source pack reconciliation](docs/09-SOURCE-PACK-RECONCILIATION.md) | What an earlier build pack by a different model got right, what was corrected and why. | Before trusting anything in `docs/source-pack/`. |
-| [docs/10 Evaluation panel](docs/10-EVALUATION-PANEL.md) | Complexity against difficulty, the three panelists, the consolidator, bands, degradation, the evaluation record and the relevance gate. | Anything in `eval/`, and before changing how any answer is graded. |
-| [docs/11 Analytics and the report card](docs/11-ANALYTICS-AND-REPORT-CARD.md) | Cohort views, problem calibration, panel health and exports. Specified and not yet built. | Anything in `analytics/`, cohort views, the report card or an export. |
-| [docs/12 Progress and readiness](docs/12-PROGRESS-AND-READINESS.md) | The competency state machine, the readiness signal with its counts and bands, partial evaluations and the module boundary. | Anything in `progress/`, the heatmap or the readiness signal. |
+| [docs/10 Evaluation panel](docs/10-EVALUATION-PANEL.md) | Complexity against difficulty, the three panelists, the consolidator, bands, degradation and the drain that pays for it, the evaluation record with the prompt that graded it, the regrade, the relevance gate and the module boundary with its two named writers. | Anything in `eval/`, and before changing how any answer is graded. |
+| [docs/11 Analytics and the report card](docs/11-ANALYTICS-AND-REPORT-CARD.md) | Cohort views, problem calibration, panel health, the report card and exports, each amended on 8 October 2026 to what was built. The PDF export waits on a dependency proposal. | Anything in `analytics/`, cohort views, the report card or an export. |
+| [docs/12 Progress and readiness](docs/12-PROGRESS-AND-READINESS.md) | The competency state machine, the readiness signal with its counts and bands, interview coverage, partial evaluations and the module boundary. | Anything in `progress/`, the heatmap or the readiness signal. |
 
 ## Architecture
 
@@ -258,7 +263,7 @@ The people and the outside systems around the product.
 ```mermaid
 flowchart LR
   learner["Learner<br/>A person in an FDE Academy cohort<br/>Solves problems, rehearses, answers out loud"]
-  faculty["Faculty<br/>Cohort leads and reviewers<br/>Read submissions, settle disagreements, correct grades"]
+  faculty["Faculty<br/>Cohort leads and reviewers<br/>Read submissions, settle disagreements, correct grades, issue report cards"]
   operator["Operator<br/>Runs the platform<br/>Publishes content, keeps the worker alive, watches the queue"]
   placement["Placement team<br/>Reads readiness before a screen"]
   fdeprep["FDE Prep<br/>Next.js, PostgreSQL, two Lambdas<br/>Practice and assessment for forward deployed engineers"]
@@ -268,7 +273,7 @@ flowchart LR
   learner -->|"solves, submits and speaks in"| fdeprep
   faculty -->|"review and override grades in"| fdeprep
   operator -->|"publishes content to and operates"| fdeprep
-  fdeprep -->|"exports readiness and attempt history to"| placement
+  fdeprep -->|"exports readiness, the cohort standing and report cards to"| placement
   fdeprep -->|"signs people in through"| github
   fdeprep -->|"judges written and spoken answers with"| bedrock
   fdeprep -->|"transcribes answers and speaks follow-ups with"| speech
@@ -282,8 +287,8 @@ Each deployable unit, its technology and what talks to what. The web application
 flowchart TB
   browser["Browser<br/>React 19, CodeMirror 6, an AudioWorklet<br/>Every learner, faculty and admin screen"]
   subgraph host["Web host: one EC2 instance, or a laptop"]
-    web["Web application<br/>Next.js 16 App Router, TypeScript<br/>Screens, API routes, the policy module, the evaluation panel, the interview rounds"]
-    worker["Worker<br/>Node process, npm run worker<br/>Drains the queue, invokes the functions, commits results"]
+    web["Web application<br/>Next.js 16 App Router, TypeScript<br/>Screens, API routes, the policy module, the evaluation panel, the analytics, the interview rounds"]
+    worker["Worker<br/>Node process, npm run worker<br/>Drains the queue, invokes the functions, commits results, pays off partial evaluations"]
     scorer["Voice scorer<br/>Node process, npm run scorevoice<br/>Scores finished voice answers, closes stale interviews, deletes old audio and resume claims"]
     db[("PostgreSQL 16<br/>Every table, the outbox and the queue")]
   end
@@ -320,12 +325,12 @@ flowchart TB
   route["Submit route<br/>web/app/api/submissions/route.ts<br/>Resolves the policy and the cap on the server; writes the row, the cap and the outbox row in one transaction"]
   dispatcher["Dispatcher<br/>web/lib/queue/dispatcher.ts<br/>Claims a lease and a fencing token, publishes to one lane"]
   runnerw["Runner worker<br/>web/lib/queue/runner-worker.ts<br/>Builds the event from the problem version and the solution"]
-  judgew["Judge worker<br/>web/lib/queue/judge-worker.ts<br/>Runs the static gate here, then invokes the judge"]
+  judgew["Judge worker<br/>web/lib/queue/judge-worker.ts<br/>Runs the static gate here, then invokes the judge, and re-runs partial evaluations, three a tick"]
   runner["Runner<br/>runner/battery and runner/harness, Python<br/>Static gate, public, hidden and adversarial cases, the trace"]
   judge["Judge<br/>judge/, Python<br/>Each probe twice, the rubric judge against three exemplars, the voice beats, and the follow-up and resume-claims events of interview mode"]
   writer["Result writer<br/>web/lib/queue/result-writer.ts<br/>Compare-and-set on the lease, the fencing token and the body hash; refunds an error"]
-  panel["Evaluation panel<br/>web/lib/eval<br/>Panelist 1 checks and heuristics, panelist 2 nearest graded answers, panelist 3 findings; one voice"]
-  competency["Competency scoring<br/>web/lib/competency<br/>untouched, attempted, passed, clean"]
+  panel["Evaluation panel<br/>web/lib/eval<br/>Panelist 1 checks and heuristics, panelist 2 nearest graded answers, panelist 3 findings, one voice, and the prompt that graded it"]
+  competency["Competency cells<br/>web/lib/eval/competency.ts<br/>untouched, attempted, passed, clean, and only a submit earns the last two"]
   reaper["Lease reaper<br/>web/lib/queue/dispatcher.ts<br/>Marks an expired lease error and refunds the cap"]
   tables[("PostgreSQL<br/>submission, outbox, queue_message, trace, evaluation, competency_score")]
   route -->|"writes the outbox row to"| tables
@@ -466,12 +471,12 @@ sequenceDiagram
     J-->>K: The result contract, or a requeue once on probe disagreement
   end
   K->>DB: Compare-and-set on the lease, the fencing token and the body hash
-  K->>DB: Store the trace, refund an error or a timeout, recompute competency cells
-  K->>DB: Run the panel behind a savepoint and write the evaluation record
+  K->>DB: Store the trace, refund an error or a timeout, recompute the competency cells through eval/
+  K->>DB: Run the panel behind a savepoint and write the evaluation record, naming the judge prompt that graded it
   W-->>B: Verdict, gates, budget, steps and the one voice arrive over SSE
 ```
 
-The outbox row is written in the same transaction as the submission and the cap, so a submission can never exist without its message. The compare-and-set is what stops a late or duplicated runner overwriting a fresh result. A trace is capped at 256 KB and a synchronous Lambda reply may carry 6 MB, so the result always fits in the reply and the runner needs no bucket.
+The outbox row is written in the same transaction as the submission and the cap, so a submission can never exist without its message. The compare-and-set is what stops a late or duplicated runner overwriting a fresh result. A trace is capped at 256 KB and a synchronous Lambda reply may carry 6 MB, so the result always fits in the reply and the runner needs no bucket. An evaluation is never edited: when a panelist could not run, the judge worker re-runs the partial evaluation for free, three a tick and oldest first, and `npm run regrade` appends a new row under a new judge prompt the same way. Neither moves the verdict, because only deterministic checks produce one.
 
 ### A voice answer, from Start to the debrief
 
@@ -571,7 +576,7 @@ stateDiagram-v2
 
 ### The core tables
 
-From `web/migrations/`, 23 files. Enum types are named as the migrations name them. The practice side first.
+From `web/migrations/`, 26 files. Enum types are named as the migrations name them. The practice side first.
 
 ```mermaid
 erDiagram
@@ -601,6 +606,9 @@ erDiagram
   submission ||--o{ evaluation : "is graded in"
   submission ||--o{ runner_event : "logs"
   evaluation ||--o| evaluation_review : "is read in"
+  enrolment ||--o{ report_card : "is issued"
+  cohort ||--o{ report_card : "is the cohort of"
+  app_user |o--o{ report_card : "issues"
 
   app_user {
     bigint id PK
@@ -742,6 +750,16 @@ erDiagram
     text feedback_md
     bigint overridden_by FK
     text override_note
+    text judge_prompt "the file in judge/prompts/, or empty"
+  }
+  report_card {
+    bigint id PK
+    bigint enrolment_id FK
+    bigint cohort_id FK
+    bigint issued_by FK
+    timestamptz generated_at
+    text content "the snapshot as canonical JSON"
+    text content_sha256 "checked by the database, never updated"
   }
   evaluation_review {
     bigint id PK
@@ -989,14 +1007,15 @@ Every row has an identifier a test, a pull request or a document can cite, and n
 | FR9 | Rehearsal under screen conditions, two a week, with a report. | [docs/00](docs/00-PRD.md) section 7.4 | Built |
 | FR10 | Prompt surgery: static rules with zero model calls, probes run twice for agreement, then the rubric judge. | [docs/03](docs/03-RUNNER-AND-GRADING.md) section 4.2 | Built |
 | FR11 | A panel of three evaluators with one consolidated voice, disagreement reported and never averaged, a faculty queue, and an override that moves the grade and tells the learner. | [docs/10](docs/10-EVALUATION-PANEL.md) | Built |
-| FR12 | A competency heatmap with four one-way states, a readiness signal with four counts and three bands, interview coverage beside it, and a CSV export. | [docs/02](docs/02-DATA-MODEL.md) section 7, [docs/12](docs/12-PROGRESS-AND-READINESS.md) | Built, except interview coverage beside the signal |
+| FR12 | A competency heatmap with four one-way states, where only a submit or a rehearsal submit earns passed or clean, a readiness signal with four counts and three bands, interview coverage beside it, and a CSV export. | [docs/02](docs/02-DATA-MODEL.md) section 7, [docs/12](docs/12-PROGRESS-AND-READINESS.md) | Built |
 | FR13 | The Voice Screen: consent, a microphone check, guided, unguided, pressure and interview modes, nine interviewers and a panel, follow-up rounds with the authored bank as the fallback, a pasted resume as claims for the session only, typed answers, a question picker, a debrief, instrument replay, and audio deleted after 30 days. | [docs/07](docs/07-VOICE-SCREEN.md) | Built |
-| FR14 | Admin: a roster with CSV persona upload and invites, submissions with every trace, Ops with queue depth and a degraded switch, requeue and counter clears with an audit row, disagreements, and the cohort Overview. | [docs/01](docs/01-WIREFRAMES.md) S10, [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 | Built, except that the import screen reads from disk and cannot run on a deployment |
+| FR14 | Admin: a roster with CSV persona upload and invites, submissions with every trace and every evaluation, Ops with queue depth and a degraded switch, requeue and counter clears with an audit row, disagreements, the cohort Overview, and the Cohort, Calibration and Panel screens. | [docs/01](docs/01-WIREFRAMES.md) S10, [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 | Built, except that the import screen reads from disk and cannot run on a deployment |
 | FR15 | Content is YAML in Git, validated in CI, published by a command, and versioned so a submission points at the version it ran against. | [docs/04](docs/04-PROBLEM-AUTHORING.md), [docs/02](docs/02-DATA-MODEL.md) section 2 | Built |
 | FR16 | Every cap is a row in `rate_limit_policy` on a rolling window, editable without a deploy. | [docs/00](docs/00-PRD.md) section 4, [docs/02](docs/02-DATA-MODEL.md) section 6 | Built |
 | FR17 | The catalogue is fourteen chapters in four stages, told as a learner's first 30 days, with drills off the path. | [docs/04](docs/04-PROBLEM-AUTHORING.md) section 1 | Built |
-| FR18 | Cohort analytics, the stuck list, problem calibration, panel health and a dated, hashed report card. | [docs/11](docs/11-ANALYTICS-AND-REPORT-CARD.md) | Specified, not built |
+| FR18 | Cohort analytics, the stuck list, problem calibration, panel health and a dated, hashed report card. | [docs/11](docs/11-ANALYTICS-AND-REPORT-CARD.md) | Built. The report card downloads as Markdown, and the PDF waits on a dependency proposal. |
 | FR19 | A baseline diagnostic sets each learner's persona. | [docs/00](docs/00-PRD.md) section 2 | Specified, not built. An admin sets personas by hand or by CSV. |
+| FR20 | Every evaluation records the judge prompt that graded it, a partial evaluation is re-run for free, and a judge prompt change can regrade earlier submissions without moving a verdict or spending an allowance. | [docs/10](docs/10-EVALUATION-PANEL.md) sections 9 and 10, [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 | Built |
 
 ### Non-functional requirements
 
@@ -1008,7 +1027,7 @@ Every row has an identifier a test, a pull request or a document can cite, and n
 | NFR4 | Availability: no release gate and no scheduled window, with every cap on a rolling window so no time zone is disadvantaged. | [docs/00](docs/00-PRD.md) section 4 | The cap tests under `web/tests`, and the design of `rate_limit_counter` |
 | NFR5 | Cost: grading spends no model tokens, and token spend is bounded by the caps, with a budget alarm at 50 and 80 percent before the first learner signs in. | [docs/05](docs/05-DEPLOY-AND-OPS.md) section 5 | `tests/test_process_boundary.py` and `tests/test_isolation.py` prove learner code reaches no model. The alarm is launch task S11.6. |
 | NFR6 | Security: learner code runs in a Lambda with no route out and no credential, as a sandbox process with an allowlisted environment and no process allowance, behind a static gate, and learner text reaches the judge as data. | [docs/03](docs/03-RUNNER-AND-GRADING.md) section 7 | `tests/test_static_gate.py`, `tests/test_isolation.py`, `tests/test_judge_injection.py`, and `infra/test`, which asserts the runner's role holds no Bedrock, bucket or queue grant |
-| NFR7 | Fairness: an error verdict never consumes an allowance, a panelist that cannot run never lowers a score, and voice delivery is never scored. | `CLAUDE.md`, [docs/10](docs/10-EVALUATION-PANEL.md) section 9, [docs/07](docs/07-VOICE-SCREEN.md) section 6 | `web/tests/pipeline.test.ts`, `web/tests/panel.test.ts` and `web/tests/fairness.test.ts` |
+| NFR7 | Fairness: an error verdict never consumes an allowance, a panelist that cannot run never lowers a score, a re-run and a regrade spend nothing and move no verdict, and voice delivery is never scored. | `CLAUDE.md`, [docs/10](docs/10-EVALUATION-PANEL.md) sections 9 and 10, [docs/07](docs/07-VOICE-SCREEN.md) section 6 | `web/tests/pipeline.test.ts`, `web/tests/panel.test.ts`, `web/tests/fairness.test.ts`, `web/tests/reevaluation-drain.test.ts` and `web/tests/regrade.test.ts` |
 | NFR8 | Privacy: consent before the first recording, audio deleted after 30 days by the bucket's own rule, faculty hear audio only when the learner shares it, and a pasted resume's text is never written to a table, a file or a log. | [docs/07](docs/07-VOICE-SCREEN.md) section 9 | `infra/test`, the voice tests under `web/tests`, which hold the two copies of the 30-day figure together, and `web/tests/voice-resume.test.ts`, which plants a sentinel in a resume and finds it nowhere |
 | NFR9 | Rollback: every migration stays backward compatible for one release, and every result records the runner image tag that graded it. | `CLAUDE.md`, [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 | Review, and the `runner.image_tag` field of the result contract |
 | NFR10 | Observability: three alarms and no more, runner throttled, runner failing and judge spend, routed to one topic. | [docs/05](docs/05-DEPLOY-AND-OPS.md) section 6 | `infra/test` |
@@ -1027,7 +1046,7 @@ Every row has an identifier a test, a pull request or a document can cite, and n
 | C4 | The two Lambdas never merge: the runner has no model and no database, and the judge executes nothing. | `.claude/rules/01-trust-boundaries.md` |
 | C5 | Judge prompts are versioned files in `judge/prompts/`, never database rows. | `CLAUDE.md` |
 | C6 | Problem YAML is validated in CI, not at import, and every new assertion type ships with a fixture, a unit test and a validator entry. | `CLAUDE.md`, [docs/04](docs/04-PROBLEM-AUTHORING.md) |
-| C7 | `eval/` is the only writer of a grade, a band or a competency state. `progress/` and `analytics/` read. | [docs/10](docs/10-EVALUATION-PANEL.md) section 13 |
+| C7 | `eval/` is the only writer of a grade, a band or a competency state. `progress/` and `analytics/` read, and the one row `analytics/` appends is a report card. Two writers outside `eval/` are named for the grade column each keeps, `writeResult` and `scoreVoiceOnce`, `web/tests/writer-boundary.test.ts` fails on any other, and migration 026 adds `fdeprep_reader`, a role with no write grant that nothing runs under yet. | [docs/10](docs/10-EVALUATION-PANEL.md) section 13 |
 | C8 | Complexity, C1 to C4, and difficulty, Easy to Extreme, are separate axes, and no component reads difficulty directly. An ESLint rule enforces the second half. | [docs/10](docs/10-EVALUATION-PANEL.md) section 3, `CLAUDE.md` |
 | C9 | No transcript renders while a learner speaks, and the cockpit holds five instruments at most. | [docs/07](docs/07-VOICE-SCREEN.md) section 3 |
 | C10 | Desktop first: a 12-column grid at 1,440 pixels, 1,180 pixels minimum, and no mobile workspace in v1. | [docs/01](docs/01-WIREFRAMES.md), [docs/00](docs/00-PRD.md) non-goals |
@@ -1047,7 +1066,7 @@ Every row has an identifier a test, a pull request or a document can cite, and n
 | A5 | Learners practise on laptops. | A mobile reading view moves up the roadmap. | [docs/project/raid-log.md](docs/project/raid-log.md) |
 | A6 | Every learner has a coding assistant, so the design compensates with hostile fixtures, the defence step and the trace rather than policing. | Nothing breaks. The defence step is extra work for an honest learner. | [docs/00](docs/00-PRD.md) sections 7.3 and 10 |
 | A7 | Speech runs near 138 words a minute, measured by reading exemplars aloud, and a typed answer is capped at 180. | Beat budgets are wrong in one direction and every voice question needs re-timing. | [docs/project/delivery-history.md](docs/project/delivery-history.md) S4, [docs/07](docs/07-VOICE-SCREEN.md) section 4 |
-| A8 | Panelist 2's band agrees with a human grader often enough to hold the lower band on a disagreement. | Faculty overrides record every case, and analytics will report how often the panel is overruled. | [docs/10](docs/10-EVALUATION-PANEL.md) section 7 |
+| A8 | Panelist 2's band agrees with a human grader often enough to hold the lower band on a disagreement. | Faculty overrides record every case, and `/admin/panel` and the calibration report show how often the two judges disagree. Nothing yet counts how often a person overrules the held band. | [docs/10](docs/10-EVALUATION-PANEL.md) section 7, [docs/11](docs/11-ANALYTICS-AND-REPORT-CARD.md) sections 5 and 6 |
 | A9 | The deployed judge answers a follow-up inside four seconds often enough that the authored bank is the exception. | The fallback share rises, learners hear the bank more than the model, and the judge needs provisioned concurrency, which is billed by the hour. | [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 |
 
 ## Running it on your machine
@@ -1194,15 +1213,15 @@ A five-minute path that shows the product's argument rather than its screens.
 | 4 | Open the Trace tab | Here is what the agent called, in order, with the call budget. This is the thing a tech screen asks about and a pass or fail cannot show. |
 | 5 | Open an Extreme problem | The signature and its contract, a countdown, one submit a day, and a panel demanding your own tests before Submit opens. |
 | 6 | `/voice`, answer one question in guided mode for thirty seconds and stop | The beat track moved, no transcript appeared, and the debrief has beat timings, pace and filler counts. |
-| 7 | `/progress` | Four cell states, and only the fourth counts. This is the number placement gets. |
+| 7 | `/progress` | Four cell states, and only the fourth counts. This is the number placement gets, and a report card is its dated copy. |
 
 ### Run the tests
 
 ```bash
 createdb fdeprep_test
 export TEST_DATABASE_URL="postgres://localhost/fdeprep_test"
-cd web   && npm test                        # 1,051 tests
-cd ../   && .venv/bin/python -m pytest -q   # 1,963 tests, 69 skip, see below
+cd web   && npm test                        # 1,130 tests
+cd ../   && .venv/bin/python -m pytest -q   # 1,974 tests, 69 skip, see below
 cd voice && npm test                        # 28 tests
 cd ../infra && npm test                     # 37 tests
 ```
@@ -1288,7 +1307,7 @@ Neon's free computes scale to zero after five minutes of inactivity, so the firs
 5. The worker: `cd web && NODE_ENV=production DATABASE_URL="<production>" RUNNER_LOCAL_OK=1 npm run worker`. A production worker refuses to run learner code on its own host unless `RUNNER_LOCAL_OK=1` says you meant it. With the Lambdas from route C deployed, drop that and set `RUNNER_FUNCTION`, `JUDGE_FUNCTION` and `AWS_REGION` instead, with credentials on this host that the stack's `BoxPolicy` allows. A `systemd` service or a `tmux` session on a small VM is enough for a first beta. Run `python scripts/fetch_embedding_model.py` on the same host so written answers are banded against the nearest graded answers.
 6. The roster, before students arrive. Invite every learner to the GitHub organisation, create the cohort row and an active enrolment per learner, set each persona with the CSV upload on `/admin/roster`, and sign in as a learner yourself to open one problem at each difficulty.
 7. AWS, when you want the judge and the Voice Screen. Deploy the stack as [DEPLOY.md](DEPLOY.md) steps 2 and 3 describe, give the worker's host credentials the stack's `BoxPolicy` allows, set `RUNNER_FUNCTION`, `JUDGE_FUNCTION` and `AWS_REGION` from the stack's outputs, set `JUDGE_MODEL_ID` on the stack to an inference profile id such as `us.anthropic.claude-opus-5` (a bare model id is refused at start with an error that says why), and for voice set `VOICE_SOCKET_URL` to the `VoiceSocketUrl` output and `VOICE_TOKEN_SECRET` to the value in the secret the stack reads. Then spend one attempt on each live integration yourself before a learner does.
-8. The two things people skip: a second person with console access, the runbook in [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 and one practice drill, which takes an afternoon, and an AWS Budgets alarm on the Bedrock line at 50 and 80 percent, which takes ten minutes. Also restore the database to a new branch once and verify against a known submission id.
+8. The two things people skip: a second person with console access, the runbook in [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 and one practice drill, which takes an afternoon, and an AWS Budgets alert at 50 and 80 percent filtered on the AWS Marketplace billing entity, which takes ten minutes. The model provider bills through AWS Marketplace, so a budget on the Amazon Bedrock service misses its charges. Also restore the database to a new branch once and verify against a known submission id.
 
 Four worker variables tune panelist 2 and all have working defaults: `RUNNER_PYTHON` (the interpreter the worker spawns, `.venv/bin/python` then `python3`), `FDEPREP_EMBED_MODEL_DIR` (`.models/minilm`), `EMBED_TIMEOUT_MS` (`20000`, so a hung encoder becomes an unavailable panelist rather than a stuck queue) and `EVAL_DEGRADED_PANELISTS` (unset; a name that is not a panelist is rejected rather than ignored).
 
@@ -1366,24 +1385,25 @@ The web application, the worker and Postgres on one EC2 instance behind Caddy; t
 | 5. Domain and GitHub sign-in | The DNS record and the GitHub OAuth app. |
 | 6. Install and run | The site live over HTTPS, with three services. |
 | 7. Sign in and prove it | The first admin, and every live connection tested once. |
-| 8. Keep it alive | A spending alert on Marketplace billing, daily snapshots, updates and rollback. |
+| 8. Keep it alive | A spending alert on Marketplace billing, daily snapshots with the restore drill and the restore itself, updates and rollback. |
 
-This route has not yet run end to end against a real account. The stack synthesises and its tests pass, the proxy, sign-in and invite steps were run in a sandbox, and DEPLOY.md step 7 is there to catch what a first live run finds.
+This route has not yet run end to end against a real account. The stack synthesises and its tests pass, the proxy, sign-in and invite steps were run in a sandbox, and DEPLOY.md step 7 is there to catch what a first live run finds. The restore drill in DEPLOY.md 8.2, which copies the newest snapshot to a scratch volume and compares a second Postgres with the live one table by table, is written and has not run either; S11.4 runs it on the first deployment and records how long it took.
 
 ## Maintaining it
 
 | Cadence | Task | How |
 |---|---|---|
-| Daily during a cohort | Glance at `/admin/ops` for queue depth, the runner error rate, the voice answers nobody has scored and, with interview mode in use, today's rounds with their 95th percentile gap and fallback share. | One screen, ten seconds. |
+| Daily during a cohort | Glance at `/admin/ops` for queue depth, the runner error rate, the voice answers nobody has scored and, with interview mode in use, today's rounds with their 95th percentile gap and fallback share, then `/admin/panel` for the partial rate and the re-evaluation backlog. | Two screens, twenty seconds. |
 | After every content change | Republish. | `npm run import:content` against the production database. |
-| Weekly | Read the attempt notes on Extreme problems, and the Overview's stuck column. | They are the cheapest signal you have about whether a cohort is stuck on the concept or on Python. |
-| Per cohort | Run the roster checklist, step 6 of route A. | |
+| After a judge prompt change | Regrade what the old prompt graded, once the judge is deployed with the new file. | `npm run regrade -- --dry-run` in `web/`, then `npm run regrade` until it prints "Nothing to regrade". |
+| Weekly | Read the attempt notes on Extreme problems, and the stuck list and the competency gaps on `/admin/cohort`. | They are the cheapest signal you have about whether a cohort is stuck on the concept or on Python. |
+| Per cohort | Run the roster checklist, step 6 of route A, and read the calibration report on `/admin/calibration` before the next cohort starts. | The report names the problem, the signal, the number and what to check first, and downloads as Markdown. |
 
-A problem, a voice question or an interviewer is a YAML file, and nothing about content lives in the database except a published copy. Edit the file, run `npm run validate:problems` or `npm run validate:voice` in `web/` (the same gates CI runs) and `npm run import:content` to publish. `npm run validate:voice` checks the interviewers, the voice questions and the references between them and to `problems/`. CI validates every problem, question and interviewer on every pull request, so a broken file cannot reach the import step. To author a new one, use the `problem-authoring` or `voice-question-authoring` skill in `.claude/skills/`; both enforce the rules that matter, including that a naive solution provably fails a hidden test.
+A problem, a voice question or an interviewer is a YAML file, and nothing about content lives in the database except a published copy. Edit the file, run `npm run validate:problems` or `npm run validate:voice` in `web/` (the same gates CI runs) and `npm run import:content` to publish. `npm run validate:voice` checks the interviewers, the voice questions and the references between them and to `problems/`. A C3 or C4 design problem lists its `constraints`, the terms from its own scenario that an answer has to engage with, each quoted and each named word for word in the strong exemplar, and the validator refuses one without them, because `names_no_constraint` says nothing about an answer when the problem lists nothing. CI validates every problem, question and interviewer on every pull request, so a broken file cannot reach the import step. To author a new one, use the `problem-authoring` or `voice-question-authoring` skill in `.claude/skills/`; both enforce the rules that matter, including that a naive solution provably fails a hidden test.
 
 A schema change is a new file under `web/migrations/` and `npm run migrate`. Every migration stays backward compatible for one release: add a column before anything writes to it, and drop it a release later, so rollback remains possible.
 
-Judge prompts are files in `judge/prompts/`, versioned as `rubric.v1.md` and so on, never in the database, so changing how a cohort is graded is a code review. There is no mechanism yet for re-grading past submissions against a new prompt version, which matters if you change one mid-cohort; that is roadmap story S15.3.
+Judge prompts are files in `judge/prompts/`, versioned as `rubric.v1.md` and so on, never in the database, so changing how a cohort is graded is a code review. Every evaluation records the prompt that graded it, so a change mid-cohort does not leave two populations graded differently in silence. Deploy the judge with the new file, then from `web/` run `npm run regrade -- --dry-run`, which lists what the old prompt graded and calls nothing, then `npm run regrade`, which takes the oldest 25 and appends a new evaluation to each, until it prints "Nothing to regrade". `--limit N` sets the batch and `--from rubric.v1.md` takes only what that prompt graded. A regrade is one model call per submission, moves a band and never a verdict, spends no allowance, leaves alone any grade a person corrected, and stops at the first answer the judge grades with some other prompt, which means the judge has not been deployed with the new one yet.
 
 Degraded mode is the switch on `/admin/ops` that disables Submit and leaves Run working. Learners keep practising against public cases while grading is down, and nobody loses an attempt. Flip it the moment grading looks unhealthy rather than after you have diagnosed why.
 
@@ -1412,7 +1432,9 @@ Three questions, in order. Is the worker running? Most reported faults are a dea
 | `next build` fails on `/_global-error` with a null `useContext`. | `NODE_ENV` is set to `development` in the shell. | `NODE_ENV=production npx next build`. |
 | A local run cannot find Python. | The runner subprocess resolves `.venv` then `python3`. | Set `RUNNER_PYTHON` to an explicit interpreter path. |
 | The worker exits at once with "cannot run here: model_missing". | The published catalogue requires panelist 2 and this host has no embedding model. This is the check working. | `python scripts/fetch_embedding_model.py` on that host, or `EVAL_DEGRADED_PANELISTS=pretrained` to start without it and accept `medium` confidence on the affected problems. |
-| Every design evaluation is `partial` and the re-run queue only grows. | Panelist 2's encoder is failing rather than absent: a timeout, a crash or a response that did not parse. An absent model is `skipped` and leaves the evaluation `complete`, so a growing backlog means something is breaking. | Read the `reason` on the `pretrained` panelist in the evaluation record. `timeout` means the host is too slow or `EMBED_TIMEOUT_MS` is too tight; `encode_failed` and `exit_1` carry the Python error. Reproduce with `echo '{"texts":["an answer"]}' \| python -m embed.cli`, which prints the reason and exits zero. |
+| Every design evaluation is `partial` and the re-evaluation backlog on `/admin/panel` only grows. | Panelist 2's encoder is failing rather than absent: a timeout, a crash or a response that did not parse. An absent model is `skipped` and leaves the evaluation `complete`, so a growing backlog means something is breaking. The judge worker re-runs three partial evaluations a tick and writes nothing while a panelist is still missing, so the backlog clears by itself once the cause is fixed. | Read the `reason` on the `pretrained` panelist in the evaluation record, or the availability by the hour on `/admin/panel`. `timeout` means the host is too slow or `EMBED_TIMEOUT_MS` is too tight; `encode_failed` and `exit_1` carry the Python error. Reproduce with `echo '{"texts":["an answer"]}' \| python -m embed.cli`, which prints the reason and exits zero. |
+| `npm run regrade` stops early and names a prompt that is not the current one. | The deployed judge still grades with the old file, so every further call would grade under the old wording again. | Deploy the judge from the commit that carries the new prompt, then run it again. |
+| `npm run migrate` prints that `fdeprep_reader` was not created. | The database user may not create roles, which a hosted Postgres often refuses, and migration 026 changed nothing rather than fail the deploy. | Nothing runs under that role in this release, so the application is whole. To add it, a user with CREATEROLE runs `create role fdeprep_reader nologin` and the owner of the tables runs the three grants at the end of `web/migrations/026_reader_role.sql`. |
 | Design answers get a band from the judge and never from the nearest graded answers. | This host has no embedding model, which is a supported state. | `python scripts/fetch_embedding_model.py`. Until then panelist 2 reports `model_missing` and skips, and the panel runs two-strong. |
 
 The trace is the diagnostic, and the verdict is only the summary. Open `/traces/[id]` and read what the agent called. A submission that failed `respects_call_budget` and one that failed `detects_soft_error` look identical in the verdict column and nothing alike in the trace. For a runner fault, the result contract in [docs/03](docs/03-RUNNER-AND-GRADING.md) section 5 is the only thing the front end renders from, so if a verdict looks wrong on screen, check the contract before the component.
@@ -1433,17 +1455,16 @@ Four integrations are written, unit-tested against recorded fixtures, and have n
 | Gap | Effect | Story |
 |---|---|---|
 | The baseline diagnostic that sets a learner's persona does not exist. | Personas work. An admin sets them by hand or by CSV. | S15.1 |
-| Nothing validates panelist 2 against a human grader. | Its band has never been checked against one on a single answer. The override exists so a wrong band can be fixed. | S15.5 |
+| Nothing validates panelist 2 against a human grader. | Its band has never been checked against one on a single answer. The override exists so a wrong band can be fixed, and `/admin/panel` shows how often the two judges disagree. | None yet |
 | `/admin/import` reads `problems/` from disk at request time. | It works locally and cannot work on a deployment, where publishing is `npm run import:content` run by an operator. | S15.4 |
-| No problem authors a `constraints` list yet. | The `names_no_constraint` heuristic is built, tested and silent on every problem. | S15.2 |
-| There is no way to re-grade past submissions against a new judge prompt. | A prompt change mid-cohort leaves two populations graded differently. | S15.3 |
-| `analytics/` and the report card are specified and not built. | Nobody can answer "which topic did this cohort fail" without SQL, and placement reads a CSV. | S15.5, S15.6 |
+| The report card is Markdown, with no PDF. | A PDF needs a renderer the repository does not carry, and a dependency is proposed before it is added. | None yet |
+| `fdeprep_reader` exists and nothing connects as it. | The writer boundary is enforced by a test that reads the code, and the role is the second line behind it until a connection runs under it. | None yet |
 | The live run has no screen. | Its step protocol and tables exist and nothing offers it to a learner. | None yet |
 | There is no mobile layout beyond the workspace's three tabs below 768 pixels. | A non-goal for v1 in [docs/00](docs/00-PRD.md). | S16.5 |
 
 | Drill never run | Why it matters |
 |---|---|
-| The database restore. | A restore procedure that has never been run is not a restore procedure. S11.4. |
+| The database restore. | The procedure is written, in [DEPLOY.md](DEPLOY.md) section 8.2, and a restore procedure that has never been run is not a restore procedure. S11.4 runs it on the first deployment and records how long it took. |
 | The 200-concurrent-submission burst against a deployment. `npm run burst` has only run locally. | Peak load is a projection. S11.7. |
 | A second operator's practice drill. | There is one operator, and that operator also writes the curriculum. The failure mode is a Tuesday evening where grading stops, 180 learners are blocked, and the one person who understands the queue is teaching. S11.5. |
 | Ten interview sessions priced and timed. | Interview mode's cost per session and the gap between turns are projections until `npm run voice:cost` reads sessions on a deployment. S14.5. |
@@ -1452,8 +1473,8 @@ Four integrations are written, unit-tested against recorded fixtures, and have n
 
 | Suite | Tests on 9 October 2026 | Runs in CI as |
 |---|---|---|
-| Web, vitest, 73 files | 1,051 passed | Web typecheck and tests |
-| Python, pytest | 1,963 passed and 69 skipped: Bedrock tests without `JUDGE_LIVE=1`, MiniLM tests without the weights on disk, permission tests as root, and a per-problem step check on problems that have no steps | Runner tests |
+| Web, vitest, 81 files | 1,130 passed, among them the writer boundary scan, the reader role, the regrade, the re-evaluation drain, the report card and the analytics | Web typecheck and tests |
+| Python, pytest | 1,974 passed and 69 skipped: Bedrock tests without `JUDGE_LIVE=1`, MiniLM tests without the weights on disk, permission tests as root, and a per-problem step check on problems that have no steps | Runner tests |
 | Voice package, the Node test runner | 28 passed | Voice package tests |
 | Infrastructure, the Node test runner | 37 passed | Infrastructure synth and assertions |
 
@@ -1469,7 +1490,7 @@ Twenty-two bugs were found and fixed through the build. Reading a specification 
 
 | Path | What it is |
 |---|---|
-| `web/` | The Next.js application: 24 pages, 33 API routes and 23 migrations. |
+| `web/` | The Next.js application: 28 pages, 37 API routes and 26 migrations. `web/lib/eval/` is the only writer of a grade, `web/lib/progress/` and `web/lib/analytics/` read, and `web/tests/writer-boundary.test.ts` holds it. |
 | `runner/` | The Python battery, harness and static gate. It executes learner code and reaches nothing else. |
 | `judge/` | The Bedrock judge, with its prompts as versioned files: the probes, the rubric, the defence, the voice beats, the follow-up and the resume claims. |
 | `embed/` | Panelist 2's encoder, run by the worker as a subprocess. |
