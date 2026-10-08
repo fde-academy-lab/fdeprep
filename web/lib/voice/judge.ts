@@ -17,16 +17,17 @@ import { release, voiceScope } from "../policy/caps.ts";
 import { invoke, type JudgeOptions } from "../queue/judge-worker.ts";
 import { deliveryFor, type Segment } from "./delivery.ts";
 import { loadQuestion } from "./question.ts";
-import { scoreTypedAnswer, scoreVoiceSession, type BeatOutcome } from "./score.ts";
+import {
+  MAX_JUDGE_ATTEMPTS, scoreTypedAnswer, scoreVoiceSession, type BeatOutcome,
+} from "./score.ts";
 import type { PaceState } from "./cues.ts";
 import type { VoiceMode } from "./start.ts";
 
-/** A session the judge failed on this many times is left alone rather than
- *  retried forever. An operator can see it in the admin submissions view and
- *  the learner keeps the deterministic half of their score. */
-export const MAX_JUDGE_ATTEMPTS = 3;
-
-export type ScoreOptions = JudgeOptions & { limit?: number };
+export type ScoreOptions = JudgeOptions & {
+  limit?: number;
+  /** This session and no other. The seed scores the answer it just finished this way. */
+  sessionId?: number;
+};
 
 type SessionRow = {
   id: string;
@@ -44,12 +45,25 @@ export async function scoreVoiceOnce(options: ScoreOptions = {}): Promise<number
             finished_at
        from voice_session
       where finished_at is not null and scored_at is null and judge_attempts < $2
+        and ($3::bigint is null or id = $3)
       order by finished_at
       limit $1`,
-    [options.limit ?? 5, MAX_JUDGE_ATTEMPTS],
+    [options.limit ?? 5, MAX_JUDGE_ATTEMPTS, options.sessionId ?? null],
   );
 
-  for (const row of rows) await scoreSession(row, options);
+  for (const row of rows) {
+    try {
+      await scoreSession(row, options);
+    } catch (error) {
+      // A session the scorer cannot read, a question that will not load or a
+      // reply in a shape it does not expect, is that session's failed
+      // attempt. It used to throw out of this loop and stop the scorer, so
+      // every answer behind it waited until somebody restarted the process.
+      console.warn(`voice session ${row.id} not scored: ${
+        error instanceof Error ? error.message : String(error)}`);
+      await giveBackAfterLastAttempt(Number(row.id));
+    }
+  }
   return rows.length;
 }
 
@@ -94,6 +108,7 @@ async function scoreSession(row: SessionRow, options: ScoreOptions): Promise<voi
   }
 
   await writeScore(sessionId, row, question.totalSeconds, result);
+  console.log(`voice session ${sessionId} scored`);
 }
 
 /**

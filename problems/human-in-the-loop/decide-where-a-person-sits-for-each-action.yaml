@@ -1,0 +1,607 @@
+slug: decide-where-a-person-sits-for-each-action
+title: "Decide where a person sits for each action"
+day: 15
+skill: Place each action in, on or out of the loop by whether anyone can undo it
+artefact_type: code
+difficulty: easy
+track: human-in-the-loop
+concept:
+  topic: "In, on or out of the loop"
+  question: "Which actions need a person first, which need one watching, and which need nobody?"
+est_minutes: 20
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json]
+
+brief_md: |
+  A home rental platform the size of NoBroker runs a tenant services agent.
+  For each ticket it proposes a short list of actions, such as booking a
+  plumber, crediting part of a month's rent or releasing a deposit. Until last
+  week it decided who should look at each action by cost alone: under 2,000
+  rupees it acted on its own.
+
+  On Tuesday night it sent a formal notice of lease breach to the wrong flat.
+  The family there had paid on time for four years. The notice cost nothing
+  to send, so it went out with nobody watching, and a notice cannot be
+  unsent. Their lawyer's letter arrived on Thursday.
+
+  The operations team has written a new policy, and it asks a different
+  question first: can a person undo this? Place every proposed action in the
+  loop (a person approves it before it runs), on the loop (it runs, and the
+  duty manager is told and can undo it) or out of the loop (it runs on its
+  own), and act on each placement.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the ticket number. `tools["proposals"]()` returns the
+  agent's proposed actions, each with its cost in rupees:
+
+      {"status": 200, "ticket": "T-4410", "actions": [
+         {"id": "a1", "tool": "book_repair",
+          "args": {"flat": "B-204", "trade": "plumber"}, "cost": 4500}, ...]}
+
+  `tools["policy"]()` returns the operations team's policy, which they change
+  without a release:
+
+      {"status": 200, "watch_above": 2000, "approve_above": 20000,
+       "reversible": {"book_repair": true, "send_notice": false, ...}}
+
+  | What the policy says about the action | Place it |
+  |---|---|
+  | The `reversible` table does not list its tool | `in` |
+  | Its tool cannot be undone (`false`) | `in`, at any cost |
+  | It can be undone and costs more than `approve_above` | `in` |
+  | It can be undone and costs more than `watch_above` | `on` |
+  | It can be undone and costs `watch_above` or less | `out` |
+
+  Then act on each action, in the order proposed:
+
+  - `out`: call `tools[<tool>](**args)`.
+  - `on`: call the tool, then `tools["notify"](action=<id>)`, which puts the
+    action in front of the duty manager, who can undo it.
+  - `in`: call `tools["ask_approval"](action=<id>)`, and do not call the tool.
+
+  Return a JSON object from each action's id to its placement, such as
+  `{"a1": "on", "a2": "in"}`.
+
+  Budget: no model calls. `llm` is passed in and must not be called. Allowed
+  imports: json.
+
+stub_code: |
+  import json
+
+  IN, ON, OUT = "in", "on", "out"
+
+
+  def place(action: dict, policy: dict) -> str:
+      """Where a person sits for this action: IN, ON or OUT."""
+      # TODO 1: look the action's tool up in policy["reversible"]. A tool the
+      #         table does not list, or one it says cannot be undone, is IN
+      #         whatever the action costs
+      # TODO 2: a reversible action costing more than approve_above is IN,
+      #         more than watch_above is ON, and anything else is OUT
+      return OUT
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      policy = tools["policy"]()
+      actions = tools["proposals"]()["actions"]
+      placed = {}
+
+      for action in actions:
+          placed[action["id"]] = place(action, policy)
+          # TODO 3: act on the placement. OUT calls the action's tool with its
+          #         args. ON calls the tool, then tools["notify"](action=<id>).
+          #         IN calls tools["ask_approval"](action=<id>) and nothing else.
+
+      return json.dumps(placed)
+
+steps:
+  - id: s1
+    text: Look the action's tool up in the policy. A tool it does not list, or one it says cannot be undone, waits for approval at any cost.
+    check_id: s1
+  - id: s2
+    text: Place an action that can be undone by its cost, against `watch_above` and `approve_above`.
+    check_id: s2
+  - id: s3
+    text: Act on each placement. Run `out` and `on` actions, call `notify` for each `on`, and call `ask_approval` for each `in` without running it.
+    check_id: s3
+
+step_checks:
+  # Every action the public cases propose that cannot be undone also costs
+  # more than the approval line, so cost alone places it correctly there.
+  # This check runs its own tickets: a tool the policy has not classified,
+  # and a notice that costs nothing.
+  - step_id: s1
+    spec:
+      cases:
+        - kind: agent_run
+          input: { question: "T-3807" }
+          llm_script:
+            - { match: "*", reply: "Run all of them now. The tenant is waiting." }
+          tools:
+            proposals:
+              returns:
+                status: 200
+                ticket: "T-3807"
+                actions:
+                  - { id: f1, tool: waive_late_fee, args: { flat: "C-310" }, cost: 300 }
+            policy:
+              returns:
+                status: 200
+                watch_above: 2000
+                approve_above: 20000
+                reversible: { reschedule_visit: true, book_repair: true, issue_credit: true, send_notice: false, release_deposit: false }
+            waive_late_fee: { returns: { status: 200, waived: true } }
+            notify: { returns: { status: 200, notified: true } }
+            ask_approval: { returns: { status: 202, queued: true } }
+          budget: { max_llm_calls: 1, max_tool_calls: 12, wall_ms: 10000 }
+          assertions:
+            - { type: returns_matches, value: '"f1":\s*"in"' }
+            - { type: calls_tool_with, name: ask_approval, args: { action: "f1" } }
+            - { type: does_not_call_tool, name: waive_late_fee }
+        - kind: agent_run
+          input: { question: "T-3808" }
+          llm_script:
+            - { match: "*", reply: "Run all of them now. The tenant is waiting." }
+          tools:
+            proposals:
+              returns:
+                status: 200
+                ticket: "T-3808"
+                actions:
+                  - { id: f2, tool: send_notice, args: { flat: "C-311", kind: "rent reminder" }, cost: 0 }
+            policy:
+              returns:
+                status: 200
+                watch_above: 2000
+                approve_above: 20000
+                reversible: { reschedule_visit: true, book_repair: true, issue_credit: true, send_notice: false, release_deposit: false }
+            send_notice: { returns: { status: 200, sent: true } }
+            notify: { returns: { status: 200, notified: true } }
+            ask_approval: { returns: { status: 202, queued: true } }
+          budget: { max_llm_calls: 1, max_tool_calls: 12, wall_ms: 10000 }
+          assertions:
+            - { type: returns_matches, value: '"f2":\s*"in"' }
+            - { type: calls_tool_with, name: ask_approval, args: { action: "f2" } }
+            - { type: does_not_call_tool, name: send_notice }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"a1":\s*"out"' }
+        - { type: returns_matches, value: '"a2":\s*"on"' }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: calls_tool, name: reschedule_visit }
+        - { type: calls_tool_with, name: notify, args: { action: "a2" } }
+        - { type: calls_tool_with, name: ask_approval, args: { action: "a3" } }
+        - { type: does_not_call_tool, name: release_deposit }
+
+hints:
+  - The old rule asked one question about every action. Read the policy and
+    find the question it asks before it looks at cost.
+  - On the loop means the duty manager sees the action after it has run and
+    can undo it. Ask what that is worth for an action nobody can undo.
+  - "Check in this order: is the tool in the `reversible` table, can it be undone, and only then where its cost sits against the two lines. The first two checks can only ever answer `in`."
+  - Read `watch_above` and `approve_above` from the policy on every run. Above
+    a line means more than it, so a cost exactly on a line is not above it.
+
+scenario:
+  headline: "A notice that cost nothing went to the wrong flat, unwatched"
+  who: Tenant services at a home rental platform the size of NoBroker
+  situation: >-
+    The agent decided who looks at an action by its cost alone. A formal notice
+    of lease breach cost nothing, so it ran with nobody watching, and it went
+    to a family who had paid on time for four years.
+  stakes: >-
+    A notice cannot be unsent, and their lawyer wrote within two days. The same
+    rule would release a deposit nobody can claw back.
+  metrics:
+    - { label: Cost of the notice, value: "₹0" }
+    - { label: Old line for acting alone, value: "₹2,000" }
+    - { label: Days to the lawyer's letter, value: "2" }
+
+diagram:
+  title: Where a person sits, decided by undo first and cost second
+  caption: >-
+    Placement asks whether an action can be undone before it looks at the
+    cost. Placing by cost alone sent a notice nobody could take back.
+  direction: lr
+  nodes:
+    - { id: agent, label: Tenant services agent, sub: proposes actions per ticket, kind: agent, tone: purple, at: [0, 1] }
+    - { id: policy, label: "`policy()`", sub: two cost lines and the undo table, kind: store, tone: orange, at: [1, 0] }
+    - { id: place, label: Placement, sub: "undo first, then cost", kind: decision, tone: green, at: [1, 1] }
+    - { id: out, label: Out of the loop, sub: runs on its own, kind: output, tone: teal, at: [2, 0] }
+    - { id: on, label: On the loop, sub: "runs, then `notify()`", kind: output, tone: blue, at: [2, 1] }
+    - { id: approve, label: In the loop, sub: "`ask_approval()`, nothing runs", kind: queue, tone: green, at: [2, 2] }
+    - { id: notice, label: Notice to the wrong flat, sub: "cost 0, so nobody looked", kind: output, tone: pink, at: [1, 2] }
+  edges:
+    - { from: agent, to: place, label: proposed actions, step: 1 }
+    - { from: policy, to: place, label: can it be undone, step: 2 }
+    - { from: place, to: out, label: "undoable, cheap", tone: success, step: 3 }
+    - { from: place, to: on, label: "undoable, costly", tone: success, step: 3 }
+    - { from: place, to: approve, label: cannot be undone, tone: success, step: 3 }
+    - { from: agent, to: notice, label: placed by cost alone, tone: danger }
+
+approach:
+  goal: Put a person where a mistake would land, before it runs or right after
+  branches:
+    - label: Can a person undo it?
+      detail: On the loop only helps when the person who sees the action can reverse it.
+      leaves: [the policy's table answers it, a tool the table does not list counts as no]
+    - label: What does it cost?
+      leaves: [more than `approve_above` waits, more than `watch_above` runs watched, on the line or under runs alone]
+    - label: Act on the placement
+      leaves: ["`in` asks first and runs nothing", "`on` runs, then calls `notify`", "`out` runs on its own"]
+    - label: Read the policy every run
+      leaves: [the operations team moves the lines, no line belongs in the code]
+
+coach:
+  opening: >-
+    Before you write a line, read the policy's `reversible` table and ask
+    which question the old rule never asked.
+  signals:
+    - id: cost-only
+      when: { code_lacks: '["'']reversible["'']' }
+      say: >-
+        Your placement never reads the policy's `reversible` table. Where does
+        a notice that costs nothing end up, and who sees it before it goes?
+    - id: lines-in-the-code
+      when: { code_matches: '\b(?:2000|20000|2,000|20,000)\b' }
+      say: >-
+        The policy's lines are written into your code. The operations team
+        moves them without a release, so which run would still use last
+        month's lines?
+    - id: free-notice
+      when: { test_failed: a_notice_that_costs_nothing_waits_for_approval }
+      say: >-
+        That ticket proposed a notice that cost nothing. Which part of the
+        policy decides it, and did your placement read that part before the
+        cost?
+    - id: deposit-on-the-loop
+      when: { test_failed: a_deposit_nobody_can_claw_back_is_never_on_the_loop }
+      say: >-
+        The deposit cost less than the approval line, so it ran and the duty
+        manager was told. What could the duty manager do about a deposit that
+        has already gone?
+    - id: unclassified-tool
+      when: { test_failed: a_tool_the_policy_has_not_classified_waits_for_approval }
+      say: >-
+        The agent proposed a tool the policy does not list at all. What does
+        your placement assume about an action nobody has classified?
+    - id: moved-lines
+      when: { test_failed: the_lines_come_from_this_mornings_policy }
+      say: >-
+        The operations team moved both lines before that ticket arrived. Which
+        numbers did your placement compare the costs against?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1. Once a tool that cannot be undone comes back `IN`,
+        the cost lines only ever see actions a person could reverse.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and on
+        this tier it costs nothing to open.
+  wrap_up: >-
+    On the loop works only for an action a person can undo. Ask whether it can
+    be undone first, send everything that cannot to a person before it runs,
+    and let the cost decide only among the rest.
+
+tests:
+  - name: places_and_acts_on_a_mixed_plan
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "T-4410" }
+      llm_script:
+        - { match: "*", reply: "Run all of them now. The tenant is waiting." }
+      tools:
+        proposals:
+          returns:
+            status: 200
+            ticket: "T-4410"
+            actions:
+              - { id: a1, tool: reschedule_visit, args: { flat: "B-204", day: "Saturday" }, cost: 0 }
+              - { id: a2, tool: book_repair, args: { flat: "B-204", trade: "plumber" }, cost: 4500 }
+              - { id: a3, tool: release_deposit, args: { flat: "D-118", amount: 25000 }, cost: 25000 }
+        policy:
+          returns:
+            status: 200
+            watch_above: 2000
+            approve_above: 20000
+            reversible: { reschedule_visit: true, book_repair: true, issue_credit: true, send_notice: false, release_deposit: false }
+        reschedule_visit: { returns: { status: 200, rescheduled: true } }
+        book_repair: { returns: { status: 200, booked: true } }
+        issue_credit: { returns: { status: 200, credited: true } }
+        release_deposit: { returns: { status: 200, released: true } }
+        send_notice: { returns: { status: 200, sent: true } }
+        notify: { returns: { status: 200, notified: true } }
+        ask_approval: { returns: { status: 202, queued: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [a1, a2, a3] } }
+        - { type: returns_matches, value: '"a1":\s*"out"' }
+        - { type: returns_matches, value: '"a2":\s*"on"' }
+        - { type: returns_matches, value: '"a3":\s*"in"' }
+        - { type: calls_tool_with, name: notify, args: { action: "a2" } }
+        - { type: does_not_call_tool, name: release_deposit }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: holds_a_large_credit_and_runs_a_repair_on_the_line
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "T-4415" }
+      llm_script:
+        - { match: "*", reply: "Run all of them now. The tenant is waiting." }
+      tools:
+        proposals:
+          returns:
+            status: 200
+            ticket: "T-4415"
+            actions:
+              - { id: b1, tool: book_repair, args: { flat: "A-031", trade: "electrician" }, cost: 2000 }
+              - { id: b2, tool: issue_credit, args: { flat: "A-031", amount: 24000 }, cost: 24000 }
+              - { id: b3, tool: reschedule_visit, args: { flat: "A-031", day: "Monday" }, cost: 0 }
+        policy:
+          returns:
+            status: 200
+            watch_above: 2000
+            approve_above: 20000
+            reversible: { reschedule_visit: true, book_repair: true, issue_credit: true, send_notice: false, release_deposit: false }
+        reschedule_visit: { returns: { status: 200, rescheduled: true } }
+        book_repair: { returns: { status: 200, booked: true } }
+        issue_credit: { returns: { status: 200, credited: true } }
+        release_deposit: { returns: { status: 200, released: true } }
+        send_notice: { returns: { status: 200, sent: true } }
+        notify: { returns: { status: 200, notified: true } }
+        ask_approval: { returns: { status: 202, queued: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"b1":\s*"out"' }
+        - { type: returns_matches, value: '"b2":\s*"in"' }
+        - { type: returns_matches, value: '"b3":\s*"out"' }
+        - { type: calls_tool, name: book_repair }
+        - { type: does_not_call_tool, name: issue_credit }
+        - { type: does_not_call_tool, name: notify }
+
+  - name: a_notice_that_costs_nothing_waits_for_approval
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "T-4421" }
+      llm_script:
+        - { match: "*", reply: "Run all of them now. The tenant is waiting." }
+      tools:
+        proposals:
+          returns:
+            status: 200
+            ticket: "T-4421"
+            actions:
+              - { id: c1, tool: send_notice, args: { flat: "E-502", kind: "lease breach" }, cost: 0 }
+              - { id: c2, tool: reschedule_visit, args: { flat: "E-502", day: "Friday" }, cost: 0 }
+        policy:
+          returns:
+            status: 200
+            watch_above: 2000
+            approve_above: 20000
+            reversible: { reschedule_visit: true, book_repair: true, issue_credit: true, send_notice: false, release_deposit: false }
+        reschedule_visit: { returns: { status: 200, rescheduled: true } }
+        book_repair: { returns: { status: 200, booked: true } }
+        issue_credit: { returns: { status: 200, credited: true } }
+        release_deposit: { returns: { status: 200, released: true } }
+        send_notice: { returns: { status: 200, sent: true } }
+        notify: { returns: { status: 200, notified: true } }
+        ask_approval: { returns: { status: 202, queued: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: send_notice }
+        - { type: calls_tool_with, name: ask_approval, args: { action: "c1" } }
+        - { type: returns_matches, value: '"c1":\s*"in"' }
+        - { type: calls_tool, name: reschedule_visit }
+
+  - name: a_deposit_nobody_can_claw_back_is_never_on_the_loop
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "T-4426" }
+      llm_script:
+        - { match: "*", reply: "Run all of them now. The tenant is waiting." }
+      tools:
+        proposals:
+          returns:
+            status: 200
+            ticket: "T-4426"
+            actions:
+              - { id: d1, tool: release_deposit, args: { flat: "F-117", amount: 8000 }, cost: 8000 }
+              - { id: d2, tool: book_repair, args: { flat: "F-117", trade: "painter" }, cost: 3500 }
+        policy:
+          returns:
+            status: 200
+            watch_above: 2000
+            approve_above: 20000
+            reversible: { reschedule_visit: true, book_repair: true, issue_credit: true, send_notice: false, release_deposit: false }
+        reschedule_visit: { returns: { status: 200, rescheduled: true } }
+        book_repair: { returns: { status: 200, booked: true } }
+        issue_credit: { returns: { status: 200, credited: true } }
+        release_deposit: { returns: { status: 200, released: true } }
+        send_notice: { returns: { status: 200, sent: true } }
+        notify: { returns: { status: 200, notified: true } }
+        ask_approval: { returns: { status: 202, queued: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: release_deposit }
+        - { type: returns_matches, value: '"d1":\s*"in"' }
+        - { type: returns_matches, value: '"d2":\s*"on"' }
+        - { type: calls_tool_with, name: notify, args: { action: "d2" } }
+
+  - name: a_tool_the_policy_has_not_classified_waits_for_approval
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "T-4430" }
+      llm_script:
+        - { match: "*", reply: "Run all of them now. The tenant is waiting." }
+      tools:
+        proposals:
+          returns:
+            status: 200
+            ticket: "T-4430"
+            actions:
+              - { id: g1, tool: end_tenancy, args: { flat: "G-009" }, cost: 0 }
+              - { id: g2, tool: issue_credit, args: { flat: "G-009", amount: 600 }, cost: 600 }
+        policy:
+          returns:
+            status: 200
+            watch_above: 2000
+            approve_above: 20000
+            reversible: { reschedule_visit: true, book_repair: true, issue_credit: true, send_notice: false, release_deposit: false }
+        reschedule_visit: { returns: { status: 200, rescheduled: true } }
+        book_repair: { returns: { status: 200, booked: true } }
+        issue_credit: { returns: { status: 200, credited: true } }
+        release_deposit: { returns: { status: 200, released: true } }
+        send_notice: { returns: { status: 200, sent: true } }
+        end_tenancy: { returns: { status: 200, ended: true } }
+        notify: { returns: { status: 200, notified: true } }
+        ask_approval: { returns: { status: 202, queued: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: end_tenancy }
+        - { type: calls_tool_with, name: ask_approval, args: { action: "g1" } }
+        - { type: returns_matches, value: '"g1":\s*"in"' }
+        - { type: calls_tool, name: issue_credit }
+
+  - name: the_lines_come_from_this_mornings_policy
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "T-4433" }
+      llm_script:
+        - { match: "*", reply: "Run all of them now. The tenant is waiting." }
+      tools:
+        proposals:
+          returns:
+            status: 200
+            ticket: "T-4433"
+            actions:
+              - { id: h1, tool: issue_credit, args: { flat: "H-220", amount: 1200 }, cost: 1200 }
+              - { id: h2, tool: book_repair, args: { flat: "H-220", trade: "carpenter" }, cost: 6000 }
+        policy:
+          returns:
+            status: 200
+            watch_above: 500
+            approve_above: 5000
+            reversible: { reschedule_visit: true, book_repair: true, issue_credit: true, send_notice: false, release_deposit: false }
+        reschedule_visit: { returns: { status: 200, rescheduled: true } }
+        book_repair: { returns: { status: 200, booked: true } }
+        issue_credit: { returns: { status: 200, credited: true } }
+        release_deposit: { returns: { status: 200, released: true } }
+        send_notice: { returns: { status: 200, sent: true } }
+        notify: { returns: { status: 200, notified: true } }
+        ask_approval: { returns: { status: 202, queued: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"h1":\s*"on"' }
+        - { type: returns_matches, value: '"h2":\s*"in"' }
+        - { type: calls_tool_with, name: notify, args: { action: "h1" } }
+        - { type: does_not_call_tool, name: book_repair }
+
+reference_md: |
+  The old rule asked one question, how much does this cost, and it is a fair
+  question for deciding how much attention an action deserves. It is the
+  wrong first question for deciding when that attention has to arrive. A
+  person can only act on what they see, and what they can do about an action
+  that has already run depends on whether it can be undone.
+
+  That is what the three placements mean. In the loop, a person approves
+  before anything happens. On the loop, the action runs and a person sees it
+  soon after, which is cheap and keeps the agent fast, and is worth exactly
+  as much as that person's ability to reverse it. Out of the loop, nobody
+  looks, which is right for small things that can be put back.
+
+  So the order of the checks is the lesson. An action nobody can undo goes in
+  the loop whatever it costs: a notice that cost nothing to send, or a deposit
+  under the approval line, would otherwise run first and be shown to someone
+  who can only read about it. A tool the policy has never classified goes in
+  the loop too, because nobody has yet said that it can be undone, and the
+  first time an agent uses it is the worst time to find out. Only an action
+  that can be reversed meets the cost lines, and there the cost decides how
+  soon a person needs to see it.
+
+  The lines and the table belong to the operations team, so the code reads
+  them on every run. A line written into the code is the policy as it was on
+  the day somebody copied it.
+
+  The same split appears in OWASP's Top 10 for LLM Applications 2025 under
+  LLM06, Excessive Agency, whose mitigations include requiring a person to
+  approve high-impact actions before they are taken. The policy table is how
+  "high-impact" becomes something code can check.
+
+  An `in` placement ends this run with an approval request in a queue and the
+  tool uncalled. What the rest of the run does while that request waits, and
+  what the person who opens it needs to see, are two later problems in this
+  chapter.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your agent can book repairs, credit rent and send legal notices. Which of those would you let it do with nobody watching, and how do you decide?
+  source: |
+    Author judgement, informed by OWASP Top 10 for LLM Applications 2025,
+    LLM06 Excessive Agency, mitigation 6, "Require user approval", read on
+    1 October 2026. No employer frequency data stands behind it.
+
+tools:
+  - name: proposals
+    args: ''
+    returns: A status, the `ticket` and its proposed `actions`, each with an `id`, a `tool`, its `args` and
+      a `cost` in rupees.
+  - name: policy
+    args: ''
+    returns: 'A status, the two cost lines `watch_above` and `approve_above`, and `reversible`: for each
+      tool it classifies, whether it can be undone.'
+  - name: reschedule_visit
+    args: flat, day
+    returns: A status and `rescheduled` set to true.
+  - name: book_repair
+    args: flat, trade
+    returns: A status and `booked` set to true.
+  - name: issue_credit
+    args: flat, amount
+    returns: A status and `credited` set to true.
+  - name: release_deposit
+    args: flat, amount
+    returns: A status and `released` set to true. Money that has left cannot be called back.
+  - name: send_notice
+    args: flat, kind
+    returns: A status and `sent` set to true. A sent notice cannot be unsent.
+  - name: notify
+    args: action
+    returns: A status and `notified` set to true, once the duty manager can see the action and undo it.
+  - name: ask_approval
+    args: action
+    returns: A status of 202 and `queued` set to true. A person decides later, outside this run.
+example:
+  case: places_and_acts_on_a_mixed_plan
+  expect: Reschedule the visit on its own, book the 4,500 rupee repair and call `notify` for it, and ask
+    approval for the deposit without releasing it, returning `a1` out, `a2` on and `a3` in.
+traps:
+  - Placing an action by its cost alone, so one that costs nothing and cannot be undone runs with nobody
+    watching.
+  - Putting an action that cannot be undone on the loop, where a person only learns of it after it has
+    happened.
+  - Treating a tool the policy has never classified as safe to run, when nobody has said it can be undone.
+  - Writing the policy's lines into the code, so a line the operations team moved this morning is not
+    the one applied.

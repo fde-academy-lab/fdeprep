@@ -80,8 +80,9 @@ export interface HistoryRow {
   slug: string;
   title: string;
   difficulty: Difficulty;
-  /** The verdict of the most recent finished submission. */
+  /** The latest submission's verdict: null when there is none, or while it waits for one. */
   verdict: string | null;
+  /** When the latest submission finished, or was queued if it is still waiting. */
   lastAt: string | null;
   submits: number;
   hintsUsed: number;
@@ -103,7 +104,7 @@ export async function attemptHistory(
   }>(
     `select p.id as problem_id, p.slug, p.title, p.difficulty::text as difficulty,
             latest.verdict::text as verdict,
-            latest.finished_at as last_at,
+            latest.at as last_at,
             (select count(*) from submission s
               where s.attempt_id = a.id and s.kind = 'submit')::int as submits,
             a.hints_used,
@@ -115,11 +116,13 @@ export async function attemptHistory(
        join problem p on p.id = a.problem_id
        join problem_version v on v.problem_id = p.id and v.version = p.current_version
        left join lateral (
-         select s.verdict, s.finished_at from submission s
-          where s.attempt_id = a.id and s.verdict is not null
-          order by s.finished_at desc nulls last, s.id desc limit 1) latest on true
+         -- A submission still waiting counts from when it was queued, so a
+         -- lost message reads as waiting and not as a submit never made.
+         select s.verdict, coalesce(s.finished_at, s.queued_at) as at from submission s
+          where s.attempt_id = a.id
+          order by coalesce(s.finished_at, s.queued_at) desc, s.id desc limit 1) latest on true
       where a.enrolment_id = $1
-      order by latest.finished_at desc nulls last, p.slug`,
+      order by latest.at desc nulls last, p.slug`,
     [enrolmentId]);
 
   return rows.map((row) => ({

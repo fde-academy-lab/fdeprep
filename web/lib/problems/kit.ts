@@ -13,6 +13,7 @@
  */
 
 import { compilePattern } from "../gate/rules.ts";
+import { CHAPTER_TOPICS, TRACKS, type Track } from "./vocabulary.ts";
 
 /**
  * A coach pattern: the same dialect as prompt rules and probes, so an author
@@ -40,6 +41,7 @@ export type EdgeTone = (typeof EDGE_TONES)[number];
 
 export const KIT_LIMITS = {
   scenarioWho: 80,
+  scenarioHeadline: 90,
   scenarioSituation: 320,
   scenarioStakes: 200,
   metrics: 3,
@@ -75,10 +77,14 @@ export const KIT_LIMITS = {
   trapsMin: 2,
   trapsMax: 4,
   trap: 160,
+  conceptQuestion: 100,
 } as const;
 
 export interface Scenario {
   who: string;
+  /** What went wrong, as a client would put it. It was the title until 1 October
+   *  2026; the title now names the task in plain words. */
+  headline?: string;
   situation: string;
   stakes: string;
   metrics: Array<{ label: string; value: string }>;
@@ -170,7 +176,17 @@ export type KitExample =
   | { kind: "case"; case: string; input: Record<string, unknown>; expect: string }
   | { kind: "message"; message: string; expect: string };
 
+/**
+ * What a problem teaches, shown before the learner starts: the topic inside
+ * its chapter and the question the problem answers.
+ */
+export interface Concept {
+  topic: string;
+  question: string;
+}
+
 export interface Kit {
+  concept?: Concept;
   scenario?: Scenario;
   diagram?: Diagram;
   approach?: Approach;
@@ -188,7 +204,7 @@ type LineOf = (path: Array<string | number>) => number;
 export type KitRule =
   | "kit_missing" | "kit_scenario" | "kit_diagram" | "kit_approach" | "kit_coach"
   | "kit_build" | "hint_count" | "missing_stub" | "stub_signature"
-  | "kit_tools" | "kit_example" | "kit_traps";
+  | "kit_tools" | "kit_example" | "kit_traps" | "kit_concept";
 
 export interface KitContext {
   artefact: string;
@@ -264,6 +280,14 @@ export function validateKit(raw: Record<string, unknown>, ctx: KitContext): Kit 
     }
   });
 
+  if (raw["concept"] !== undefined && raw["concept"] !== null) {
+    const concept = validateConcept(raw["concept"], raw["track"], add, lineOf);
+    if (concept) kit.concept = concept;
+  } else if (ctx.requireKit) {
+    add("kit_concept",
+        "concept is missing. Every catalogue problem names the topic it teaches inside its " +
+        "chapter and the question it answers, which the page shows before the learner starts", 1);
+  }
   if (raw["scenario"] !== undefined) kit.scenario = validateScenario(raw["scenario"], add, lineOf);
   if (raw["diagram"] !== undefined) kit.diagram = validateDiagram(raw["diagram"], add, lineOf);
   if (raw["approach"] !== undefined) kit.approach = validateApproach(raw["approach"], add, lineOf);
@@ -466,7 +490,7 @@ function validateScenario(value: unknown, add: Add, lineOf: LineOf): Scenario | 
   }
   const s = value as Record<string, unknown>;
   const L = KIT_LIMITS;
-  onlyKeys(s, ["who", "situation", "stakes", "metrics"], "scenario", "kit_scenario", add,
+  onlyKeys(s, ["who", "headline", "situation", "stakes", "metrics"], "scenario", "kit_scenario", add,
     lineOf(["scenario"]));
   const who = within(s["who"], L.scenarioWho, "scenario.who", "kit_scenario", add,
     lineOf(["scenario", "who"]));
@@ -490,7 +514,10 @@ function validateScenario(value: unknown, add: Add, lineOf: LineOf): Scenario | 
         `metric ${index + 1} value`, "kit_scenario", add, line),
     };
   });
-  return { who, situation, stakes, metrics };
+  const headline = s["headline"] === undefined ? undefined
+    : within(s["headline"], L.scenarioHeadline, "scenario.headline", "kit_scenario", add,
+        lineOf(["scenario", "headline"]));
+  return { who, ...(headline ? { headline } : {}), situation, stakes, metrics };
 }
 
 function validateDiagram(value: unknown, add: Add, lineOf: LineOf): Diagram | undefined {
@@ -723,6 +750,32 @@ function validateCoach(
     };
   });
   return { opening, signals, ...(wrapUp ? { wrap_up: wrapUp } : {}) };
+}
+
+/**
+ * Rule: the topic is one of its chapter's own, so the chapter page groups
+ * cleanly and no topic is spelled two ways, and the question is a question
+ * short enough to read before starting.
+ */
+function validateConcept(
+  value: unknown, track: unknown, add: Add, lineOf: LineOf,
+): Concept | undefined {
+  const c = (value ?? {}) as Record<string, unknown>;
+  const line = lineOf(["concept"]);
+  onlyKeys(c, ["topic", "question"], "concept", "kit_concept", add, line);
+  const topic = text(c["topic"]);
+  const chapter = (TRACKS as readonly string[]).includes(String(track)) ? (track as Track) : null;
+  if (chapter && !CHAPTER_TOPICS[chapter].includes(topic)) {
+    add("kit_concept", `concept.topic "${topic}" is not a topic of the ${chapter} chapter. ` +
+        `Its topics: ${CHAPTER_TOPICS[chapter].join("; ")}`, lineOf(["concept", "topic"]));
+  }
+  const question = within(c["question"], KIT_LIMITS.conceptQuestion, "concept.question",
+                          "kit_concept", add, lineOf(["concept", "question"]));
+  if (question && !question.endsWith("?")) {
+    add("kit_concept", "concept.question has to be a question, ending in a question mark",
+        lineOf(["concept", "question"]));
+  }
+  return topic && question ? { topic, question } : undefined;
 }
 
 function validateBuild(value: unknown, add: Add, lineOf: LineOf): Build | undefined {

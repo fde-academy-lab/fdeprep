@@ -8,135 +8,112 @@
  * withdrawn from the table below.
  */
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Button, type ButtonSize } from "@/components/ui/button";
+import { DialogForm, post } from "@/components/ui/dialog";
+import { Field, Input, Select } from "@/components/ui/field";
 
-interface Created {
-  url: string;
-  expiresAt: string;
-}
+/** The Overview's empty state links here with this, to open the dialog on arrival. */
+const OPEN_ON = "#invite";
 
-const field = "rounded border border-border bg-bg px-2 py-1";
-
-export function InviteForm() {
+export function InviteDialog({ size }: { size?: ButtonSize }) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-  const [created, setCreated] = useState<Created | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [open, setOpen] = useState(false);
 
-  const submit = async (form: HTMLFormElement) => {
-    const data = new FormData(form);
-    setBusy(true);
-    setError(null);
-    setCreated(null);
-    setCopied(false);
-    const response = await fetch("/api/admin/invites", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        githubLogin: String(data.get("githubLogin") ?? ""),
-        role: String(data.get("role") ?? "learner"),
-        persona: String(data.get("persona") ?? "navigator"),
-        expiresInDays: Number(data.get("expiresInDays") ?? 14),
-        note: String(data.get("note") ?? ""),
-      }),
-    });
-    const body = (await response.json().catch(() => ({}))) as Partial<Created> & { message?: string };
-    if (response.ok && body.url && body.expiresAt) {
-      setCreated({ url: body.url, expiresAt: body.expiresAt });
-      form.reset();
-    } else {
-      setError(body.message ?? "The invite was not created. Try again.");
-    }
-    setBusy(false);
-    router.refresh();
-  };
+  useEffect(() => {
+    if (window.location.hash !== OPEN_ON) return;
+    // Clear the address first, so a reload does not open the dialog again.
+    history.replaceState(null, "", window.location.pathname + window.location.search);
+    setOpen(true);
+  }, []);
 
   return (
-    <section className="mb-4 rounded border border-border p-3">
-      <h2 className="mb-1">Invite a tester</h2>
-      <p className="mb-2 text-text-dim">
-        Makes a one-time link to send yourself. Whoever signs in with GitHub through it joins
-        this cohort. Name a GitHub login to make it work for that account only.
-      </p>
-      <form className="flex flex-wrap items-end gap-2"
-            onSubmit={(event) => { event.preventDefault(); void submit(event.currentTarget); }}>
-        <label className="flex flex-col gap-1">
-          <span className="text-text-dim">GitHub login (optional)</span>
-          <input name="githubLogin" className={field} autoComplete="off" spellCheck={false} />
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-text-dim">Role</span>
-          <select name="role" defaultValue="learner" className={field}>
-            <option value="learner">learner</option>
-            <option value="faculty">faculty</option>
-            <option value="admin">admin</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-text-dim">Persona</span>
-          <select name="persona" defaultValue="navigator" className={field}>
-            <option value="builder">builder</option>
-            <option value="navigator">navigator</option>
-            <option value="accelerator">accelerator</option>
-          </select>
-        </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-text-dim">Days it lasts</span>
-          <input name="expiresInDays" type="number" min={1} max={90} defaultValue={14}
-                 className={`${field} w-24`} />
-        </label>
-        <label className="flex min-w-48 flex-1 flex-col gap-1">
-          <span className="text-text-dim">Who it is for (admins only see this)</span>
-          <input name="note" maxLength={200} className={field} />
-        </label>
-        <button type="submit" disabled={busy}
-                className="rounded border border-border px-3 py-1 hover:border-accent disabled:opacity-40">
-          {busy ? "Making the link" : "Make the link"}
-        </button>
-      </form>
-
-      {created ? (
-        <div className="mt-3 rounded border border-accent/40 p-2">
-          <p className="text-text-dim">
-            Send this link yourself. It is shown once and works once, until
-            {" "}{created.expiresAt.slice(0, 10)}.
-          </p>
-          <div className="mt-1 flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate font-mono">{created.url}</code>
-            <button type="button"
-                    onClick={() => void navigator.clipboard.writeText(created.url).then(() => setCopied(true))}
-                    className="rounded border border-border px-2 py-1 hover:border-accent">
-              {copied ? "Copied" : "Copy"}
-            </button>
-          </div>
+    <>
+      <Button variant="primary" size={size} onClick={() => setOpen(true)}>Invite a tester</Button>
+      <DialogForm open={open} onClose={() => setOpen(false)} title="Invite a tester"
+                  submitLabel="Make the link" busyLabel="Making the link"
+                  onSubmit={async (data) => {
+                    const created = await post<{ url: string; expiresAt: string }>("/api/admin/invites", {
+                      githubLogin: String(data.get("githubLogin") ?? ""),
+                      role: String(data.get("role") ?? "learner"),
+                      persona: String(data.get("persona") ?? "navigator"),
+                      expiresInDays: Number(data.get("expiresInDays") ?? 14),
+                      note: String(data.get("note") ?? ""),
+                    });
+                    router.refresh();
+                    return <Created url={created.url} expiresAt={created.expiresAt} />;
+                  }}>
+        <p>
+          Makes a one-time link to send yourself. Whoever signs in with GitHub through it joins
+          this cohort. Name a GitHub login to make it work for that account only.
+        </p>
+        <div className="grid grid-cols-2 gap-4">
+          <Field label="GitHub login (optional)">
+            <Input name="githubLogin" autoComplete="off" spellCheck={false} />
+          </Field>
+          <Field label="Role">
+            <Select name="role" defaultValue="learner">
+              <option value="learner">Learner</option>
+              <option value="faculty">Faculty</option>
+              <option value="admin">Admin</option>
+            </Select>
+          </Field>
+          <Field label="Persona">
+            <Select name="persona" defaultValue="navigator">
+              <option value="builder">Builder</option>
+              <option value="navigator">Navigator</option>
+              <option value="accelerator">Accelerator</option>
+            </Select>
+          </Field>
+          <Field label="Days it lasts">
+            <Input name="expiresInDays" type="number" min={1} max={90} step={1} defaultValue={14} required />
+          </Field>
+          <Field label="Who it is for" help="Only admins see this. It shows in the Invites table."
+                 className="col-span-2">
+            <Input name="note" maxLength={200} />
+          </Field>
         </div>
-      ) : null}
-      {error ? <p className="mt-2 text-warn">{error}</p> : null}
-    </section>
+      </DialogForm>
+    </>
+  );
+}
+
+/** The link, once, with a way to copy it. */
+function Created({ url, expiresAt }: { url: string; expiresAt: string }) {
+  const [copied, setCopied] = useState(false);
+  const until = new Date(expiresAt).toLocaleDateString("en-GB",
+    { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" });
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2 rounded-control border border-border bg-bg py-1 pl-3 pr-1">
+        <code className="min-w-0 flex-1 truncate font-mono text-meta text-text">{url}</code>
+        <Button size="sm" onClick={() => void navigator.clipboard.writeText(url).then(() => setCopied(true))}>
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      <p className="text-text-dim">
+        Send this link yourself. It is shown once and works once, until {until}.
+      </p>
+    </div>
   );
 }
 
 export function Withdraw({ inviteId }: { inviteId: number }) {
   const router = useRouter();
-  const [busy, setBusy] = useState(false);
-
-  const withdraw = async () => {
-    if (!confirm("Withdraw this invite? The link stops working at once.")) return;
-    setBusy(true);
-    const response = await fetch(`/api/admin/invites/${inviteId}/revoke`, { method: "POST" });
-    if (!response.ok) {
-      const body = (await response.json().catch(() => ({}))) as { message?: string };
-      alert(body.message ?? "That did not go through. Try again.");
-    }
-    setBusy(false);
-    router.refresh();
-  };
+  const [open, setOpen] = useState(false);
 
   return (
-    <button type="button" onClick={withdraw} disabled={busy}
-            className="rounded border border-border px-2 py-1 hover:border-accent disabled:opacity-40">
-      {busy ? "Withdrawing" : "Withdraw"}
-    </button>
+    <>
+      <Button size="sm" onClick={() => setOpen(true)}>Withdraw</Button>
+      <DialogForm open={open} onClose={() => setOpen(false)} title="Withdraw"
+                  submitLabel="Withdraw" cancelLabel="Keep it" submitVariant="danger"
+                  onSubmit={async () => {
+                    await post(`/api/admin/invites/${inviteId}/revoke`);
+                    router.refresh();
+                    return null;
+                  }}>
+        <p>Withdraw this invite? The link stops working at once.</p>
+      </DialogForm>
+    </>
   );
 }

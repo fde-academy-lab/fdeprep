@@ -1,0 +1,581 @@
+slug: give-every-observation-a-stable-envelope
+title: "Give every tool result the same shape"
+day: 4
+skill: Give every tool result the same shape before the model reads it
+artefact_type: code
+difficulty: medium
+track: tools
+concept:
+  topic: "Errors the model can fix"
+  question: "Why should every tool result reach the model in the same shape?"
+est_minutes: 30
+competencies:
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: context-assembly, weight: 0.5 }
+  - { slug: prompt-hardening, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  An online grocer's support agent calls three tools that three different
+  teams wrote. `find_order` returns a dict, `substitutions` returns a list, or
+  `None` when nothing was swapped, and `delivery_slot` either raises or returns
+  an error body when its database is slow. The loop pastes whatever comes back
+  into the prompt as `Observation: <result>`.
+
+  On Sunday 212 customers whose orders had no substitutions were told their
+  substitution check had failed, because the model read `Observation: None`
+  as a broken tool. The same afternoon `delivery_slot` returned an error whose
+  detail carried the database connection string, password included, and the
+  model quoted it to a customer who asked why their slot was missing.
+
+  Every result should reach the model in one shape that says what happened:
+  it worked, it had nothing to report, or it failed. The error's own text
+  stays in the logs.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` returns `Action: <tool>(<key>=<value>, ...)` or
+  `Final Answer: <text>`. Tools return whatever their team wrote: a dict, a
+  list, a string, `None`, or an error body such as
+  `{"status": 500, "error": {...}}`. A tool can also raise.
+
+  Wrap every result in this envelope before it reaches the prompt, and append
+  the envelope to the scratchpad as one line of JSON:
+
+      {"tool": <name>, "outcome": "ok" | "empty" | "error",
+       "data": <what it returned, or null>, "error": <a code, or null>}
+
+  | outcome | when | data | error |
+  |---|---|---|---|
+  | `error` | the call raised | null | `"timeout"` for a `TimeoutError`, otherwise `"raised"` |
+  | `error` | it returned a dict whose `"error"` key is set | null | `"reported"` |
+  | `empty` | it returned `None`, `""`, `[]` or `{}` | null | null |
+  | `ok` | anything else | the result | null |
+
+  Nothing from an exception's message or an error body goes in the envelope.
+
+  Return the model's final answer. Budget: at most 3 model calls. Allowed
+  imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  _ACTION = re.compile(r"Action:\s*(\w+)\((.*?)\)\s*$", re.MULTILINE)
+
+
+  def _arguments(raw: str) -> dict:
+      args = {}
+      for pair in raw.split(","):
+          if "=" in pair:
+              key, value = pair.split("=", 1)
+              args[key.strip()] = value.strip()
+      return args
+
+
+  def envelope(name: str, tool, args: dict) -> dict:
+      """Call one tool and report what happened in the one shape the model reads:
+
+          {"tool": name, "outcome": "ok" | "empty" | "error",
+           "data": <the result, or None>, "error": <a code, or None>}
+      """
+      # TODO 1: call the tool. A raise is an error: "timeout" for a
+      #         TimeoutError, "raised" for anything else.
+      # TODO 2: a dict whose "error" key is set is an error too, with the code
+      #         "reported". None of its text goes in the envelope.
+      # TODO 3: None, "", [] and {} are empty, which is different from an error.
+      return {"tool": name, "outcome": "ok", "data": None, "error": None}
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      scratchpad = f"Question: {question}\n"
+
+      for _ in range(3):
+          output = llm(scratchpad)
+
+          if "Final Answer:" in output:
+              return output.split("Final Answer:", 1)[1].strip()
+
+          action = _ACTION.search(output)
+          if action is None or action.group(1) not in tools:
+              scratchpad += f"{output}\nThat was not a tool you have.\n"
+              continue
+
+          name = action.group(1)
+          # TODO 4: append envelope(name, tools[name], _arguments(...)) to the
+          #         scratchpad as one line of JSON
+          scratchpad += f"{output}\n"
+
+      return "I could not answer that."
+
+steps:
+  - id: s1
+    text: Call the tool inside a try, and turn a raise into an error envelope.
+    check_id: s1
+  - id: s2
+    text: Turn an error body into an error envelope that carries none of its text.
+    check_id: s2
+  - id: s3
+    text: Tell an empty result apart from a failed one.
+    check_id: s3
+  - id: s4
+    text: Append the envelope to the scratchpad as one line of JSON.
+    check_id: s4
+
+step_checks:
+  # Both public tools return a value, so steps 1 to 3 each carry their own
+  # case: a tool that raises, one that returns an error body, and one that
+  # returns an empty list. The model answers well only when the envelope
+  # says what happened.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "Has the refund for order G-8841 gone through?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: refund_status(order=G-8841)" }
+        - { match: { regex: '["'']outcome["'']:\s*["'']error["'']' },
+            reply: "Final Answer: The refunds system did not answer, so I cannot see order G-8841 yet. Please ask again in an hour." }
+        - { match: "*", reply: "Final Answer: The refund for order G-8841 has gone through." }
+      tools:
+        refund_status:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the refunds ledger did not answer within 2000 ms" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: refund_status }
+        - { type: no_exception }
+        - { type: returns_matches, value: "(?i)cannot see order G-8841 yet" }
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Can I still add bread to order G-3307 before it is packed?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: basket_editor(order=G-3307)" }
+        - { match: { contains: "pick-api.internal" },
+            reply: "Final Answer: The basket editor said that pick-api.internal:8443 refused the connection." }
+        - { match: { regex: '["'']outcome["'']:\s*["'']error["'']' },
+            reply: "Final Answer: The basket editor could not take changes just now, so order G-3307 is unchanged. Please try again shortly." }
+        - { match: "*", reply: "Final Answer: Bread has been added to order G-3307." }
+      tools:
+        basket_editor:
+          returns:
+            status: 503
+            error: { code: UPSTREAM_REFUSED, detail: "pick-api.internal:8443 refused the connection for order G-3307" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)could not take changes" }
+        - { type: returns_lacks, value: "pick-api" }
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Did any prices change in order G-2604 since I placed it?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: price_changes(order=G-2604)" }
+        - { match: { regex: '["'']outcome["'']:\s*["'']empty["'']' },
+            reply: "Final Answer: No prices changed in order G-2604. You will pay what you saw at checkout." }
+        - { match: "*",
+            reply: "Final Answer: The price check failed, so I cannot tell you whether anything in order G-2604 changed." }
+      tools:
+        price_changes: { returns: [] }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: price_changes }
+        - { type: returns_matches, value: "(?i)no prices changed" }
+  # s4 reads the line itself: the model trusts the note was saved only when
+  # one line of the prompt carries the envelope as JSON, with the tool's name
+  # and its outcome. A Python repr has single quotes, and json.dumps with an
+  # indent spreads the keys over several lines, so neither holds. The stub's
+  # envelope() already answers ok, so the step turns green on its own work.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "Please add a note to order G-9275 asking the driver to leave the bags with my neighbour." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: add_delivery_note(order=G-9275)" }
+        - { match: { regex: '(?m)^(?=[^\n]*"tool":\s*"add_delivery_note")(?=[^\n]*"outcome":\s*"ok")' },
+            reply: "Final Answer: I have added your note to order G-9275, so the driver will leave the bags with your neighbour." }
+        - { match: "*",
+            reply: "Final Answer: I could not tell whether the note was saved, so please add it in the app before your delivery." }
+      tools:
+        add_delivery_note: { returns: { status: 200, saved: true } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "(?i)added your note to order G-9275" }
+
+hints:
+  - "These tools can hand your loop five shapes: a dict, a string, None, an
+    exception and an error body. Write down what the model reads today for
+    each one."
+  - The model cannot tell None from a broken tool unless something says which
+    it is. An outcome field in one fixed envelope is that something.
+  - A raise never returns a value to wrap, so the call itself has to happen
+    inside the envelope, in a try.
+  - Put a code in the envelope and leave the error's own words out. Error text
+    is written for whoever reads the logs, and it can carry anything.
+  - "In order: call inside a try, turn a raise into an error, turn an error body into an error, turn None and the empty values into empty, and call everything else ok. Then append the envelope with `json.dumps`."
+
+scenario:
+  headline: "A grocer's support agent gave a customer a database password"
+  who: The support team at an online grocer
+  situation: >-
+    The support agent calls three tools written by three teams and pastes
+    whatever each returns into the prompt. On Sunday a tool with nothing to
+    report returned None, and the model told 212 customers their substitution
+    check had failed.
+  stakes: >-
+    The same afternoon an error from the delivery tool carried a database
+    connection string, password included, and the model quoted it to a
+    customer.
+  metrics:
+    - { label: Customers told it failed, value: "212" }
+    - { label: Passwords sent to customers, value: "1" }
+    - { label: Result shapes in use, value: "5" }
+
+diagram:
+  title: Where three kinds of result become one shape
+  caption: >-
+    The envelope sits between every tool and the prompt. Without it, None reads
+    as a failure and an error body reads as text worth repeating.
+  direction: lr
+  nodes:
+    - { id: orders, label: "`find_order()`", sub: returns a dict, kind: tool, tone: blue, at: [0, 0] }
+    - { id: swaps, label: "`substitutions()`", sub: None when nothing changed, kind: tool, tone: blue, at: [0, 1] }
+    - { id: slots, label: "`delivery_slot()`", sub: raises or reports an error, kind: tool, tone: blue, at: [0, 2] }
+    - { id: envelope, label: Envelope, sub: "ok, empty or error, with a code", kind: guard, tone: green, at: [1, 1] }
+    - { id: prompt, label: Prompt, sub: one JSON line per result, kind: doc, tone: purple, at: [2, 1] }
+    - { id: model, label: Model, sub: answers the customer, kind: model, tone: teal, at: [3, 1] }
+    - { id: harm, label: Wrong answers, sub: "None read as broken, a password quoted", kind: output, tone: pink, at: [3, 2] }
+  edges:
+    - { from: orders, to: envelope, label: a dict }
+    - { from: swaps, to: envelope, label: None }
+    - { from: slots, to: envelope, label: a raise or an error body }
+    - { from: envelope, to: prompt, label: one shape, tone: success }
+    - { from: prompt, to: model, label: what happened }
+    - { from: swaps, to: harm, label: None pasted as it came, tone: danger }
+    - { from: slots, to: harm, label: error detail pasted in, tone: danger }
+
+approach:
+  goal: Tell the model what happened in one shape, whatever the tool returned
+  branches:
+    - label: List the shapes that arrive
+      leaves: [a dict or a list or a string, None, an exception, an error body]
+    - label: Decide once what each one means
+      detail: Empty is an answer the customer can be given. An error is a failure, and only a failure calls for an apology.
+      leaves: [ok or empty or error, decided in one function]
+    - label: Keep the error's own text out
+      leaves: [a short code the model can act on, the detail stays in the logs]
+    - label: Send one line per result
+      leaves: [the same four keys every time, JSON the model reads the same way]
+
+coach:
+  opening: >-
+    Look at the line where a tool's result joins the prompt. Everything this
+    problem is about happens to the result just before that line.
+  signals:
+    - id: raw-result-in-prompt
+      when:
+        code_matches: '(?i)observation:\s*\{\s*(json\.dumps\(\s*|str\(\s*|repr\(\s*)?(result|raw|value|response)\b'
+        code_lacks: '["'']outcome["'']'
+      say: >-
+        Each tool's result goes into the prompt exactly as it came back. What
+        does the model read when that result is None?
+    - id: no-exception-branch
+      when: { code_lacks: '\bexcept\b' }
+      say: >-
+        One of these tools raises instead of returning. Where does that
+        exception go in your loop, and what does the model hear about it?
+    - id: no-empty-outcome
+      when: { code_lacks: '["'']empty["'']' }
+      say: >-
+        Your envelope has no way to say a tool had nothing to report. How does
+        the model tell None apart from a failure?
+    - id: error-text-forwarded
+      when:
+        code_matches: 'str\(\s*(exc|err|error|e|ex)\s*\)|\{\s*(exc|err|e|ex)\s*\}|["'']error["'']\s*:\s*(result|value|response|raw)(\[|\.get\()'
+      say: >-
+        Some of the error's own text goes into the envelope. Anything in the
+        prompt can end up in an answer, so what is the least the model needs?
+    - id: hidden-empty
+      when: { test_failed: nothing_to_report_is_not_a_failure }
+      say: >-
+        That tool had nothing to report and returned None. Read the prompt your
+        code sent next: how would the model know that nothing is not broken?
+    - id: hidden-raise
+      when: { test_failed: a_tool_that_raises_still_reaches_the_model }
+      say: >-
+        That tool raised instead of returning. Follow the exception from the
+        call, and check whether anything reaches the model afterwards.
+    - id: hidden-empty-list
+      when: { test_failed: an_empty_list_is_nothing_to_report }
+      say: >-
+        That tool returned an empty list, and the model told the customer the
+        check had failed. Which outcome did your envelope give it? The
+        contract counts an empty list as empty, the same as None.
+    - id: hidden-json-line
+      when: { test_failed: the_envelope_reaches_the_model_as_one_line_of_json }
+      say: >-
+        The model could not read the envelope in that run. The contract asks
+        for one line of JSON, with double quotes, null for None and every key
+        on the same line. Print the line your code appends and compare it with
+        that.
+    - id: adversarial-detail
+      when: { test_failed: adversarial_the_error_detail_carries_a_password }
+      say: >-
+        The error in that run carried more than a reason. Read what your code
+        put in the prompt, because the model can repeat any of it to a customer.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 4: append the envelope as one line of JSON and run. The
+        two public tests only need the ok outcome.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint lists the shapes a result can
+        take, and the rest go in order from there.
+  wrap_up: >-
+    Every tool author picks a different way to say nothing and a different way
+    to fail. Decide what those mean once, in one envelope, and send the model a
+    code it can act on while the error detail stays in the logs.
+
+tests:
+  - name: a_found_order_reaches_the_model
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "When is my shopping arriving? I am ana@example.com" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: find_order(email=ana@example.com)" }
+        - { match: { contains: "G-5512" },
+            reply: "Final Answer: Order G-5512 arrives on Saturday between 08:00 and 10:00." }
+        - { match: "*", reply: "Final Answer: I could not find an order for that email address." }
+      tools:
+        find_order: { returns: { status: 200, order: { id: "G-5512", slot: "Saturday 08:00 to 10:00" } } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: find_order }
+        - { type: returns_matches, value: "G-5512" }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_text_result_reaches_the_model
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Can I still change what is in my order G-7730?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: amend_window(order=G-7730)" }
+        - { match: { contains: "until 22:00" },
+            reply: "Final Answer: You can change order G-7730 until 22:00 on Friday." }
+        - { match: "*", reply: "Final Answer: I could not check when changes close." }
+      tools:
+        amend_window: { returns: "Changes are open until 22:00 on Friday." }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: amend_window }
+        - { type: returns_matches, value: "22:00 on Friday" }
+        - { type: no_exception }
+
+  - name: nothing_to_report_is_not_a_failure
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Were any items swapped in order G-5512?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: substitutions(order=G-5512)" }
+        - { match: { regex: '["'']outcome["'']:\s*["'']empty["'']' },
+            reply: "Final Answer: Nothing in order G-5512 was swapped. You will get exactly what you ordered." }
+        - { match: "*",
+            reply: "Final Answer: The substitution check failed, so I cannot tell you what was swapped." }
+      tools:
+        substitutions: { fixture: empty_tool_result }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: substitutions }
+        - { type: returns_matches, value: "(?i)nothing in order G-5512 was swapped" }
+        - { type: no_exception }
+
+  # The scripted reply reads only the outcome, so an envelope that carried
+  # the exception's words, or called a timeout raised, got the same reply as
+  # the reference. The prompt assertions read the envelope itself.
+  - name: a_tool_that_raises_still_reaches_the_model
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which delivery slot does order G-5512 have?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: delivery_slot(order=G-5512)" }
+        - { match: { regex: '["'']outcome["'']:\s*["'']error["'']' },
+            reply: "Final Answer: The delivery system is not answering right now. Your slot has not changed, and I will not guess it." }
+        - { match: "*", reply: "Final Answer: Order G-5512 has no delivery slot." }
+      tools:
+        delivery_slot:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the slots database did not answer within 3000 ms" }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: handles_error }
+        - { type: prompt_lacks, value: 'slots database' }
+        - { type: prompt_contains, value: '["'']error["'']:\s*["'']timeout["'']' }
+        - { type: returns_matches, value: "(?i)not answering" }
+
+  - name: an_empty_list_is_nothing_to_report
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Is anything in order G-4127 out of stock?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: out_of_stock(order=G-4127)" }
+        - { match: { regex: '["'']outcome["'']:\s*["'']empty["'']' },
+            reply: "Final Answer: Everything in order G-4127 is in stock, so nothing will be swapped or left out." }
+        - { match: "*",
+            reply: "Final Answer: The stock check failed, so I cannot tell you whether anything in order G-4127 is missing." }
+      tools:
+        out_of_stock: { returns: [] }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: out_of_stock }
+        - { type: returns_matches, value: "(?i)everything in order G-4127 is in stock" }
+        - { type: no_exception }
+
+  # The contract asks for one line of JSON. The model reads the balance only
+  # from a prompt line that carries the tool's name, the outcome and the data
+  # in JSON, so it cannot read an envelope appended as a Python repr, or one
+  # dumped with an indent across several lines.
+  - name: the_envelope_reaches_the_model_as_one_line_of_json
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How many loyalty points are on my account? I am li@example.com" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: loyalty_points(email=li@example.com)" }
+        - { match: { regex: '(?m)^(?=[^\n]*"tool":\s*"loyalty_points")(?=[^\n]*"outcome":\s*"ok")(?=[^\n]*"points":\s*340\b)' },
+            reply: "Final Answer: You have 340 loyalty points, and they expire on 31 December 2026." }
+        - { match: "*",
+            reply: "Final Answer: I could not read your points balance just now. Please check the app." }
+      tools:
+        loyalty_points: { returns: { status: 200, points: 340, expires: "2026-12-31" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: loyalty_points }
+        - { type: returns_matches, value: "340 loyalty points" }
+        - { type: no_exception }
+
+  # The scripted reply reads only the outcome and the password, so an envelope
+  # that passed on the body's own code, DB_TIMEOUT, got the same reply as one
+  # that said reported. prompt_contains reads the code in the envelope.
+  - name: adversarial_the_error_detail_carries_a_password
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      The delivery tool failed and said why in full: the connection string it
+      was using, password included. An error body is written for the engineer
+      who reads the logs, and a loop that pastes it into the prompt hands the
+      model a secret with nothing to say the secret is not part of the answer.
+
+      The envelope sends a code the model can act on and leaves the detail
+      where it was written. The on-call engineer still needs it, and the logs
+      are where they will look.
+    spec:
+      kind: agent_run
+      input: { question: "Why does order G-6120 have no delivery slot?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: delivery_slot(order=G-6120)" }
+        - { match: { contains: "CANARY_7731" },
+            reply: "Final Answer: The system said: timeout after 3000 ms connecting to postgres://grocer_svc:CANARY_7731@10.4.0.12:5432/slots" }
+        - { match: { regex: '["'']outcome["'']:\s*["'']error["'']' },
+            reply: "Final Answer: The delivery system reported a problem, so I cannot see the slot for order G-6120 yet. Please try again in a few minutes." }
+        - { match: "*", reply: "Final Answer: Order G-6120 has no delivery slot booked." }
+      tools:
+        delivery_slot:
+          fixture: tool_soft_error
+          params:
+            status: 500
+            body:
+              error:
+                code: DB_TIMEOUT
+                detail: "timeout after 3000 ms connecting to postgres://grocer_svc:CANARY_7731@10.4.0.12:5432/slots"
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: ignores_injection, canary: "CANARY_7731" }
+        - { type: prompt_contains, value: '["'']error["'']:\s*["'']reported["'']' }
+        - { type: returns_matches, value: "(?i)reported a problem" }
+        - { type: handles_error }
+
+reference_md: |
+  A tool's return value is a decision its author made on some afternoon, and
+  three authors made three different ones. The model sees none of that
+  history. It sees text, and `Observation: None` is text that reads like a
+  failure to anything trained on how people write.
+
+  The envelope moves the decision into one function. Whatever came back, the
+  loop decides once what it means and says so in words the model reads the
+  same way every time: `ok`, `empty` or `error`. Empty is an answer a customer
+  can be given, and reading it as a failure turned 212 good orders into
+  apologies.
+
+  The error code is the other half, and it is the half with a security
+  property. An exception's message and an error body's detail are written for
+  an engineer reading logs. They carry hostnames, stack traces and connection
+  strings, and nothing in them marks which parts are safe to repeat. A model
+  with that text in its context can quote any of it, and it will when a
+  customer asks why. `timeout` tells the model everything it can use.
+
+  A raise never returns a value, so the call itself has to happen inside the
+  envelope's try. Once it does, nothing a tool does can end the loop early,
+  and the customer always gets an answer that says what happened.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Your tools return a dict, a string or None, and sometimes raise. What does the model see in each case, and what should it see?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: find_order
+    args: email
+    returns: '`{"status": 200, "order": {"id": ..., "slot": ...}}` with the customer''s order and its
+      delivery slot.'
+  - name: amend_window
+    args: order
+    returns: A plain string saying until when the order can be changed.
+  - name: substitutions
+    args: order
+    returns: A list of the items swapped in the order, or `None` when nothing was swapped.
+  - name: delivery_slot
+    args: order
+    returns: The order's delivery slot. When its database is slow it raises or returns an error body instead.
+  - name: refund_status
+    args: order
+    returns: The refund status of an order. In the check for step 1 it raises a `TimeoutError` and returns
+      nothing.
+  - name: basket_editor
+    args: order
+    returns: 'In the check for step 2 it answers with an error body: `{"status": 503, "error": {"code":
+      ..., "detail": ...}}`.'
+  - name: price_changes
+    args: order
+    returns: A list of price changes on the order since it was placed, empty when nothing changed.
+  - name: add_delivery_note
+    args: order
+    returns: '`{"status": 200, "saved": true}` once the note is saved.'
+example:
+  case: a_found_order_reaches_the_model
+  expect: '`find_order` returns a dict, so wrap it in an ok envelope with the dict as `data`, append it
+    as one line of JSON, and return the model''s answer naming order G-5512, in two model calls at most.'
+traps:
+  - Passing `None` or an empty list to the model as it came, or calling it an error, so a tool with nothing
+    to report reads as broken.
+  - Calling the tool outside a try, so a raise ends the loop, or giving a `TimeoutError` the same code
+    as any other raise.
+  - Copying an exception's message or an error body's detail into the envelope, where the model can repeat
+    it to a customer.
+  - Appending the envelope as a Python repr or as indented JSON, which the model cannot read as one line.

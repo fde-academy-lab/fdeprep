@@ -8,14 +8,19 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "../lib/db/pool.ts";
 import {
-  applyPersonaCsv, clearCounter, parsePersonaCsv, requeueSubmission, roster, toggleDegradedMode,
+  applyPersonaCsv, clearCounter, enrolmentByLogin, parsePersonaCsv, requeueSubmission, roster,
+  toggleDegradedMode,
 } from "../lib/admin/index.ts";
-import { opsSnapshot } from "../lib/admin/ops.ts";
+import { opsSnapshot, STUCK_VOICE_AFTER_MINUTES, waitingLabel } from "../lib/admin/ops.ts";
 import { browseSubmissions } from "../lib/admin/submissions.ts";
 import { createSubmission } from "../lib/submissions/create.ts";
 import { dispatchOnce } from "../lib/queue/dispatcher.ts";
 import { seedTracks } from "../lib/policy/roadmap.ts";
 import { depth } from "../lib/queue/shim.ts";
+import { startRehearsal } from "../lib/rehearsal/index.ts";
+import { fixtureQuestionId } from "../lib/voice/fixture.ts";
+import { MAX_JUDGE_ATTEMPTS } from "../lib/voice/score.ts";
+import { submitTypedAnswer } from "../lib/voice/typed.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 
 let learner: Awaited<ReturnType<typeof seedLearner>>;
@@ -156,6 +161,16 @@ describe("the counter clear from the docs/05 runbook", () => {
       "Lost an Extreme attempt to a runner fault.", admin.userId);
     expect(await counterCount()).toBe(0);
   });
+
+  it("finds the learner by login in the admin's cohort, and nobody outside it", async () => {
+    // Ops asks for the login, so a login from another cohort must not reach its enrolment.
+    expect(await enrolmentByLogin("Alice", learner.cohortId)).toBe(learner.enrolmentId);
+    const { rows: [elsewhere] } = await db().query<{ id: string }>(
+      "insert into cohort (slug, name, starts_on) values ('c4', 'Cohort 4', current_date) returning id");
+    await seedLearner({ githubId: 13, login: "bob", cohortId: Number(elsewhere!.id) });
+    expect(await enrolmentByLogin("bob", learner.cohortId)).toBeNull();
+    expect(await enrolmentByLogin("nobody", learner.cohortId)).toBeNull();
+  });
 });
 
 describe("the roster and the CSV upload", () => {
@@ -250,6 +265,90 @@ describe("the ops dashboard", () => {
     const submission = await stuckSubmission();
     const snapshot = await opsSnapshot();
     expect(snapshot.stuck.map((row) => row.id)).not.toContain(submission.id);
+  });
+
+  it("says how long a row has waited in minutes, then hours, then days", () => {
+    // The seed's four stuck rows as Ops read them, and each edge between units.
+    expect([7, 40, 59, 60, 182, 1439, 1440, 2882].map(waitingLabel)).toEqual(
+      ["7m", "40m", "59m", "1h 0m", "3h 2m", "23h 59m", "1d 0h", "2d 0h"]);
+  });
+});
+
+describe("last activity counts every kind of practice", () => {
+  // Found by the seed: a learner with forty voice answers and no submission
+  // read "never" on the roster, because last activity read submissions alone.
+  it("reads a voice answer from a learner who never submitted anything", async () => {
+    const session = await submitTypedAnswer({
+      enrolmentId: learner.enrolmentId, cohortId: learner.cohortId,
+      voiceQuestionId: await fixtureQuestionId(), mode: "guided",
+      text: "The loop counts its steps and stops at the ceiling, then hands over what it found.",
+    });
+    const { rows } = await db().query<{ started_at: Date }>(
+      "select started_at from voice_session where id = $1", [session]);
+
+    const row = (await roster(learner.cohortId)).find((r) => r.login === "alice")!;
+    expect(row.lastActivity).toBe(rows[0]!.started_at.toISOString());
+  });
+
+  it("reads a rehearsal sat after the last submission", async () => {
+    await stuckSubmission();
+    await db().query("update submission set queued_at = now() - interval '2 days'");
+    const sitting = await startRehearsal(learner.enrolmentId);
+
+    const row = (await roster(learner.cohortId)).find((r) => r.login === "alice")!;
+    expect(row.lastActivity).toBe(sitting.startedAt.toISOString());
+  });
+
+  it("still reads never for somebody who has done nothing", async () => {
+    const row = (await roster(learner.cohortId)).find((r) => r.login === "admin")!;
+    expect(row.lastActivity).toBeNull();
+  });
+});
+
+describe("the ops dashboard lists voice answers nobody scored", () => {
+  // Found by the seed: 34 answers sat on "Scoring" for a week and Ops said
+  // nothing was stuck, because the stuck list read submissions alone.
+  async function finished(minutesAgo: number, attempts: number, scored = false): Promise<number> {
+    const { rows } = await db().query<{ id: string }>(
+      `insert into voice_session
+         (enrolment_id, voice_question_id, cohort_id, mode, input, started_at, finished_at,
+          transcript, judge_attempts, scored_at)
+       values ($1, $2, $3, 'guided', 'typed', now() - make_interval(mins => $4 + 3),
+               now() - make_interval(mins => $4), 'an answer', $5,
+               case when $6 then now() end)
+       returning id`,
+      [learner.enrolmentId, await fixtureQuestionId(), learner.cohortId, minutesAgo, attempts, scored]);
+    return Number(rows[0]!.id);
+  }
+
+  it("names the two reasons an answer waits, and leaves out the ones still on time", async () => {
+    const notRunning = await finished(STUCK_VOICE_AFTER_MINUTES + 60, 0);
+    const gaveUp = await finished(180, MAX_JUDGE_ATTEMPTS);
+    await finished(10, 0);                       // inside the hour: the scorer may yet get to it
+    await finished(300, 1, true);                // scored, so not waiting on anything
+
+    const { stuckVoice } = await opsSnapshot();
+
+    // Oldest first, like the stuck submissions above it.
+    expect(stuckVoice.map((row) => [row.id, row.why])).toEqual([
+      [gaveUp, "judge_gave_up"],
+      [notRunning, "scorer_not_running"],
+    ]);
+    const row = stuckVoice.find((r) => r.id === notRunning)!;
+    expect(row.login).toBe("alice");
+    expect(row.questionTitle).toBe("Explain how you guarantee an agent loop terminates");
+    expect(row.waitingMinutes).toBe(STUCK_VOICE_AFTER_MINUTES + 60);
+  });
+
+  it("lists an answer the judge gave up on whenever it finished", async () => {
+    const gaveUp = await finished(5, MAX_JUDGE_ATTEMPTS);
+    expect((await opsSnapshot()).stuckVoice.map((row) => row.id)).toEqual([gaveUp]);
+  });
+
+  it("is empty when every answer is scored or still inside the hour", async () => {
+    await finished(10, 0);
+    await finished(600, 2, true);
+    expect((await opsSnapshot()).stuckVoice).toEqual([]);
   });
 });
 

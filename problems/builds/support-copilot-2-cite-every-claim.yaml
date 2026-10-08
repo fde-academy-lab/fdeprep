@@ -1,11 +1,14 @@
 slug: support-copilot-2-cite-every-claim
-title: A reply promised a next-morning refund no policy offers
-day: 29
+title: "Send replies only when every claim is cited"
+day: 30
 skill: Send a reply only when every sentence cites its evidence
 artefact_type: code
 difficulty: medium
 complexity: C2
 track: builds
+concept:
+  topic: "Support copilot"
+  question: "When is a reply ready to send?"
 est_minutes: 30
 competencies:
   - { slug: retrieval, weight: 1.0 }
@@ -260,6 +263,7 @@ hints:
     needs no search and no draft.
 
 scenario:
+  headline: "A reply promised a next-morning refund no policy offers"
   who: Support operations at a meal-kit subscription service
   situation: >-
     The router from stage 1 now feeds a copilot that drafts replies from the

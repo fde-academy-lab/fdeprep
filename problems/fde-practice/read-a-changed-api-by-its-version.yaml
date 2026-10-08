@@ -1,10 +1,13 @@
 slug: read-a-changed-api-by-its-version
-title: The billing assistant told 212 customers they owed nothing
-day: 26
+title: "Handle an API that changes between versions"
+day: 27
 skill: Read each version of a changing API, and hand unreadable bills to a person
 artefact_type: code
 difficulty: medium
 track: fde-practice
+concept:
+  topic: "Integration contracts"
+  question: "How do you read an API that changes under you?"
 est_minutes: 30
 competencies:
   - { slug: tool-schema-design, weight: 1.0 }
@@ -152,6 +155,7 @@ hints:
     needs to know which version the bill came from.
 
 scenario:
+  headline: "The billing assistant told 212 customers they owed nothing"
   who: The customer operations team at a regional water utility
   situation: >-
     The billing API's version 2 renamed amount to `amount_due` at two in the

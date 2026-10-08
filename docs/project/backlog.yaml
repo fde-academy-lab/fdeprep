@@ -18,7 +18,7 @@
 # Every pull request adds or closes the story it delivers. CI checks this file.
 
 version: 1
-as_of: 2026-09-30
+as_of: 2026-10-08
 
 project:
   owner: fde-academy-lab
@@ -1084,7 +1084,7 @@ stages:
         area: Infrastructure
         finish: 2026-10-03
         acceptance:
-          - README route C steps C0 to C10 are done and the site answers on its public address over HTTPS.
+          - DEPLOY.md steps 0 to 6 are done and the site answers on its public address over HTTPS.
           - The first admin signs in through an invite minted on the host.
       - id: S11.2
         title: Prove the Bedrock judge with one live submission
@@ -1132,7 +1132,7 @@ stages:
         area: Infrastructure
         finish: 2026-10-03
         acceptance:
-          - An AWS Budgets alarm on the Bedrock line notifies at 50 and 80 percent of the monthly limit.
+          - An AWS Budgets alert filtered on the AWS Marketplace billing entity, where Claude's charges appear, notifies at 50 and 80 percent of the monthly limit.
       - id: S11.7
         title: Run the 200-submission burst test against staging
         type: Task
@@ -1160,13 +1160,23 @@ stages:
         finish: 2026-10-09
         acceptance:
           - The first invited students have signed in, and their feedback is a story on this board within a week.
+      - id: S11.10
+        title: Write the AWS go-live as one runbook, click by click
+        type: Task
+        status: done
+        pr: 45
+        points: 3
+        area: Docs and process
+        finish: 2026-10-01
+        acceptance:
+          - DEPLOY.md takes one operator from an AWS account to a working beta, with the console path, the CloudShell or server command and the expected output for every step, prices and AWS behaviour checked on the day, and README route C points to it.
 
   - id: S12
     name: Problem pages v2
     kind: roadmap
     horizon: next
     start: 2026-09-30
-    finish: 2026-10-03
+    finish: 2026-10-08
     area: Web application
     priority: P1
     risk: Medium
@@ -1275,6 +1285,152 @@ stages:
         acceptance:
           - Every problem lists two to four mistakes its hidden and adversarial cases exist to catch, in words that do not give the case away, and CI refuses a trap that quotes one.
           - Easy and Medium show the traps from the start; Hard, Extreme and the rehearsal show them once the attempt closes, and the page does not send them before then.
+      - id: S12.10
+        title: Give every problem a plain title a newcomer understands
+        type: Task
+        status: done
+        pr: 45
+        points: 5
+        area: Content
+        finish: 2026-10-01
+        acceptance:
+          - Every problem title starts with a verb, runs to eight words at most, and says what the learner builds; the incident line it replaced is kept as the scenario headline and shown on the card and in the catalogue.
+          - The capstone tier is called End-to-end builds everywhere a learner reads it.
+      - id: S12.11
+        title: "Add a workflows track: one routing task solved with rules, a decision model, one model call and a cascade"
+        type: Feature
+        status: done
+        pr: 45
+        points: 8
+        area: Content
+        finish: 2026-10-01
+        acceptance:
+          - Four Easy problems on days 1 to 4 route the same support ticket four ways, and each reference passes while each naive solution fails a hidden test, through the runner.
+          - The decision model is a scripted tool in the runner like every other fixture, so learner code never reaches a model endpoint.
+      - id: S12.12
+        title: Organise the catalogue as chapters of agent engineering, each problem labelled with the question it answers
+        type: Feature
+        status: done
+        pr: 45
+        points: 8
+        area: Content
+        finish: 2026-10-01
+        acceptance:
+          - Every problem sits in one of twelve chapters, from loop engineering to Agentic SDLC, under a topic from that chapter's closed list, and its page and catalogue row show the question it answers before the learner starts.
+          - The 30-day path walks the four stages in order, a test fails when any problem's day is off it, and searching the problems page by a word, a chapter or a question returns matches.
+      - id: S12.13
+        title: Let a problem use LangGraph and LangChain inside the sandbox
+        type: Feature
+        status: done
+        pr: 45
+        points: 5
+        area: Runner and sandbox
+        finish: 2026-10-01
+        acceptance:
+          - A solution that builds a LangGraph graph, pauses at an interrupt and resumes from its checkpoint, and validates a LangChain tool's arguments passes inside the real sandbox, and a graph that never ends stops at its recursion limit.
+          - A solution that imports no framework runs in exactly the sandbox it ran in before, and the static gate's route walk covers the framework modules.
+      - id: S12.14
+        title: Write the problems the thin chapters were missing, weighted to Hard and Extreme
+        type: Feature
+        status: done
+        pr: 45
+        points: 21
+        area: Content
+        finish: 2026-10-01
+        acceptance:
+          - Human in the loop, observability, orchestration, harness, loop, tools, context, memory, guardrails, evals and Agentic PDLC gain 35 problems between them, 13 of them Hard and 9 Extreme, each validated in full.
+          - Every new code problem's reference passes every gate and its naive solution fails a hidden test through the runner, its stub fails a public test and every step check, and its coach is quiet on the reference and fires on the naive solution.
+      - id: S12.15
+        title: Open the Agentic SDLC chapter, add a regression gate to evals, and teach LangGraph control flow
+        type: Feature
+        status: done
+        pr: 45
+        points: 13
+        area: Content
+        finish: 2026-10-08
+        acceptance:
+          - Agentic SDLC holds six problems on AI-DLC and BMAD, four of them code (ordering units of work, packing them into bolts, gating a bolt on its approval evidence, finding criteria with no spec or test) and two design (running Inception, choosing a BMAD planning path), Agentic PDLC gains two design problems, and evals gains an Extreme regression gate that tells a flaky case from a real regression.
+          - Loop, harness and orchestration each gain a Hard LangGraph problem: ending a graph's loop at an edge, retrying a node only on errors worth retrying, and routing through a supervisor that keeps every specialist's answer.
+          - Tools gains a Hard design problem on choosing between a crew, a graph and a plain loop against a client's numbers, and memory gains a Medium LangGraph problem that gives every customer their own checkpoint thread, and tools gains a Medium LangChain core problem that turns a schema rejection into an error the model can fix.
+      - id: S12.16
+        title: Deepen the last two stages of the analytics agent and extraction pilot builds
+        type: Feature
+        status: done
+        pr: 45
+        points: 5
+        area: Content
+        finish: 2026-10-08
+        acceptance:
+          - The analytics agent refuses a repaired query that only re-sends the failed one and repairs only against the tables it picked, and its last stage answers only with figures the result rows hold, with each later stage's starter code carrying the earlier stage's new working code.
+          - The extraction pilot counts a line item only when one goods line holds both its description and its amount, so a Total, VAT or another item's price cannot balance a claim, and the rescue plan's numbers follow the new routing.
+      - id: S12.17
+        title: Polish 51 problems after a review of each one's story, tier, hints and kit
+        type: Feature
+        status: done
+        pr: 45
+        points: 8
+        area: Content
+        finish: 2026-10-08
+        acceptance:
+          - Every problem merged in the last content round, and every problem written in this one, has been read by a reviewer for its story, its tier, its hints and its kit, and every edit the reviewer marked must or should is applied or skipped with a reason.
+          - Every changed code problem's reference still passes every gate and its naive solution still fails a hidden test through the runner, and no prose names a day of the path, because the path moves on every re-lay.
+      - id: S12.18
+        title: Let a problem sit off the 30-day path as a chapter drill
+        type: Feature
+        status: done
+        pr: 45
+        points: 3
+        area: Content
+        finish: 2026-10-08
+        acceptance:
+          - A problem marked drill with no day validates, a drill with a day or a drill flag other than true is refused, and the path tool lays only the problems on the path and, when they do not fit, says how many days they need against the 30 there are.
+          - A drill shows in its chapter and the catalogue labelled Drill, and Home's next action and a chapter's next problem reach a drill only after every unsolved problem on the path.
+      - id: S12.19
+        title: Let a solution use LangChain core or pydantic without LangGraph in the sandbox
+        type: Bug
+        status: done
+        pr: 45
+        points: 3
+        area: Runner and sandbox
+        finish: 2026-10-08
+        found_by: Running it
+        acceptance:
+          - A solution that imports only langchain_core can define a tool, have its arguments refused and run it inside the real sandbox, and a solution that imports only pydantic can build and validate a model there, each with a test that failed before the fix.
+          - The preload loads only what LangGraph solutions already load, the static gate still refuses import asyncio and import importlib, and the tool-schema problem's reference passes every gate as root and as an unprivileged user.
+          - Every new code problem's reference passes every gate and its naive solution fails a hidden test through the runner, the 30-day path is re-laid with the new problems on it, and docs/04 section 2.2 states what each tier asks for.
+      - id: S12.20
+        title: "Simulate funding a field-service agent: seven stages from intent to delivery method"
+        type: Feature
+        status: done
+        pr: 45
+        points: 13
+        area: Content
+        finish: 2026-10-08
+        acceptance:
+          - Agentic PDLC holds a seven-stage build at an appliance maker in which a scripted agent drafts each artefact and the learner validates it, from the elaboration questions and the PR/FAQ claims to the PRD's trace, the sponsor who widens the scope, the POC scored on both groups whole, the production gates when a guard metric falls, and the delivery method recorded as an ADR, with a voice question on why the board's number is 58 and not 81.
+          - Every id, number, date and quote across the stages agrees with one engagement file, a reviewer read the seven stages as one engagement before they landed, every code stage's reference passes every gate and its naive solution fails a hidden test, and every method fact names its source and the date it was read.
+      - id: S12.21
+        title: "Simulate delivering the agent in bolts: nine stages from units of work to the retrospective"
+        type: Feature
+        status: done
+        pr: 45
+        points: 21
+        area: Content
+        finish: 2026-10-08
+        acceptance:
+          - Agentic SDLC holds a nine-stage build that delivers the funded agent in bolts: accepting only units that trace to the PRD, planning a 16-hour bolt without splitting a unit, picking each change's planning path, checking the spec before the tickets, fixing the ticket agent's prompt so it asks instead of inventing, replaying the bolt's event stream, binding approval to the exact version, deploying with a guard metric and a rollback that can fail, and writing the retrospective, with a voice question defending the bolt 2 plan.
+          - The stages run the method forwards, Inception at Easy to Operations at Extreme, the empty topic Operations with context gains its first problem, and the same engagement file, review and runner checks hold as for the PDLC simulation.
+      - id: S12.22
+        title: Move thirteen problems off the path as drills so the simulations fit
+        type: Feature
+        status: done
+        pr: 45
+        points: 2
+        area: Content
+        finish: 2026-10-08
+        acceptance:
+          - Thirteen problems are drills, each a standalone a simulation stage practises in context or one of a pair the catalogue review found teaching the same skill, and the routing ladder at Easy stays whole on the path.
+          - The path holds 150 problems over 30 days at five a day, with the simulations and the held human-in-the-loop Extreme on it, and every build's stages run in order across its days.
 
   - id: S13
     name: Voice interviewer v2, step 1
@@ -1376,6 +1532,18 @@ stages:
         acceptance:
           - Each session is recorded against the question on screen, the docs/07 section 10 caps bind, and an answer that ends before it counts, a failed start and a judge that keeps failing all cost the learner nothing.
           - Follow-ups are heard, survive a content re-import, and keep their cached speech past thirty days, and a recording past thirty days is deleted and marked so.
+      - id: S13.9
+        title: Keep the debrief up, and say what failed when an answer does not save
+        type: Bug
+        status: done
+        pr: 45
+        points: 5
+        area: Voice
+        finish: 2026-10-01
+        found_by: Running it
+        acceptance:
+          - The debrief and the past answers list render for every session in development and in a production build, and a test walks every page's imports so a module the server bundle cannot load fails CI instead of a learner's screen.
+          - A failed start, save, recording upload or socket says what happened and what to press, an answer that did not save is never shown as recorded and stays in the tab for Save again, and neither the scorer nor the development socket stops for one session it cannot handle.
 
   - id: S14
     name: Voice interviewer v2, step 2
@@ -1624,3 +1792,74 @@ stages:
         finish: 2027-03-31
         acceptance:
           - A learner can read a brief, check progress and review a debrief on a phone.
+
+  - id: S17
+    name: Redesign, one position and one next action
+    kind: roadmap
+    horizon: now
+    start: 2026-10-08
+    finish: 2026-10-19
+    area: Web application
+    priority: P1
+    risk: Medium
+    summary: >-
+      Every screen opens on the learner's position and one next action. A
+      seed script fills the development database through eval/, each place
+      gets one name and every screen reads the same path order, the learner
+      screens drop the text that copied other pages, and admin gains an
+      Overview of the cohort.
+    why: >-
+      The design council found Home repeating Problems, the chapter pages
+      and the header, Voice, Past answers, Admin and the chapters each going
+      by two or three names, and the palette and the chapter pages leading
+      with different problems from the one Home and Problems open on.
+    estimate: {optimistic: 6, likely: 8, pessimistic: 13}
+    rice: {reach: 180, impact: 1, confidence: 0.8}
+    stories:
+      - id: S17.1
+        title: "Seed the development database through eval/, read readiness, and fix the data bugs it exposed"
+        type: Feature
+        status: done
+        points: 8
+        area: Web application
+        finish: 2026-10-08
+        acceptance:
+          - npm run db:seed fills a fresh database with forty people in two cohorts and ninety days of submissions, voice answers, rehearsals, invites, reviews and audit rows, and every grade, band and competency state in it is written by eval/ through writeResult, saveEvaluation, scoreVoiceOnce, recordReview or the override, which a test that reads the seed's own source enforces.
+          - A steady learner has a sitting most weeks, at 0.18 a weekday, which is about one sitting a week, so after ninety days most of the cohort reads not_ready.
+          - Readiness reads clean cells over the cells the persona's track requires, with the four counts and the docs/12 band, and for three seeded learners it equals a hand-computed fixture.
+          - Roster last activity counts voice answers and rehearsals, Ops lists voice answers nobody scored, and an error, including a lease the worker reaps, is refunded to the counter window it came from and to no other.
+      - id: S17.2
+        title: "One name per place, chapters in the palette, the crumb to the chapter page, and one path order"
+        type: Feature
+        status: done
+        points: 5
+        area: Web application
+        finish: 2026-10-08
+        acceptance:
+          - Home, Problems, Rehearsal, Voice, Past answers, Progress and Admin each carry one name in the navigation, the tab title, the h1 and the command palette, and no screen says Faculty admin, Voice history, Voice practice, Interview questions, Import problems or All problems.
+          - The palette lists the fourteen chapters in stage order between Go to and Problems to start with, and for a new navigator Home's start card, the first row of Problems in path order, the palette's first problem and the chapter page's Next card are one problem, which a test checks.
+          - The workspace crumb opens the chapter page, and every admin tab has its own tab title.
+      - id: S17.3
+        title: "Learner screens at S1 and S2: sign-in and invite, Home, Problems, Voice and Progress"
+        type: Feature
+        status: done
+        points: 8
+        area: Web application
+        finish: 2026-10-08
+        acceptance:
+          - Sign-in and /invite/<token> are S1's single column with one button, /signin reads 26 words, and when sign-in or graded voice is not set up the screen says so in one sentence while the server log names the missing variables once per process; no screen shows an environment variable name.
+          - Home is S2 at the chapter page's 960 pixel measure, opening on the learner's track, persona, storyline day and solved count, then the start card, Next up or a rehearsal, and the readiness line Progress also draws from readinessFor; the zero state reads 66 words with the header, and a test checks that the start card opens the first row of Problems in path order.
+          - Problems opens on the fourteen-chapter map until a filter, search or sort is set, Voice is one table whose only button is Answer, with the mode and its allowance picked on the session start screen, and Past answers says when scoring is late or gave up.
+          - Every empty state names its next action, checked by a render per state, and the brief's diagram no longer scrolls sideways at 1440 on route-tickets-with-rules or cancel-without-one-more-action.
+      - id: S17.4
+        title: "Admin: the cohort Overview, stuck voice answers on Ops, titled tabs and the Roster dialogs"
+        type: Feature
+        status: done
+        points: 5
+        area: Web application
+        finish: 2026-10-08
+        acceptance:
+          - /admin opens an Overview of the cohort with four numbers and one row per learner, readiness from readinessForMany with its four counts, last activity from the fragment Roster reads, voice included, and the stuck count of three or more failed submits with no pass; a test over the seed checks every row's readiness against readinessFor and every learner's last activity against Roster and Ops, and docs/01 S10 says faculty see the Overview.
+          - A row opens /admin/learners/<id>, read-only, with the readiness line, the heatmap Progress draws from the same component, the attempts with a trace link each and the past answers with scores; faculty and admins open it, and a learner gets the admin layout's 404.
+          - Ops lists the seed's four stuck submissions and four stuck voice answers with why each waits, then the last seven days and the switches, and every admin tab's title equals its h1.
+          - No prompt(), confirm() or alert() is left under web/app; each is a dialog on the native dialog element with the route's refusal as its error line, and every admin control comes from components/ui/field.tsx. In a browser, Tab stays in each dialog, Escape closes it and focus returns to the button that opened it.

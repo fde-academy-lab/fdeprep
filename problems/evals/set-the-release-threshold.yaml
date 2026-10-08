@@ -1,10 +1,13 @@
 slug: set-the-release-threshold
-title: The grading agent can still email a student with no grade
+title: "Set the bar a release must pass"
 day: 19
 skill: Write the release threshold for a grading service
 artefact_type: design
 difficulty: medium
 track: evals
+concept:
+  topic: "Regression testing"
+  question: "What score does a release need, and who decided that?"
 est_minutes: 35
 competencies:
   - { slug: evaluation-design, weight: 1.0 }
@@ -206,6 +209,7 @@ hints:
     if it is not.
 
 scenario:
+  headline: "The grading agent can still email a student with no grade"
   who: The head of delivery at a coursework grading service
   situation: >-
     The grading agent passes 116 of 120 eval cases, 96.7 percent, and they

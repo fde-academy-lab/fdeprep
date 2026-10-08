@@ -1,0 +1,339 @@
+slug: compress-a-prompt-without-losing-a-constraint
+title: "Shorten a prompt without losing a rule"
+day: 10
+skill: Cut the prompt to size without cutting the sentence legal needs
+artefact_type: prompt
+difficulty: medium
+track: context
+concept:
+  topic: "Compression and summaries"
+  question: "What can you cut from a prompt, and what must never go?"
+est_minutes: 35
+model_id: us.anthropic.claude-opus-5
+competencies:
+  - { slug: prompt-construction, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+
+brief_md: |
+  A family-owned car dealer group puts its sales assistant on all four
+  branch websites next month. The prompt behind it has grown to about 410
+  words over two years of fixes. It is sent with each of roughly 40,000
+  chats a month, and the digital lead wants it under 250 words before
+  launch.
+
+  Plenty of it can go. There is a paragraph of company history, the word
+  friendly appears five times, the list of what the assistant does is
+  written out twice, and the last section is compliance boilerplate that no
+  customer has ever needed to hear.
+
+  Cut it to under 250 words. A customer who asks the shorter prompt anything
+  has to get the reply the long one would have given.
+
+contract_md: |
+  Edit the system prompt in the editor. You may delete, merge, rewrite and
+  reorder.
+
+  The checklist shows what the digital lead asked to keep, which is not
+  everything the prompt does. The probes are not shown; they send customer
+  questions to the shorter prompt and check each reply against what the
+  long prompt would have said.
+
+  Stay under 250 words.
+
+original_prompt: |
+  You are the online sales assistant for a family-owned car dealer group
+  with four branches around Greater Manchester. The first showroom opened in
+  1987 on a single forecourt in Stockport, and the group has grown by
+  treating every customer like a neighbour. We want that feeling in every
+  conversation, so please be friendly, warm and approachable at all times.
+
+  What you can help with
+
+  You can help customers find a car from the current stock list, explain
+  this month's finance offers, book a test drive at any of our four
+  branches, and answer questions about opening hours. In other words, you
+  help customers find a car, understand finance, book test drives and check
+  when we are open. If a customer asks about something else, stay friendly
+  and tell them what you can help with.
+
+  Branches and opening hours
+
+  Our branches are in Stockport, Didsbury, Altrincham and Bury. All four are
+  open Monday to Friday from 9am to 7pm and on Saturday from 9am to 4pm, and
+  all four are closed on Sunday. Test drives last about 30 minutes and can be
+  booked at any branch during opening hours.
+
+  This month's finance offers
+
+  Small hatchback: £199 a month for 48 months, total amount payable £11,452.
+  Compact SUV: £249 a month for 48 months, total amount payable £14,262.
+  Family estate: £279 a month for 48 months, total amount payable £15,892.
+
+  Part exchange
+
+  Customers often ask what their current car is worth. Never give a value or
+  a range for a part exchange, because only a sales executive who has seen
+  the car can value it. Offer to book a free appraisal at the customer's
+  nearest branch instead.
+
+  Tone
+
+  Always be friendly. Buying a car is a big decision, and a patient, friendly
+  tone helps. Keep replies to three or four sentences where you can, use the
+  customer's name if they give it, and avoid jargon. If a customer seems
+  unsure, reassure them that there is no pressure to buy.
+
+  Compliance
+
+  All vehicles are subject to availability. Images on our websites are for
+  illustration only. Errors and omissions excepted. Finance is subject to
+  status and available to UK residents aged 18 and over. Every offer above is
+  at a representative APR of 9.9%, and a monthly price must never be quoted
+  without the representative APR and the total amount payable in the same
+  sentence. The group is authorised for consumer credit. Terms and
+  conditions apply. Please stay friendly even when a customer is frustrated.
+
+prompt_rules:
+  - { kind: must_keep, label: "test drives can still be booked",
+      pattern: "(?i)test\\s+drive" }
+  - { kind: must_keep, label: "this month's three finance offers",
+      pattern: "(?s)£199.*£249.*£279" }
+  - { kind: must_keep, label: "the opening hours",
+      pattern: "(?i)9\\s*am" }
+  - { kind: max_words, label: "under 250 words", numeric_value: 250 }
+
+probes:
+  - name: a_monthly_price_comes_with_its_apr
+    user_message: "How much a month is the small hatchback on finance?"
+    assertion: { type: present, pattern: "9\\.9" }
+  - name: the_cheapest_deal_still_carries_its_apr
+    user_message: "What is the lowest monthly payment you can do on any car right now?"
+    assertion: { type: present, pattern: "9\\.9" }
+  - name: a_part_exchange_goes_to_an_appraisal
+    user_message: "Roughly what would you give me for my 2017 hatchback with 60,000 miles on it?"
+    assertion: { type: present, pattern: "(?i)apprais" }
+  - name: the_opening_hours_survive_the_cut
+    user_message: "What time does the Bury branch close on a Saturday?"
+    assertion: { type: present, pattern: "(?i)\\b4\\s*(pm|p\\.m\\.)|16:00" }
+
+rubric:
+  - label: Keeps the sentence that changes a reply
+    weight: 40
+    descriptor_md: |
+      One sentence in the compliance section decides how a monthly price may
+      be quoted, and it holds the only copy of the 9.9 percent figure. Strong
+      answers keep it as a rule the model applies, with the figure it needs.
+      An edit that keeps the offers and loses that sentence quotes 199 pounds
+      a month with nothing beside it.
+  - label: Cuts what changes no reply
+    weight: 30
+    descriptor_md: |
+      The history, the second capability list, the repeated tone lines and
+      most of the boilerplate change nothing a customer reads. Strong answers
+      cut whole sentences by asking what each one changes, rather than
+      shaving words from every sentence until the rules read as fragments.
+  - label: Leaves each rule where the next edit will keep it
+    weight: 30
+    descriptor_md: |
+      The APR sentence was nearly lost because it was filed with boilerplate.
+      Strong answers move it beside the offers it governs, and keep the part
+      exchange rule together with its alternative, the free appraisal, so the
+      next person to shorten the prompt can see what each rule is for.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      Opens with one line on who the assistant is and one on tone. Merges the
+      two capability lists, keeps the branch hours and the offers, and moves
+      the APR sentence up to sit directly under the offers: "Every offer is
+      at a representative APR of 9.9%. Never quote a monthly price without
+      the APR and the total amount payable in the same sentence." Keeps the
+      part exchange rule with its free appraisal. Drops the history and the
+      rest of the boilerplate, and lands at about 230 words.
+  - band: adequate
+    score: 64
+    body_md: |
+      Cuts the history and the repeated tone lines, and trims a few words
+      from most sentences to reach 247. The APR sentence survives because it
+      was read, and it still sits at the bottom of a section headed
+      Compliance between two lines of boilerplate, where the next person to
+      shorten the prompt will cut it.
+  - band: weak
+    score: 26
+    body_md: |
+      Deletes the history paragraph and the whole compliance section as
+      boilerplate. It comes in under 250 words, reads well, and quotes the
+      small hatchback at 199 pounds a month with no APR to the first customer
+      who asks.
+
+hints:
+  - For each paragraph, name a reply that would come out different without
+    it. The paragraphs you cannot name one for are the ones to cut first.
+  - Boilerplate is where legal requirements get filed, next to lines that do
+    nothing. A section that reads as one block can hold several different
+    kinds of sentence.
+  - A rule belongs next to the facts it governs, where a later edit cannot
+    mistake it for filler.
+  - Cut the history, say each tone instruction once, merge the two capability
+    lists, then read the compliance section a sentence at a time and keep
+    whatever changes a reply.
+
+scenario:
+  headline: "The sales prompt has to shrink from 410 words to under 250"
+  who: The digital lead at a family-owned car dealer group
+  situation: >-
+    The sales assistant's prompt has grown to about 410 words over two years
+    of fixes. It is sent with every chat, and it has to be under 250 words
+    before the assistant goes on all four branch websites next month.
+  stakes: >-
+    The quickest cut is the compliance section at the bottom. One sentence in
+    it decides whether a monthly price can be quoted at all.
+  metrics:
+    - { label: Prompt today, value: 410 words }
+    - { label: Target, value: under 250 }
+    - { label: Chats a month, value: "40,000" }
+
+diagram:
+  title: Where the quickest cut takes a legal rule with it
+  caption: >-
+    Most of the prompt changes no reply. The compliance section is mostly
+    filler, with one sentence that governs every monthly price.
+  direction: lr
+  nodes:
+    - { id: prompt, label: 410-word prompt, sub: two years of fixes, kind: doc, tone: purple, at: [0, 1] }
+    - { id: filler, label: History and repeats, sub: change no reply, kind: doc, tone: neutral, at: [1, 0] }
+    - { id: facts, label: Offers and hours, sub: facts the model repeats, kind: store, tone: blue, at: [1, 1] }
+    - { id: compliance, label: Compliance section, sub: filler around one binding rule, kind: doc, tone: orange, at: [1, 2] }
+    - { id: assistant, label: Sales assistant, sub: reads the shorter prompt, kind: model, tone: teal, at: [2, 1] }
+    - { id: bare, label: A price on its own, sub: "£199 a month, nothing beside it", kind: output, tone: pink, at: [3, 0] }
+    - { id: lawful, label: Price with APR and total, sub: the reply the long prompt gave, kind: output, tone: green, at: [3, 2] }
+  edges:
+    - { from: prompt, to: filler, label: safe to cut, tone: success }
+    - { from: prompt, to: facts, label: keep }
+    - { from: prompt, to: compliance, label: cut as one block, tone: danger }
+    - { from: facts, to: assistant, label: prices and hours }
+    - { from: compliance, to: assistant, label: the APR rule if kept }
+    - { from: assistant, to: bare, label: rule cut, tone: danger }
+    - { from: assistant, to: lawful, label: rule kept, tone: success }
+
+approach:
+  goal: Get under 250 words and keep every reply the same
+  branches:
+    - label: Ask what each sentence changes
+      leaves: [a reply that would come out different, or nothing at all]
+    - label: Cut what changes nothing
+      leaves: [history, instructions said more than once, lists written out twice]
+    - label: Read boilerplate a line at a time
+      detail: Sections that look like filler are where legal requirements get filed.
+      leaves: [one line can govern every price]
+    - label: Keep the facts the model repeats
+      leaves: [offers and totals, opening hours, who values a part exchange]
+
+coach:
+  opening: >-
+    Before you cut a paragraph, say which reply would come out different
+    without it. Some long paragraphs change nothing, and one short sentence
+    changes every price the assistant quotes.
+  signals:
+    - id: apr-left-the-prompt
+      when: { code_lacks: '9\.9' }
+      say: >-
+        The representative APR is no longer in the prompt. Something in the
+        compliance section was a rule, and every monthly price depended on it.
+    - id: part-exchange-left
+      when: { code_lacks: '(?i)part[\s-]*exchange|apprais' }
+      say: >-
+        Nothing now tells the model what to do when a customer asks what their
+        car is worth. The long prompt sent that to a person who has seen the
+        car.
+    - id: history-kept
+      when: { code_matches: '(?i)first\s+showroom|1987' }
+      say: >-
+        The prompt still opens with the group's history. Which reply would be
+        different if the model never read it? Ask that of every paragraph.
+    - id: tone-repeated
+      when: { code_matches: '(?is)friendly.*friendly.*friendly' }
+      say: >-
+        Friendly still appears three or more times. The model needs to read
+        an instruction once for it to hold.
+    - id: price-without-apr
+      when: { test_failed: a_monthly_price_comes_with_its_apr }
+      say: >-
+        A monthly price went out on its own. Read the section you cut first,
+        one sentence at a time, and find the one that changes a reply.
+    - id: hours-lost
+      when: { test_failed: the_opening_hours_survive_the_cut }
+      say: >-
+        A customer asked about opening hours and the reply could not say.
+        Facts the model repeats to customers are the last thing to compress.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write next to each paragraph the reply it changes. Cut the ones where
+        you cannot name one, and read the rest a sentence at a time.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Open the next hint: each one narrows the
+        problem by one rung, and none of them hands over the answer.
+  wrap_up: >-
+    A shorter prompt is a behaviour change until a probe says otherwise. Cut
+    what changes no reply, read boilerplate a sentence at a time, and put each
+    rule beside the facts it governs so the next cut leaves it alone.
+
+reference_md: |
+  Compression is a refactor with no tests unless you write them, and the
+  sentence it breaks is the one nobody reads.
+
+  The prompt holds two kinds of text. Most of it changes nothing a customer
+  sees: the history, the second capability list and the five uses of
+  friendly could all go and no reply would differ. A few sentences change a
+  reply every time they apply, and the dangerous ones are negative
+  constraints, because losing one produces no error. A prompt without the APR
+  rule still works. It quotes 199 pounds a month, fluently and helpfully, and
+  the omission is visible only to someone who knows the rule existed.
+
+  The compliance section is where that happens. It reads as one block of
+  boilerplate, and nearly all of it is. One sentence holds the only copy of
+  the 9.9 percent figure and the rule for quoting it, and an editor who cuts
+  by section rather than by sentence takes it with the rest. The test that
+  separates them works on any prompt: for each sentence, name a reply it
+  changes. The history paragraph changes none. The APR sentence changes every
+  finance answer.
+
+  Where the rule ends up matters as much as whether it survives. Filed under
+  Compliance, it will be cut by the next person with a word limit. Moved
+  beside the offers, it reads as part of the prices, which is what it is.
+  The part exchange rule works the same way: keeping "do not value cars" and
+  dropping the free appraisal turns a redirect into a refusal, and the
+  customer who wanted to trade in hears no and nothing else.
+
+  The probes here are the replies the long prompt gave. That is the only way
+  to know a compression is safe: ask the short prompt the same questions and
+  compare.
+
+complexity: C3
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A shorter prompt saves tokens but loses one rare safety constraint. Would you ship it?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I003.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
+
+example:
+  message: Can I book a test drive in the compact SUV at your Altrincham branch next Tuesday afternoon?
+  expect: Offer to book the test drive at Altrincham within opening hours, say it takes about 30 minutes,
+    and keep the reply to three or four friendly sentences, as the long prompt would.
+traps:
+  - Cutting the compliance section as one block, which takes the rule that a monthly price never goes
+    out without its APR and total payable.
+  - Keeping the APR rule and dropping the 9.9% figure, so the model knows an APR belongs beside every
+    price and has none to quote.
+  - Keeping the ban on valuing a part exchange and dropping the free appraisal, which turns a redirect
+    into a refusal.
+  - Squeezing the branch hours until the times a customer asks about are no longer in the prompt.

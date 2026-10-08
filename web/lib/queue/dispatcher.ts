@@ -8,6 +8,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { db, inTransaction } from "../db/pool.ts";
+import { refund } from "../policy/caps.ts";
 import { send } from "./shim.ts";
 
 const LEASE_SECONDS = 120;
@@ -77,17 +78,22 @@ async function publishOne(
 /**
  * docs/03 section 9.3: a scheduled job expires abandoned leases and marks
  * orphaned submissions error, which under section 8 does not consume an
- * allowance.
+ * allowance. So each one's unit goes back in the same transaction, the way
+ * writeResult refunds an error. A runner that reports after the reap is
+ * refused by writeResult's compare-and-set, so nothing is refunded twice.
  */
 export async function reapExpiredLeases(): Promise<number> {
-  const { rows } = await db().query<{ id: string }>(
-    `update submission
-        set status = 'terminal', verdict = 'error', finished_at = now(),
-            result = jsonb_build_object(
-              'verdict', 'error',
-              'message', 'The runner stopped responding. Your attempt was not counted.',
-              'consumes_allowance', false)
-      where verdict is null and lease_expires_at is not null and lease_expires_at < now()
-      returning id`);
-  return rows.length;
+  return inTransaction(async (client) => {
+    const { rows } = await client.query<{ id: string }>(
+      `update submission
+          set status = 'terminal', verdict = 'error', finished_at = now(),
+              result = jsonb_build_object(
+                'verdict', 'error',
+                'message', 'The runner stopped responding. Your attempt was not counted.',
+                'consumes_allowance', false)
+        where verdict is null and lease_expires_at is not null and lease_expires_at < now()
+        returning id`);
+    for (const row of rows) await refund(client, Number(row.id));
+    return rows.length;
+  });
 }

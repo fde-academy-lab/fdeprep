@@ -15,6 +15,7 @@ import { encodePcm, startCapture, type Capture } from "@/lib/voice/capture";
 import { runMicCheck } from "@/lib/voice/mic-check.browser";
 import { CHECK_SECONDS, type MicVerdict } from "@/lib/voice/mic-check";
 import type { ServerMessage } from "@/lib/voice/protocol";
+import { readReply } from "@/lib/http/reply";
 
 type Counters = {
   frames: number;
@@ -69,14 +70,21 @@ export function VoiceLab() {
     setCounters(ZERO);
     seq.current = 0;
 
-    const response = await fetch("/api/voice/lab", { method: "POST" });
-    if (!response.ok) {
-      const body = (await response.json()) as { message?: string };
-      setNote(body.message ?? "The session could not be opened.");
+    let response: Response;
+    try {
+      response = await fetch("/api/voice/lab", { method: "POST" });
+    } catch {
+      setNote("This browser could not reach the server. Check the connection and start again.");
       setPhase("idle");
       return;
     }
-    const started = (await response.json()) as { token: string; socketUrl: string };
+    const reply = await readReply<{ token: string; socketUrl: string }>(response);
+    if (!reply.ok || !reply.body) {
+      setNote(reply.message ?? `The session could not be opened: the server answered ${reply.status}.`);
+      setPhase("idle");
+      return;
+    }
+    const started = reply.body;
 
     const ws = new WebSocket(`${started.socketUrl}?token=${encodeURIComponent(started.token)}`);
     socket.current = ws;

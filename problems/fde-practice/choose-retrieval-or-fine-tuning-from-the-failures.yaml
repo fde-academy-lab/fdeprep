@@ -1,11 +1,14 @@
 slug: choose-retrieval-or-fine-tuning-from-the-failures
-title: The head of claims wants the model trained on old letters
-day: 28
+title: "Choose retrieval or fine-tuning from real failures"
+day: 30
 skill: Choose retrieval or fine-tuning from what actually failed
 artefact_type: design
-difficulty: hard
+difficulty: medium
 track: fde-practice
-est_minutes: 40
+concept:
+  topic: "Pushback and scoping"
+  question: "Do these failures call for retrieval or for fine-tuning?"
+est_minutes: 30
 competencies:
   - { slug: retrieval, weight: 1.0 }
   - { slug: failure-mode-analysis, weight: 1.0 }
@@ -241,6 +244,7 @@ hints:
     next review above which you would spend the budget, and on what.
 
 scenario:
+  headline: "The head of claims wants the model trained on old letters"
   who: The head of claims at a travel insurer
   situation: >-
     She has budget to fine-tune a model on 60,000 past claim letters, because

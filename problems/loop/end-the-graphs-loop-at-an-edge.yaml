@@ -1,0 +1,725 @@
+slug: end-the-graphs-loop-at-an-edge
+title: "End the graph's loop at an edge"
+day: 5
+skill: Stop a LangGraph loop with an edge rule and keep the recursion limit as a backstop
+artefact_type: code
+difficulty: hard
+track: loop
+concept:
+  topic: "Loops that never end"
+  question: "When a graph loops forever, what should stop it, and what should only catch it?"
+est_minutes: 45
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: state-and-memory, weight: 0.5 }
+call_budget: 7
+time_limit_s: 10
+allowed_imports: [json, re, typing, langgraph]
+
+brief_md: |
+  Procurement at a forging company the size of Bharat Forge runs a buying
+  assistant on LangGraph. A buyer asks for steel and the graph goes round
+  three nodes: `plan` asks the model for the next step, `act` runs the tool
+  the model named, and `observe` writes down what came back. An edge after
+  `observe` sends the run round again.
+
+  On Friday a buyer asked for 400 kg of EN19 bar. The supplier search
+  returned an empty second page, and the model asked for that page again,
+  and again. Nothing in the graph counted anything, so the run went round
+  until LangGraph's default recursion limit stopped it. That limit counts
+  super-steps, one for each node this graph runs, and in langgraph 1.2.12
+  it is 10,007 of them, so the run raised `GraphRecursionError` three hours
+  after the buyer asked. Every trip after the first added the same empty
+  page to the history `plan` sends the model, so the last call carried
+  3,334 copies of that page and cost more than any call before it. The two
+  suppliers the run had found on the first page were lost, because the
+  graph kept no checkpoint.
+
+  The first fix set `recursion_limit` to 12, the number of model calls a
+  run was allowed at the time. Friday's run stopped. So did every run that
+  needed four model calls or more, because one trip round this graph is
+  three super-steps.
+
+  Write the graph so that the edge after `observe` ends the run, and the
+  recursion limit only catches what the edge missed.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the buyer's request. `tools["limits"]()` returns
+  `{"max_calls": <n>}`, and on some runs a `recursion_limit` as well, which
+  operations has set for that run.
+
+  Build a `StateGraph` over the starter code's `State`, with three nodes and
+  these edges: `START` to `plan`, `plan` to `act`, `act` to `observe`, and
+  one conditional edge after `observe` that goes back to `plan` or to `END`.
+
+  | Node | What it does |
+  |---|---|
+  | `plan` | Counts a model call and asks `llm(prompt(question, history))`. The starter code's `read_reply` turns the reply into `{"final": text}` or `{"tool": name, "args": {...}}`. A call that raises was refused by the platform: it still counts, and the run ends as `budget`. |
+  | `act` | Runs the action with `tools[name](**args)` and keeps the result. A tool that raises, or that does not exist, gives a result such as `{"error": "TimeoutError: ..."}`, and the run carries on. |
+  | `observe` | Adds `{"tool": ..., "args": ..., "result": ...}` to `history`. |
+
+  The edge after `observe` ends the run, checked in this order:
+
+  | When | `outcome` |
+  |---|---|
+  | The model replied `Final` | `final` |
+  | The latest call is the same tool, with the same arguments and the same result, as the call before it | `stuck` |
+  | `max_calls` model calls have been asked for, refused ones included | `budget` |
+
+  The recursion limit is the backstop. Use the `recursion_limit` from
+  `limits` when there is one. Otherwise set it so that it can never end a
+  run the edge would have ended. In langgraph 1.2.12 a run that has used
+  every super-step it was allowed raises `GraphRecursionError`, even when
+  its next edge leads to `END`.
+
+  When the backstop fires, catch the error and answer from the state the
+  graph checkpointed, with `outcome` set to `backstop`. Reading that state
+  needs `compile(checkpointer=InMemorySaver())` and a `thread_id` in the
+  config, and the checkpoint's metadata counts the super-steps as `step`.
+
+  Return
+
+      json.dumps({"outcome": ..., "answer": ..., "calls": <model calls asked for>,
+                  "steps": <super-steps the graph ran>})
+
+  `answer` is the `Final` text. On any other outcome it says why the run
+  stopped and gives the last result in `history`, as JSON. It is never
+  empty.
+
+  The platform allows 7 model calls a run, and `max_calls` is 6 on most
+  runs. Allowed imports: json, re, typing and langgraph, version 1.2.12.
+
+defence_question: |
+  Operations lowered the backstop during an incident, and last week it
+  ended two runs that were still finding suppliers. One engineer wants the
+  limit raised again. Another wants `plan`, `act` and `observe` merged into
+  one node, so that a trip is one super-step and the same limit covers
+  three times as many calls. What does each change do to a run like
+  Friday's, and to what the buyer gets when the backstop does fire? Which
+  would you ship?
+
+stub_code: |
+  import json
+  import re
+  from typing import TypedDict
+
+  from langgraph.checkpoint.memory import InMemorySaver
+  from langgraph.errors import GraphRecursionError
+  from langgraph.graph import END, START, StateGraph
+
+  ACTION = re.compile(r"^Action:\s*(\w+)\((.*)\)\s*$", re.DOTALL)
+  FINAL = re.compile(r"^Final:\s*(.+)$", re.DOTALL)
+
+
+  class State(TypedDict):
+      calls: int      # model calls asked for, refused ones included
+      history: list   # {"tool", "args", "result"} for every action that ran
+      last: dict      # this trip: the parsed reply, then the action's result
+      answer: str     # the Final text, once there is one
+
+
+  def read_reply(reply: str) -> dict:
+      """{"final": text} or {"tool": name, "args": {...}}.
+
+      Anything else comes back as a tool named "" with no arguments, which no
+      tool answers to."""
+      text = (reply or "").strip()
+      final = FINAL.match(text)
+      if final:
+          return {"final": final.group(1).strip()}
+      action = ACTION.match(text)
+      if action:
+          try:
+              args = json.loads(action.group(2) or "{}")
+          except ValueError:
+              args = None
+          if isinstance(args, dict):
+              return {"tool": action.group(1), "args": args}
+      return {"tool": "", "args": {}}
+
+
+  def prompt(question: str, history: list) -> str:
+      """What plan sends the model: the request, then every result so far."""
+      lines = [f"Request: {question}"]
+      for step in history:
+          lines.append(f"Observed: {step['tool']} {json.dumps(step['args'], sort_keys=True)}"
+                       f" -> {json.dumps(step['result'], sort_keys=True)}")
+      lines.append("Reply 'Action: <tool>(<JSON arguments>)' or 'Final: <answer>'.")
+      return "\n".join(lines)
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Run plan -> act -> observe until the edge after observe ends it.
+
+      tools["limits"]() gives max_calls, and sometimes a recursion_limit.
+      plan counts a call and asks llm(prompt(question, history)); a call that
+      raises still counts and ends the run as budget. act runs
+      tools[name](**args), and a tool that raises gives {"error": ...}.
+      observe adds {"tool", "args", "result"} to history.
+
+      The edge after observe ends the run, in this order:
+        the model replied Final                                 final
+        same tool, arguments and result as the call before it  stuck
+        max_calls model calls asked for                         budget
+      The recursion limit only catches what the edge missed: catch
+      GraphRecursionError and answer from the checkpointed state, backstop.
+
+      Return json.dumps({"outcome", "answer", "calls", "steps"}). The answer
+      is never empty. Allowed imports: json, re, typing, langgraph.
+      """
+      return json.dumps({"outcome": "budget", "answer": "", "calls": 0, "steps": 0})
+
+hints:
+  - Count the super-steps one trip takes, from `plan` to `act` to `observe`,
+    and compare that with the number you gave `recursion_limit`. The two
+    numbers are in different units.
+  - The edge after `observe` sees the whole state after every trip, so the
+    stopping rule belongs there. The recursion limit sees one number, and it
+    ends a stuck run and a working run at the same count.
+  - Check `Final` before the allowance, because the last allowed call can be
+    the answer. Stuck needs all three of the tool, its arguments and its
+    result to match the call before. A new page, or a result that changed,
+    is progress.
+  - "Compile with `InMemorySaver()` and pass a `thread_id`. After you catch
+    `GraphRecursionError`, `app.get_state(config).values` holds the state as
+    of the last finished super-step and `.metadata[\"step\"]` counts them.
+    Catch the tool's exception in `act` and the model's in `plan`."
+
+scenario:
+  headline: "A supplier search asked for the same empty page for three hours"
+  who: "Procurement at a forging company the size of Bharat Forge"
+  situation: >-
+    The buying assistant is a LangGraph loop of plan, act and observe. On
+    Friday the model asked for the same empty supplier page until LangGraph's
+    default limit of 10,007 super-steps, and the run raised with nothing
+    saved.
+  stakes: >-
+    The buyer waited three hours for an error. The suppliers the run found
+    in its first minute were lost, because the graph kept no checkpoint.
+  metrics:
+    - { label: Super-steps on Friday, value: "10,007" }
+    - { label: Hours to the error, value: "3" }
+    - { label: Super-steps per trip, value: "3" }
+
+diagram:
+  title: Where the run should end, and what catches it when it does not
+  caption: >-
+    The edge after observe sees the whole state and ends the run. The
+    recursion limit counts super-steps, and the checkpoint is what is left
+    when it fires.
+  direction: lr
+  nodes:
+    - { id: buyer, label: Buyer, sub: asks for 400 kg of EN19 bar, kind: actor, tone: blue, at: [0, 1] }
+    - { id: plan, label: "`plan`", sub: asks the model for the next step, kind: model, tone: teal, at: [1, 0] }
+    - { id: act, label: "`act`", sub: "runs the tool, keeps an error", kind: tool, tone: green, at: [2, 0] }
+    - { id: observe, label: "`observe`", sub: adds the step to history, kind: agent, tone: purple, at: [3, 0] }
+    - { id: edge, label: Edge after observe, sub: "final, stuck or out of calls", kind: decision, tone: orange, at: [3, 1] }
+    - { id: limit, label: Recursion limit, sub: counts super-steps only, kind: guard, tone: pink, at: [2, 2] }
+    - { id: saved, label: Checkpoint, sub: the state after every super-step, kind: store, tone: neutral, at: [3, 2] }
+    - { id: answer, label: Answer, sub: never empty, kind: output, tone: green, at: [4, 1] }
+  edges:
+    - { from: buyer, to: plan, label: request, step: 1 }
+    - { from: plan, to: act, label: Action, step: 2 }
+    - { from: act, to: observe, label: result, step: 3 }
+    - { from: observe, to: edge, label: the whole state, step: 4 }
+    - { from: edge, to: plan, label: round again, tone: muted }
+    - { from: edge, to: answer, label: END, tone: success }
+    - { from: act, to: limit, label: one super-step per node, tone: muted }
+    - { from: limit, to: saved, label: "`GraphRecursionError`", tone: danger }
+    - { from: saved, to: answer, label: what the run found, tone: success }
+
+approach:
+  goal: Make the edge end the run, and keep the limit for what the edge missed
+  branches:
+    - label: Count in the unit that costs money
+      detail: The allowance is in model calls. The recursion limit is in super-steps, three to a trip here.
+      leaves: [every call asked for counts, a refused call counts too]
+    - label: Decide what stuck means
+      leaves: ["same tool, same arguments, same result", a new page is progress, a changed result is progress]
+    - label: Keep the backstop a backstop
+      leaves: [above the longest run the edge allows, "catch it, then read the checkpoint"]
+    - label: Keep errors inside the node
+      leaves: [a tool that raises is a result, the model reads it and decides]
+
+coach:
+  opening: >-
+    Before you write the edge, work out how many super-steps one trip takes
+    and how many trips the allowance buys. Then decide which of the two
+    numbers should end a run.
+  signals:
+    - id: no-checkpointer
+      when: { code_lacks: 'InMemorySaver|checkpointer' }
+      say: >-
+        When the backstop fires, which line of your code still knows what the
+        run found? A graph compiled without a checkpointer loses its state
+        with the exception.
+    - id: no-stuck-rule
+      when: { code_lacks: '(?i)stuck' }
+      say: >-
+        Nothing in your code can report `stuck`. Which line notices that a
+        call came back exactly as it did the trip before?
+    - id: nothing-caught
+      when: { code_lacks: '\bexcept\b' }
+      say: >-
+        What does your graph do when a tool raises inside `act`, or the
+        platform refuses a model call inside `plan`?
+    - id: hidden-last-call
+      when: { test_failed: a_final_reply_on_the_last_allowed_call_is_final }
+      say: >-
+        In that run the model answered on its sixth call, the last one
+        allowed. What did your edge check first, and how many super-steps had
+        the run used when it ended?
+    - id: hidden-new-page
+      when: { test_failed: a_new_page_with_the_same_result_is_progress }
+      say: >-
+        In that run two pages came back equally empty and the third had a
+        supplier. Was the second search the same call as the first?
+    - id: hidden-changed-quote
+      when: { test_failed: a_quote_that_changed_is_progress }
+      say: >-
+        In that run the model asked for one quote twice and the answer
+        changed in between. Does your stuck rule compare the results?
+    - id: hidden-backstop
+      when: { test_failed: the_backstop_answers_from_the_checkpoint }
+      say: >-
+        Operations set a low limit for that run. When it fired, where did
+        your answer come from, and did it name what the run had found?
+    - id: adversarial-same-page
+      when: { test_failed: adversarial_the_same_empty_page_forever }
+      say: >-
+        That was Friday's run: the same search, the same empty page, every
+        time. How many model calls did your graph spend before it stopped?
+    - id: adversarial-timeout
+      when: { test_failed: adversarial_the_quote_service_times_out }
+      say: >-
+        The quote service timed out in that run. Did the timeout reach the
+        model as a result, or did it end the whole graph?
+    - id: adversarial-refused
+      when: { test_failed: adversarial_the_platform_refuses_a_call }
+      say: >-
+        The platform refused your fifth model call in that run. Where did the
+        refusal go, and what did your answer say the run had found?
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint is about units, and it is
+        where most graphs that stop too early go wrong.
+  wrap_up: >-
+    A recursion limit counts super-steps and cannot tell stuck from busy.
+    Put the stopping rule on the edge, where the whole state is, keep the
+    limit above it, and keep a checkpoint so a run the limit ends still
+    says what it found.
+
+tests:
+  - name: answers_after_one_search_and_one_quote
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Find a supplier for 400 kg of EN19 bar 40mm, delivered by 20 October." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: 'Action: search_suppliers({"part": "EN19 bar 40mm", "page": 1})' }
+        - { match: { call_index: 2 }, reply: 'Action: get_quote({"supplier": "SUP-4471", "part": "EN19 bar 40mm", "kg": 400})' }
+        - { match: "*", reply: "Final: SUP-4471 can supply 400 kg of EN19 bar 40mm at ₹182 a kg in 9 days." }
+      tools:
+        limits: { returns: { max_calls: 6 } }
+        search_suppliers:
+          by_arg:
+            arg: page
+            values:
+              "1": { suppliers: [SUP-4471, SUP-2208], more: false }
+            default: { suppliers: [], more: false }
+        get_quote:
+          by_arg:
+            arg: supplier
+            values:
+              SUP-4471: { supplier: SUP-4471, price_per_kg: 182, lead_days: 9 }
+              SUP-2208: { supplier: SUP-2208, price_per_kg: 195, lead_days: 6 }
+            default: { error: "no quote on file" }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, answer, calls, steps]
+            properties:
+              outcome: { const: final }
+              calls: { const: 3 }
+              steps: { const: 9 }
+        - { type: returns_matches, value: "SUP-4471" }
+        - { type: calls_tool_with, name: get_quote, args: { supplier: SUP-4471 } }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: stops_when_the_allowance_is_spent
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Find a supplier for 1,200 kg of 20MnCr5 bar 60mm this month." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: 'Action: search_suppliers({"part": "20MnCr5 bar 60mm", "page": 1})' }
+        - { match: { call_index: 2 }, reply: 'Action: search_suppliers({"part": "20MnCr5 bar 60mm", "page": 2})' }
+        - { match: { call_index: 3 }, reply: 'Action: search_suppliers({"part": "20MnCr5 bar 60mm", "page": 3})' }
+        - { match: { call_index: 4 }, reply: 'Action: search_suppliers({"part": "20MnCr5 bar 60mm", "page": 4})' }
+        - { match: { call_index: 5 }, reply: 'Action: search_suppliers({"part": "20MnCr5 bar 60mm", "page": 5})' }
+        - { match: "*", reply: 'Action: search_suppliers({"part": "20MnCr5 bar 60mm", "page": 6})' }
+      tools:
+        limits: { returns: { max_calls: 6 } }
+        search_suppliers:
+          by_arg:
+            arg: page
+            values:
+              "1": { suppliers: [SUP-1101], more: true }
+              "2": { suppliers: [SUP-1102], more: true }
+              "3": { suppliers: [SUP-1103], more: true }
+              "4": { suppliers: [SUP-1104], more: true }
+              "5": { suppliers: [SUP-1105], more: true }
+              "6": { suppliers: [SUP-1106], more: true }
+            default: { suppliers: [], more: false }
+        get_quote: { returns: { error: "no quote on file" } }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, answer, calls, steps]
+            properties:
+              outcome: { const: budget }
+              calls: { const: 6 }
+              steps: { const: 18 }
+        - { type: returns_matches, value: "SUP-1106" }
+        - { type: llm_calls_at_most, value: 6 }
+        - { type: terminates }
+
+  - name: a_final_reply_on_the_last_allowed_call_is_final
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Find 250 kg of EN24 bar 50mm at the best price, delivered by 31 October." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: 'Action: search_suppliers({"part": "EN24 bar 50mm", "page": 1})' }
+        - { match: { call_index: 2 }, reply: 'Action: search_suppliers({"part": "EN24 bar 50mm", "page": 2})' }
+        - { match: { call_index: 3 }, reply: 'Action: get_quote({"supplier": "SUP-5120", "part": "EN24 bar 50mm", "kg": 250})' }
+        - { match: { call_index: 4 }, reply: 'Action: get_quote({"supplier": "SUP-6034", "part": "EN24 bar 50mm", "kg": 250})' }
+        - { match: { call_index: 5 }, reply: 'Action: get_quote({"supplier": "SUP-7781", "part": "EN24 bar 50mm", "kg": 250})' }
+        - { match: "*", reply: "Final: SUP-7781 at ₹209 a kg in 8 days is the cheapest quote that arrives by 31 October." }
+      tools:
+        limits: { returns: { max_calls: 6 } }
+        search_suppliers:
+          by_arg:
+            arg: page
+            values:
+              "1": { suppliers: [SUP-5120, SUP-6034], more: true }
+              "2": { suppliers: [SUP-7781], more: false }
+            default: { suppliers: [], more: false }
+        get_quote:
+          by_arg:
+            arg: supplier
+            values:
+              SUP-5120: { supplier: SUP-5120, price_per_kg: 214, lead_days: 15 }
+              SUP-6034: { supplier: SUP-6034, price_per_kg: 205, lead_days: 26 }
+              SUP-7781: { supplier: SUP-7781, price_per_kg: 209, lead_days: 8 }
+            default: { error: "no quote on file" }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, answer, calls, steps]
+            properties:
+              outcome: { const: final }
+              calls: { const: 6 }
+              steps: { const: 18 }
+        - { type: returns_matches, value: "SUP-7781 at .{1,8}209 a kg" }
+
+  - name: a_new_page_with_the_same_result_is_progress
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Find 600 kg of 16MnCr5 bar 32mm for the gear line." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: 'Action: search_suppliers({"part": "16MnCr5 bar 32mm", "page": 1})' }
+        - { match: { call_index: 2 }, reply: 'Action: search_suppliers({"part": "16MnCr5 bar 32mm", "page": 2})' }
+        - { match: { call_index: 3 }, reply: 'Action: search_suppliers({"part": "16MnCr5 bar 32mm", "page": 3})' }
+        - { match: { call_index: 4 }, reply: 'Action: get_quote({"supplier": "SUP-9050", "part": "16MnCr5 bar 32mm", "kg": 600})' }
+        - { match: "*", reply: "Final: SUP-9050 can supply 600 kg of 16MnCr5 bar 32mm at ₹168 a kg in 11 days." }
+      tools:
+        limits: { returns: { max_calls: 6 } }
+        search_suppliers:
+          by_arg:
+            arg: page
+            values:
+              "3": { suppliers: [SUP-9050], more: false }
+            default: { suppliers: [], more: true }
+        get_quote:
+          by_arg:
+            arg: supplier
+            values:
+              SUP-9050: { supplier: SUP-9050, price_per_kg: 168, lead_days: 11 }
+            default: { error: "no quote on file" }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, answer, calls, steps]
+            properties:
+              outcome: { const: final }
+              calls: { const: 5 }
+        - { type: calls_tool_with, name: search_suppliers, args: { page: 3 } }
+        - { type: returns_matches, value: "SUP-9050" }
+
+  - name: a_quote_that_changed_is_progress
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Get a price for 150 kg of EN8 bar 25mm from SUP-3112." }
+      llm_script:
+        - { match: { contains: '"status": "quoted"' }, reply: "Final: SUP-3112 quotes ₹96 a kg for 150 kg of EN8 bar 25mm, ready in 4 days." }
+        - { match: "*", reply: 'Action: get_quote({"supplier": "SUP-3112", "part": "EN8 bar 25mm", "kg": 150})' }
+      tools:
+        limits: { returns: { max_calls: 6 } }
+        search_suppliers: { returns: { suppliers: [SUP-3112], more: false } }
+        get_quote:
+          sequence:
+            - { supplier: SUP-3112, status: pricing }
+            - { supplier: SUP-3112, status: quoted, price_per_kg: 96, lead_days: 4 }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, answer, calls, steps]
+            properties:
+              outcome: { const: final }
+              calls: { const: 3 }
+        - { type: returns_matches, value: "96 a kg" }
+
+  - name: the_backstop_answers_from_the_checkpoint
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Find 900 kg of 42CrMo4 bar 70mm for the axle order." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: 'Action: search_suppliers({"part": "42CrMo4 bar 70mm", "page": 1})' }
+        - { match: { call_index: 2 }, reply: 'Action: get_quote({"supplier": "SUP-6120", "part": "42CrMo4 bar 70mm", "kg": 900})' }
+        - { match: "*", reply: 'Action: get_quote({"supplier": "SUP-7702", "part": "42CrMo4 bar 70mm", "kg": 900})' }
+      tools:
+        limits: { returns: { max_calls: 6, recursion_limit: 7 } }
+        search_suppliers:
+          by_arg:
+            arg: page
+            values:
+              "1": { suppliers: [SUP-6120, SUP-7702], more: false }
+            default: { suppliers: [], more: false }
+        get_quote:
+          by_arg:
+            arg: supplier
+            values:
+              SUP-6120: { supplier: SUP-6120, price_per_kg: 238, lead_days: 10 }
+              SUP-7702: { supplier: SUP-7702, price_per_kg: 231, lead_days: 19 }
+            default: { error: "no quote on file" }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, answer, calls, steps]
+            properties:
+              outcome: { const: backstop }
+              calls: { const: 3 }
+              steps: { const: 7 }
+        - { type: returns_matches, value: "SUP-6120" }
+        - { type: returns_matches, value: "238" }
+
+  - name: adversarial_the_same_empty_page_forever
+    visibility: adversarial
+    fixture: loop_bait
+    annotation_md: |
+      This was Friday's run. The model asked for page 2 of the same search on
+      every call, and page 2 came back empty every time. The second identical
+      answer to the identical call is the moment the run stopped learning
+      anything, so the edge ends it there, after two model calls, as
+      `stuck`, and says which tool it was.
+
+      A graph that leaves this to the recursion limit pays for every call up
+      to the limit, and with the default of 10,007 super-steps that is
+      3,336 model calls on one request. A graph that leaves it to the call
+      allowance pays for six where two would do.
+    spec:
+      kind: agent_run
+      input: { question: "Find 400 kg of EN19 bar 40mm. I have already seen the first page of suppliers." }
+      llm_script:
+        - { match: "*", reply: 'Action: search_suppliers({"part": "EN19 bar 40mm", "page": 2})' }
+      tools:
+        limits: { returns: { max_calls: 6 } }
+        search_suppliers: { returns: { suppliers: [], more: false } }
+        get_quote: { returns: { error: "no quote on file" } }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 2 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, answer, calls, steps]
+            properties:
+              outcome: { const: stuck }
+        - { type: returns_matches, value: "search_suppliers" }
+
+  - name: adversarial_the_quote_service_times_out
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      The quote service raised `TimeoutError` on every call. An exception
+      raised inside a LangGraph node ends the whole `invoke`, and the
+      graph's state goes with it unless something saved it.
+
+      Caught in `act`, the timeout is a result like any other. The model
+      read "`get_quote` timed out after 30 seconds" in its next prompt and
+      answered with the two suppliers the search had already found, which
+      is more use to a buyer than an error page.
+    spec:
+      kind: agent_run
+      input: { question: "Find a supplier for 300 kg of EN19 bar 40mm, delivered by 25 October." }
+      llm_script:
+        - { match: { contains: "timed out" }, reply: "Final: SUP-4471 and SUP-2208 stock EN19 bar 40mm, but the quote service timed out. Ask both for a price by phone." }
+        - { match: { call_index: 1 }, reply: 'Action: search_suppliers({"part": "EN19 bar 40mm", "page": 1})' }
+        - { match: "*", reply: 'Action: get_quote({"supplier": "SUP-4471", "part": "EN19 bar 40mm", "kg": 300})' }
+      tools:
+        limits: { returns: { max_calls: 6 } }
+        search_suppliers: { returns: { suppliers: [SUP-4471, SUP-2208], more: false } }
+        get_quote: { fixture: slow_then_timeout, params: { succeeds: 0, message: "get_quote timed out after 30 seconds" } }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - { type: prompt_contains, value: "timed out" }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, answer, calls, steps]
+            properties:
+              outcome: { const: final }
+              calls: { const: 3 }
+        - { type: returns_matches, value: "SUP-2208" }
+
+  - name: adversarial_the_platform_refuses_a_call
+    visibility: adversarial
+    fixture: budget_squeeze
+    annotation_md: |
+      The limits said six model calls, and the platform refused the fifth,
+      because the tenant's own ceiling was four. The refusal arrives as an
+      exception from `llm`, raised inside `plan`, and like a tool's
+      exception it ends the whole `invoke` unless the node catches it.
+
+      A refused call was still asked for, so it counts, and nothing more can
+      be asked, so the run ends as `budget` with five calls. The answer comes
+      from the state the run had built, which still holds four pages of
+      results, the last of them with SUP-8846 on it.
+    spec:
+      kind: agent_run
+      input: { question: "Find 700 kg of EN353 bar 45mm for the pinion order." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: 'Action: search_suppliers({"part": "EN353 bar 45mm", "page": 1})' }
+        - { match: { call_index: 2 }, reply: 'Action: search_suppliers({"part": "EN353 bar 45mm", "page": 2})' }
+        - { match: { call_index: 3 }, reply: 'Action: search_suppliers({"part": "EN353 bar 45mm", "page": 3})' }
+        - { match: { call_index: 4 }, reply: 'Action: search_suppliers({"part": "EN353 bar 45mm", "page": 4})' }
+        - { match: "*", reply: 'Action: search_suppliers({"part": "EN353 bar 45mm", "page": 5})' }
+      tools:
+        limits: { returns: { max_calls: 6 } }
+        search_suppliers:
+          by_arg:
+            arg: page
+            values:
+              "1": { suppliers: [SUP-8801], more: true }
+              "2": { suppliers: [SUP-8815], more: true }
+              "3": { suppliers: [SUP-8830], more: true }
+              "4": { suppliers: [SUP-8846], more: true }
+            default: { suppliers: [], more: false }
+        get_quote: { returns: { error: "no quote on file" } }
+      budget: { max_llm_calls: 4, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 5 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, answer, calls, steps]
+            properties:
+              outcome: { const: budget }
+              calls: { const: 5 }
+        - { type: returns_matches, value: "SUP-8846" }
+
+reference_md: |
+  The stopping rule belongs on the edge because the edge sees the whole
+  state after every trip: the reply, the history and the count. The
+  recursion limit sees one number, super-steps, and it cannot tell a stuck
+  run from a working one, so it ends both at the same count. That is why the
+  first fix of 12 ended healthy runs. One trip here is three super-steps, so
+  12 super-steps is four model calls, and in langgraph 1.2.12 a run that
+  uses its last allowed super-step raises even when its next edge is `END`.
+  A run whose fourth call was the answer died with the rest.
+
+  The edge checks `Final` first. A run that answers on its last allowed call
+  has spent its allowance and has still answered, and a check on the count
+  that comes first reports it as out of budget. Stuck is the same tool,
+  called with the same arguments, returning the same result as the call
+  before it, and the next identical call would return the same thing again.
+  A new page as empty as the last one is still a new call, and a quote that
+  moved from pricing to a price is still news, so neither is stuck.
+
+  The backstop sits above the longest run the edge allows. That run takes
+  3 × `max_calls` super-steps, so the limit has to be at least
+  3 × `max_calls` + 1, and the reference keeps one more to spare. LangGraph's
+  own default in 1.2.12 is 10,007, set in `langgraph/_internal/_config.py`
+  unless `LANGGRAPH_DEFAULT_RECURSION_LIMIT` says otherwise, and a graph
+  that relies on it has no stopping rule of its own.
+
+  When operations sets a lower limit, it can end a run that is still
+  working, and that run should still tell the buyer what it found. That is
+  what the checkpointer is for. `InMemorySaver` saves the state after every
+  super-step under the thread id, and `app.get_state(config)` reads the last
+  one back after the exception, with the step count in its metadata.
+  Without a checkpointer, `get_state` raises `ValueError: No checkpointer
+  set`, and a checkpointer with no `thread_id` refuses to run at all.
+
+  Errors stay in the node that met them. An exception raised inside a node
+  ends the whole `invoke`, so a timeout in `act` has to become a result
+  there, where the model can read it and work around it. A refused model
+  call means the allowance is gone, so it counts as a call and ends the run
+  as `budget`. `GraphRecursionError` is a `RecursionError`, which Python
+  makes a `RuntimeError`, so an `except RuntimeError` around `invoke`
+  catches the backstop and every refusal alike and cannot tell them apart.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your LangGraph agent raised `GraphRecursionError` in production after three hours. Do you raise `recursion_limit`? What should actually stop the loop, and what do you keep when the limit fires?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: limits
+    args: ""
+    returns: '`{"max_calls": 6}`, and on some runs a `recursion_limit` that operations set for that run.'
+  - name: search_suppliers
+    args: part, page
+    returns: '`{"suppliers": [...], "more": true | false}`, one page of suppliers that stock the part.'
+  - name: get_quote
+    args: supplier, part, kg
+    returns: '`{"supplier", "price_per_kg", "lead_days"}`, `{"supplier", "status": "pricing"}` while it is worked out, or `{"error": ...}`.'
+example:
+  case: answers_after_one_search_and_one_quote
+  expect: Page 1 of the search finds SUP-4471, its quote is ₹182 a kg, and the model answers on its third call, so `final` with 3 calls and 9 super-steps.
+traps:
+  - Checking the call allowance before the `Final` reply, so a run that answers on its last allowed call is reported as out of budget.
+  - Calling any repeat of a tool stuck, when a new page, or a result that changed, means the run is still learning.
+  - Catching `GraphRecursionError` on a graph with no checkpointer, so the answer cannot say what the run had found.
+  - Letting a tool's exception out of `act`, which ends the whole run when it should have been a result the model reads.

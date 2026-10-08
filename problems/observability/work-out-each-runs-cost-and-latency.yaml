@@ -1,0 +1,678 @@
+slug: work-out-each-runs-cost-and-latency
+title: "Work out each run's cost and latency"
+day: 17
+skill: Cost and time every run from its trace, then report p50, p95 and the runs over budget
+artefact_type: code
+difficulty: medium
+track: observability
+concept:
+  topic: "Cost and latency per run"
+  question: "How long did a customer wait, and what did their run cost?"
+est_minutes: 30
+competencies:
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+  - { slug: client-communication, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json, re, math]
+
+brief_md: |
+  Your team runs the claims assistant for a motor insurer the size of Acko.
+  The contract holds it to two numbers per claim: done within 8 seconds, and
+  no more than 2 cents in model and service fees. Last week the insurer's
+  procurement team sent over their dashboard, which shows a p95 latency of
+  14.1 seconds, and asked for service credits for the breach.
+
+  The dashboard is wrong in both directions. The assistant looks up the
+  policy, the claim history and nearby garages at the same time, and the
+  dashboard adds the three lookups together as if they ran one after
+  another: customers waited 6.4 seconds at p95. Meanwhile the dashboard
+  prices only what it has a rate for. Since September the gateway has fallen
+  back to `orion-medium` at peak hours, which is not on the rate card, so
+  those runs look free, and the photo-reading service's fee per call is left
+  out entirely. The cost figure it shows is too low.
+
+  Write the job that works out every run's cost and latency from the trace
+  store, the p50 and p95 for the day, and which runs broke a budget.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is a day, such as `2026-09-29`. `llm` is not called.
+
+  `tools["runs"](day=question)` returns the day's runs. Each event is a model
+  call or a tool call, and the events are listed in the order they ended:
+
+      {"status": 200, "day": "2026-09-29", "runs": [
+        {"run": "CL-5101", "events": [
+          {"type": "model", "model": "orion-large", "input_tokens": 3000,
+           "output_tokens": 500, "start_ms": 0, "end_ms": 2100},
+          {"type": "tool", "tool": "policy_lookup", "start_ms": 2100, "end_ms": 2600},
+          ...]}, ...]}
+
+  `tools["rate_card"]()` returns the contract's rates, in US dollars, and
+  its budgets:
+
+      {"status": 200,
+       "models": {"orion-large": {"input_per_million": 2.50, "output_per_million": 10.00}, ...},
+       "tools": {"photo_ocr": 0.0015},
+       "budget": {"cost_usd": 0.02, "latency_ms": 8000}}
+
+  For each run:
+
+  - `cost_usd`: every model call's input tokens at its model's input rate
+    plus its output tokens at the output rate, both rates per million
+    tokens, plus the fee for every call to a tool in the card's `tools`.
+    Tools not in that list are free. When a model in the run has no rate
+    on the card, the run's cost is unknown: `null`, and the run goes in
+    `unpriced`. Round a known cost to 6 decimal places.
+  - `latency_ms`: the time from the run's earliest start to its latest end,
+    which is how long the customer waited.
+
+  Then, by nearest rank (sort the values and take the one at position
+  ⌈p/100 × n⌉, counting from 1):
+
+  - `p50` and `p95` of `latency_ms` over every run;
+  - `p50` and `p95` of `cost_usd` over the runs whose cost is known.
+
+  A run is over budget when its known cost is more than `budget.cost_usd`,
+  or its latency is more than `budget.latency_ms`.
+
+  Return a JSON string, with runs and lists in the order the runs came:
+
+      {"runs": [{"run": "CL-5101", "cost_usd": 0.01286, "latency_ms": 3400}, ...],
+       "latency_ms": {"p50": 3400, "p95": 9300},
+       "cost_usd": {"p50": 0.01286, "p95": 0.03355},
+       "over_budget": ["CL-5102", "CL-5104"],
+       "unpriced": []}
+
+  Budget: no model calls. Allowed imports: json, re, math.
+
+stub_code: |
+  import json
+  import math
+
+
+  def nearest_rank(values: list, p: int):
+      """The p-th percentile by nearest rank, or None when there are no values."""
+      if not values:
+          return None
+      ordered = sorted(values)
+      return ordered[max(1, math.ceil(p / 100 * len(ordered))) - 1]
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      log = tools["runs"](day=question) or {}
+      card = tools["rate_card"]() or {}
+      models = card.get("models") or {}
+      fees = card.get("tools") or {}
+      budget = card.get("budget") or {}
+
+      rows = []
+      for run in log.get("runs") or []:
+          events = run.get("events") or []
+          cost = 0.0
+          for event in events:
+              # TODO 1: a model call costs its input tokens at its model's
+              #         input rate plus its output tokens at the output
+              #         rate, and both rates are per million tokens
+              # TODO 2: a call to a tool in fees adds its fee. A model with
+              #         no rate makes the run's cost unknown: None, not zero
+              pass
+          # TODO 3: time the run from its earliest start to its latest end
+          latency = 0
+          rows.append({"run": run.get("run"),
+                       "cost_usd": None if cost is None else round(cost, 6),
+                       "latency_ms": latency})
+
+      # TODO 4: p50 and p95 of latency over every run, and of cost over the
+      #         runs whose cost is known; then the runs over either budget,
+      #         and the runs with no known cost
+      return json.dumps({"runs": rows,
+                         "latency_ms": {"p50": None, "p95": None},
+                         "cost_usd": {"p50": None, "p95": None},
+                         "over_budget": [], "unpriced": []})
+
+steps:
+  - id: s1
+    text: Price each model call per million tokens, input and output at their own rates.
+    check_id: s1
+  - id: s2
+    text: Add each paid tool call's fee, and leave a cost unknown when a model has no rate.
+    check_id: s2
+  - id: s3
+    text: Time each run from its earliest start to its latest end.
+    check_id: s3
+  - id: s4
+    text: Take p50 and p95 by nearest rank, and list the runs over budget and unpriced.
+    check_id: s4
+
+step_checks:
+  # s1 and s4 read prices_and_times_four_claims. No public run pays a fee,
+  # runs a model the card lacks, or overlaps two calls, so s2 and s3 carry
+  # their own cases. s2 holds only when both of its cases do: the fee is
+  # added, and the run with no rate is left unknown.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"cost_usd":\s*0\.01286\b' }
+        - { type: returns_matches, value: '"cost_usd":\s*0\.000736\b' }
+  - step_id: s2
+    spec:
+      cases:
+        - kind: agent_run
+          input: { question: "2026-09-21" }
+          llm_script:
+            - { match: "*", reply: "Final Answer: not used" }
+          tools:
+            runs:
+              returns:
+                status: 200
+                day: "2026-09-21"
+                runs:
+                  - run: CL-7001
+                    events:
+                      - { type: model, model: orion-small, input_tokens: 1000, output_tokens: 100, start_ms: 0, end_ms: 500 }
+                      - { type: tool, tool: photo_ocr, start_ms: 500, end_ms: 900 }
+            rate_card:
+              returns:
+                status: 200
+                models:
+                  orion-large: { input_per_million: 2.50, output_per_million: 10.00 }
+                  orion-small: { input_per_million: 0.20, output_per_million: 0.80 }
+                tools: { photo_ocr: 0.0015 }
+                budget: { cost_usd: 0.02, latency_ms: 8000 }
+          budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 5000 }
+          assertions:
+            - { type: returns_matches, value: '"cost_usd":\s*0\.00178\b' }
+        - kind: agent_run
+          input: { question: "2026-09-22" }
+          llm_script:
+            - { match: "*", reply: "Final Answer: not used" }
+          tools:
+            runs:
+              returns:
+                status: 200
+                day: "2026-09-22"
+                runs:
+                  - run: CL-7002
+                    events:
+                      - { type: model, model: orion-preview, input_tokens: 1500, output_tokens: 200, start_ms: 0, end_ms: 900 }
+                  - run: CL-7003
+                    events:
+                      - { type: model, model: orion-small, input_tokens: 1000, output_tokens: 100, start_ms: 0, end_ms: 600 }
+            rate_card:
+              returns:
+                status: 200
+                models:
+                  orion-large: { input_per_million: 2.50, output_per_million: 10.00 }
+                  orion-small: { input_per_million: 0.20, output_per_million: 0.80 }
+                tools: { photo_ocr: 0.0015 }
+                budget: { cost_usd: 0.02, latency_ms: 8000 }
+          budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 5000 }
+          assertions:
+            - { type: returns_matches, value: '"run":\s*"CL-7002",\s*"cost_usd":\s*null' }
+            - { type: returns_matches, value: '"unpriced":\s*\["CL-7002"\]' }
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-23" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        runs:
+          returns:
+            status: 200
+            day: "2026-09-23"
+            runs:
+              - run: CL-7101
+                events:
+                  - { type: tool, tool: policy_lookup, start_ms: 10, end_ms: 500 }
+                  - { type: tool, tool: garage_search, start_ms: 0, end_ms: 2400 }
+                  - { type: model, model: orion-large, input_tokens: 1900, output_tokens: 250, start_ms: 2400, end_ms: 4100 }
+        rate_card:
+          returns:
+            status: 200
+            models:
+              orion-large: { input_per_million: 2.50, output_per_million: 10.00 }
+              orion-small: { input_per_million: 0.20, output_per_million: 0.80 }
+            tools: { photo_ocr: 0.0015 }
+            budget: { cost_usd: 0.02, latency_ms: 8000 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 5000 }
+      assertions:
+        - { type: returns_matches, value: '"latency_ms":\s*4100\b' }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"latency_ms":\s*\{"p50":\s*3400,\s*"p95":\s*9300\}' }
+        - { type: returns_matches, value: '"over_budget":\s*\["CL-5102",\s*"CL-5104"\]' }
+
+hints:
+  - Take each of the dashboard's two numbers and ask what the customer or the
+    insurer would say it measures. Then find where your code measures
+    something else.
+  - Two calls that run at the same time share the same seconds, so the
+    customer waits once for both. And a rate you do not have is not a rate
+    of zero.
+  - "Latency comes from two numbers per run: the smallest `start_ms` and the
+    largest `end_ms`. Cost comes from every event, models at their rates and
+    tools at their fees, and stops being a number the moment a model has no
+    rate."
+  - Build one row per run first, with `None` for an unknown cost. Then take
+    the percentiles from the rows, leaving the `None` costs out, and keep
+    them listed in `unpriced`.
+
+scenario:
+  headline: "The dashboard claims a latency breach and hides a cost overrun"
+  who: The team running the claims assistant for a motor insurer the size of Acko
+  situation: >-
+    Procurement's dashboard shows a p95 of 14.1 seconds and asks for service
+    credits. It adds up lookups that run at the same time, and it prices only
+    the models and services it has a rate for.
+  stakes: >-
+    Credits paid for a breach that never happened, and fallback runs that
+    look free while they break the 2-cent budget.
+  metrics:
+    - { label: Dashboard p95, value: 14.1 s }
+    - { label: What customers waited, value: 6.4 s at p95 }
+    - { label: Budget per claim, value: "8 s, 2¢" }
+
+diagram:
+  title: Where the dashboard's two numbers come from
+  caption: >-
+    Latency is the span from the first start to the last end, not the sum of
+    calls. Cost is every billed line, and a missing rate is unknown, not zero.
+  direction: lr
+  nodes:
+    - { id: model, label: Model call, sub: "tokens in, tokens out", kind: model, tone: teal, at: [0, 0] }
+    - { id: lookups, label: Three lookups, sub: run at the same time, kind: tool, tone: blue, at: [0, 1] }
+    - { id: ocr, label: "`photo_ocr`", sub: billed per call, kind: service, tone: orange, at: [0, 2] }
+    - { id: card, label: Rate card, sub: "rates, fees, budgets", kind: doc, tone: neutral, at: [1, 2] }
+    - { id: job, label: Your job, sub: one row per run, kind: agent, tone: purple, at: [1, 1] }
+    - { id: summed, label: 14.1 s at p95, sub: overlapping calls added up, kind: output, tone: pink, at: [2, 0] }
+    - { id: report, label: Run report, sub: "p50, p95, over budget", kind: output, tone: green, at: [2, 1] }
+  edges:
+    - { from: model, to: job, label: tokens and times, step: 1 }
+    - { from: lookups, to: job, label: overlapping spans, step: 2 }
+    - { from: ocr, to: job, label: a fee per call }
+    - { from: card, to: job, label: rates and budgets }
+    - { from: job, to: summed, label: durations added, tone: danger }
+    - { from: job, to: report, label: wall clock and every fee, tone: success, step: 3 }
+
+approach:
+  goal: Two numbers per run that mean what the contract means
+  branches:
+    - label: How long did the customer wait?
+      detail: Calls that run at the same time share the same seconds.
+      leaves: [earliest start to latest end, events listed by end are not by start]
+    - label: What was billed?
+      leaves: [input and output at their own rates, rates are per million, every paid tool call]
+    - label: What if a rate is missing?
+      leaves: [the cost is unknown, list the run, keep it out of the cost percentiles]
+    - label: Across the day
+      leaves: [nearest rank, latency over every run, cost over priced runs]
+
+coach:
+  opening: >-
+    Before you write a sum, say what each number is for: how long a customer
+    waited, and what the insurer was billed.
+  signals:
+    - id: adds-durations
+      when: { code_matches: 'sum\([^\n]*end_ms[^\n]*-[^\n]*start_ms' }
+      say: >-
+        You add up each call's duration. When three lookups run at the same
+        time, how many seconds did the customer actually wait?
+    - id: zero-for-unknown
+      when: { code_matches: '\.get\(\s*["'']input_per_million["'']\s*,\s*0' }
+      say: >-
+        A model with no rate on the card is priced at zero here. Is that run
+        free, or is its cost unknown?
+    - id: never-unpriced
+      when: { code_lacks: 'unpriced\.append|unpriced\s*\+=|unpriced\s*=\s*\[[^\]]' }
+      say: >-
+        Nothing ever goes into `unpriced`. What should happen to a run that
+        used a model the rate card does not list?
+    - id: no-fees
+      when: { code_lacks: 'fees\s*\[|fees\.get|in\s+fees' }
+      say: >-
+        Your cost never reads the card's tool fees. Which calls in a claim are
+        billed per call rather than per token?
+    - id: overlap-case
+      when: { test_failed: lookups_at_the_same_time_count_once }
+      say: >-
+        That day's runs overlap their lookups, and the events are listed in
+        the order they ended. Which event started first in each run?
+    - id: unpriced-case
+      when: { test_failed: a_model_missing_from_the_rate_card_is_not_free }
+      say: >-
+        One run that day used a model the card has no rate for. What cost did
+        you give it, and what did that do to the median?
+    - id: fee-case
+      when: { test_failed: photo_reading_fees_are_part_of_the_cost }
+      say: >-
+        The runs that day read claim photos, which are billed per call. Is
+        that fee in your cost, and does a run cross the budget because of it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Do TODO 1 first and press Run. The first public case expects 0.01286
+        for its first run.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint asks what each number is for,
+        which is where both of the dashboard's mistakes start.
+  wrap_up: >-
+    A latency is how long somebody waited and a cost is what somebody was
+    billed. Measure the span, price every billed line, and report a missing
+    rate as unknown rather than as free. A later problem in this chapter
+    reads a trace for where a failed run went wrong.
+
+tests:
+  - name: prices_and_times_four_claims
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-29" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        runs:
+          returns:
+            status: 200
+            day: "2026-09-29"
+            runs:
+              - run: CL-5101
+                events:
+                  - { type: model, model: orion-large, input_tokens: 3000, output_tokens: 500, start_ms: 0, end_ms: 2100 }
+                  - { type: tool, tool: policy_lookup, start_ms: 2100, end_ms: 2600 }
+                  - { type: model, model: orion-small, input_tokens: 1200, output_tokens: 150, start_ms: 2600, end_ms: 3400 }
+              - run: CL-5102
+                events:
+                  - { type: model, model: orion-large, input_tokens: 2600, output_tokens: 420, start_ms: 0, end_ms: 1900 }
+                  - { type: tool, tool: garage_search, start_ms: 1900, end_ms: 2700 }
+                  - { type: model, model: orion-large, input_tokens: 3400, output_tokens: 380, start_ms: 2700, end_ms: 4900 }
+              - run: CL-5103
+                events:
+                  - { type: model, model: orion-small, input_tokens: 900, output_tokens: 120, start_ms: 0, end_ms: 600 }
+                  - { type: tool, tool: policy_lookup, start_ms: 600, end_ms: 1000 }
+                  - { type: model, model: orion-small, input_tokens: 1500, output_tokens: 200, start_ms: 1000, end_ms: 1800 }
+              - run: CL-5104
+                events:
+                  - { type: model, model: orion-large, input_tokens: 4100, output_tokens: 610, start_ms: 0, end_ms: 2600 }
+                  - { type: tool, tool: policy_lookup, start_ms: 2600, end_ms: 3300 }
+                  - { type: tool, tool: garage_search, start_ms: 3300, end_ms: 5200 }
+                  - { type: model, model: orion-large, input_tokens: 4800, output_tokens: 520, start_ms: 5200, end_ms: 9300 }
+        rate_card:
+          returns:
+            status: 200
+            models:
+              orion-large: { input_per_million: 2.50, output_per_million: 10.00 }
+              orion-small: { input_per_million: 0.20, output_per_million: 0.80 }
+            tools: { photo_ocr: 0.0015 }
+            budget: { cost_usd: 0.02, latency_ms: 8000 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [runs, latency_ms, cost_usd, over_budget, unpriced],
+                      properties: { runs: { type: array, minItems: 4, maxItems: 4 } } } }
+        - { type: returns_matches, value: '"run":\s*"CL-5101",\s*"cost_usd":\s*0\.01286,\s*"latency_ms":\s*3400\b' }
+        - { type: returns_matches, value: '"run":\s*"CL-5104",\s*"cost_usd":\s*0\.03355,\s*"latency_ms":\s*9300\b' }
+        - { type: returns_matches, value: '"latency_ms":\s*\{"p50":\s*3400,\s*"p95":\s*9300\}' }
+        - { type: returns_matches, value: '"cost_usd":\s*\{"p50":\s*0\.01286,\s*"p95":\s*0\.03355\}' }
+        - { type: returns_matches, value: '"over_budget":\s*\["CL-5102",\s*"CL-5104"\]' }
+        - { type: returns_matches, value: '"unpriced":\s*\[\]' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: an_odd_number_of_claims_and_a_free_tool
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-30" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        runs:
+          returns:
+            status: 200
+            day: "2026-09-30"
+            runs:
+              - run: CL-5201
+                events:
+                  - { type: model, model: orion-small, input_tokens: 1100, output_tokens: 140, start_ms: 0, end_ms: 650 }
+                  - { type: tool, tool: claims_history, start_ms: 650, end_ms: 1500 }
+                  - { type: model, model: orion-small, input_tokens: 1300, output_tokens: 160, start_ms: 1500, end_ms: 2300 }
+              - run: CL-5202
+                events:
+                  - { type: model, model: orion-large, input_tokens: 2800, output_tokens: 350, start_ms: 0, end_ms: 2000 }
+                  - { type: tool, tool: policy_lookup, start_ms: 2000, end_ms: 2400 }
+                  - { type: model, model: orion-large, input_tokens: 3000, output_tokens: 420, start_ms: 2400, end_ms: 4700 }
+              - run: CL-5203
+                events:
+                  - { type: model, model: orion-large, input_tokens: 2200, output_tokens: 300, start_ms: 0, end_ms: 1700 }
+                  - { type: tool, tool: garage_search, start_ms: 1700, end_ms: 8400 }
+              - run: CL-5204
+                events:
+                  - { type: model, model: orion-small, input_tokens: 900, output_tokens: 110, start_ms: 0, end_ms: 500 }
+              - run: CL-5205
+                events:
+                  - { type: model, model: orion-large, input_tokens: 2500, output_tokens: 330, start_ms: 0, end_ms: 1800 }
+                  - { type: tool, tool: policy_lookup, start_ms: 1800, end_ms: 2200 }
+                  - { type: model, model: orion-small, input_tokens: 1200, output_tokens: 150, start_ms: 2200, end_ms: 2900 }
+        rate_card:
+          returns:
+            status: 200
+            models:
+              orion-large: { input_per_million: 2.50, output_per_million: 10.00 }
+              orion-small: { input_per_million: 0.20, output_per_million: 0.80 }
+            tools: { photo_ocr: 0.0015 }
+            budget: { cost_usd: 0.02, latency_ms: 8000 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"run":\s*"CL-5201",\s*"cost_usd":\s*0\.00072,\s*"latency_ms":\s*2300\b' }
+        - { type: returns_matches, value: '"latency_ms":\s*\{"p50":\s*2900,\s*"p95":\s*8400\}' }
+        - { type: returns_matches, value: '"cost_usd":\s*\{"p50":\s*0\.0085,\s*"p95":\s*0\.0222\}' }
+        - { type: returns_matches, value: '"over_budget":\s*\["CL-5202",\s*"CL-5203"\]' }
+
+  - name: lookups_at_the_same_time_count_once
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-24" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        runs:
+          returns:
+            status: 200
+            day: "2026-09-24"
+            runs:
+              - run: CL-6101
+                events:
+                  - { type: model, model: orion-large, input_tokens: 3200, output_tokens: 450, start_ms: 0, end_ms: 2200 }
+                  - { type: tool, tool: policy_lookup, start_ms: 2210, end_ms: 2900 }
+                  - { type: tool, tool: claims_history, start_ms: 2220, end_ms: 4100 }
+                  - { type: tool, tool: garage_search, start_ms: 2215, end_ms: 5600 }
+                  - { type: model, model: orion-small, input_tokens: 1800, output_tokens: 240, start_ms: 5610, end_ms: 6500 }
+              - run: CL-6102
+                events:
+                  - { type: tool, tool: policy_lookup, start_ms: 5, end_ms: 480 }
+                  - { type: tool, tool: garage_search, start_ms: 0, end_ms: 2600 }
+                  - { type: model, model: orion-large, input_tokens: 2900, output_tokens: 400, start_ms: 2610, end_ms: 4800 }
+              - run: CL-6103
+                events:
+                  - { type: model, model: orion-small, input_tokens: 800, output_tokens: 100, start_ms: 0, end_ms: 700 }
+                  - { type: tool, tool: policy_lookup, start_ms: 700, end_ms: 1100 }
+                  - { type: model, model: orion-small, input_tokens: 1400, output_tokens: 180, start_ms: 1100, end_ms: 1900 }
+        rate_card:
+          returns:
+            status: 200
+            models:
+              orion-large: { input_per_million: 2.50, output_per_million: 10.00 }
+              orion-small: { input_per_million: 0.20, output_per_million: 0.80 }
+            tools: { photo_ocr: 0.0015 }
+            budget: { cost_usd: 0.02, latency_ms: 8000 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"run":\s*"CL-6101",\s*"cost_usd":\s*0\.013052,\s*"latency_ms":\s*6500\b' }
+        - { type: returns_matches, value: '"run":\s*"CL-6102",\s*"cost_usd":\s*0\.01125,\s*"latency_ms":\s*4800\b' }
+        - { type: returns_matches, value: '"latency_ms":\s*\{"p50":\s*4800,\s*"p95":\s*6500\}' }
+        - { type: returns_matches, value: '"over_budget":\s*\[\]' }
+
+  - name: a_model_missing_from_the_rate_card_is_not_free
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-25" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        runs:
+          returns:
+            status: 200
+            day: "2026-09-25"
+            runs:
+              - run: CL-6201
+                events:
+                  - { type: model, model: orion-large, input_tokens: 3100, output_tokens: 420, start_ms: 0, end_ms: 2000 }
+                  - { type: tool, tool: policy_lookup, start_ms: 2000, end_ms: 2500 }
+                  - { type: model, model: orion-small, input_tokens: 1000, output_tokens: 130, start_ms: 2500, end_ms: 3200 }
+              - run: CL-6202
+                events:
+                  - { type: model, model: orion-medium, input_tokens: 2900, output_tokens: 380, start_ms: 0, end_ms: 1600 }
+                  - { type: tool, tool: policy_lookup, start_ms: 1600, end_ms: 2100 }
+                  - { type: model, model: orion-medium, input_tokens: 3300, output_tokens: 460, start_ms: 2100, end_ms: 4300 }
+              - run: CL-6203
+                events:
+                  - { type: model, model: orion-small, input_tokens: 1200, output_tokens: 160, start_ms: 0, end_ms: 700 }
+                  - { type: tool, tool: claims_history, start_ms: 700, end_ms: 1300 }
+                  - { type: model, model: orion-small, input_tokens: 1500, output_tokens: 190, start_ms: 1300, end_ms: 2000 }
+              - run: CL-6204
+                events:
+                  - { type: model, model: orion-large, input_tokens: 2700, output_tokens: 350, start_ms: 0, end_ms: 1900 }
+                  - { type: tool, tool: garage_search, start_ms: 1900, end_ms: 3100 }
+                  - { type: model, model: orion-large, input_tokens: 2900, output_tokens: 330, start_ms: 3100, end_ms: 5200 }
+        rate_card:
+          returns:
+            status: 200
+            models:
+              orion-large: { input_per_million: 2.50, output_per_million: 10.00 }
+              orion-small: { input_per_million: 0.20, output_per_million: 0.80 }
+            tools: { photo_ocr: 0.0015 }
+            budget: { cost_usd: 0.02, latency_ms: 8000 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"run":\s*"CL-6202",\s*"cost_usd":\s*null,\s*"latency_ms":\s*4300\b' }
+        - { type: returns_matches, value: '"unpriced":\s*\["CL-6202"\]' }
+        - { type: returns_matches, value: '"cost_usd":\s*\{"p50":\s*0\.012254,\s*"p95":\s*0\.0208\}' }
+        - { type: returns_matches, value: '"over_budget":\s*\["CL-6204"\]' }
+
+  - name: photo_reading_fees_are_part_of_the_cost
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-09-26" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        runs:
+          returns:
+            status: 200
+            day: "2026-09-26"
+            runs:
+              - run: CL-6301
+                events:
+                  - { type: model, model: orion-large, input_tokens: 3600, output_tokens: 600, start_ms: 0, end_ms: 2400 }
+                  - { type: tool, tool: photo_ocr, start_ms: 2400, end_ms: 2900 }
+                  - { type: tool, tool: photo_ocr, start_ms: 2900, end_ms: 3400 }
+                  - { type: tool, tool: photo_ocr, start_ms: 3400, end_ms: 3900 }
+                  - { type: tool, tool: photo_ocr, start_ms: 3900, end_ms: 4400 }
+              - run: CL-6302
+                events:
+                  - { type: model, model: orion-small, input_tokens: 1000, output_tokens: 150, start_ms: 0, end_ms: 600 }
+                  - { type: tool, tool: photo_ocr, start_ms: 600, end_ms: 1100 }
+                  - { type: tool, tool: photo_ocr, start_ms: 1100, end_ms: 1600 }
+                  - { type: model, model: orion-small, input_tokens: 1300, output_tokens: 170, start_ms: 1600, end_ms: 2300 }
+              - run: CL-6303
+                events:
+                  - { type: model, model: orion-large, input_tokens: 2000, output_tokens: 300, start_ms: 0, end_ms: 1500 }
+                  - { type: tool, tool: policy_lookup, start_ms: 1500, end_ms: 2000 }
+        rate_card:
+          returns:
+            status: 200
+            models:
+              orion-large: { input_per_million: 2.50, output_per_million: 10.00 }
+              orion-small: { input_per_million: 0.20, output_per_million: 0.80 }
+            tools: { photo_ocr: 0.0015 }
+            budget: { cost_usd: 0.02, latency_ms: 8000 }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"run":\s*"CL-6301",\s*"cost_usd":\s*0\.021,\s*"latency_ms":\s*4400\b' }
+        - { type: returns_matches, value: '"run":\s*"CL-6302",\s*"cost_usd":\s*0\.003716,' }
+        - { type: returns_matches, value: '"cost_usd":\s*\{"p50":\s*0\.008,\s*"p95":\s*0\.021\}' }
+        - { type: returns_matches, value: '"over_budget":\s*\["CL-6301"\]' }
+
+reference_md: |
+  Each number on a dashboard answers a question, and both of these were
+  answering a different one from the contract's.
+
+  Latency in the contract is how long a customer waited. Adding the call
+  durations up answers a different question, how much work was done, and
+  the two agree only while calls run one after another. The assistant runs
+  its three lookups at the same time, so the sum counts the same seconds two
+  or three times, and a claim the customer waited six seconds for reads as
+  nine. The time from the earliest start to the latest end is the wait. The
+  trace store lists events in the order they ended, which is the order
+  OpenTelemetry's span processors hand finished spans to an exporter, so the
+  first event's start is not always the earliest start either.
+
+  Cost in the contract is what the insurer is billed, which is every billed
+  line: model tokens at that model's own input and output rates, per
+  million, and the photo service's fee on every call. A dashboard that
+  prices tokens only is measuring the model bill, which is a smaller number
+  than the client's.
+
+  A model missing from the rate card is the case that decides whether the
+  report can be trusted. A rate you do not have is not zero. Priced at zero,
+  the fallback runs look free, they drag the median cost down, and they can
+  never trip the budget, so the report hides exactly the runs the client
+  would ask about. Null with the run listed under `unpriced` says what is
+  true: these runs happened, and nobody has priced them yet.
+
+  Nearest rank is one of several percentile definitions, and the contract
+  names it so two people computing a p95 from the same runs agree. Python's
+  `statistics.quantiles` interpolates between values by default, which
+  gives a different p95 on a small day. With a handful of runs a p95 is
+  close to the maximum, so the report gives the per-run rows as well, and
+  the conversation with procurement starts from those.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    How do you compute the latency and cost of an agent run from its trace, when some of its calls run in parallel?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: runs
+    args: day
+    returns: The day's `runs`, each with its `events` listed in the order they ended. An event is a model
+      call with tokens or a tool call, each with `start_ms` and `end_ms`.
+  - name: rate_card
+    args: ''
+    returns: The contract's `models` with rates per million tokens, the per-call fees in `tools`, and the
+      `budget` for cost and latency.
+example:
+  case: prices_and_times_four_claims
+  expect: Price CL-5101 at 0.01286 and time it at 3400 ms, take p50 and p95 by nearest rank across the
+    four runs, and list CL-5102 and CL-5104 as over budget.
+traps:
+  - Adding up call durations, which counts the same seconds twice once calls run at the same time.
+  - Pricing a model the rate card does not list at zero, so its runs look free and drop out of every check.
+  - Leaving per-call service fees out of a run's cost because only tokens are priced.

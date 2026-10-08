@@ -11,7 +11,7 @@ import { LineCounter, parseDocument, type Document } from "yaml";
 import { compilePattern, PatternError, wordCount, type PromptRule } from "../gate/index.ts";
 import { HEURISTICS, heuristicNames, isHeuristic } from "../eval/heuristics.ts";
 import {
-  ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, TRACKS, VISIBILITIES,
+  ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, STORYLINE_DAYS, TRACKS, VISIBILITIES,
 } from "./vocabulary.ts";
 import {
   COMPLEXITIES, defaultComplexity, isComplexity, panelFor,
@@ -820,7 +820,7 @@ function caseFacts(
 }
 
 /** The title and day limits are what a catalogue row shows on one line. */
-export const STORYLINE = { days: 30, titleMax: 64, skillMax: 90 } as const;
+export const STORYLINE = { days: STORYLINE_DAYS, titleMax: 64, titleWords: 8, skillMax: 90 } as const;
 
 /**
  * Rule: every catalogue problem has a day in the storyline, a title that says
@@ -833,7 +833,23 @@ function validateStoryline(
   lineOf: (path: Array<string | number>) => number,
 ): void {
   const day = raw["day"];
-  if (!Number.isInteger(day) || (day as number) < 1 || (day as number) > STORYLINE.days) {
+  const drill = raw["drill"];
+  if (drill !== undefined && drill !== true) {
+    add("no_storyline",
+        `drill is ${String(drill)}. Write drill: true for a problem that sits in its chapter ` +
+        "off the 30-day path, or leave the key out.",
+        lineOf(["drill"]));
+  }
+  if (drill === true) {
+    // A drill sits in its chapter and the catalogue but on no day of the path,
+    // which holds five problems a day at most (amended 8 October 2026).
+    if (day !== undefined) {
+      add("no_storyline",
+          "a drill has no day: it sits in its chapter off the 30-day path. Remove the day, " +
+          "or remove drill: true to put the problem on the path.",
+          lineOf(["day"]));
+    }
+  } else if (!Number.isInteger(day) || (day as number) < 1 || (day as number) > STORYLINE.days) {
     add("no_storyline",
         `day is ${String(day)} and has to be a whole number from 1 to ${STORYLINE.days}: ` +
         "the day of a learner's first 30 days as an FDE this problem belongs to.",
@@ -850,6 +866,15 @@ function validateStoryline(
         `${STORYLINE.skillMax}.`, lineOf(["skill"]));
   }
   const title = raw["title"];
+  // Amended 1 October 2026: the title names the task in plain words for a
+  // learner meeting the topic for the first time. The incident it came from
+  // moves to scenario.headline.
+  const words = typeof title === "string" ? title.trim().split(/\s+/).filter(Boolean).length : 0;
+  if (words > STORYLINE.titleWords) {
+    add("no_storyline", `title is ${words} words. Name the task in ${STORYLINE.titleWords} or ` +
+        "fewer, starting with a verb, and put the incident in scenario.headline.",
+        lineOf(["title"]));
+  }
   if (typeof title === "string" && title.trim().length > STORYLINE.titleMax) {
     add("no_storyline", `title is ${title.trim().length} characters and the row shows ` +
         `${STORYLINE.titleMax}. Say what the client sees in fewer words.`, lineOf(["title"]));

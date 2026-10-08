@@ -1,0 +1,708 @@
+slug: cap-each-tenant-without-starving-others
+title: "Cap each tenant's model use without starving others"
+day: 6
+skill: Hold each tenant to its own request and token caps on one shared model account
+artefact_type: code
+difficulty: hard
+track: harness
+concept:
+  topic: "Rate limits and cost caps"
+  question: "How do you stop one tenant's burst from using up everyone's quota?"
+est_minutes: 40
+competencies:
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: system-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A help desk software company the size of Zendesk hosts a support agent for
+  each of its 300 client companies, which the platform calls tenants. Every
+  agent's model calls go through one gateway, on one provider account, and
+  the provider limits the account to a fixed number of requests a minute.
+
+  On Monday 28 September a furniture retailer started a bulk job that re-tagged
+  its old tickets: 9,000 runs queued in two minutes. The gateway had one
+  limiter, sized to the provider's limit, and decided runs in arrival order.
+  It refused most of the retailer's runs, and for 40 minutes it refused every
+  other tenant's as well, though the account never once sent more than its
+  limit. A bank's card-dispute agent dropped 1,100 conversations.
+
+  The same gateway checked every run against the retailer's token budget, and
+  the retailer still ended the month 31 percent over the allowance its
+  contract caps. The platform paid for the difference.
+
+  The platform team has written down what the gateway should have done. Each
+  tenant has its own plan, the account's limit still applies on top, and a
+  refusal says whose limit it was and when to come back.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` names the batch. The gateway does not call `llm`: every run goes
+  to the provider through `tools["complete"]`, which reports what it used.
+
+  `tools["batch"]()` returns the runs in arrival order:
+
+      {"status": 200, "runs": [{"id": "r1", "tenant": "harbour-bank",
+                                "at_s": 4, "max_tokens": 800, "prompt": "..."}]}
+
+  `at_s` is seconds since the batch started. Windows are fixed minutes: a run
+  belongs to window `at_s // 60`, and the next window starts at
+  `(at_s // 60 + 1) * 60`.
+
+  `tools["plans"]()` returns the limits:
+
+      {"status": 200, "account_rpm": 8,
+       "tenants": {"harbour-bank": {"rpm": 3, "tokens": 6000}}}
+
+  `account_rpm` is the provider's limit on runs sent per window for the whole
+  account. A tenant's `rpm` is its own limit per window, and `tokens` its
+  budget for the batch.
+
+  `tools["complete"](run=<id>, prompt=<text>, max_tokens=<n>)` sends one run
+  and returns `{"status": 200, "text": "...", "tokens": <used>}`. It can
+  raise, and then nobody knows what the run used: the provider may have
+  finished it before the connection dropped.
+
+  Decide each run in arrival order. Check these in this order, and refuse at
+  the first that fails:
+
+  | Check | `reason` | `retry_at_s` |
+  |---|---|---|
+  | The tenant has a plan | `no_plan` | null |
+  | Tokens charged so far plus this run's `max_tokens` fit its budget | `token_budget` | null |
+  | The tenant has sent fewer than its `rpm` in this window | `tenant_rate` | the next window |
+  | The account has sent fewer than `account_rpm` in this window | `account_rate` | the next window |
+
+  A refused run is never sent and counts toward nothing. A run that passes
+  every check counts toward both windows and is sent with its own
+  `max_tokens`. Charge the tenant the `tokens` the provider reports. When
+  `complete` raises, the run is `failed` and the tenant is charged its
+  `max_tokens`. When `plans()` answers with no tenants, nothing is known to be
+  allowed, and every run is refused with `no_plan`.
+
+  Return a JSON object keyed by run id:
+
+      {"r1": {"status": "done", "tokens": 640},
+       "r2": {"status": "refused", "reason": "tenant_rate", "retry_at_s": 60},
+       "r3": {"status": "failed"}}
+
+  Budget: `llm` is not called. Allowed imports: json, re.
+
+defence_question: |
+  Your gateway refuses a run whose `max_tokens` does not fit the budget that
+  is left, although runs from this tenant use about a third of their ceiling.
+  The tenant's product manager says you are refusing work they have paid for,
+  and asks you to check the budget against what a run uses on average
+  instead. What do you tell them, and what would you offer instead?
+
+stub_code: |
+  import json
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Decide every run in the batch against its tenant's limits and the account's.
+
+      tools["batch"]()  -> {"runs": [{"id", "tenant", "at_s", "max_tokens", "prompt"}]}
+      tools["plans"]()  -> {"account_rpm": n, "tenants": {tenant: {"rpm": n, "tokens": n}}}
+      tools["complete"](run=..., prompt=..., max_tokens=...) -> {"tokens": used}, or it raises
+
+      Windows are fixed minutes of at_s. Check in order: the tenant has a plan,
+      its budget fits this run's max_tokens, its own window has room, the
+      account's window has room. A refused run is never sent and counts toward
+      nothing. Charge what the provider reports, or max_tokens when complete
+      raises. No plans means every run is refused with no_plan.
+
+      Return json.dumps({run id: {"status": "done", "tokens": n}
+                                 or {"status": "refused", "reason": ..., "retry_at_s": ...}
+                                 or {"status": "failed"}}).
+      llm is not called. Allowed imports: json, re.
+      """
+      return json.dumps({})
+
+hints:
+  - Follow the flood through your counters. When the retailer's fourth run in a
+    minute is refused, which numbers did it change, and who pays for that later
+    in the same minute?
+  - A counter you increment before deciding counts refusals. Decide first, and
+    count only the runs you send. Tokens work the same way, since a run you
+    refuse reserves nothing.
+  - Before a call you know one number about its cost, its `max_tokens`. Check
+    the charged total plus that number against the budget, and once the call
+    returns, replace it with what the provider reported.
+  - Key a tenant's count by tenant and window, and the account's count by
+    window alone, with the window taken from `at_s`.
+  - "Outline: read the plans or refuse everything, then for each run check the plan, the budget, the tenant's window and the account's window, count it, send it with its ceiling, and charge what it used, or the ceiling when `complete` raises."
+
+scenario:
+  headline: "One tenant's bulk job left every other tenant rate limited for 40 minutes"
+  who: The platform team at a help desk software company the size of Zendesk
+  situation: >-
+    Every tenant's support agent calls the model through one gateway on one
+    provider account. A furniture retailer queued 9,000 runs in two minutes,
+    and for 40 minutes the gateway refused every other tenant, though the
+    account never sent more than its limit.
+  stakes: >-
+    A bank's card-dispute agent dropped 1,100 conversations, and the retailer
+    ended the month 31 percent over the token allowance its contract caps.
+  metrics:
+    - { label: Runs queued by one tenant, value: "9,000" }
+    - { label: Everyone else refused, value: 40 min }
+    - { label: Over its token allowance, value: 31% }
+
+diagram:
+  title: Where one tenant's burst spends every tenant's minute
+  caption: >-
+    The account's minute filled with runs the provider never saw. Find where
+    the gateway counted a run, and where it should have.
+  direction: lr
+  nodes:
+    - { id: flood, label: Bulk re-tag job, sub: "9,000 runs in two minutes", kind: queue, tone: orange, at: [0, 0] }
+    - { id: tenants, label: Other tenants, sub: "299 support agents", kind: actor, tone: blue, at: [0, 2] }
+    - { id: plans, label: "`plans()`", sub: "each tenant's minute and budget", kind: store, tone: teal, at: [1, 0] }
+    - { id: gateway, label: Gateway, sub: decides each run in order, kind: agent, tone: purple, at: [1, 1] }
+    - { id: tenant_limit, label: Tenant limits, sub: "its own minute and its budget", kind: guard, tone: green, at: [2, 0] }
+    - { id: account_limit, label: Account limit, sub: the provider's minute for everyone, kind: guard, tone: green, at: [2, 1] }
+    - { id: complete, label: "`complete()`", sub: "the provider, reports tokens used", kind: model, tone: blue, at: [3, 1] }
+    - { id: refusal, label: Refusal with a reason, sub: "whose limit, and when to come back", kind: output, tone: neutral, at: [3, 0] }
+    - { id: starved, label: Everyone else refused, sub: a minute filled by refused runs, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: flood, to: gateway, label: arrives first, step: 1 }
+    - { from: tenants, to: gateway, label: their runs, step: 2 }
+    - { from: plans, to: gateway, label: limits }
+    - { from: gateway, to: tenant_limit, label: its own limits first, step: 3 }
+    - { from: tenant_limit, to: account_limit, label: then the shared minute, step: 4 }
+    - { from: account_limit, to: complete, label: "decided, counted, sent", tone: success }
+    - { from: tenant_limit, to: refusal, label: over its own limit, tone: success }
+    - { from: gateway, to: starved, label: refused behind the flood, tone: danger }
+
+approach:
+  goal: Give every tenant its own share, and make the shared one impossible to hoard
+  branches:
+    - label: The tenant's limits before the account's
+      leaves: [its budget, its own minute, then the account's minute]
+    - label: "When does a run start to count?"
+      detail: A counter that moves at the wrong moment charges the wrong tenant. Decide what a refused run should change.
+      leaves: [the moment a counter moves, what a refused run changes]
+    - label: "What does a run cost before it runs?"
+      leaves: [the one number known before the call, the number known after it, what to charge when nobody knows]
+    - label: Say whose limit and when
+      leaves: [the tenant's own or the account's, the start of the next window, no plan means no runs]
+
+coach:
+  opening: >-
+    This is a screen-level problem. Before you type, follow one refused run
+    from the retailer's flood through the gateway and write down every counter
+    it changed. Then decide which of those it should have.
+  signals:
+    - id: no-tenant-limit
+      when: { code_lacks: '\[\s*["'']rpm["'']\s*\]|\.get\(\s*["'']rpm["'']' }
+      say: >-
+        Nothing in your code reads a tenant's own `rpm`. With only the
+        account's limit, which tenant gets the minute when one of them sends
+        nine thousand runs?
+    - id: no-window
+      when: { code_lacks: '\b60\b' }
+      say: >-
+        Your counts never ask which minute a run arrived in. What happens to a
+        tenant refused in its first minute when its next run comes two minutes
+        later?
+    - id: exception-escapes
+      when: { code_lacks: '\bexcept\b' }
+      say: >-
+        `complete` can raise. Follow that exception out of your loop: which
+        tenants' runs were still waiting behind it?
+    - id: hidden-flood
+      when: { test_failed: a_flood_from_one_tenant_leaves_room_for_the_rest }
+      say: >-
+        In that minute one tenant sent far more than its share. Count the runs
+        your code counted against the account's window, and how many of them
+        it actually sent.
+    - id: hidden-ceiling
+      when: { test_failed: a_run_is_admitted_only_if_its_ceiling_fits }
+      say: >-
+        One run in that case fitted the budget only if it used less than its
+        ceiling. What did your budget check know about its cost before the
+        call?
+    - id: hidden-settle
+      when: { test_failed: unused_tokens_go_back_to_the_tenant }
+      say: >-
+        Every run in that case used far less than its ceiling. What does your
+        code charge once the provider says what a run actually used?
+    - id: hidden-window
+      when: { test_failed: each_minute_starts_a_fresh_window }
+      say: >-
+        That tenant hit its limit in the first minute and came back in the
+        second. Which window did your code count its later runs in?
+    - id: hidden-no-plan
+      when: { test_failed: a_tenant_with_no_plan_is_refused_and_the_rest_are_served }
+      say: >-
+        One tenant in that batch has no plan at all. What did your code do
+        when it looked that tenant up, and were the runs behind it still
+        decided?
+    - id: adversarial-plans
+      when: { test_failed: adversarial_the_plans_never_arrived }
+      say: >-
+        The plans did not arrive. What is any tenant allowed to do when nobody
+        knows its limits?
+    - id: adversarial-timeout
+      when: { test_failed: adversarial_the_provider_stops_answering }
+      say: >-
+        `complete` raised for every run in that case. What did your code charge
+        for a call whose outcome nobody knows, and did the batch carry on?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one run: read its tenant's plan, send it with its
+        `max_tokens`, and record what the provider reports. Put the checks in
+        front of that call one at a time.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint follows the flood through
+        your counters.
+  wrap_up: >-
+    A shared limit protects the provider from you, and only per-tenant limits
+    protect your tenants from each other. Decide before you count, reserve the
+    ceiling before you call, and say whose limit it was.
+
+tests:
+  - name: serves_runs_inside_every_limit
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "batch-0928-0900" }
+      llm_script:
+        - { match: "*", reply: "I can help with that." }
+      tools:
+        batch:
+          returns:
+            status: 200
+            runs:
+              - { id: r1, tenant: harbour-bank, at_s: 4, max_tokens: 800, prompt: "Summarise card dispute 4471 for the agent" }
+              - { id: r2, tenant: oak-and-ash, at_s: 9, max_tokens: 600, prompt: "Tag ticket 88213 with a product category" }
+              - { id: r3, tenant: harbour-bank, at_s: 15, max_tokens: 800, prompt: "Draft a reply about a declined card payment" }
+        plans:
+          returns:
+            status: 200
+            account_rpm: 8
+            tenants:
+              harbour-bank: { rpm: 3, tokens: 6000 }
+              oak-and-ash: { rpm: 3, tokens: 6000 }
+        complete:
+          by_arg:
+            arg: run
+            values:
+              r1: { status: 200, text: "Customer disputes a 42.10 charge from 3 September.", tokens: 640 }
+              r2: { status: 200, text: "Category: dining chairs", tokens: 410 }
+              r3: { status: 200, text: "Thanks for getting in touch about your card.", tokens: 700 }
+            default: { status: 200, text: "Done.", tokens: 400 }
+      budget: { max_llm_calls: 1, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [r1, r2, r3],
+                      additionalProperties: { type: object, required: [status],
+                                              properties: { status: { enum: [done, refused, failed] } } } } }
+        - { type: returns_matches, value: '"r1":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: returns_matches, value: '"r1":\s*\{[^{}]*"tokens":\s*640\b' }
+        - { type: returns_matches, value: '"r3":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: calls_tool_with, name: complete, args: { run: r1, max_tokens: 800 } }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: refuses_a_tenant_past_its_minute_limit
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "batch-0928-0915" }
+      llm_script:
+        - { match: "*", reply: "I can help with that." }
+      tools:
+        batch:
+          returns:
+            status: 200
+            runs:
+              - { id: o1, tenant: oak-and-ash, at_s: 3, max_tokens: 500, prompt: "Tag ticket 88290 with a product category" }
+              - { id: o2, tenant: oak-and-ash, at_s: 8, max_tokens: 500, prompt: "Tag ticket 88291 with a product category" }
+              - { id: o3, tenant: oak-and-ash, at_s: 12, max_tokens: 500, prompt: "Tag ticket 88292 with a product category" }
+              - { id: h1, tenant: harbour-bank, at_s: 20, max_tokens: 600, prompt: "Summarise card dispute 4480 for the agent" }
+        plans:
+          returns:
+            status: 200
+            account_rpm: 8
+            tenants:
+              oak-and-ash: { rpm: 2, tokens: 9000 }
+              harbour-bank: { rpm: 3, tokens: 6000 }
+        complete:
+          by_arg:
+            arg: run
+            values:
+              h1: { status: 200, text: "Customer disputes a duplicate hotel charge.", tokens: 520 }
+            default: { status: 200, text: "Category: sofas", tokens: 300 }
+      budget: { max_llm_calls: 1, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [o1, o2, o3, h1] } }
+        - { type: returns_matches, value: '"o3":\s*\{[^{}]*"status":\s*"refused"' }
+        - { type: returns_matches, value: '"o3":\s*\{[^{}]*"reason":\s*"tenant_rate"' }
+        - { type: returns_matches, value: '"o3":\s*\{[^{}]*"retry_at_s":\s*60\b' }
+        - { type: returns_matches, value: '"h1":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: calls_tool_with, name: complete, args: { run: h1 } }
+
+  - name: a_flood_from_one_tenant_leaves_room_for_the_rest
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "batch-0928-0930" }
+      llm_script:
+        - { match: "*", reply: "I can help with that." }
+      tools:
+        batch:
+          returns:
+            status: 200
+            runs:
+              - { id: n0, tenant: oak-and-ash, at_s: 1, max_tokens: 9000, prompt: "Re-tag every ticket from 2024 in one pass" }
+              - { id: n1, tenant: oak-and-ash, at_s: 2, max_tokens: 500, prompt: "Re-tag ticket 61001" }
+              - { id: n2, tenant: oak-and-ash, at_s: 3, max_tokens: 500, prompt: "Re-tag ticket 61002" }
+              - { id: n3, tenant: oak-and-ash, at_s: 4, max_tokens: 500, prompt: "Re-tag ticket 61003" }
+              - { id: n4, tenant: oak-and-ash, at_s: 5, max_tokens: 500, prompt: "Re-tag ticket 61004" }
+              - { id: n5, tenant: oak-and-ash, at_s: 6, max_tokens: 500, prompt: "Re-tag ticket 61005" }
+              - { id: n6, tenant: oak-and-ash, at_s: 7, max_tokens: 500, prompt: "Re-tag ticket 61006" }
+              - { id: h1, tenant: harbour-bank, at_s: 10, max_tokens: 600, prompt: "Summarise card dispute 4502 for the agent" }
+              - { id: h2, tenant: harbour-bank, at_s: 11, max_tokens: 600, prompt: "Summarise card dispute 4503 for the agent" }
+              - { id: p1, tenant: pine-travel, at_s: 12, max_tokens: 600, prompt: "Draft a reply about a moved departure time" }
+              - { id: p2, tenant: pine-travel, at_s: 13, max_tokens: 600, prompt: "Draft a reply about a lost booking reference" }
+              - { id: k1, tenant: kestrel-energy, at_s: 14, max_tokens: 600, prompt: "Explain an estimated meter reading" }
+              - { id: k2, tenant: kestrel-energy, at_s: 15, max_tokens: 600, prompt: "Explain a change to the standing charge" }
+        plans:
+          returns:
+            status: 200
+            account_rpm: 8
+            tenants:
+              oak-and-ash: { rpm: 3, tokens: 4000 }
+              harbour-bank: { rpm: 3, tokens: 20000 }
+              pine-travel: { rpm: 3, tokens: 20000 }
+              kestrel-energy: { rpm: 3, tokens: 20000 }
+        complete:
+          by_arg:
+            arg: run
+            values:
+              n0: { status: 200, text: "Re-tagged 4,812 tickets.", tokens: 8200 }
+            default: { status: 200, text: "Done.", tokens: 400 }
+      budget: { max_llm_calls: 1, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"n0":\s*\{[^{}]*"reason":\s*"token_budget"' }
+        - { type: returns_matches, value: '"n3":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: returns_matches, value: '"n4":\s*\{[^{}]*"reason":\s*"tenant_rate"' }
+        - { type: returns_matches, value: '"p2":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: returns_matches, value: '"k1":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: returns_matches, value: '"k2":\s*\{[^{}]*"reason":\s*"account_rate"' }
+        - { type: returns_matches, value: '"k2":\s*\{[^{}]*"retry_at_s":\s*60\b' }
+        - { type: calls_tool_with, name: complete, args: { run: k1 } }
+        - { type: tool_calls_at_most, value: 10 }
+
+  - name: a_run_is_admitted_only_if_its_ceiling_fits
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "batch-0928-1000" }
+      llm_script:
+        - { match: "*", reply: "I can help with that." }
+      tools:
+        batch:
+          returns:
+            status: 200
+            runs:
+              - { id: f1, tenant: pine-travel, at_s: 2, max_tokens: 1500, prompt: "Summarise the complaint thread for booking PT-2231" }
+              - { id: f2, tenant: pine-travel, at_s: 5, max_tokens: 1500, prompt: "Summarise the complaint thread for booking PT-2232" }
+              - { id: f3, tenant: pine-travel, at_s: 9, max_tokens: 1500, prompt: "Summarise the complaint thread for booking PT-2233" }
+              - { id: f4, tenant: pine-travel, at_s: 14, max_tokens: 300, prompt: "Classify the tone of booking PT-2234's last message" }
+        plans:
+          returns:
+            status: 200
+            account_rpm: 8
+            tenants:
+              pine-travel: { rpm: 5, tokens: 4000 }
+        complete:
+          by_arg:
+            arg: run
+            values:
+              f1: { status: 200, text: "The customer was rebooked twice.", tokens: 1200 }
+              f2: { status: 200, text: "The customer wants the transfer refunded.", tokens: 1400 }
+              f3: { status: 200, text: "The customer asks for a manager.", tokens: 1450 }
+              f4: { status: 200, text: "Tone: frustrated", tokens: 250 }
+            default: { status: 200, text: "Done.", tokens: 400 }
+      budget: { max_llm_calls: 1, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"f2":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: returns_matches, value: '"f3":\s*\{[^{}]*"reason":\s*"token_budget"' }
+        - { type: returns_matches, value: '"f3":\s*\{[^{}]*"retry_at_s":\s*null' }
+        - { type: returns_matches, value: '"f4":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: tool_calls_at_most, value: 5 }
+
+  - name: unused_tokens_go_back_to_the_tenant
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "batch-0928-1030" }
+      llm_script:
+        - { match: "*", reply: "I can help with that." }
+      tools:
+        batch:
+          returns:
+            status: 200
+            runs:
+              - { id: a1, tenant: kestrel-energy, at_s: 1, max_tokens: 1200, prompt: "Explain why the direct debit went up" }
+              - { id: a2, tenant: kestrel-energy, at_s: 6, max_tokens: 1200, prompt: "Explain a credit on the September bill" }
+              - { id: a3, tenant: kestrel-energy, at_s: 11, max_tokens: 1200, prompt: "Explain how to submit a meter reading" }
+              - { id: a4, tenant: kestrel-energy, at_s: 18, max_tokens: 1200, prompt: "Explain the warm home discount" }
+        plans:
+          returns:
+            status: 200
+            account_rpm: 8
+            tenants:
+              kestrel-energy: { rpm: 5, tokens: 3000 }
+        complete:
+          by_arg:
+            arg: run
+            values:
+              a1: { status: 200, text: "Your usage rose in August.", tokens: 300 }
+              a2: { status: 200, text: "The credit is a refund of an overpayment.", tokens: 350 }
+              a3: { status: 200, text: "Use the app or the website.", tokens: 400 }
+              a4: { status: 200, text: "Eligible customers get a discount on their bill.", tokens: 380 }
+            default: { status: 200, text: "Done.", tokens: 400 }
+      budget: { max_llm_calls: 1, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"a3":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: returns_matches, value: '"a4":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: returns_matches, value: '"a4":\s*\{[^{}]*"tokens":\s*380\b' }
+        - { type: calls_tool_with, name: complete, args: { run: a4, max_tokens: 1200 } }
+
+  - name: each_minute_starts_a_fresh_window
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "batch-0928-1100" }
+      llm_script:
+        - { match: "*", reply: "I can help with that." }
+      tools:
+        batch:
+          returns:
+            status: 200
+            runs:
+              - { id: w1, tenant: harbour-bank, at_s: 5, max_tokens: 500, prompt: "Summarise card dispute 4611 for the agent" }
+              - { id: w2, tenant: harbour-bank, at_s: 20, max_tokens: 500, prompt: "Summarise card dispute 4612 for the agent" }
+              - { id: w3, tenant: harbour-bank, at_s: 40, max_tokens: 500, prompt: "Summarise card dispute 4613 for the agent" }
+              - { id: w4, tenant: harbour-bank, at_s: 65, max_tokens: 500, prompt: "Summarise card dispute 4614 for the agent" }
+              - { id: w5, tenant: harbour-bank, at_s: 70, max_tokens: 500, prompt: "Summarise card dispute 4615 for the agent" }
+        plans:
+          returns:
+            status: 200
+            account_rpm: 8
+            tenants:
+              harbour-bank: { rpm: 2, tokens: 20000 }
+        complete: { returns: { status: 200, text: "Customer disputes a cash machine withdrawal.", tokens: 450 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"w3":\s*\{[^{}]*"reason":\s*"tenant_rate"' }
+        - { type: returns_matches, value: '"w3":\s*\{[^{}]*"retry_at_s":\s*60\b' }
+        - { type: returns_matches, value: '"w4":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: returns_matches, value: '"w5":\s*\{[^{}]*"status":\s*"done"' }
+
+  - name: a_tenant_with_no_plan_is_refused_and_the_rest_are_served
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "batch-0928-1115" }
+      llm_script:
+        - { match: "*", reply: "I can help with that." }
+      tools:
+        batch:
+          returns:
+            status: 200
+            runs:
+              - { id: u1, tenant: harbour-bank, at_s: 2, max_tokens: 600, prompt: "Summarise card dispute 4650 for the agent" }
+              - { id: u2, tenant: maple-dental, at_s: 5, max_tokens: 500, prompt: "Draft a reply about a missed appointment" }
+              - { id: u3, tenant: harbour-bank, at_s: 9, max_tokens: 600, prompt: "Summarise card dispute 4651 for the agent" }
+        plans:
+          returns:
+            status: 200
+            account_rpm: 8
+            tenants:
+              harbour-bank: { rpm: 3, tokens: 6000 }
+        complete: { returns: { status: 200, text: "Done.", tokens: 400 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"u2":\s*\{[^{}]*"reason":\s*"no_plan"' }
+        - { type: returns_matches, value: '"u2":\s*\{[^{}]*"retry_at_s":\s*null' }
+        - { type: returns_matches, value: '"u3":\s*\{[^{}]*"status":\s*"done"' }
+        - { type: tool_calls_at_most, value: 4 }
+
+  - name: adversarial_the_plans_never_arrived
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The plans service answered with nothing at all. A gateway that indexes
+      into the missing table raises, and the whole batch ends with a stack
+      trace instead of an answer for each run. One that falls back to "no
+      limits" sends every run, which is the incident with the limiter switched
+      off.
+
+      With no plans, nothing is known to be allowed. Every run is refused with
+      `no_plan`, nothing reaches the provider, and the tenant sees a reason it
+      can act on.
+    spec:
+      kind: agent_run
+      input: { question: "batch-0928-1130" }
+      llm_script:
+        - { match: "*", reply: "I can help with that." }
+      tools:
+        batch:
+          returns:
+            status: 200
+            runs:
+              - { id: e1, tenant: harbour-bank, at_s: 3, max_tokens: 600, prompt: "Summarise card dispute 4700 for the agent" }
+              - { id: e2, tenant: oak-and-ash, at_s: 6, max_tokens: 500, prompt: "Tag ticket 88501 with a product category" }
+              - { id: e3, tenant: harbour-bank, at_s: 9, max_tokens: 600, prompt: "Summarise card dispute 4701 for the agent" }
+        plans: { fixture: empty_tool_result }
+        complete: { returns: { status: 200, text: "Done.", tokens: 400 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: does_not_call_tool, name: complete }
+        - { type: returns_matches, value: '"e1":\s*\{[^{}]*"reason":\s*"no_plan"' }
+        - { type: returns_matches, value: '"e2":\s*\{[^{}]*"reason":\s*"no_plan"' }
+        - { type: returns_matches, value: '"e3":\s*\{[^{}]*"reason":\s*"no_plan"' }
+
+  - name: adversarial_the_provider_stops_answering
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      Every call to `complete` timed out. A timeout leaves the outcome
+      unknown: the provider may have run the request to the end and billed it
+      before the connection dropped, so nobody knows what it used. A gateway that charges
+      nothing for it lets a tenant keep sending runs whose cost is unknown,
+      and the cap only holds while the provider is healthy. One that lets the
+      exception escape ends the batch for every tenant behind the first
+      failure.
+
+      The reservation stands until a usage report says otherwise. The third
+      run for this tenant is refused for its budget, and the other tenant's
+      run is still tried.
+    spec:
+      kind: agent_run
+      input: { question: "batch-0928-1200" }
+      llm_script:
+        - { match: "*", reply: "I can help with that." }
+      tools:
+        batch:
+          returns:
+            status: 200
+            runs:
+              - { id: t1, tenant: oak-and-ash, at_s: 3, max_tokens: 1000, prompt: "Write a reply about a late sofa delivery" }
+              - { id: t2, tenant: oak-and-ash, at_s: 7, max_tokens: 1000, prompt: "Write a reply about a damaged table leg" }
+              - { id: t3, tenant: oak-and-ash, at_s: 12, max_tokens: 1000, prompt: "Write a reply about a missing fitting kit" }
+              - { id: p1, tenant: pine-travel, at_s: 15, max_tokens: 800, prompt: "Draft a reply about a cancelled ferry crossing" }
+        plans:
+          returns:
+            status: 200
+            account_rpm: 8
+            tenants:
+              oak-and-ash: { rpm: 5, tokens: 2500 }
+              pine-travel: { rpm: 5, tokens: 9000 }
+        complete:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the model provider did not answer within 30 seconds" }
+      budget: { max_llm_calls: 1, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - { type: returns_matches, value: '"t2":\s*\{[^{}]*"status":\s*"failed"' }
+        - { type: returns_matches, value: '"t3":\s*\{[^{}]*"reason":\s*"token_budget"' }
+        - { type: returns_matches, value: '"p1":\s*\{[^{}]*"status":\s*"failed"' }
+
+reference_md: |
+  The limiter in the incident was right about the account and wrong about
+  everyone in it. One counter for the whole provider account protects the
+  provider from you. It does nothing to protect your tenants from each other,
+  and arrival order hands the shared minute to whoever arrives first in the
+  largest numbers.
+
+  Per-tenant limits are the first fix, and on their own they are not enough.
+  The incident limiter also counted a run as it arrived, before deciding it.
+  Under a flood that is the bug that hurts: the retailer's refused runs went
+  on filling the account's window, so other tenants were refused behind runs
+  that never reached the provider. A refusal has to cost nothing, which means
+  deciding first and counting only what is sent. The order of the checks
+  matters for the same reason. AWS API Gateway documents the same order for
+  its own throttles, a usage plan's per-tenant limit before the account's
+  (Amazon API Gateway Developer Guide, request throttling, read 1 October
+  2026), and that order is what keeps one tenant's excess from spending the
+  account's capacity.
+
+  The budget needs the same care for a different reason. Before a call, the
+  only number you know about its cost is its ceiling, `max_tokens`. Checking
+  what is already spent lets the call that crosses the line run with its
+  whole ceiling, which is how the retailer ended the month 31 percent over.
+  Reserving the ceiling before the call holds the cap exactly, and charging
+  what the provider reports afterwards hands the unused part back, so the cap
+  does not refuse work the budget could pay for. Amazon Bedrock does this to
+  your own account's quota: its user guide says input tokens plus `max_tokens`
+  are deducted when a request starts, and that unused tokens are replenished
+  when it ends ("How tokens are counted in Amazon Bedrock", read 1 October
+  2026).
+
+  A call that raises has an unknown cost, because the provider may have run
+  it to the end before the connection dropped. The reservation stands until a
+  usage report says otherwise. Charging nothing is the optimistic guess, and
+  a cap that guesses optimistically holds only while nothing goes wrong.
+
+  The reasons are part of the product. `tenant_rate` tells a tenant its own
+  traffic is the problem, and `account_rate` tells it the platform is full,
+  which is your problem rather than theirs. A support conversation that
+  starts from the wrong one goes badly, and `retry_at_s` turns either into a
+  time to come back.
+
+  Deciding runs one at a time keeps the arithmetic honest here. With
+  concurrent workers, the reservation has to be one conditional update in the
+  store that holds the counts, or two workers read the same remaining budget
+  and both spend it.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Several tenants share one model account behind your gateway. How do you stop one tenant's burst from starving the rest, and why is checking the remaining budget before each call not enough to hold a cap?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I027, and the
+    topic catalogue entry A057. That bank labels every entry "Original interview-style practice;
+    actual employer frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: batch
+    args: ''
+    returns: A status and the `runs` in arrival order, each with `id`, `tenant`, `at_s`, `max_tokens` and
+      `prompt`.
+  - name: plans
+    args: ''
+    returns: A status, the account's `account_rpm`, and `tenants`, giving each tenant's `rpm` and token
+      budget.
+  - name: complete
+    args: run, prompt, max_tokens
+    returns: '`{"status": 200, "text": ..., "tokens": <used>}`, or it raises, and then nobody knows what
+      the run used.'
+example:
+  case: refuses_a_tenant_past_its_minute_limit
+  expect: "The furniture retailer may send 2 runs a minute, so its third run, at 12 seconds, is refused with
+    `tenant_rate` and `retry_at_s` 60, and the bank's run after it is still sent."
+traps:
+  - Counting a run against a window before deciding it, so refused runs fill the minute for everyone else.
+  - Checking the budget against what is already spent, so the run that crosses it goes out with its whole
+    ceiling.
+  - Charging each run its ceiling and never what it used, which refuses work the budget could pay for.
+  - Counting a tenant's runs across the whole batch instead of per minute, so a refusal outlives its window.

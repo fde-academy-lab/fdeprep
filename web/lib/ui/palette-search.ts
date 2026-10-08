@@ -5,7 +5,8 @@
  * Every word the learner types has to appear somewhere in the problem's title,
  * track or difficulty. Among the matches, a title that starts with the query
  * beats one where a title word starts with it, which beats a match anywhere.
- * Ties keep catalogue order, so the list does not reshuffle between keystrokes.
+ * Ties keep the index's order, which is the learner's path, so the list does
+ * not reshuffle between keystrokes.
  */
 export interface Searchable {
   title: string;
@@ -39,4 +40,13 @@ export function search<T extends Searchable>(items: readonly T[], query: string,
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .slice(0, limit)
     .map((entry) => entry.item);
+}
+
+/**
+ * Problems to start with, before anything is typed: the first unsolved ones.
+ * The index arrives in the learner's path order, so these are the problems
+ * Home and Problems open on.
+ */
+export function firstUnsolved<T extends { state: string }>(items: readonly T[], limit: number): T[] {
+  return items.filter((item) => item.state !== "solved").slice(0, limit);
 }

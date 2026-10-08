@@ -1,0 +1,522 @@
+slug: fund-the-agent-6-set-the-production-gates
+title: "Set the production gates when a guard falls"
+day: 25
+skill: Write the gates production must pass when the headline rose and the guard metric fell
+artefact_type: design
+difficulty: hard
+complexity: C4
+track: agentic-pdlc
+concept:
+  topic: "POC, MVP, production"
+  question: "What must the MVP show before production is paid for, when the guard metric moved the wrong way?"
+est_minutes: 45
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: client-communication, weight: 0.5 }
+
+build: { id: fund-the-agent, title: "Fund a field-service agent", stage: 6, of: 7 }
+
+panel: { static: true, pretrained: true, llm: true }
+
+constraints: ["stale", "held back", "first-time fix", "same-day", "peak"]
+
+brief_md: |
+  Tuesday 28 April. The POC's whole-group result, 58 percent of requests
+  repaired within three days against 49 percent for the requests held back,
+  paid for an MVP. From Monday 30 March to Sunday 26 April the agent handled
+  every AC-not-cooling (ACNC) request in three service centres, one each in
+  Nagpur, Indore and Raipur: 6,940 requests. Nothing was held back this
+  time. The head of customer service, who sponsors the work, did not want a
+  comparison group in the MVP.
+
+  Today she decides whether to pay for production. She wants every centre
+  live before the summer peak, and last year's peak began in the week of
+  18 May. These are the data lead's weekly reads, in percent except the
+  last column. The four-week row averages the weeks, except the median,
+  which pools all 6,940 requests.
+
+  | Week from | First-time fix | Same-day visits | Bookings on a stock sheet older than a day | Median days, request to completed repair |
+  |---|---|---|---|---|
+  | 30 March | 57 | 46 | 31 | 3.6 |
+  | 6 April | 55 | 50 | 36 | 3.5 |
+  | 13 April | 53 | 54 | 40 | 3.3 |
+  | 20 April | 51 | 58 | 45 | 3.2 |
+  | Four weeks | 54 | 52 | 38 | 3.4 |
+
+  | What else you have | Where it comes from |
+  |---|---|
+  | INT-1: cut the median from request to completed repair on ACNC in the three cities from 4.3 days to 3.0. INT-2: first-time fix stays at or above 61 percent while INT-1 is pursued | Agreed on 4 February |
+  | Last summer, 1 April to 30 June: a median of 4.3 days over 61,400 requests; first-time fix 61 percent, the median of 13 weekly reads that ran from 58 to 64; same-day visits 34 percent | EV-1, EV-2 and EV-7, counted in the service system |
+  | In the POC's late-winter weeks the requests held back, with no agent, took a median of 3.1 days | The POC, 23 February to 22 March |
+  | R-5: a booking is refused when the partner's stock sheet is older than one day | PRD v2, 18 February |
+  | 63 percent of partners upload a stock sheet daily, and the rest weekly | EV-9, partner operations survey |
+  | MVP first-time fix by the age of the sheet behind the booking: 41 percent on sheets older than a day, 62 on fresher ones | The data lead |
+  | The franchise operations manager speaks for the 1,100 partners and co-signs the production gate | The engagement's roles |
+
+  Write the gates production has to pass, on the page she signs today.
+
+contract_md: |
+  Write the page she signs. It has five parts, each under its own heading,
+  written exactly as `## Gates`, `## Evidence`, `## Guard`, `## Sign-off`
+  and `## Board`.
+
+  Under Gates, give every gate a number, the requests it is read on, the
+  period it covers, and what a missing or stale read counts as. Under
+  Evidence, say what the MVP's four weeks show and what they cannot show.
+  Under Guard, say which number decides when the headline and the guard
+  disagree, and why. Under Sign-off, put a role on every gate. Under Board,
+  write the sentence she can say to the board, true on today's numbers.
+
+  Between 350 and 550 words. A table counts toward the words.
+
+word_range: [350, 550]
+required_headings: [Gates, Evidence, Guard, Sign-off, Board]
+
+rubric:
+  - label: Gives every gate a number, a sample, a period and a rule for a missing read
+    weight: 25
+    descriptor_md: |
+      Each gate is something the data lead can read without asking anyone:
+      a threshold, the requests it is read on, the period, and what a read
+      that is missing or late counts as. Strong answers gate the headline
+      (median days, held at the MVP's 3.4 or read against centres without
+      the agent), the guard (first-time fix at or above 58 on three reads in
+      a row), the
+      cause (bookings on a sheet older than a day at or under 5 percent,
+      where the data lead's split gives 0.05 × 41 + 0.95 × 62, about 61,
+      INT-2's floor) and the sample (at least 1,200 requests behind every
+      read). They work out that the MVP closed about 250 requests a day, so
+      one day's first-time fix can land six points either side of the truth,
+      more than the four between 54 and 58, and a read has to pool about
+      five days. A missing or stale read never counts as a pass: it does not
+      hold, or, for the guard, it neither holds nor fails and is reported. A
+      gate with no sample, or one that reads a quiet day as a good day, is
+      the gap this row looks for.
+  - label: Reads the headline and the guard together, and says which decides
+    weight: 25
+    descriptor_md: |
+      Same-day visits and first-time fix moved in opposite directions in the
+      same weeks, in step with bookings on a stale sheet: 31, 36, 40 and 45
+      percent. The data lead's split accounts for the whole fall, 0.38 × 41 +
+      0.62 × 62 = 54, and R-5 says those bookings should have been refused.
+      A booking that does not wait for a fresh sheet gets an earlier slot and
+      often arrives without the part, so the headline's gain and the guard's
+      loss are the same bookings. Strong answers say the guard decides, give
+      58 as last summer's lowest weekly read, so a read under it is the agent
+      and not the season, and keep a gate that stops the fix from giving back
+      the wait. Funding every centre on 52 percent same-day visits, or
+      stopping the agent everywhere when it held 62 on fresh sheets, both
+      score low here.
+  - label: Names the missing held-back group and what 3.4 against 4.3 can show
+    weight: 20
+    descriptor_md: |
+      Nothing was held back in the MVP, so its 3.4 days can only be set
+      against last summer's 4.3, a figure that took in the whole summer and
+      its peak. In the POC the requests held back took 3.1 days in late
+      winter with no agent at all, so the season alone is worth 1.2 days,
+      more than the 0.9 the MVP shows. Strong answers say the MVP cannot show
+      that the agent shortened the wait, and find a comparison for the same
+      weeks: the other centres in the three cities, which ran without the
+      agent through April, and in production the centres still waiting their
+      turn as it widens one centre at a time.
+  - label: Puts a role on every gate
+    weight: 10
+    descriptor_md: |
+      Every gate names who signs it, by role. Strong answers give the guard a
+      second signature from the franchise operations manager, whose partners'
+      stock sheets drive it, and give the cause and the sample to the data
+      lead, who owns every counted read. A table signed by "the project
+      team", or by the sponsor alone, leaves nobody answerable for the reads.
+  - label: Gives her a sentence for the board that is true
+    weight: 20
+    descriptor_md: |
+      The board reads one slide. Strong answers give her a sentence she can
+      say: what the three centres measured, why first-time fix fell, and what
+      has to hold before the next centre goes live. It does not credit the
+      agent with a day off the wait, which nothing in the MVP can show, and it
+      does not promise every centre before the peak. A sentence that leaves
+      out first-time fix, or reads as a retreat from the POC, fails her here.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      ## Gates
+
+      Production widens one centre at a time, and only while every gate
+      holds, starting with the production build in the three MVP centres.
+
+      | Gate | Number | Read on | Period | A missing or stale read | Signs |
+      |---|---|---|---|---|---|
+      | GT-1 headline | Median days no higher than in the centres still waiting | ACNC requests in both | 14 days | Does not hold | Sponsor |
+      | GT-2 guard | First-time fix at or above 58 | ACNC requests in live centres | Three reads in a row | Neither holds nor fails, and is reported | Sponsor, franchise operations manager |
+      | GT-3 cause | Bookings on a stale sheet at or under 5 percent | Same | 7 days | Does not hold | Data lead |
+      | GT-4 sample | At least 1,200 requests behind every read | Same | Every read | A thinner read does not count | Data lead |
+
+      ## Evidence
+
+      Bookings on a stale stock sheet rose from 31 to 45 percent, and on them
+      first-time fix read 41 against 62 on fresh sheets: 0.38 × 41 + 0.62 ×
+      62 = 54, the whole fall. R-5 says refuse those bookings, and the
+      prototype never did. At GT-3's 5 percent the split gives about 61,
+      INT-2's floor. Same-day visits rose with the same bookings, since one
+      that does not wait for a fresh sheet gets an earlier slot, often
+      without the part.
+
+      The MVP cannot show that the agent shortened the wait. Nothing was held
+      back, and in the POC the requests held back took 3.1 days in late
+      winter with no agent: the season alone is worth 1.2 days, more than the
+      0.9 between 3.4 and last summer's 4.3. The other centres in the three
+      cities ran without the agent through April, so the data lead can read
+      the same weeks today. From here, the centres still waiting give that
+      comparison.
+
+      ## Guard
+
+      First-time fix decides. Same-day visits is not the INT-1 measure, and
+      its gain came from the bookings that cost first-time fix. GT-1 stops
+      the refusal from buying first-time fix back at the cost of the wait.
+      Fifty-eight is last summer's lowest weekly read, so a read under it is
+      the agent and not the season. A read needs 1,200 requests: at the
+      MVP's 250 a day, one day can land six points either side of the truth,
+      more than the gap between 54 and 58, so a read pools about five days.
+      A read under 58 restarts the count. At that rate three reads take two
+      weeks once the refusal is live, so every centre before the peak is out
+      of reach.
+
+      ## Sign-off
+
+      The sponsor signs GT-1 and GT-2. The franchise operations manager
+      co-signs GT-2, because partners' sheets drive it. The data lead signs
+      GT-3 and GT-4 and publishes every read. A centre waits while any gate
+      is unsigned.
+
+      ## Board
+
+      "In three centres repairs took a median 3.4 days in April, against 4.3
+      across last summer. First-time fix fell because bookings went ahead on
+      out-of-date stock sheets. Production widens one centre at a time, once
+      that is fixed and first-time fix reads 58 or better three times
+      running."
+  - band: adequate
+    score: 60
+    body_md: |
+      ## Gates
+
+      | Gate | Threshold | Owner |
+      |---|---|---|
+      | Median wait | 3.4 days or better across the live centres | Sponsor |
+      | Same-day visits | 50 percent or better | Sponsor |
+      | First-time fix | Back to 61 percent within four weeks of go-live | Data lead |
+
+      Production goes live in all three cities in May, and each new centre is
+      checked every week against these three numbers. If a centre misses a
+      gate for two weeks running, it goes back to booking by hand until the
+      cause is found.
+
+      ## Evidence
+
+      The MVP worked. Across 6,940 requests the median wait fell from last
+      summer's 4.3 days to 3.4, nearly a day, and same-day visits rose from
+      34 to 52 percent. Those are the two numbers she cares about most, and
+      both moved the right way every week.
+
+      First-time fix is the concern. It fell from 61 to 54 percent, and the
+      data lead's figures show it is much lower on bookings made from stock
+      sheets older than a day, 41 percent against 62. R-5 already says those
+      bookings should be refused, so the production build has to enforce it.
+      Once it does, first-time fix should come back towards 61.
+
+      We had no comparison group in the MVP, so we compare against last
+      summer's figures, which are the best baseline available and cover the
+      same three cities. The weekly medians also fell every week, from 3.6
+      to 3.2, which suggests the agent improves as partners get used to it.
+
+      ## Guard
+
+      First-time fix is the guard. If it stays under 58 for two weeks in a
+      row in production, we stop widening and look at the stock sheet data
+      again. The headline numbers matter more for the business case, but we
+      should not let the guard fall further, because repeat visits cost
+      technician time and annoy customers.
+
+      ## Sign-off
+
+      The sponsor signs the go-live for each city. The data lead reports the
+      numbers every Monday, and the franchise operations manager is told
+      before each new centre starts so that partners are ready.
+
+      ## Board
+
+      "The MVP cut nearly a day off the wait for AC repairs and raised
+      same-day visits by half. We found a stock sheet problem that lowered
+      first-time fix, and production fixes it before it reaches every
+      centre."
+  - band: weak
+    score: 28
+    body_md: |
+      ## Gates
+
+      Production should be funded now, so that every centre is live before
+      the peak. The MVP has already proved the agent, so the gates are about
+      being ready to roll out rather than about more measurement:
+
+      - Every centre has the agent installed and its staff trained by 15 May.
+      - The service system integration passes its tests.
+      - Same-day visits stay above 50 percent in each centre's first week.
+      - Each centre's franchise partners have been shown the new booking
+        screen before their first day.
+
+      Holding centres back now would mean another summer of four-day waits
+      for most customers, which is a bigger risk than a few repeat visits. A
+      comparison group would only slow the rollout down, and last summer's
+      numbers already tell us where we started.
+
+      ## Evidence
+
+      The MVP was a clear success. Same-day visits rose from 34 percent to 52
+      percent, more than half again, and the median wait fell from 4.3 days
+      to 3.4 days, a full day faster than last summer. In the last week
+      same-day visits reached 58 percent, so the agent was still improving as
+      technicians and partners got used to it.
+
+      First-time fix dipped from 61 to 54 percent. This is normal in the
+      first weeks of a new process: technicians are reading new briefs,
+      partners are adjusting, and the summer brings harder repairs. We expect
+      it to recover as everyone settles in, and the faster visits more than
+      make up for the occasional second visit.
+
+      ## Guard
+
+      We will keep an eye on first-time fix in the weekly report. If it falls
+      below 50 percent for a month, the team will review the diagnostic
+      questions and retrain the technicians who see the most second visits.
+      Same-day visits is the main measure of success, because it is what
+      customers notice first, and it is the number the board will ask about.
+
+      ## Sign-off
+
+      The project team signs off each centre when it goes live, and she
+      receives a weekly summary of the numbers by email.
+
+      ## Board
+
+      "The agent cut a day off the wait and raised same-day visits by half in
+      three centres. We are rolling it out to every centre before the summer
+      peak."
+
+hints:
+  - Lay the four weekly rows side by side and find the column that moves
+    with first-time fix every week. Then find the line in PRD v2 that is
+    about that column.
+  - Use the data lead's two first-time fix numbers. Work out what the MVP's
+    mix of bookings gives, and what mix would give INT-2's 61.
+  - The POC had requests with no agent in the same weeks, and the MVP did
+    not. Say what those requests took in late winter, then what 3.4 against
+    4.3 can still prove, and where the same weeks could be read today.
+  - A read is only as good as the requests behind it. Work out how many
+    requests a day the MVP closed, and how far one day's first-time fix can
+    wander from the truth.
+  - Write each gate as a number, the requests it is read on, a period, what
+    a missing read counts as and a role that signs. Write the board sentence
+    last.
+
+scenario:
+  headline: "Same-day visits rose 34 to 52 while first-time fix fell 61 to 54"
+  who: The head of customer service at an AC maker the size of Voltas
+  situation: >-
+    The MVP ran four weeks in three service centres: 6,940 AC-not-cooling
+    requests, every one handled by the agent, none held back. Same-day visits
+    and the median wait both improved, and first-time fix fell every week,
+    to 51. Today she decides whether to pay for production.
+  stakes: >-
+    She wants every centre live before the summer peak, which began in the
+    week of 18 May last year. The gates she signs today decide what widens,
+    and when.
+  metrics:
+    - { label: Same-day visits, value: "34% to 52%" }
+    - { label: First-time fix, value: "61% to 54%" }
+    - { label: Requests in the MVP, value: "6,940" }
+
+diagram:
+  title: Where every booking reads a stock sheet
+  caption: >-
+    Every booking reads a partner's stock sheet. The data lead counts what
+    happened next: the day of the visit, and whether it fixed the AC.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: AC not cooling, kind: actor, tone: blue, at: [0, 1] }
+    - { id: agent, label: Field-service agent, sub: "questions, fault and part", kind: agent, tone: purple, at: [1, 1] }
+    - { id: sheet, label: Partner stock sheet, sub: "63% of partners upload daily", kind: store, tone: orange, at: [2, 0] }
+    - { id: booking, label: Booking, sub: the nearest slot, kind: decision, tone: teal, at: [2, 2] }
+    - { id: visit, label: Technician visit, sub: the part on the van or not, kind: service, tone: neutral, at: [3, 1] }
+    - { id: sameday, label: Same-day visits, sub: "34% last summer, 52% in the MVP", kind: output, tone: green, at: [4, 0] }
+    - { id: ftf, label: First-time fix, sub: "61% last summer, 54% in the MVP", kind: output, tone: pink, at: [4, 2] }
+    - { id: gate, label: Production gate, sub: "signed today, 28 April", kind: guard, tone: orange, at: [5, 1] }
+    - { id: centres, label: Every other centre, sub: wanted live before the peak, kind: service, tone: blue, at: [6, 1] }
+  edges:
+    - { from: customer, to: agent, label: request, step: 1 }
+    - { from: agent, to: sheet, label: reads the sheet, step: 2 }
+    - { from: sheet, to: booking, label: "38% older than a day", tone: danger }
+    - { from: agent, to: booking, label: books, step: 3 }
+    - { from: booking, to: visit, label: slot }
+    - { from: visit, to: sameday, label: the day it happens }
+    - { from: visit, to: ftf, label: "fixed on the first visit?" }
+    - { from: sameday, to: gate, label: the headline she quotes, tone: muted }
+    - { from: ftf, to: gate, label: the guard, tone: danger }
+    - { from: gate, to: centres, label: "widen?", step: 4 }
+
+approach:
+  goal: Gates that widen production only on numbers that show what the agent did
+  branches:
+    - label: Read the four weeks as one set of bookings
+      leaves: ["which column moves with first-time fix?", "what did those bookings read?", "what does R-5 say about them?"]
+    - label: Say what the MVP cannot show
+      detail: Nothing was held back in the MVP, and the season moves the wait on its own.
+      leaves: ["what did the POC's held-back requests take?", "where can the same weeks be read?"]
+    - label: Give every gate its four parts
+      leaves: [a number, the requests it is read on, a period, what a missing read counts as]
+    - label: Put a role on every gate
+      leaves: [who reads it, who signs it]
+    - label: Write the board sentence last
+      leaves: [what was measured, what has to hold before the next centre]
+
+coach:
+  opening: >-
+    Before you write a gate, put the headline and the guard side by side,
+    week by week, and look for whatever else moved with them.
+  signals:
+    - id: every-centre-at-once
+      when:
+        code_matches: '(?i)every\s+centre|all\s+(the\s+)?centres|all\s+three\s+cities'
+        code_lacks: '(?i)one\s+centre\s+at\s+a\s+time|centre\s+by\s+centre|next\s+centre'
+      say: >-
+        Your page takes every centre live together. Which bookings raised
+        same-day visits, and what did first-time fix read on them?
+    - id: stop-everything
+      when:
+        code_matches: '(?i)(do\s+not|don''t|not)\s+(fund|pay\s+for)\s+production|stop\s+the\s+(agent|mvp)|switch\s+(it|the\s+agent)\s+off|turn\s+(it|the\s+agent)\s+off'
+        code_lacks: '(?i)one\s+centre\s+at\s+a\s+time|centre\s+by\s+centre|next\s+centre'
+      say: >-
+        Your page stops the agent everywhere. On which bookings did first-time
+        fix hold at 62, and what would production have to change to keep only
+        those?
+    - id: no-cause
+      when: { code_lacks: '(?i)stale|older\s+than\s+(a|one)\s+day|R-5|out[-\s]of[-\s]date' }
+      say: >-
+        Your page never says why first-time fix fell. Which column moved with
+        it every week, and what does R-5 say about those bookings?
+    - id: season-credited
+      when:
+        code_matches: '(?i)4\.3'
+        code_lacks: '(?i)season|3\.1|cannot\s+show|can''t\s+show|other\s+centres|centres\s+still\s+waiting'
+      say: >-
+        You set 3.4 days against last summer's 4.3. What did the requests held
+        back in the POC take in late winter, with no agent at all?
+    - id: no-missing-read
+      when: { code_lacks: '(?i)missing|no\s+read|stale\s+read|neither\s+holds|does\s+not\s+hold|never\s+arrives' }
+      say: >-
+        A read can arrive late, or not at all. What does each of your gates
+        count it as?
+    - id: no-sample
+      when: { code_lacks: '(?i)\b1,?200\b|requests\s+behind|sample|read\s+on' }
+      say: >-
+        How many requests stand behind each read? The MVP closed 6,940 in four
+        weeks; work out what one day's first-time fix rests on.
+    - id: threshold-unexplained
+      when:
+        code_matches: '(?i)\b58\b'
+        code_lacks: '(?i)lowest\s+weekly|58\s+to\s+64|weekly\s+low'
+      say: >-
+        Where does 58 come from? Look at the range of last summer's weekly
+        first-time fix reads.
+    - id: no-roles
+      when: { code_lacks: '(?i)data\s+lead|franchise\s+operations' }
+      say: >-
+        Who signs each gate? Name the role that reads it and the role that
+        answers for it.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one row: the guard. Give it a number, the requests it is
+        read on, a period, and what a missing read counts as.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three tries without a pass. The second hint works out what the MVP's
+        mix of bookings gives first-time fix.
+  wrap_up: >-
+    When the headline rises and the guard falls in the same weeks, look for
+    the bookings that did both. The guard decides, every gate says what a
+    missing read means, and the board hears only what was measured.
+
+reference_md: |
+  The two numbers she has been hearing about are the same bookings. Bookings
+  on a stock sheet older than a day rose every week, from 31 to 45 percent,
+  while first-time fix fell from 57 to 51 and same-day visits rose from 46
+  to 58. On those bookings first-time fix read 41, and on the rest 62, so
+  the MVP's mix gives 0.38 × 41 + 0.62 × 62 = 54.0, the whole of the fall.
+  R-5 says such a booking is refused. The prototype booked it anyway, with
+  a warning, and a booking that does not wait for a fresh sheet gets an
+  earlier slot, often with no part on the van. The
+  headline's gain and the guard's loss come from one decision, which is why
+  reading either number alone gets this wrong in one of two directions:
+  fund every centre on 52 percent same-day visits, or switch off an agent
+  that held 62 on the bookings it made properly.
+
+  The guard decides because it is the number the agent can damage without
+  anyone noticing until the repeat visits arrive. Fifty-eight is last
+  summer's lowest weekly read, so a read under it is below anything the
+  season produced. A threshold needs a sample under it. The MVP closed about
+  250 requests a day across three centres, and a first-time fix read on 250
+  requests can land six points either side of the truth, wider than the four
+  points between 54 and 58. At 1,200 requests the margin is about three
+  points, which is why a read pools about five days at the MVP's rate, and
+  why three reads take two weeks. That arithmetic puts every centre before
+  the peak out of reach. The cause gate sits
+  at 5 percent because the same split gives about 61 there, the floor INT-2
+  set on 4 February.
+
+  The headline gate is the harder one to write, because nothing was held
+  back. The POC's held-back requests took 3.1 days in late winter with no
+  agent, against 4.3 across last summer, so the season alone moves the
+  median by more than the MVP's 0.9. Set against last summer, 3.4 days
+  cannot say what the agent did. The other centres in the three cities ran
+  without the agent through the same four weeks, so a comparison can be read
+  today, and widening one centre at a time keeps one: the centres still
+  waiting are its held-back group. Gating the headline on that comparison
+  rather than on 3.4 also stops the refusal from giving the wait back
+  unseen, since a fix bought at the cost of the wait shows up as a gap that
+  closes.
+
+  A gate is only as good as its rule for a read that is missing or late. A
+  missing read that counts as a pass is how a quiet day becomes a good day.
+  The code that runs a table like this is in another problem in this
+  chapter, Promote a pilot only when every gate holds, where a gate whose
+  measurement is missing does not hold and accuracy read on too few tasks
+  does not count. The guard row also travels on. In the build that follows,
+  Deliver the field-service agent in bolts, the same 58 and the same three
+  reads become the threshold a release is rolled back on.
+
+  The board sentence reports what three centres measured and why first-time
+  fix fell, and ties the next centre to a number she signed, so nobody has
+  to defend 3.4 days as the agent's work.
+
+  The client, the dates and every number here are this problem's own
+  construction. The 1,200-request sample, the 5 percent cause gate and the
+  comparison with the other centres are derived from the data lead's split
+  and the MVP's volume.
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your MVP moved the headline metric the right way and the guard metric the wrong way in the same four weeks, and the sponsor wants every site live before peak season. What gates do you put in front of production, and who signs them?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+traps:
+  - Funding every centre on the same-day number, when the bookings that raised it are the ones that cost first-time fix.
+  - Stopping the agent everywhere, when first-time fix held above last summer's level on bookings made from a fresh sheet.
+  - Crediting 3.4 days against last summer's 4.3 to the agent, with nothing held back in the same weeks.
+  - A gate with no sample size or no rule for a missing read, so a thin or empty day passes as a good one.

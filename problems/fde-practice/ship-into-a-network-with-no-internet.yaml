@@ -1,10 +1,13 @@
 slug: ship-into-a-network-with-no-internet
-title: The assistant needs the internet, and their network has none
+title: "Ship an assistant into an offline network"
 day: 29
 skill: Ship the assistant into a network that cannot reach the internet
 artefact_type: design
 difficulty: hard
 track: fde-practice
+concept:
+  topic: "Pilot to production"
+  question: "How do you ship an assistant into a network that cannot reach the internet?"
 est_minutes: 40
 competencies:
   - { slug: system-design, weight: 1.0 }
@@ -260,6 +263,7 @@ hints:
     gets in, and how you roll back without waiting three days.
 
 scenario:
+  headline: "The assistant needs the internet, and their network has none"
   who: The engineering and security leads at an electricity network operator
   situation: >-
     They want the maintenance assistant inside an engineering network with no

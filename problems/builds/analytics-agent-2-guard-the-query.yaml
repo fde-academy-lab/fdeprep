@@ -1,11 +1,14 @@
 slug: analytics-agent-2-guard-the-query
-title: The analytics agent deleted 4,112 sales lines on request
+title: "Only allow read queries on the chosen tables"
 day: 23
 skill: Run only a single read over the tables that were picked
 artefact_type: code
 difficulty: medium
 complexity: C2
 track: builds
+concept:
+  topic: "Analytics agent"
+  question: "How do you know a query only reads?"
 est_minutes: 30
 competencies:
   - { slug: tool-schema-design, weight: 1.0 }
@@ -284,6 +287,7 @@ hints:
   - "A refusal is an answer. Record the reason and return without calling `run_query` at all."
 
 scenario:
+  headline: "The analytics agent deleted 4,112 sales lines on request"
   who: The data team at a garden-centre chain
   situation: >-
     The agent now writes and runs its own SQL, on a database connection it

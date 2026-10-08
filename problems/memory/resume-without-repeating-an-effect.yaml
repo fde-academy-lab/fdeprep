@@ -1,11 +1,14 @@
 slug: resume-without-repeating-an-effect
-title: A customer gets two welcome emails and two discount codes
-day: 15
+title: "Resume after a crash without sending twice"
+day: 13
 skill: Resume a crashed run without sending the email twice
 artefact_type: code
-difficulty: extreme
+difficulty: medium
 track: memory
-est_minutes: 45
+concept:
+  topic: "What to persist"
+  question: "What must be written down so a crash never sends an email twice?"
+est_minutes: 30
 competencies:
   - { slug: state-and-memory, weight: 1.0 }
   - { slug: tool-error-handling, weight: 1.0 }
@@ -109,6 +112,7 @@ hints:
     reconciled and nothing blocked has nothing to tell an operator.
 
 scenario:
+  headline: "A customer gets two welcome emails and two discount codes"
   who: The onboarding team behind an eight-step signup agent
   situation: >-
     On Sunday a deploy restarted the worker partway through one customer's

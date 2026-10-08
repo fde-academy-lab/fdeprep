@@ -1,10 +1,12 @@
 """What an unprepared learner writes in four minutes.
 
 It keeps stages 1 and 2, and when the database answers with an error it asks
-the model for a fixed query, passing the error along, and runs whatever comes
-back. The repaired query never goes through the guard, so a repair that
-reaches for a table nobody picked runs anyway. A reply of nothing at all and a
-database that stops answering both raise out of run_agent.
+the model for a fixed query, passing the failed query and the error along but
+not the tables it may read, and runs whatever comes back. The repaired query
+never goes through the guard, so a repair that reaches for a table nobody
+picked runs anyway, and a repair that is the first query laid out differently
+runs a second time. A reply of nothing at all and a database that stops
+answering both raise out of run_agent.
 """
 
 import json
@@ -129,9 +131,8 @@ def run_agent(question: str, llm, tools: dict) -> str:
     result = tools["run_query"](sql=sql)
     if result.get("error"):
         sql = llm(
-            f"{SQL_PROMPT}<tables>\n{table_listing(tables, schema)}\n</tables>\n"
-            f"<question>\n{question}\n</question>\n"
-            f"This query failed: {sql}\nThe database said: {result['error']}"
+            f"This query failed: {sql}\nThe database said: {result['error']}\n"
+            "Reply with the corrected PostgreSQL query and nothing else."
         ).strip()
         result = tools["run_query"](sql=sql)
 

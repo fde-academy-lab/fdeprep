@@ -116,14 +116,33 @@ def test_every_slug_is_unique():
     assert len(slugs) == len(set(slugs))
 
 
-LAUNCH_TRACKS = {"agent-loop", "tool-creation", "memory", "rag", "evals", "prompt"}
-EXPANSION_TRACKS = {"structured-output", "guardrails", "production", "fde-practice", "builds"}
+# The ten chapters of agent engineering plus the two closing sections, from
+# TRACKS in web/lib/problems/vocabulary.ts. Replaced the eleven topic tracks on
+# 1 October 2026.
+CHAPTERS = {"loop", "tools", "harness", "context", "memory", "orchestration", "guardrails",
+            "human-in-the-loop", "evals", "observability"}
+CLOSING = {"agentic-pdlc", "agentic-sdlc", "builds", "fde-practice"}
+# Chapters whose first problems are still being written. Each leaves this set
+# the day it has one. Agentic SDLC left it on 8 October 2026.
+UNWRITTEN: set[str] = set()
 
 
-def test_every_launch_track_is_represented_and_no_other_track_is_invented():
+def test_every_chapter_is_represented_and_no_other_track_is_invented():
     tracks = set(collections.Counter(p["track"] for p in parsed()))
-    assert LAUNCH_TRACKS <= tracks
-    assert tracks <= LAUNCH_TRACKS | EXPANSION_TRACKS
+    assert CHAPTERS | CLOSING == tracks
+    assert not UNWRITTEN & tracks, "move the chapter out of UNWRITTEN"
+
+
+def test_every_problem_sits_in_the_folder_named_for_its_chapter():
+    for path in launch_files():
+        assert yaml.safe_load(path.read_text())["track"] == path.parent.name, path
+
+
+def test_the_days_match_the_storyline_tool():
+    from tools.storyline import plan
+    for path, day in plan().items():
+        assert yaml.safe_load(path.read_text())["day"] == day, (
+            path.stem, "run python -m tools.storyline")
 
 
 def test_hard_and_extreme_code_problems_carry_a_defence_question():

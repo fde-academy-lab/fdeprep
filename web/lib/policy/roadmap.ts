@@ -23,7 +23,7 @@ export const PERSONAS: readonly Persona[] = ["builder", "navigator", "accelerato
  * slugs it is. The agent loop is the thing every other track builds on, so it
  * is the one read as fundamentals here.
  */
-export const FUNDAMENTALS = "agent-loop";
+export const FUNDAMENTALS = "loop";
 
 interface PersonaShape {
   name: string;
@@ -55,7 +55,7 @@ export const SHAPES: Readonly<Record<Persona, PersonaShape>> = {
   navigator: {
     name: "Agentic AI for FDEs",
     ladder: ["medium", "hard", "extreme"],
-    emphasis: [FUNDAMENTALS, "tool-creation", "memory", "rag"],
+    emphasis: [FUNDAMENTALS, "tools", "memory", "context"],
     unlockOptionalAt: 1,
   },
   // "Starts at Hard, roadmap is mostly Extreme and design-argument problems,
@@ -63,7 +63,7 @@ export const SHAPES: Readonly<Record<Persona, PersonaShape>> = {
   accelerator: {
     name: "Screen-ready for FDEs",
     ladder: ["hard", "extreme"],
-    emphasis: ["evals", "prompt", FUNDAMENTALS],
+    emphasis: ["evals", "context", FUNDAMENTALS],
     unlockOptionalAt: 1,
   },
 };
@@ -77,6 +77,10 @@ export interface RoadmapItem {
   artefactType: string;
   estMinutes: number;
   competencyCount: number;
+  /** The storyline day, or null for a problem published before the storyline. */
+  day: number | null;
+  /** The topic inside its chapter. */
+  topic: string | null;
   ordinal: number;
   isOptional: boolean;
   solved: boolean;
@@ -136,7 +140,7 @@ export function rank(
  *
  * docs/00 orders a roadmap by tier and by the persona's emphasis and says
  * nothing about the tracks outside the emphasis, which used to tie and fall
- * to the slug. A builder then met a capstone build's first stage between two
+ * to the slug. A builder then met an end-to-end build's first stage between two
  * retrieval problems. The journey order is the one the home page draws, so
  * the roadmap and the map now agree.
  */
@@ -216,9 +220,11 @@ export async function roadmapFor(
     problem_id: string; slug: string; title: string; difficulty: Difficulty;
     track: string; artefact_type: string; est_minutes: number; ordinal: number;
     is_optional: boolean; solved: boolean; attempted: boolean; competency_count: number;
+    day: number | null; topic: string | null;
   }>(
     `select p.id as problem_id, p.slug, p.title, p.difficulty::text as difficulty,
             p.track, p.artefact_type::text as artefact_type, p.est_minutes,
+            p.day, cur.kit->'concept'->>'topic' as topic,
             i.ordinal, i.is_optional,
             a.solved_at is not null as solved,
             a.id is not null as attempted,
@@ -227,6 +233,7 @@ export async function roadmapFor(
        from track_item i
        join track t on t.id = i.track_id
        join problem p on p.id = i.problem_id
+       left join problem_version cur on cur.problem_id = p.id and cur.version = p.current_version
        left join attempt a on a.problem_id = p.id and a.enrolment_id = $1
       where t.persona = $2::persona
       order by i.ordinal`,
@@ -241,6 +248,8 @@ export async function roadmapFor(
     artefactType: row.artefact_type,
     estMinutes: row.est_minutes,
     competencyCount: row.competency_count,
+    day: row.day,
+    topic: row.topic,
     ordinal: row.ordinal,
     isOptional: row.is_optional,
     solved: row.solved,
@@ -282,9 +291,12 @@ export async function nextUp(
   const roadmap = await roadmapFor(enrolmentId, client);
   const unsolved = roadmap.items.filter((item) => !item.solved);
 
-  const pool = roadmap.optionalUnlocked
+  const ladder = roadmap.optionalUnlocked
     ? [...unsolved.filter((i) => !i.isOptional), ...unsolved.filter((i) => i.isOptional)]
     : unsolved.filter((item) => !item.isOptional);
+  // A drill has no day (docs/04 section 2.0), so it waits behind every problem
+  // on the path and becomes the next action only when nothing else is left.
+  const pool = [...ladder.filter((i) => i.day !== null), ...ladder.filter((i) => i.day === null)];
 
   if (!pool.length) return { kind: "done", items: [], roadmap };
   if (!roadmap.items.some((item) => item.attempted)) {

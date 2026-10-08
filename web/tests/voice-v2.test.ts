@@ -31,7 +31,8 @@ import { grantConsent } from "@/lib/voice/consent";
 import { loadDebrief } from "@/lib/voice/debrief";
 import { depthByBeat } from "@/lib/voice/depth";
 import { importVoiceQuestion } from "@/lib/voice/import";
-import { MAX_JUDGE_ATTEMPTS, scoreVoiceOnce } from "@/lib/voice/judge";
+import { scoreVoiceOnce } from "@/lib/voice/judge";
+import { MAX_JUDGE_ATTEMPTS } from "@/lib/voice/score";
 import { finishSession } from "@/lib/voice/persist";
 import {
   QuestionNotFound, loadQuestion, nextQuestionSlug, publishedQuestions, resolvePublishedQuestion,
@@ -411,7 +412,10 @@ describe("the cockpit", () => {
   const source = () => readFile(path.join(WEB, "app", "(focus)", "voice", "session", "cockpit.tsx"), "utf8");
 
   test("opens the session on the question on screen", async () => {
-    expect(await source()).toMatch(/JSON\.stringify\(\{ mode, question: question\.slug \}\)/);
+    // The request moved to lib/voice/save.ts, which sends what it is given.
+    expect(await source()).toMatch(/openSession\(send, \{ mode, question: question\.slug \}\)/);
+    const save = await readFile(path.join(WEB, "lib", "voice", "save.ts"), "utf8");
+    expect(save).toMatch(/fetcher\("\/api\/voice\/sessions", \{[\s\S]{0,120}body: JSON\.stringify\(ask\)/);
   });
 
   test("waits for the socket to hand back its last words before saving", async () => {

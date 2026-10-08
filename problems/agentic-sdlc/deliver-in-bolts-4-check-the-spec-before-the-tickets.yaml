@@ -1,0 +1,660 @@
+slug: deliver-in-bolts-4-check-the-spec-before-the-tickets
+title: "Check the spec before the tickets"
+day: 26
+skill: Start a ticket only when it cites a spec item in this bolt that has a check
+artefact_type: code
+difficulty: medium
+track: agentic-sdlc
+concept:
+  topic: "Specs before code"
+  question: "Which tickets may start, and which spec items have no ticket or no check?"
+est_minutes: 30
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json]
+
+build: { id: deliver-in-bolts, title: "Deliver the field-service agent in bolts", stage: 4, of: 9 }
+
+brief_md: |
+  Stage 4 of 9. At an air-conditioner maker the size of Voltas, the first
+  bolt of the AC-not-cooling agent starts on Thursday 14 May. It is a
+  16-hour bolt with two units of work: UoW-1, intake and diagnosis, and
+  UoW-2, the parts check. The plan from stage 2, BOLT-1, carries UoW-4,
+  UoW-8, UoW-5 and UoW-6 to the next bolt and sends UoW-3 back to
+  elaboration, because nobody could estimate it.
+
+  Two agents wrote what the engineers will build from. On 7 May the spec
+  agent wrote fourteen items, each naming its unit and the check that shows
+  it works, and drafted UoW-4's items early because UoW-4 depends on both
+  units in the bolt. On 8 May the ticket agent wrote seventeen tickets and
+  marked every one ready. The team plans the way BMAD does, and BMAD's spec
+  page says "Each story cites the spec's capability IDs". The same page
+  adds: "The spec writes the contract; it does not help you figure out what
+  you want." (bmad-method 6.12.1, read 8 October 2026.)
+
+  T-14 reads "Nightly job: auto-cancel requests with no reply in 24 hours".
+  It cites no spec item. The sponsor rejected that requirement in February:
+  "We do not cancel a customer's request because they did not answer a
+  chatbot." Now it is a ticket an engineer could pick up on Thursday
+  morning.
+
+  It is Monday 11 May. Write the check that runs before anyone starts: which
+  tickets may start, which wait and why, and which of bolt 1's spec items
+  have no ticket or no check.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the delivery lead asking which tickets can start. Call each
+  tool once:
+
+      tools["spec"]()      -> [{"id": "S-1", "unit": "UoW-1",
+                                "text": "Reads request text and model number",
+                                "check": "replay 200 requests, every one parsed"}, ...]
+      tools["tickets"]()   -> [{"id": "T-1", "title": "Parse request and model number",
+                                "spec_id": "S-1", "status": "ready"}, ...]
+      tools["bolt_plan"]() -> {"id": "BOLT-1", "units": ["UoW-1", "UoW-2"],
+                               "hours": 13, "review_hours": 2, "spare": 3,
+                               "carried": ["UoW-4", "UoW-8", "UoW-5", "UoW-6"],
+                               "elaboration": ["UoW-3"]}
+
+  An item's `check` is null when the spec agent wrote none, and a ticket's
+  `spec_id` is null when it cites nothing. Every ticket's `status` is
+  `ready`, because the ticket agent marks them all that way.
+
+  Go through the tickets in the ticket agent's order. A ticket waits with
+  the first reason in this table that applies to it, and otherwise it is
+  ready.
+
+  | Reason | When |
+  |---|---|
+  | `unspecified` | The ticket cites no spec item |
+  | `unknown_spec` | It cites an id that no item in the spec has. Two ids match only when they are the same, character for character |
+  | `out_of_bolt` | The item it cites belongs to a unit that is not in the plan's `units` |
+  | `unverifiable` | The item it cites has no check |
+
+  Then read the spec back against the tickets, over the items whose unit is
+  in the plan's `units`, in spec order. `uncovered` lists the items no
+  ticket cites; a ticket that waits still covers the item it cites.
+  `unverifiable` lists the items with no check.
+
+  Return a JSON string:
+
+      {"ready": ["T-1", ...],
+       "held": [{"ticket": "T-12", "reason": "unverifiable"}, ...],
+       "uncovered": ["S-8"],
+       "unverifiable": ["S-11"]}
+
+  Budget: one call to each tool and no model calls. `llm` is passed in and
+  must not be called. Allowed imports: json.
+
+stub_code: |
+  import json
+
+  REASONS = ("unspecified", "unknown_spec", "out_of_bolt", "unverifiable")
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      items = tools["spec"]()
+      tickets = tools["tickets"]()
+      plan = tools["bolt_plan"]()
+      ready, held = [], []
+
+      for ticket in tickets:
+          # TODO 1: a ticket whose spec_id is None waits as unspecified, and
+          #         one whose spec_id is no item's id waits as unknown_spec
+          # TODO 2: a ticket whose item belongs to a unit outside
+          #         plan["units"] waits as out_of_bolt
+          # TODO 3: a ticket whose item has no check waits as unverifiable,
+          #         as {"ticket": <id>, "reason": <reason>} in held
+          # TODO 4: every other ticket's id goes in ready
+          pass
+
+      # TODO 5: over the items whose unit is in plan["units"], in spec order,
+      #         list the ids no ticket cites and the ids with no check
+      uncovered, unverifiable = [], []
+
+      return json.dumps({"ready": ready, "held": held,
+                         "uncovered": uncovered, "unverifiable": unverifiable})
+
+steps:
+  - id: s1
+    text: Hold a ticket that cites no spec item as `unspecified`.
+    check_id: s1
+  - id: s2
+    text: Hold a ticket that cites an id the spec does not have as `unknown_spec`, without raising.
+    check_id: s2
+  - id: s3
+    text: Hold a ticket whose item sits outside bolt 1, or has no check, with its reason.
+    check_id: s3
+  - id: s4
+    text: List bolt 1's items that no ticket cites and those with no check.
+    check_id: s4
+
+step_checks:
+  # T-14 in the first public case cites nothing.
+  - step_id: s1
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [held]
+            properties:
+              held:
+                contains: { const: { ticket: "T-14", reason: "unspecified" } }
+  # No public case cites an id the spec lacks, so this step runs its own:
+  # T-2 cites S-20, and the spec has S-1 and S-2.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Check the first two UoW-1 tickets before the rest." }
+      llm_script:
+        - { match: "*", reply: "All seventeen tickets are ready. Every one traces to the spec." }
+      tools:
+        spec:
+          returns:
+            - { id: "S-1", unit: "UoW-1", text: "Reads request text and model number", check: "replay 200 requests, every one parsed" }
+            - { id: "S-2", unit: "UoW-1", text: "Asks at most four questions", check: "no replay asks a fifth" }
+        tickets:
+          returns:
+            - { id: "T-1", title: "Parse request and model number", spec_id: "S-1", status: "ready" }
+            - { id: "T-2", title: "Cap the question count", spec_id: "S-20", status: "ready" }
+        bolt_plan:
+          returns: { id: "BOLT-1", units: ["UoW-1", "UoW-2"], hours: 13, review_hours: 2, spare: 3, carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"], elaboration: ["UoW-3"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [ready, held]
+            properties:
+              ready: { const: ["T-1"] }
+              held: { const: [{ ticket: "T-2", reason: "unknown_spec" }] }
+  # T-13 cites UoW-4's S-12 and T-12 cites S-11, which has no check.
+  - step_id: s3
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [held]
+            properties:
+              held:
+                allOf:
+                  - contains: { const: { ticket: "T-13", reason: "out_of_bolt" } }
+                  - contains: { const: { ticket: "T-12", reason: "unverifiable" } }
+  - step_id: s4
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [uncovered, unverifiable]
+            properties:
+              uncovered: { const: ["S-8"] }
+              unverifiable: { const: ["S-11"] }
+
+hints:
+  - Pick one ticket and write down what has to be true before an engineer may
+    start it. There are four things, and the ticket agent's `ready` is not one
+    of them.
+  - A spec item that exists is not enough. It belongs to a unit, and the plan
+    names the units this bolt builds. An item of any other unit waits, for
+    whatever reason it is not in the bolt.
+  - Look each cited id up without assuming it is there, so an id the spec
+    lacks gives you something to test rather than an exception. Then test the
+    four reasons in the contract's order and hold the ticket on the first that
+    applies.
+  - For the two lists, keep only the items whose unit is in `units`, in spec
+    order. An item is covered when any ticket cites it, whether that ticket is
+    ready or waiting.
+
+scenario:
+  headline: "T-14 auto-cancels requests overnight, and no spec line says so"
+  who: The FDE running bolt 1 for an air-conditioner maker the size of Voltas
+  situation: >-
+    The spec agent wrote fourteen items for bolt 1 and the ticket agent wrote
+    seventeen tickets, every one marked ready. T-14 is a nightly job that
+    cancels any request whose customer has not replied in 24 hours. Bolt 1
+    starts on Thursday.
+  stakes: >-
+    The sponsor rejected auto-cancel in February. An engineer who picks up
+    T-14 builds it into the release that goes to three service centres.
+  metrics:
+    - { label: Tickets marked ready, value: "17" }
+    - { label: Spec items, value: "14" }
+    - { label: Units in bolt 1, value: "2" }
+
+diagram:
+  title: Where a ticket needs the spec and the bolt
+  caption: >-
+    A ticket starts when it cites an item the spec has, in a unit bolt 1
+    builds, with a check. The spec is read back for items with no ticket.
+  direction: lr
+  nodes:
+    - { id: specagent, label: Spec agent, sub: "14 items, each with a unit and a check", kind: agent, tone: purple, at: [0, 0] }
+    - { id: plan, label: BOLT-1, sub: units UoW-1 and UoW-2, kind: doc, tone: blue, at: [0, 1] }
+    - { id: ticketagent, label: Ticket agent, sub: 17 tickets all marked ready, kind: agent, tone: purple, at: [0, 2] }
+    - { id: check, label: Ticket check, sub: "cites, exists, in the bolt, checkable", kind: guard, tone: green, at: [1, 1] }
+    - { id: ready, label: Ready tickets, sub: engineers start on Thursday, kind: output, tone: green, at: [2, 0] }
+    - { id: held, label: Held tickets, sub: each with its reason, kind: output, tone: orange, at: [2, 1] }
+    - { id: gaps, label: Spec gaps, sub: "`uncovered` and `unverifiable`", kind: output, tone: orange, at: [2, 2] }
+    - { id: cancel, label: T-14, sub: nightly auto-cancel that cites nothing, kind: output, tone: pink, at: [1, 3] }
+  edges:
+    - { from: specagent, to: check, label: spec items, step: 1 }
+    - { from: plan, to: check, label: units in the bolt, step: 1 }
+    - { from: ticketagent, to: check, label: tickets, step: 2 }
+    - { from: check, to: ready, label: all four hold, tone: success, step: 3 }
+    - { from: check, to: held, label: first reason that applies, step: 3 }
+    - { from: check, to: gaps, label: items read back, step: 4 }
+    - { from: ticketagent, to: cancel, label: marked ready anyway, tone: danger }
+
+approach:
+  goal: Start only the tickets the spec and bolt 1 both stand behind
+  branches:
+    - label: Read what each ticket cites
+      leaves: [nothing at all, an id the spec does not have, an item that exists]
+    - label: Ask whether the item is this bolt's
+      detail: The plan lists the units bolt 1 builds. An item of any other unit waits for its own bolt.
+      leaves: ["`units` says what the bolt holds"]
+    - label: Ask how anyone will know it works
+      leaves: [an item with no check cannot be accepted]
+    - label: Read the spec back against the tickets
+      leaves: [an item no ticket cites, an item with no check, bolt 1's items only]
+
+coach:
+  opening: >-
+    Before you write a branch, pick one ticket and list what has to be true
+    before an engineer may start it. The ticket agent's `ready` is not on
+    that list.
+  signals:
+    - id: trusts-status
+      when: { code_matches: '\[\s*["'']status["'']\s*\]|\.get\(\s*["'']status["'']' }
+      say: >-
+        Your check reads the ticket's `status`. The ticket agent marks every
+        ticket ready, T-14 included. What would make a ticket ready apart
+        from the agent saying so?
+    - id: carried-list
+      when: { code_matches: '["'']carried["'']' }
+      say: >-
+        Your bolt check reads `carried`, the units bolt 1 pushed to the next
+        bolt. Is every unit outside bolt 1 on that list? Look for the list
+        that says what the bolt holds.
+    - id: index-raises
+      when: { code_matches: '\w+\[\s*\w+\s*\[\s*["'']spec_id["'']\s*\]\s*\]' }
+      say: >-
+        Indexing the spec with a ticket's `spec_id` raises `KeyError` when the
+        ticket cites an id the spec does not have. What should that ticket
+        get instead of a crash?
+    - id: calls-model
+      when: { code_matches: '\bllm\s*\(' }
+      say: >-
+        The check is a lookup over ids the agents already wrote down. What
+        would a model call add, and could the delivery lead rerun it and get
+        the same answer?
+    - id: hidden-unknown-id
+      when: { test_failed: a_ticket_citing_an_id_the_spec_lacks_covers_nothing }
+      say: >-
+        In that run one ticket cited an id the spec does not have. What did
+        your check do with that ticket, and with the item it was probably
+        meant for?
+    - id: hidden-elaboration
+      when: { test_failed: a_unit_in_elaboration_is_outside_the_bolt }
+      say: >-
+        In that run the spec held items for a unit that is neither in bolt 1
+        nor carried to the next bolt. Which list did your check ask?
+    - id: adversarial-cancel-line
+      when: { test_failed: adversarial_a_cancel_ticket_with_a_spec_line_still_waits }
+      say: >-
+        In that run the auto-cancel ticket cited a real spec item. What else
+        has to be true of that item before its ticket may start?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 on the first public case. T-14 is the only ticket
+        there with no `spec_id`.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and the
+        later ones get closer to the fix.
+  wrap_up: >-
+    A ticket may start when it cites an item the spec has, the item belongs to
+    a unit this bolt builds, and the item says how anyone will know it works.
+    The agent's `ready` is a claim, and the bolt is the list of what it holds.
+
+tests:
+  - name: checks_bolt_1_tickets_before_thursday
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Bolt 1 starts on Thursday. Which tickets can the engineers pick up?" }
+      llm_script:
+        - { match: "*", reply: "All seventeen tickets are ready. Every one traces to the spec." }
+      tools:
+        spec:
+          returns:
+            - { id: "S-1", unit: "UoW-1", text: "Reads request text and model number", check: "replay 200 requests, every one parsed" }
+            - { id: "S-2", unit: "UoW-1", text: "Asks at most four questions", check: "no replay asks a fifth" }
+            - { id: "S-3", unit: "UoW-1", text: "Asks the symptom before the model number", check: "question order in the replay" }
+            - { id: "S-4", unit: "UoW-1", text: "Names a likely fault from the close-code split", check: "fault in EV-5's list" }
+            - { id: "S-5", unit: "UoW-1", text: "Names the part for the fault", check: "part in the catalogue" }
+            - { id: "S-6", unit: "UoW-1", text: "Writes likely_fault and part_no to the request", check: "fields present" }
+            - { id: "S-7", unit: "UoW-2", text: "Reads the partner's latest stock sheet", check: "sheet fetched per booking" }
+            - { id: "S-8", unit: "UoW-2", text: "Picks the nearest partner with the part in stock", check: "partner has qty > 0" }
+            - { id: "S-9", unit: "UoW-2", text: "Refuses to book on a sheet older than 24 hours", check: "no booking with updated_at over 24 h" }
+            - { id: "S-10", unit: "UoW-2", text: "Writes the chosen partner and part to the request", check: "fields present" }
+            - { id: "S-11", unit: "UoW-2", text: "Handles a stock API timeout", check: null }
+            - { id: "S-12", unit: "UoW-4", text: "Brief carries fault and part", check: null }
+            - { id: "S-13", unit: "UoW-4", text: "Brief carries the last three visits", check: null }
+            - { id: "S-14", unit: "UoW-4", text: "Brief is attached before the slot", check: null }
+        tickets:
+          returns:
+            - { id: "T-1", title: "Parse request and model number", spec_id: "S-1", status: "ready" }
+            - { id: "T-2", title: "Cap the question count", spec_id: "S-2", status: "ready" }
+            - { id: "T-3", title: "Diagnostic question set and order", spec_id: "S-3", status: "ready" }
+            - { id: "T-4", title: "Fault from close-code split", spec_id: "S-4", status: "ready" }
+            - { id: "T-5", title: "Part lookup", spec_id: "S-5", status: "ready" }
+            - { id: "T-6", title: "Write fault and part to the request", spec_id: "S-6", status: "ready" }
+            - { id: "T-7", title: "Fetch the partner's stock sheet", spec_id: "S-7", status: "ready" }
+            - { id: "T-8", title: "Stock sheet age rule", spec_id: "S-9", status: "ready" }
+            - { id: "T-9", title: "Refuse on stale sheet, with the customer message", spec_id: "S-9", status: "ready" }
+            - { id: "T-10", title: "Write partner and part to the request", spec_id: "S-10", status: "ready" }
+            - { id: "T-11", title: "Partner fallback when the nearest has no stock", spec_id: "S-10", status: "ready" }
+            - { id: "T-12", title: "Stock API timeout handling", spec_id: "S-11", status: "ready" }
+            - { id: "T-13", title: "Brief: fault and part", spec_id: "S-12", status: "ready" }
+            - { id: "T-14", title: "Nightly job: auto-cancel requests with no reply in 24 hours", spec_id: null, status: "ready" }
+            - { id: "T-15", title: "Brief: last three visits", spec_id: "S-13", status: "ready" }
+            - { id: "T-16", title: "Attach brief before the slot", spec_id: "S-14", status: "ready" }
+            - { id: "T-17", title: "Model number in a non-standard format", spec_id: "S-6", status: "ready" }
+        bolt_plan:
+          returns: { id: "BOLT-1", units: ["UoW-1", "UoW-2"], hours: 13, review_hours: 2, spare: 3, carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"], elaboration: ["UoW-3"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: spec }
+        - { type: calls_tool, name: tickets }
+        - { type: calls_tool, name: bolt_plan }
+        - { type: tool_calls_at_most, value: 3 }
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [ready, held, uncovered, unverifiable]
+            properties:
+              ready: { const: ["T-1", "T-2", "T-3", "T-4", "T-5", "T-6", "T-7", "T-8", "T-9", "T-10", "T-11", "T-17"] }
+              held:
+                const:
+                  - { ticket: "T-12", reason: "unverifiable" }
+                  - { ticket: "T-13", reason: "out_of_bolt" }
+                  - { ticket: "T-14", reason: "unspecified" }
+                  - { ticket: "T-15", reason: "out_of_bolt" }
+                  - { ticket: "T-16", reason: "out_of_bolt" }
+              uncovered: { const: ["S-8"] }
+              unverifiable: { const: ["S-11"] }
+
+  - name: uow_1_tickets_can_all_start
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Check the UoW-1 tickets on their own before the full list." }
+      llm_script:
+        - { match: "*", reply: "All seventeen tickets are ready. Every one traces to the spec." }
+      tools:
+        spec:
+          returns:
+            - { id: "S-1", unit: "UoW-1", text: "Reads request text and model number", check: "replay 200 requests, every one parsed" }
+            - { id: "S-2", unit: "UoW-1", text: "Asks at most four questions", check: "no replay asks a fifth" }
+            - { id: "S-3", unit: "UoW-1", text: "Asks the symptom before the model number", check: "question order in the replay" }
+            - { id: "S-4", unit: "UoW-1", text: "Names a likely fault from the close-code split", check: "fault in EV-5's list" }
+            - { id: "S-5", unit: "UoW-1", text: "Names the part for the fault", check: "part in the catalogue" }
+            - { id: "S-6", unit: "UoW-1", text: "Writes likely_fault and part_no to the request", check: "fields present" }
+        tickets:
+          returns:
+            - { id: "T-1", title: "Parse request and model number", spec_id: "S-1", status: "ready" }
+            - { id: "T-2", title: "Cap the question count", spec_id: "S-2", status: "ready" }
+            - { id: "T-3", title: "Diagnostic question set and order", spec_id: "S-3", status: "ready" }
+            - { id: "T-4", title: "Fault from close-code split", spec_id: "S-4", status: "ready" }
+            - { id: "T-5", title: "Part lookup", spec_id: "S-5", status: "ready" }
+            - { id: "T-6", title: "Write fault and part to the request", spec_id: "S-6", status: "ready" }
+            - { id: "T-17", title: "Model number in a non-standard format", spec_id: "S-6", status: "ready" }
+        bolt_plan:
+          returns: { id: "BOLT-1", units: ["UoW-1", "UoW-2"], hours: 13, review_hours: 2, spare: 3, carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"], elaboration: ["UoW-3"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [ready, held, uncovered, unverifiable]
+            properties:
+              ready: { const: ["T-1", "T-2", "T-3", "T-4", "T-5", "T-6", "T-17"] }
+              held: { const: [] }
+              uncovered: { const: [] }
+              unverifiable: { const: [] }
+
+  # Derived from section 15's variant: T-12 cites S-21, which no item has,
+  # so S-11 is left with no ticket.
+  - name: a_ticket_citing_an_id_the_spec_lacks_covers_nothing
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Check the parts-check tickets before the engineers start." }
+      llm_script:
+        - { match: "*", reply: "All seventeen tickets are ready. Every one traces to the spec." }
+      tools:
+        spec:
+          returns:
+            - { id: "S-7", unit: "UoW-2", text: "Reads the partner's latest stock sheet", check: "sheet fetched per booking" }
+            - { id: "S-8", unit: "UoW-2", text: "Picks the nearest partner with the part in stock", check: "partner has qty > 0" }
+            - { id: "S-9", unit: "UoW-2", text: "Refuses to book on a sheet older than 24 hours", check: "no booking with updated_at over 24 h" }
+            - { id: "S-10", unit: "UoW-2", text: "Writes the chosen partner and part to the request", check: "fields present" }
+            - { id: "S-11", unit: "UoW-2", text: "Handles a stock API timeout", check: null }
+        tickets:
+          returns:
+            - { id: "T-7", title: "Fetch the partner's stock sheet", spec_id: "S-7", status: "ready" }
+            - { id: "T-8", title: "Stock sheet age rule", spec_id: "S-9", status: "ready" }
+            - { id: "T-9", title: "Refuse on stale sheet, with the customer message", spec_id: "S-9", status: "ready" }
+            - { id: "T-10", title: "Write partner and part to the request", spec_id: "S-10", status: "ready" }
+            - { id: "T-11", title: "Partner fallback when the nearest has no stock", spec_id: "S-10", status: "ready" }
+            - { id: "T-12", title: "Stock API timeout handling", spec_id: "S-21", status: "ready" }
+        bolt_plan:
+          returns: { id: "BOLT-1", units: ["UoW-1", "UoW-2"], hours: 13, review_hours: 2, spare: 3, carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"], elaboration: ["UoW-3"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [ready, held, uncovered, unverifiable]
+            properties:
+              ready: { const: ["T-7", "T-8", "T-9", "T-10", "T-11"] }
+              held: { const: [{ ticket: "T-12", reason: "unknown_spec" }] }
+              uncovered: { const: ["S-8", "S-11"] }
+              unverifiable: { const: ["S-11"] }
+
+  # Derived: the spec agent drafts UoW-3's items early, as it did UoW-4's.
+  # UoW-3 is in elaboration, so it is outside the bolt without being carried.
+  - name: a_unit_in_elaboration_is_outside_the_bolt
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Check the parts-check tickets against the latest spec." }
+      llm_script:
+        - { match: "*", reply: "All seventeen tickets are ready. Every one traces to the spec." }
+      tools:
+        spec:
+          returns:
+            - { id: "S-7", unit: "UoW-2", text: "Reads the partner's latest stock sheet", check: "sheet fetched per booking" }
+            - { id: "S-8", unit: "UoW-2", text: "Picks the nearest partner with the part in stock", check: "partner has qty > 0" }
+            - { id: "S-9", unit: "UoW-2", text: "Refuses to book on a sheet older than 24 hours", check: "no booking with updated_at over 24 h" }
+            - { id: "S-10", unit: "UoW-2", text: "Writes the chosen partner and part to the request", check: "fields present" }
+            - { id: "S-11", unit: "UoW-2", text: "Handles a stock API timeout", check: null }
+            - { id: "S-15", unit: "UoW-3", text: "Books the slot in the service system", check: "booked slot appears in the service system within one minute" }
+            - { id: "S-16", unit: "UoW-3", text: "Honours the dispatch threshold", check: null }
+        tickets:
+          returns:
+            - { id: "T-7", title: "Fetch the partner's stock sheet", spec_id: "S-7", status: "ready" }
+            - { id: "T-8", title: "Stock sheet age rule", spec_id: "S-9", status: "ready" }
+            - { id: "T-9", title: "Refuse on stale sheet, with the customer message", spec_id: "S-9", status: "ready" }
+            - { id: "T-10", title: "Write partner and part to the request", spec_id: "S-10", status: "ready" }
+            - { id: "T-11", title: "Partner fallback when the nearest has no stock", spec_id: "S-10", status: "ready" }
+            - { id: "T-12", title: "Stock API timeout handling", spec_id: "S-11", status: "ready" }
+            - { id: "T-20", title: "Book the slot through the booking API", spec_id: "S-15", status: "ready" }
+        bolt_plan:
+          returns: { id: "BOLT-1", units: ["UoW-1", "UoW-2"], hours: 13, review_hours: 2, spare: 3, carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"], elaboration: ["UoW-3"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [ready, held, uncovered, unverifiable]
+            properties:
+              ready: { const: ["T-7", "T-8", "T-9", "T-10", "T-11"] }
+              held:
+                const:
+                  - { ticket: "T-12", reason: "unverifiable" }
+                  - { ticket: "T-20", reason: "out_of_bolt" }
+              uncovered: { const: ["S-8"] }
+              unverifiable: { const: ["S-11"] }
+
+  # Derived: the spec agent fills the same gap the ticket agent filled, with
+  # an item for UoW-7, the auto-cancel unit Inception rejected.
+  - name: adversarial_a_cancel_ticket_with_a_spec_line_still_waits
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      In this run the spec agent filled the same gap the ticket agent did. It
+      wrote `S-17`, an item that closes a request after 24 hours with no
+      reply, for `UoW-7`, the auto-cancel unit Inception rejected, and `T-14`
+      cites it. The id resolves and the item has a check, so a check that
+      stops at "the spec has it" starts the nightly cancel job on Thursday.
+      So does a check that reads bolt 1's `carried` list, because nobody
+      carries a unit that was never accepted.
+
+      `UoW-7` is not one of bolt 1's `units`, so `T-14` waits as
+      `out_of_bolt`. A spec line is a reason to look at a ticket. The plan's
+      `units` decide whether this bolt builds it.
+    spec:
+      kind: agent_run
+      input: { question: "Check the UoW-1 tickets against the spec the agent rewrote." }
+      llm_script:
+        - { match: "*", reply: "All seventeen tickets are ready. Every one traces to the spec." }
+      tools:
+        spec:
+          returns:
+            - { id: "S-1", unit: "UoW-1", text: "Reads request text and model number", check: "replay 200 requests, every one parsed" }
+            - { id: "S-2", unit: "UoW-1", text: "Asks at most four questions", check: "no replay asks a fifth" }
+            - { id: "S-3", unit: "UoW-1", text: "Asks the symptom before the model number", check: "question order in the replay" }
+            - { id: "S-4", unit: "UoW-1", text: "Names a likely fault from the close-code split", check: "fault in EV-5's list" }
+            - { id: "S-5", unit: "UoW-1", text: "Names the part for the fault", check: "part in the catalogue" }
+            - { id: "S-6", unit: "UoW-1", text: "Writes likely_fault and part_no to the request", check: "fields present" }
+            - { id: "S-17", unit: "UoW-7", text: "Closes a request when the customer has not replied in 24 hours", check: "no request stays open 24 hours after an unanswered question" }
+        tickets:
+          returns:
+            - { id: "T-1", title: "Parse request and model number", spec_id: "S-1", status: "ready" }
+            - { id: "T-2", title: "Cap the question count", spec_id: "S-2", status: "ready" }
+            - { id: "T-3", title: "Diagnostic question set and order", spec_id: "S-3", status: "ready" }
+            - { id: "T-4", title: "Fault from close-code split", spec_id: "S-4", status: "ready" }
+            - { id: "T-5", title: "Part lookup", spec_id: "S-5", status: "ready" }
+            - { id: "T-6", title: "Write fault and part to the request", spec_id: "S-6", status: "ready" }
+            - { id: "T-14", title: "Nightly job: auto-cancel requests with no reply in 24 hours", spec_id: "S-17", status: "ready" }
+            - { id: "T-17", title: "Model number in a non-standard format", spec_id: "S-6", status: "ready" }
+        bolt_plan:
+          returns: { id: "BOLT-1", units: ["UoW-1", "UoW-2"], hours: 13, review_hours: 2, spare: 3, carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"], elaboration: ["UoW-3"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [ready, held, uncovered, unverifiable]
+            properties:
+              ready: { const: ["T-1", "T-2", "T-3", "T-4", "T-5", "T-6", "T-17"] }
+              held: { const: [{ ticket: "T-14", reason: "out_of_bolt" }] }
+              uncovered: { const: [] }
+              unverifiable: { const: [] }
+
+reference_md: |
+  BMAD's spec skill writes the contract the build reads, and its page
+  [Define Requirements and a Specification](https://docs.bmad-method.org/plan/define-requirements-and-a-specification/)
+  says "Each story cites the spec's capability IDs" (bmad-method 6.12.1,
+  read 8 October 2026). A citation makes a ticket checkable. Whether it may
+  start is a separate question, and the ticket agent's `ready` does not
+  answer it, because the agent marks every ticket that way.
+
+  Four things have to hold before an engineer starts a ticket, in the order
+  a person would check them. The ticket cites something, the id is one the
+  spec has, the item belongs to a unit this bolt builds, and the item says
+  how anyone will know the work is done. T-14 fails the first. T-13, T-15
+  and T-16 cite real items for UoW-4, which bolt 1 carried, so they wait for
+  their own bolt. T-12 cites S-11, which has no check, so nobody could
+  accept the work if it were finished.
+
+  "In the bolt" means the plan's `units`. The carried list happens to hold
+  UoW-4, which is why a check that reads `carried` gets bolt 1's own
+  tickets right. A unit can be outside the bolt without being carried: UoW-3
+  is in elaboration with no estimate, and UoW-7 was rejected at Inception.
+  A spec line for either one does not make its ticket startable, and a check
+  that asks what the bolt holds never needs to know why a unit is missing
+  from it.
+
+  A ticket that cites an id the spec lacks covers nothing, like one that
+  cites nothing at all. It waits with a reason a person can act on. A lookup
+  that assumes the id exists crashes the whole check instead, and nobody
+  learns which ticket was wrong. The item the ticket was probably meant for
+  shows as uncovered, which is the true state of the spec.
+
+  Read back the other way, the spec shows its own gaps. S-8, pick the
+  nearest partner with the part in stock, has no ticket. T-11, the partner
+  fallback, reads like S-8's work and cites S-10. The check cannot know what
+  a ticket meant, so it reports S-8 and a person decides. S-11 has a ticket
+  and no check. Both lists cover bolt 1's units only: UoW-4's items were
+  drafted early, and they get this check when their bolt is planned.
+
+  T-14 is a gap that an agent filled. BMAD's ticket skill treats a gap
+  another way. On
+  [Set Up the Ticket Tree](https://docs.bmad-method.org/plan/set-up-the-ticket-tree/),
+  read the same day: "When something must be settled before implementation,
+  the skill asks you to answer it or records it as the entry's `unknown`."
+  The next stage of this build, Fix the ticket agent so nothing is
+  invented, changes the ticket agent's prompt so a gap becomes a question
+  instead of a ticket.
+
+  The reason names, their order and the rule that both lists cover only the
+  bolt's units are this problem's own construction after those two pages.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    An agent wrote the tickets from a spec and marked every one ready. What do you check before an engineer starts one, and what makes you hold it?
+  source: |
+    Author judgement. No employer frequency data stands behind it. BMAD facts from
+    docs.bmad-method.org, the pages Define Requirements and a Specification and Set Up the
+    Ticket Tree, bmad-method 6.12.1, read 8 October 2026.
+
+tools:
+  - name: spec
+    args: ""
+    returns: "The spec agent's items in spec order, each with `id`, `unit`, `text` and `check`, which is null when it wrote none."
+  - name: tickets
+    args: ""
+    returns: "The ticket agent's tickets in its order, each with `id`, `title`, `spec_id` (null when it cites nothing) and `status`."
+  - name: bolt_plan
+    args: ""
+    returns: "BOLT-1: the `units` in the bolt, its hours, the units `carried` to the next bolt and those sent to `elaboration`."
+example:
+  case: checks_bolt_1_tickets_before_thursday
+  expect: "Twelve tickets start. T-12 waits because S-11 has no check, T-13, T-15 and T-16 because UoW-4 is not in bolt 1, and T-14 because it cites nothing. S-8 has no ticket."
+traps:
+  - Starting a ticket because the agent marked it ready, or because the spec item it cites exists.
+  - Deciding a unit is outside bolt 1 from the units carried to the next bolt, rather than from the units the bolt holds.
+  - Looking a cited id up as if it must exist, so a ticket with a mistyped id crashes the check instead of waiting.

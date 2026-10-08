@@ -1,11 +1,14 @@
 slug: check-trace-invariants-across-valid-paths
-title: The refunds eval fails good runs and passes broken ones
+title: "Check the rules every good run follows"
 day: 20
 skill: Check the rules every valid run keeps, in whatever order it keeps them
 artefact_type: code
-difficulty: hard
+difficulty: medium
 track: evals
-est_minutes: 35
+concept:
+  topic: "Trajectory and outcome"
+  question: "Which rules must every good run follow, in whatever order?"
+est_minutes: 30
 competencies:
   - { slug: evaluation-design, weight: 1.0 }
   - { slug: failure-mode-analysis, weight: 1.0 }
@@ -127,6 +130,7 @@ hints:
     trace's own text belongs in its prompt.
 
 scenario:
+  headline: "The refunds eval fails good runs and passes broken ones"
   who: The evals owner for a retailer's refunds agent
   situation: >-
     The eval compares every run with the one path the case author recorded. A

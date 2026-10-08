@@ -1,10 +1,13 @@
 slug: normalise-answers-without-accepting-leaks
-title: Correct answers fail the nightly eval over formatting
-day: 16
+title: "Forgive formatting differences and nothing else"
+day: 15
 skill: Write a grader that forgives five formatting differences and nothing else
 artefact_type: code
 difficulty: easy
 track: evals
+concept:
+  topic: "Trajectory and outcome"
+  question: "Which differences should a grader forgive, and which never?"
 est_minutes: 15
 competencies:
   - { slug: evaluation-design, weight: 1.0 }
@@ -132,6 +135,7 @@ hints:
     expected answer lets the model copy it.
 
 scenario:
+  headline: "Correct answers fail the nightly eval over formatting"
   who: The eval owner for a home insurer's policy assistant
   situation: >-
     Every night the assistant answers 200 short policy questions, and a grader

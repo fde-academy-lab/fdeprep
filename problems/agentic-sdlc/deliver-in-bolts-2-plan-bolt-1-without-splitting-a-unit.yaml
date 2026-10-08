@@ -1,0 +1,540 @@
+slug: deliver-in-bolts-2-plan-bolt-1-without-splitting-a-unit
+title: "Plan bolt 1 without splitting a unit"
+day: 26
+skill: Fill a bolt in dependency order with every review inside it, and never count null as zero
+artefact_type: code
+difficulty: medium
+complexity: C2
+track: agentic-sdlc
+concept:
+  topic: "Units of work and bolts"
+  question: "What goes into a 16-hour bolt, and what goes back to elaboration?"
+est_minutes: 30
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json]
+
+build: { id: deliver-in-bolts, title: "Deliver the field-service agent in bolts", stage: 2, of: 9 }
+
+brief_md: |
+  Stage 2 of 9. Inception accepted seven units of work for the field-service
+  agent at an air-conditioner maker the size of Voltas, and on Tuesday 5 May
+  you plan bolt 1. AWS's post on AI-DLC (Raja SP, AWS DevOps blog, 31 July
+  2025, read 8 October 2026) replaces sprints with bolts, "shorter, more
+  intense work cycles measured in hours or days rather than weeks", and says
+  "Epics are replaced by Units of Work". ADR-1, the method record of 29
+  April, set this engagement's bolt at two working days, 16 hours, with a
+  human review after every unit. A review takes an hour and happens inside
+  the bolt, because a unit is finished when its review passes.
+
+  The construction agent drafted bolt 1 first: UoW-1, UoW-2 and UoW-3, 14
+  hours with reviews and 2 to spare. UoW-3, slot booking, has
+  `estimate_h: null`. The agent could not size it, wrote null, and then
+  counted the null as zero hours. A plan that counts unsized work as zero
+  says the bolt ends early, and nobody learns otherwise until it runs late.
+
+  One more rule is this team's own: a unit is what a review checks, so a
+  unit is never split across bolts. One that does not fit waits whole for the
+  next bolt.
+
+  Write the planner. Fill bolt 1 in dependency order, count every review
+  inside it, carry whole whatever does not fit, and send any unit with no
+  estimate back to mob elaboration.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is your request. `tools["units"]()` returns the accepted units,
+  in id order:
+
+      [{"id": "UoW-1", "unit": "Intake and diagnosis", "estimate_h": 6, "depends_on": []},
+       {"id": "UoW-3", "unit": "Slot booking", "estimate_h": null, "depends_on": ["UoW-2"]}, ...]
+
+  `tools["bolt"]()` returns the bolt: `{"id": "BOLT-1", "hours": 16, "review_h": 1}`.
+
+  | Rule | What it says |
+  |---|---|
+  | No estimate | A unit whose `estimate_h` is `null` goes to `elaboration`. It is never planned and never counted as zero |
+  | Ready | A unit is ready when every unit in its `depends_on` is already in this bolt |
+  | Fits | A unit needs its estimate plus `review_h`, and it fits when that is no more than the hours the bolt has left |
+  | Order | Take the first ready unit in id order. Plan it when it fits, or carry it whole when it does not. Then look again from the first unit |
+  | Never split | A unit goes in whole or waits whole |
+
+  When no unit is ready, every unit still waiting is carried as well, in id
+  order, after the units the planner carried. `elaboration` is in id order.
+
+  Return a JSON string:
+
+      {"id": "BOLT-1", "units": ["UoW-1"], "hours": 7, "review_hours": 1,
+       "spare": 9, "carried": ["UoW-4"], "elaboration": ["UoW-3"]}
+
+  `hours` counts the planned units' estimates and reviews, `review_hours` the
+  reviews alone, and `spare` what is left of the bolt.
+
+  Budget: one call to each tool and no model calls. `llm` is passed in and
+  must not be called. Allowed imports: json.
+
+stub_code: |
+  import json
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      units = tools["units"]()
+      bolt = tools["bolt"]()
+      planned, carried, elaboration = [], [], []
+      hours = 0
+
+      # TODO 1: a unit whose estimate_h is None goes to elaboration. It is
+      #         never planned, and it never counts as zero hours
+      # TODO 2: a unit needs its estimate plus bolt["review_h"], and it fits
+      #         when that is no more than what is left of bolt["hours"]
+      # TODO 3: take the first waiting unit, in id order, whose depends_on are
+      #         all in planned. Plan it when it fits, or carry it whole, then
+      #         look again from the first unit
+      # TODO 4: when no waiting unit is ready, every unit still waiting goes to
+      #         carried, after the ones already there
+
+      return json.dumps({"id": bolt["id"], "units": planned, "hours": hours,
+                         "review_hours": bolt["review_h"] * len(planned),
+                         "spare": bolt["hours"] - hours,
+                         "carried": carried, "elaboration": elaboration})
+
+steps:
+  - id: s1
+    text: Send every unit with no estimate to `elaboration`, and never count it as zero hours.
+    check_id: s1
+  - id: s2
+    text: Count each unit's estimate plus its review, and plan it only when that fits in the hours left.
+    check_id: s2
+  - id: s3
+    text: Take the first unit in id order whose dependencies are all in the bolt, and look again after each one.
+    check_id: s3
+  - id: s4
+    text: Carry every unit left over whole, the ones tried and not fitted first, then the ones never ready.
+    check_id: s4
+
+step_checks:
+  # No public case holds a unit with no estimate, so this step runs its own:
+  # three units, one of them unsized.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "Plan a bolt from intake, the parts check and a measurement unit nobody has sized yet." }
+      llm_script:
+        - { match: { contains: "bolt 1" }, reply: "Draft for bolt 1: I planned from the estimates and counted a unit with no estimate as zero hours." }
+        - { match: "*", reply: "Send me the accepted units and the bolt, and I will draft bolt 1." }
+      tools:
+        units:
+          returns:
+            - { id: "UoW-1", unit: "Intake and diagnosis", estimate_h: 6, depends_on: [] }
+            - { id: "UoW-2", unit: "Parts check", estimate_h: 5, depends_on: ["UoW-1"] }
+            - { id: "UoW-8", unit: "Measurement", estimate_h: null, depends_on: [] }
+        bolt: { returns: { id: "BOLT-1", hours: 16, review_h: 1 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [units, elaboration]
+            properties:
+              units: { const: ["UoW-1", "UoW-2"] }
+              elaboration: { const: ["UoW-8"] }
+  # The first public case: two units and their reviews take 13 of 16 hours.
+  - step_id: s2
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [hours, review_hours, spare]
+            properties:
+              hours: { const: 13 }
+              review_hours: { const: 2 }
+              spare: { const: 3 }
+  # The same case: planning UoW-1 makes UoW-2 ready, and UoW-2 comes before
+  # UoW-8 in id order, so a planner that tries units in waves takes UoW-8.
+  - step_id: s3
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [units]
+            properties:
+              units: { const: ["UoW-1", "UoW-2"] }
+  # The second public case: two units tried and carried, then four never ready.
+  - step_id: s4
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [carried]
+            properties:
+              carried: { const: ["UoW-2", "UoW-8", "UoW-3", "UoW-4", "UoW-5", "UoW-6"] }
+
+hints:
+  - Follow UoW-3 through your planner by hand. How many hours does it add to
+    the bolt, and how many should it add?
+  - A null estimate is no number of hours. A unit with none cannot be planned,
+    and a unit that waits on it is never ready in this bolt.
+  - Set the units with no estimate aside first. Then loop over the rest. Take
+    the first one whose dependencies are all planned, plan it or carry it, and
+    look again from the start.
+  - A unit needs its estimate plus `review_h`, and it fits when that is no
+    more than the hours left. When nothing waiting is ready, everything still
+    waiting goes to `carried`, after the units already there.
+
+scenario:
+  headline: "UoW-3 has no estimate, and the planner read null as zero hours"
+  who: The FDE planning bolt 1 for an appliance maker the size of Voltas
+  situation: >-
+    The construction agent drafted bolt 1 as UoW-1, UoW-2 and UoW-3: 14 hours
+    with reviews, 2 to spare in a 16-hour bolt. UoW-3, slot booking, has no
+    estimate. The draft counted it as zero hours.
+  stakes: >-
+    A bolt plan says when the bolt ends. Counting unsized work as zero makes
+    the plan look early, and nobody finds out otherwise until the bolt runs
+    late.
+  metrics:
+    - { label: Bolt, value: 16 hours }
+    - { label: Review per unit, value: 1 hour }
+    - { label: "UoW-3's estimate", value: "null" }
+
+diagram:
+  title: Where a unit with no estimate goes
+  caption: >-
+    The planner takes ready units in id order, counts each review inside the
+    bolt, carries what does not fit, and sends a unit with no estimate to
+    elaboration.
+  direction: lr
+  nodes:
+    - { id: units, label: "`units()`", sub: seven accepted units, kind: store, tone: blue, at: [0, 0] }
+    - { id: bolt, label: "`bolt()`", sub: "16 hours, 1-hour reviews", kind: store, tone: blue, at: [0, 2] }
+    - { id: planner, label: Bolt planner, sub: first ready unit in id order, kind: agent, tone: purple, at: [1, 1] }
+    - { id: fit, label: "Fits with its review?", sub: estimate plus one hour, kind: guard, tone: teal, at: [2, 1] }
+    - { id: plan, label: Bolt 1, sub: units planned whole, kind: output, tone: green, at: [3, 0] }
+    - { id: carried, label: Carried, sub: "whole, to the next bolt", kind: queue, tone: orange, at: [3, 1] }
+    - { id: elaboration, label: Mob elaboration, sub: units with no estimate, kind: actor, tone: orange, at: [3, 2] }
+    - { id: draft, label: "Agent's draft", sub: UoW-3 counted as zero hours, kind: output, tone: pink, at: [1, 3] }
+  edges:
+    - { from: units, to: planner, label: estimates and dependencies, step: 1 }
+    - { from: bolt, to: planner, label: hours and review, step: 1 }
+    - { from: planner, to: elaboration, label: estimate is null, step: 2 }
+    - { from: planner, to: fit, label: a ready unit, step: 3 }
+    - { from: fit, to: plan, label: fits, tone: success, step: 4 }
+    - { from: fit, to: carried, label: does not fit, step: 4 }
+    - { from: units, to: draft, label: null read as zero, tone: danger }
+
+approach:
+  goal: Fill bolt 1 so its hours count only work somebody has sized
+  branches:
+    - label: A null is no number of hours
+      leaves: [no estimate goes to elaboration, a unit waiting on it is never ready]
+    - label: Count the review inside the bolt
+      leaves: [estimate plus one hour, fits means no more than what is left]
+    - label: Take ready units in order
+      detail: Ready means every unit it depends on is already in this bolt.
+      leaves: [first in id order, look again after every unit]
+    - label: Keep units whole
+      leaves: [one that does not fit is carried, then try the next ready unit]
+
+coach:
+  opening: >-
+    Before you write the loop, decide what UoW-3's null adds to the bolt: a
+    number of hours, or a question for elaboration.
+  signals:
+    - id: null-as-zero
+      when: { code_matches: 'estimate_h["'']\s*\]\s*or\s*0\b|\.get\(\s*["'']estimate_h["'']\s*,\s*0\s*\)' }
+      say: >-
+        This reads a missing estimate as zero hours. A unit nobody has sized
+        then fits any bolt. Where should it go instead?
+    - id: nothing-to-elaboration
+      when: { code_lacks: 'elaboration\s*(=\s*\[\s*\w|\.\s*append|\+=)' }
+      say: >-
+        Nothing in your planner adds to `elaboration` yet. Follow UoW-3 through
+        your code: where does it end up, and how many hours did it add?
+    - id: review-outside-the-bolt
+      when: { code_matches: '\+\s*\w+\[\s*["'']estimate_h["'']\s*\]\s*<' }
+      say: >-
+        This compares the estimate alone with the hours left. Every unit also
+        needs its review inside the bolt. What does that do to the fit?
+    - id: calls-model
+      when: { code_matches: '\bllm\s*\(' }
+      say: >-
+        The tools already hold every number the plan needs. What would a model
+        call add, and would the same plan come back twice?
+    - id: hidden-canonical
+      when: { test_failed: bolt_1_as_the_agent_proposed_it }
+      say: >-
+        In that run one unit had no estimate and became ready halfway through.
+        Which list did it end in, and how many hours did your bolt give it?
+    - id: hidden-never-reached
+      when: { test_failed: a_unit_with_no_estimate_goes_to_elaboration_even_when_never_reached }
+      say: >-
+        In that run the unit with no estimate was never ready, because what it
+        waits on was carried. Did it end in `carried` or in `elaboration`?
+    - id: hidden-waits-on-unsized
+      when: { test_failed: a_unit_waiting_on_a_unit_with_no_estimate_is_carried }
+      say: >-
+        In that run a unit depended on a unit with no estimate, and the bolt
+        had room for it. Was it ready?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1. Split the units into those with no estimate and the
+        rest before you plan anything.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and the
+        later ones get closer to the loop.
+  wrap_up: >-
+    A bolt plan is a promise about when work ends. Count only what somebody has
+    sized, put each review inside the bolt, and keep every unit whole, so the
+    spare hours on the plan are hours the bolt has.
+
+tests:
+  - name: plans_bolt_1_with_every_unit_estimated
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Plan the first bolt as if slot booking already had its estimate of 5 hours." }
+      llm_script:
+        - { match: { contains: "bolt 1" }, reply: "Draft for bolt 1: I planned from the estimates and counted a unit with no estimate as zero hours." }
+        - { match: "*", reply: "Send me the accepted units and the bolt, and I will draft bolt 1." }
+      tools:
+        units:
+          returns:
+            - { id: "UoW-1", unit: "Intake and diagnosis", estimate_h: 6, depends_on: [] }
+            - { id: "UoW-2", unit: "Parts check", estimate_h: 5, depends_on: ["UoW-1"] }
+            - { id: "UoW-3", unit: "Slot booking", estimate_h: 5, depends_on: ["UoW-2"] }
+            - { id: "UoW-4", unit: "Technician brief", estimate_h: 3, depends_on: ["UoW-1", "UoW-2"] }
+            - { id: "UoW-5", unit: "Customer messaging", estimate_h: 4, depends_on: ["UoW-3"] }
+            - { id: "UoW-6", unit: "Partner dashboard", estimate_h: 4, depends_on: ["UoW-3"] }
+            - { id: "UoW-8", unit: "Measurement", estimate_h: 4, depends_on: [] }
+        bolt: { returns: { id: "BOLT-1", hours: 16, review_h: 1 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: units }
+        - { type: calls_tool, name: bolt }
+        - { type: tool_calls_at_most, value: 2 }
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [id, units, hours, review_hours, spare, carried, elaboration]
+            properties:
+              id: { const: "BOLT-1" }
+              units: { const: ["UoW-1", "UoW-2"] }
+              hours: { const: 13 }
+              review_hours: { const: 2 }
+              spare: { const: 3 }
+              carried: { const: ["UoW-3", "UoW-4", "UoW-8", "UoW-5", "UoW-6"] }
+              elaboration: { const: [] }
+
+  - name: fills_the_bolt_with_one_unit_that_fits_exactly
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Plan the first bolt if intake came in at 15 hours and slot booking at 5." }
+      llm_script:
+        - { match: { contains: "bolt 1" }, reply: "Draft for bolt 1: I planned from the estimates and counted a unit with no estimate as zero hours." }
+        - { match: "*", reply: "Send me the accepted units and the bolt, and I will draft bolt 1." }
+      tools:
+        units:
+          returns:
+            - { id: "UoW-1", unit: "Intake and diagnosis", estimate_h: 15, depends_on: [] }
+            - { id: "UoW-2", unit: "Parts check", estimate_h: 5, depends_on: ["UoW-1"] }
+            - { id: "UoW-3", unit: "Slot booking", estimate_h: 5, depends_on: ["UoW-2"] }
+            - { id: "UoW-4", unit: "Technician brief", estimate_h: 3, depends_on: ["UoW-1", "UoW-2"] }
+            - { id: "UoW-5", unit: "Customer messaging", estimate_h: 4, depends_on: ["UoW-3"] }
+            - { id: "UoW-6", unit: "Partner dashboard", estimate_h: 4, depends_on: ["UoW-3"] }
+            - { id: "UoW-8", unit: "Measurement", estimate_h: 4, depends_on: [] }
+        bolt: { returns: { id: "BOLT-1", hours: 16, review_h: 1 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [id, units, hours, review_hours, spare, carried, elaboration]
+            properties:
+              id: { const: "BOLT-1" }
+              units: { const: ["UoW-1"] }
+              hours: { const: 16 }
+              review_hours: { const: 1 }
+              spare: { const: 0 }
+              carried: { const: ["UoW-2", "UoW-8", "UoW-3", "UoW-4", "UoW-5", "UoW-6"] }
+              elaboration: { const: [] }
+
+  - name: bolt_1_as_the_agent_proposed_it
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Plan the first bolt from the seven accepted units, estimates as the agent gave them." }
+      llm_script:
+        - { match: { contains: "bolt 1" }, reply: "Draft for bolt 1: I planned from the estimates and counted a unit with no estimate as zero hours." }
+        - { match: "*", reply: "Send me the accepted units and the bolt, and I will draft bolt 1." }
+      tools:
+        units:
+          returns:
+            - { id: "UoW-1", unit: "Intake and diagnosis", estimate_h: 6, depends_on: [] }
+            - { id: "UoW-2", unit: "Parts check", estimate_h: 5, depends_on: ["UoW-1"] }
+            - { id: "UoW-3", unit: "Slot booking", estimate_h: null, depends_on: ["UoW-2"] }
+            - { id: "UoW-4", unit: "Technician brief", estimate_h: 3, depends_on: ["UoW-1", "UoW-2"] }
+            - { id: "UoW-5", unit: "Customer messaging", estimate_h: 4, depends_on: ["UoW-3"] }
+            - { id: "UoW-6", unit: "Partner dashboard", estimate_h: 4, depends_on: ["UoW-3"] }
+            - { id: "UoW-8", unit: "Measurement", estimate_h: 4, depends_on: [] }
+        bolt: { returns: { id: "BOLT-1", hours: 16, review_h: 1 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [id, units, hours, review_hours, spare, carried, elaboration]
+            properties:
+              id: { const: "BOLT-1" }
+              units: { const: ["UoW-1", "UoW-2"] }
+              hours: { const: 13 }
+              review_hours: { const: 2 }
+              spare: { const: 3 }
+              carried: { const: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"] }
+              elaboration: { const: ["UoW-3"] }
+
+  - name: a_unit_with_no_estimate_goes_to_elaboration_even_when_never_reached
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Plan the first bolt if intake came in at 15 hours, with slot booking still unsized." }
+      llm_script:
+        - { match: { contains: "bolt 1" }, reply: "Draft for bolt 1: I planned from the estimates and counted a unit with no estimate as zero hours." }
+        - { match: "*", reply: "Send me the accepted units and the bolt, and I will draft bolt 1." }
+      tools:
+        units:
+          returns:
+            - { id: "UoW-1", unit: "Intake and diagnosis", estimate_h: 15, depends_on: [] }
+            - { id: "UoW-2", unit: "Parts check", estimate_h: 5, depends_on: ["UoW-1"] }
+            - { id: "UoW-3", unit: "Slot booking", estimate_h: null, depends_on: ["UoW-2"] }
+            - { id: "UoW-4", unit: "Technician brief", estimate_h: 3, depends_on: ["UoW-1", "UoW-2"] }
+            - { id: "UoW-5", unit: "Customer messaging", estimate_h: 4, depends_on: ["UoW-3"] }
+            - { id: "UoW-6", unit: "Partner dashboard", estimate_h: 4, depends_on: ["UoW-3"] }
+            - { id: "UoW-8", unit: "Measurement", estimate_h: 4, depends_on: [] }
+        bolt: { returns: { id: "BOLT-1", hours: 16, review_h: 1 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [units, hours, carried, elaboration]
+            properties:
+              units: { const: ["UoW-1"] }
+              hours: { const: 16 }
+              carried: { const: ["UoW-2", "UoW-8", "UoW-4", "UoW-5", "UoW-6"] }
+              elaboration: { const: ["UoW-3"] }
+
+  - name: a_unit_waiting_on_a_unit_with_no_estimate_is_carried
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Plan the first bolt if the agent had left the parts check unsized too." }
+      llm_script:
+        - { match: { contains: "bolt 1" }, reply: "Draft for bolt 1: I planned from the estimates and counted a unit with no estimate as zero hours." }
+        - { match: "*", reply: "Send me the accepted units and the bolt, and I will draft bolt 1." }
+      tools:
+        units:
+          returns:
+            - { id: "UoW-1", unit: "Intake and diagnosis", estimate_h: 6, depends_on: [] }
+            - { id: "UoW-2", unit: "Parts check", estimate_h: null, depends_on: ["UoW-1"] }
+            - { id: "UoW-3", unit: "Slot booking", estimate_h: null, depends_on: ["UoW-2"] }
+            - { id: "UoW-4", unit: "Technician brief", estimate_h: 3, depends_on: ["UoW-1", "UoW-2"] }
+            - { id: "UoW-5", unit: "Customer messaging", estimate_h: 4, depends_on: ["UoW-3"] }
+            - { id: "UoW-6", unit: "Partner dashboard", estimate_h: 4, depends_on: ["UoW-3"] }
+            - { id: "UoW-8", unit: "Measurement", estimate_h: 4, depends_on: [] }
+        bolt: { returns: { id: "BOLT-1", hours: 16, review_h: 1 } }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [units, hours, review_hours, spare, carried, elaboration]
+            properties:
+              units: { const: ["UoW-1", "UoW-8"] }
+              hours: { const: 12 }
+              review_hours: { const: 2 }
+              spare: { const: 4 }
+              carried: { const: ["UoW-4", "UoW-5", "UoW-6"] }
+              elaboration: { const: ["UoW-2", "UoW-3"] }
+
+reference_md: |
+  ADR-1 fixed this engagement's bolt at two working days, 16 hours, with a
+  human review after every unit. AWS's post on AI-DLC (Raja SP, 31 July 2025,
+  read 8 October 2026) describes bolts as work cycles "measured in hours or
+  days rather than weeks" and gives them no size and no packing rule, so the
+  16 hours, the review hour and every rule here are this engagement's own.
+
+  A null estimate means nobody knows how long the unit takes. Counted as
+  zero, it fits any bolt, and the plan's spare hours become a claim nobody
+  can back. The agent's draft showed 2 hours spare with slot booking inside
+  it, so the bolt would have looked on time until slot booking turned out to
+  need more than two hours. Sent to elaboration, the unit gets an estimate
+  before it gets a place in a bolt: mob elaboration on 13 May sized UoW-3 at
+  5 hours, and it goes into bolt 2.
+
+  A unit that waits on an unsized unit waits too. Customer messaging and the
+  partner dashboard act on bookings that slot booking makes, so neither can
+  be finished in a bolt that does not hold it. Ready means every dependency
+  is already in this bolt, which is why the planner looks again from the
+  first unit after each one it plans: planning UoW-2 makes the technician
+  brief ready, and it comes before UoW-8 in id order.
+
+  The review sits inside the bolt because a unit is finished when its review
+  passes. Leave the hour out and slot booking at 5 hours appears to fit after
+  UoW-1 and UoW-2, in a bolt that then needs 19 hours.
+
+  Units stay whole because a review checks a unit. Pack units of work into
+  bolts, another problem in this chapter, splits a unit bigger than a bolt
+  task by task. This team never splits one, so a unit that does not fit
+  waits whole for the next bolt, and the planner moves on to the next ready
+  unit.
+
+  The aidlc-workflows guide (release 2.11.0, read 8 October 2026) makes
+  Delivery Planning Inception stage 2.9, marked ALWAYS, with `bolt-plan.md`
+  among its outputs. BOLT-1 is that plan for this engagement: UoW-1 and
+  UoW-2, 13 hours with their reviews, 3 spare, four units carried and UoW-3
+  in elaboration. The next stages build from it.
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    You are planning the next two-day work cycle and one unit of work has no estimate. What do you do with it, and with the work that depends on it?
+  source: |
+    Author judgement. No employer frequency data stands behind it. Method facts from the AWS DevOps
+    post "AI-Driven Development Life Cycle: Reimagining Software Engineering" by Raja SP, 31 July 2025
+    (https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/), and the aidlc-workflows
+    guide docs/guide/04-phases-and-stages.md at release v2.11.0
+    (https://github.com/awslabs/aidlc-workflows), both read 8 October 2026.
+
+tools:
+  - name: units
+    args: ""
+    returns: "The accepted units in id order, each with its `id`, `unit`, `estimate_h` (`null` when unsized) and `depends_on`."
+  - name: bolt
+    args: ""
+    returns: "The bolt's `id`, its `hours`, and `review_h`, the hours each unit's review takes inside it."
+example:
+  case: plans_bolt_1_with_every_unit_estimated
+  expect: >-
+    UoW-1 and UoW-2 take 13 of the 16 hours with their reviews. Slot booking
+    needs 6 with its review and 3 are left, so it is carried, and so are the
+    units that wait on it.
+traps:
+  - Counting a unit with no estimate as zero hours, so it fits any bolt.
+  - Treating a unit as ready when something it depends on has no estimate or was carried.
+  - Leaving the review hour outside the bolt, or turning away a unit that fills the bolt exactly.

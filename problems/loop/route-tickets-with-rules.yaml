@@ -1,0 +1,337 @@
+slug: route-tickets-with-rules
+title: "Route support tickets with plain rules"
+day: 1
+skill: Solve a routing task with rules before reaching for a model
+artefact_type: code
+difficulty: easy
+track: loop
+concept:
+  topic: "Do you need a loop?"
+  question: "Can plain rules route this ticket without any model at all?"
+est_minutes: 15
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [re]
+
+brief_md: |
+  A food delivery app the size of Swiggy gets most of its support tickets at
+  dinner time, and every ticket lands in one of four queues: `refunds`,
+  `late_delivery`, `account`, or `human` for a person to read first. The
+  support lead wants the obvious tickets routed before anyone builds an AI
+  feature, and has written the phrase table already.
+
+  The first version shipped on Friday and two things went wrong on Saturday
+  night. "My chocolate brownie arrived crushed" went to the late delivery
+  team, because the word `late` sits inside `chocolate`. "I was charged twice
+  and I am still waiting" went to refunds, and nobody chased the order.
+
+  Write the router again. It uses no model at all, because this task does not
+  need one.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the ticket text. Return exactly one queue name: `refunds`,
+  `late_delivery`, `account` or `human`.
+
+  A phrase from the table counts only when it appears as whole words, in any
+  case, so `late` matches "Late again" and does not match "chocolate".
+
+  | Phrases found | Return |
+  |---|---|
+  | Phrases from exactly one queue | That queue |
+  | Phrases from two or more queues | `human` |
+  | No phrase at all | `human` |
+
+  Budget: no model calls. `llm` is passed in and must not be called. Allowed
+  imports: re.
+
+stub_code: |
+  import re
+
+  QUEUES = {
+      "refunds": ["refund", "charged twice", "money back"],
+      "late_delivery": ["late", "still waiting", "not arrived"],
+      "account": ["password", "log in", "otp"],
+  }
+  HUMAN = "human"
+
+
+  def matches(phrase: str, text: str) -> bool:
+      """True when phrase appears in text as whole words, in any case."""
+      # TODO 1: a plain `phrase in text` finds "late" inside "chocolate".
+      #         Match whole words only, and ignore case
+      return False
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      # The prototype below asks the model about every ticket. Replace it.
+      # TODO 2: collect every queue that has at least one phrase in the ticket
+      # TODO 3: one queue found means that queue; none or several means HUMAN
+      # TODO 4: delete the model call. Rules route this ticket at no cost
+      return llm(question).strip()
+
+steps:
+  - id: s1
+    text: Match a phrase only as whole words, ignoring case.
+    check_id: s1
+  - id: s2
+    text: Collect every queue the ticket mentions before returning anything.
+    check_id: s2
+  - id: s3
+    text: Send a ticket that mentions no queue, or two, to `human`.
+    check_id: s3
+  - id: s4
+    text: Route the ticket without calling the model.
+    check_id: s4
+
+step_checks:
+  # The public tickets carry no phrase hidden inside a longer word, so this
+  # check runs its own: "plate" holds "late" and the ticket is about cutlery.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input: { question: "There was no plate or spoon in the bag, I want my money back" }
+      llm_script:
+        - { match: "*", reply: "late_delivery" }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: returns_equals, value: "refunds" }
+  # The public tickets each name the first queue that matches, so this check
+  # runs a ticket whose only phrase belongs to the last queue in the table.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Forgot my password after the update" }
+      llm_script:
+        - { match: "*", reply: "refunds" }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: returns_equals, value: "account" }
+  # No public ticket names two queues, so this check runs its own.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "I cannot log in and my order has not arrived" }
+      llm_script:
+        - { match: "*", reply: "account" }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 5000 }
+      assertions:
+        - { type: returns_equals, value: "human" }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: llm_calls_at_most, value: 0 }
+
+hints:
+  - Two separate things went wrong on Saturday. One is about how a phrase is
+    found inside the text, the other is about when the router stops looking.
+  - "`\"late\" in \"chocolate\"` is True, because `in` finds letters, not words.
+    A regular expression with a word boundary on each side finds words."
+  - Returning inside the loop means the first queue in the table always wins.
+    Gather every queue the ticket mentions into a list, then decide from the
+    length of that list.
+  - One queue in the list is a confident route. Zero or several is the case
+    the `human` queue exists for.
+
+scenario:
+  headline: "A crushed brownie was sent to the late delivery team"
+  who: "Customer support at a food delivery app the size of Swiggy"
+  situation: >-
+    The ticket router checks a phrase table and returns the first queue it
+    finds. It matched "late" inside "chocolate", and it sent a ticket about a
+    double charge and a missing order to refunds alone.
+  stakes: >-
+    A ticket in the wrong queue waits for a team that cannot help, and at
+    dinner time that wait is the whole complaint.
+  metrics:
+    - { label: Queues, value: "4" }
+    - { label: Model calls allowed, value: "0" }
+    - { label: Misrouted on Saturday, value: "2 patterns" }
+
+diagram:
+  title: One ticket, a phrase table and four queues
+  caption: >-
+    Check every queue before deciding. A ticket that names one queue goes
+    there, and anything else goes to a person.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: writes a ticket, kind: actor, tone: blue, at: [0, 1] }
+    - { id: rules, label: Phrase table, sub: whole words only, kind: guard, tone: purple, at: [1, 1] }
+    - { id: count, label: "How many queues?", sub: "one, none or several", kind: decision, tone: blue, at: [2, 1] }
+    - { id: queue, label: Named queue, sub: "refunds, `late_delivery`, account", kind: queue, tone: green, at: [3, 0] }
+    - { id: human, label: "`human`", sub: a person reads it first, kind: queue, tone: orange, at: [3, 2] }
+    - { id: wrong, label: First match wins, sub: chocolate goes to late delivery, kind: output, tone: pink, at: [1, 2] }
+  edges:
+    - { from: customer, to: rules, label: ticket text, step: 1 }
+    - { from: rules, to: wrong, label: substring and early return, tone: danger }
+    - { from: rules, to: count, label: every queue it mentions, step: 2 }
+    - { from: count, to: queue, label: exactly one, tone: success, step: 3 }
+    - { from: count, to: human, label: none or several, step: 3 }
+
+approach:
+  goal: Route the ticket from rules alone and know when the rules are not enough
+  branches:
+    - label: Find words, not letters
+      leaves: [a word boundary on each side of the phrase, ignore case]
+    - label: Look at every queue first
+      detail: The router returns only after it knows how many queues the ticket mentions.
+      leaves: [collect hits into a list, decide from its length]
+    - label: Give the unclear ticket to a person
+      leaves: [no hit goes to human, two or more hits go to human]
+    - label: Spend nothing on the model
+      leaves: [this task has a fixed answer set and a phrase table]
+
+coach:
+  opening: >-
+    Before writing code, take "I was charged twice and I am still waiting"
+    and decide by hand which queue it belongs in, and why.
+  signals:
+    - id: substring
+      when:
+        code_matches: '(?i)\bif\s+\w+\s+in\s+\w+\s*:'
+        code_lacks: '\\b'
+      say: >-
+        `in` compares letters. Which queue does "My chocolate brownie arrived
+        crushed" reach with your check, and which should it reach?
+    - id: first-match-returns
+      when: { code_matches: '(?i)^\s*if\b[^\n]*\bin\b[^\n]*:\s*\n\s*return\s+\w+\s*$' }
+      say: >-
+        Your loop returns at the first phrase it finds. What happens to a
+        ticket that names two problems, and does the order of the table
+        decide it?
+    - id: calls-model
+      when: { code_matches: '\bllm\s*\(' }
+      say: >-
+        This router has a phrase table and four fixed answers. What does the
+        model add here that the table cannot?
+    - id: hidden-inside-word
+      when: { test_failed: a_phrase_inside_a_word_is_not_a_match }
+      say: >-
+        That ticket mentions no queue at all, yet your router found one. Print
+        which phrase matched and look at the word it sits in.
+    - id: hidden-two-queues
+      when: { test_failed: a_ticket_with_two_problems_goes_to_a_person }
+      say: >-
+        That ticket names a refund and a late order. How many queues did your
+        router find before it returned?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1. Once `matches` finds whole words only, the rest is
+        a list and a length check.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and on
+        this tier it costs nothing to open.
+  wrap_up: >-
+    A fixed set of answers and a phrase table is a rules problem. Match whole
+    words, count before you decide, and send the unclear ticket to a person.
+
+tests:
+  - name: routes_a_refund
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "The biryani was cold and I want a refund" }
+      llm_script:
+        - { match: "*", reply: "late_delivery" }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "refunds" }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: routes_an_account_problem
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "The OTP never arrives so I cannot LOG IN" }
+      llm_script:
+        - { match: "*", reply: "refunds" }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "account" }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: an_unknown_ticket_goes_to_a_person
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Can I order for a party of forty next Sunday?" }
+      llm_script:
+        - { match: "*", reply: "refunds" }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "human" }
+
+  - name: a_phrase_inside_a_word_is_not_a_match
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "My chocolate brownie arrived crushed" }
+      llm_script:
+        - { match: "*", reply: "late_delivery" }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "human" }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: a_ticket_with_two_problems_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "I was charged twice and I am still waiting for the food" }
+      llm_script:
+        - { match: "*", reply: "refunds" }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "human" }
+        - { type: llm_calls_at_most, value: 0 }
+
+reference_md: |
+  Most of a support queue at this size is routine, and routine text with a
+  fixed set of answers is a rules problem. The router here costs nothing per
+  ticket, answers in microseconds, and gives the same answer to the same
+  ticket every time, which is what makes a misroute debuggable.
+
+  The two Saturday failures are the two ways a rule table goes wrong. A
+  substring check finds letters, so `late` fires inside `chocolate`, `plate`
+  and `translate`. A word boundary on each side of the phrase fixes that, and
+  `re.escape` keeps a phrase with punctuation in it from turning into a
+  pattern.
+
+  The second failure is quieter. A loop that returns on the first hit lets the
+  order of the table decide every ticket that mentions two problems, and
+  nobody chose that order for routing. Collecting every hit first turns the
+  ticket into a count, and the count is the decision: one queue is a
+  confident route, and anything else is the case the `human` queue exists
+  for.
+
+  Rules stop working when customers describe the same problem in words the
+  table has never seen. The next three problems in this track handle that
+  ticket with a decision model, a single model call, and both together.
+
+complexity: C1
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Before you put a model in the loop, how would you route these tickets, and how would you know when rules are no longer enough?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+example:
+  case: routes_a_refund
+  expect: The ticket holds "refund" as a whole word and no phrase from another queue, so return `refunds`
+    without calling the model.
+traps:
+  - Checking `phrase in text`, which finds "late" inside "chocolate" and "plate".
+  - Returning at the first match, so a ticket naming two problems goes to whichever queue the table lists
+    first.
+  - Calling the model for a task that a phrase table and four fixed answers already solve.

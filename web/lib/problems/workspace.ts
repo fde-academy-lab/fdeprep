@@ -9,9 +9,11 @@
 import { db } from "../db/pool.ts";
 import type { Difficulty } from "../policy/tiers.ts";
 import { trimSteps, type StepView } from "../submissions/view.ts";
-import type { Approach, Build, Diagram, Kit, KitExample, KitTool, Scenario } from "./kit.ts";
+import type { Approach, Build, Concept, Diagram, Kit, KitExample, KitTool, Scenario } from "./kit.ts";
 
 export interface WorkspaceKit {
+  /** The topic inside its chapter and the question the problem answers. */
+  concept: Concept | null;
   scenario: Scenario | null;
   diagram: Diagram | null;
   approach: Approach | null;
@@ -134,6 +136,7 @@ export async function loadWorkspaceProblem(
     defenceQuestion: row["defence_question"],
     competencies: row["competencies"] ?? [],
     kit: {
+      concept: kit.concept ?? null,
       scenario: kit.scenario ?? null,
       diagram: kit.diagram ?? null,
       approach: kit.approach ?? null,

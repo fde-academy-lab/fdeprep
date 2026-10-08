@@ -1,10 +1,13 @@
 slug: make-the-judge-resist-answer-instructions
-title: A wrong answer gets full marks by asking for them
-day: 18
+title: "Stop answers from instructing the AI grader"
+day: 17
 skill: Rewrite a marking prompt so notes aimed at the marker are flagged and ignored
 artefact_type: prompt
 difficulty: medium
 track: evals
+concept:
+  topic: "LLM judges"
+  question: "What stops an answer from telling the grader what score to give?"
 est_minutes: 30
 model_id: us.anthropic.claude-opus-5
 competencies:
@@ -223,6 +226,7 @@ hints:
     its marks, and the flag is how a person finds out that it begged.
 
 scenario:
+  headline: "A wrong answer gets full marks by asking for them"
   who: The assessment team at a bookkeeping certificate provider
   situation: >-
     A model marks short written answers against a reference. In March a

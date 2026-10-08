@@ -77,6 +77,13 @@ export interface Tier {
    * submitted.
    */
   requiresDefence: boolean;
+  /**
+   * docs/03 section 5: on Hard and Extreme a score above this needs the
+   * adversarial battery to pass. Null where no such cap applies. The runner
+   * applies it in runner/battery/result.py; the seed's scripted contracts
+   * read it here.
+   */
+  adversarialRequiredAbove: number | null;
   coach: CoachRule;
   /**
    * Whether the traps, the mistakes the hidden cases catch, show before the
@@ -98,6 +105,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     adversarialAlwaysRuns: false,
     rejectsDuplicateSubmissions: false,
     requiresDefence: false,
+    adversarialRequiredAbove: null,
     coach: { enabled: true, codeSignalsAfterFailedRuns: 0 },
     trapsBeforeAttempt: true,
   },
@@ -111,6 +119,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     adversarialAlwaysRuns: false,
     rejectsDuplicateSubmissions: false,
     requiresDefence: false,
+    adversarialRequiredAbove: null,
     coach: { enabled: true, codeSignalsAfterFailedRuns: 0 },
     trapsBeforeAttempt: true,
   },
@@ -124,6 +133,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     adversarialAlwaysRuns: false,
     rejectsDuplicateSubmissions: false,
     requiresDefence: true,
+    adversarialRequiredAbove: 70,
     coach: { enabled: true, codeSignalsAfterFailedRuns: 1 },
     trapsBeforeAttempt: false,
   },
@@ -140,6 +150,7 @@ export const TIERS: Readonly<Record<Difficulty, Tier>> = {
     adversarialAlwaysRuns: true,
     rejectsDuplicateSubmissions: true,
     requiresDefence: true,
+    adversarialRequiredAbove: 70,
     coach: { enabled: true, codeSignalsAfterFailedRuns: 2 },
     trapsBeforeAttempt: false,
   },
@@ -164,9 +175,20 @@ export const SCREEN_CONDITIONS: Tier = {
   adversarialAlwaysRuns: true,
   rejectsDuplicateSubmissions: true,
   requiresDefence: true,
+  adversarialRequiredAbove: 70,
   coach: { enabled: false, codeSignalsAfterFailedRuns: 0 },
   trapsBeforeAttempt: false,
 };
+
+/**
+ * Tiers whose clean cells are the evidence a real screen asks for.
+ *
+ * docs/12 section 2: screen_ready needs readiness of seventy percent or more
+ * and at least one clean cell at Hard or Extreme, because seventy percent made
+ * entirely of Easy cells is a learner who practised the easy half. The
+ * readiness reader asks this rather than naming tiers itself.
+ */
+export const SCREEN_EVIDENCE: readonly Difficulty[] = ["hard", "extreme"];
 
 /**
  * Build one value per tier, in ladder order.

@@ -1,0 +1,676 @@
+slug: catch-a-judge-swayed-by-order-or-length
+title: "Catch a judge swayed by order or length"
+day: 21
+skill: Check each judge verdict against swapped order and padded length, and name the failures
+artefact_type: code
+difficulty: hard
+track: evals
+concept:
+  topic: "LLM judges"
+  question: "How do you tell a judge's real preference from a preference for order or length?"
+est_minutes: 45
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 9
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  An insurance marketplace the size of Policybazaar compares versions of its
+  support assistant with a judge: a model that reads one customer question
+  and two answers to it, and says which answer is better. Version 14 beat
+  version 13 in 68 percent of 300 comparisons, and it shipped on Monday. By
+  Thursday complaints were up. Version 14's answers ran 45 percent longer and
+  were no more often right.
+
+  The release script had always shown version 14's answer first. A rerun with
+  the two answers swapped changed the verdict on 96 of the 300 pairs, and the
+  head of support wants to know which of the original verdicts meant anything
+  before the next release is judged the same way.
+
+  Write the comparison that asks the judge in both orders, checks whether a
+  longer answer won on its length, reads the judge's replies strictly, and
+  reports the verdicts it cannot trust instead of counting them.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` names a batch of comparisons. `tools["pairs"](batch=question)`
+  returns
+
+      {"status": 200, "pairs": [
+        {"id": "P1", "question": "Can I add my newborn to my family floater policy?",
+         "a": "<version 13's answer>", "b": "<version 14's answer>"}, ...]}
+
+  `llm(prompt)` is the judge. Ask it with the stub's template,
+  `JUDGE.format(question=..., first=..., second=...)`. It replies `1` when it
+  prefers the first answer it was shown, `2` for the second, or `tie`. A reply
+  counts only when it is exactly one of those three, ignoring case, the
+  spaces around it and one full stop at the end.
+
+  For each pair, in order:
+
+  1. When `a` and `b` are the same text after trimming spaces, the verdict is
+     `tie`. Do not ask the judge.
+  2. Ask twice, `a` first and then `b` first, and turn each reply into `a`,
+     `b` or `tie`. When the two disagree, the verdict is `untrusted`, for
+     `position`.
+  3. When they agree on a winner with more words than the loser, counting
+     words split on whitespace, check the length. Pad the loser by appending a
+     space and `PAD` until it has at least as many words as the winner, and ask
+     twice more, in both orders, with the padded loser in the loser's place.
+     Unless both replies name the same winner again, the verdict is
+     `untrusted`, for `length`.
+  4. Otherwise the verdict is the winner, or `tie`.
+
+  A reply that does not count makes the verdict `untrusted`, for
+  `unreadable`, and that pair is not asked anything more.
+
+  Return a JSON string, with the pairs in the batch's order:
+
+      {"pairs": [{"id": "P1", "verdict": "a" | "b" | "tie" | "untrusted",
+                  "reason": null | "position" | "length" | "unreadable"}, ...],
+       "a_wins": 0, "b_wins": 0, "ties": 0, "untrusted": 0}
+
+  The four counts cover every pair, and a win or a tie is counted only when
+  its verdict can be trusted. A batch that cannot be read has no pairs and
+  four zeros.
+
+  Budget: at most 9 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your report sets aside every verdict that changed when the answers swapped,
+  and on the real batch that was 96 of 300 pairs, so the release decision now
+  rests on about two hundred comparisons. The release manager asks you to call
+  the flipped pairs ties instead, as the MT-Bench authors did in their own
+  experiments, so the win rate covers all 300. What would that change in the
+  number she reads, and what would you do instead to win those comparisons
+  back?
+
+stub_code: |
+  import json
+  import re
+
+  JUDGE = (
+      "You are comparing two answers to a customer's question.\n"
+      "Question: {question}\n"
+      "Answer 1: {first}\n"
+      "Answer 2: {second}\n"
+      "Reply with 1 if answer 1 is better, 2 if answer 2 is better, or tie.\n"
+  )
+
+  PAD = "Please let us know if there is anything else we can help you with today."
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Judge each pair in both orders, check longer winners, and name what you cannot trust.
+
+      tools["pairs"](batch=question) returns {"pairs": [{"id", "question", "a", "b"}, ...]}.
+      llm(JUDGE.format(question=..., first=..., second=...)) replies 1, 2 or
+      tie: the first answer shown, the second, or neither. Anything else, after
+      case, surrounding spaces and one full stop at the end are ignored, does
+      not count.
+
+      Per pair: identical texts are a tie with no judge call. Ask with a first,
+      then b first, and map each reply back to a, b or tie; disagreement is
+      untrusted for position. A winner with more words than the loser is
+      checked by padding the loser with " " plus the padding sentence until it
+      has as many words, then asking in both orders again; unless the same
+      winner comes back twice, it is untrusted for length. A reply that does
+      not count is untrusted for unreadable, and that pair is asked no more.
+
+      Return json.dumps({"pairs": [{"id", "verdict", "reason"}, ...],
+                         "a_wins": n, "b_wins": n, "ties": n, "untrusted": n}).
+      At most 9 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"pairs": [], "a_wins": 0, "b_wins": 0, "ties": 0, "untrusted": 0})
+
+hints:
+  - A judge shown the same two answers in the other order should name the same
+    answer. Before writing code, decide what a swap is evidence of when it
+    does not.
+  - Each reply names a position, 1 or 2. Turn it into the version it names
+    before you compare the two replies, or a steady judge looks inconsistent
+    and a biased one looks steady.
+  - A longer winner may have won on length. Make the shorter answer as long
+    without adding anything it says, ask in both orders again, and see whether
+    the same answer still wins.
+  - A reply that is not exactly 1, 2 or tie is not a vote. Guessing what it
+    meant turns a judge that drifted off its format into confident numbers.
+  - Identical answers need no judge, and a pair stops at its first doubt. Both
+    rules keep the model bill down and the report honest.
+
+scenario:
+  headline: "A judge gave version 14 a 68 percent win rate it did not earn"
+  who: "The head of support at an insurance marketplace the size of Policybazaar"
+  situation: >-
+    A model judge compared 300 pairs of answers from two versions of the
+    support assistant, always with version 14's answer shown first, and gave
+    version 14 a 68 percent win rate.
+  stakes: >-
+    Version 14 shipped and complaints rose. Its answers were 45 percent longer
+    and no more often right, and swapping the order changed 96 verdicts.
+  metrics:
+    - { label: Win rate the judge gave, value: "68%" }
+    - { label: Verdicts flipped by a swap, value: "96 of 300" }
+    - { label: Longer answers in v14, value: "+45%" }
+
+diagram:
+  title: Two checks between a judge's reply and a counted win
+  caption: >-
+    A verdict counts when it survives swapping the answers and, for a longer
+    winner, padding the shorter answer. The rest are reported by name.
+  direction: lr
+  nodes:
+    - { id: pairs, label: Answer pairs, sub: version 13 against version 14, kind: store, tone: blue, at: [0, 1] }
+    - { id: swap, label: Both orders, sub: "a first, then b first", kind: guard, tone: purple, at: [1, 1] }
+    - { id: judge, label: Judge, sub: "replies 1, 2 or tie", kind: model, tone: teal, at: [2, 0] }
+    - { id: pad, label: Length check, sub: pad the shorter loser and ask again, kind: guard, tone: purple, at: [2, 2] }
+    - { id: counted, label: Counted verdicts, sub: survived both checks, kind: output, tone: green, at: [3, 1] }
+    - { id: named, label: Untrusted verdicts, sub: "position, length or unreadable", kind: output, tone: orange, at: [3, 2] }
+    - { id: inflated, label: 68 percent, sub: v14 always shown first, kind: output, tone: pink, at: [1, 0] }
+  edges:
+    - { from: pairs, to: swap, label: each pair, step: 1 }
+    - { from: swap, to: judge, label: two asks }
+    - { from: swap, to: pad, label: a longer winner, step: 2 }
+    - { from: pad, to: judge, label: two more asks }
+    - { from: pad, to: counted, label: same winner again, step: 3, tone: success }
+    - { from: pad, to: named, label: the verdict moved, tone: muted }
+    - { from: pairs, to: inflated, label: one order only, tone: danger }
+    - { from: swap, to: counted, label: "agree, not a longer winner", tone: success }
+    - { from: swap, to: named, label: the orders disagree, tone: muted }
+
+approach:
+  goal: A win rate built only from verdicts the judge would give again
+  branches:
+    - label: Take the order out of it
+      leaves: [ask in both orders, map each reply back to a or b, a disagreement is not a tie]
+    - label: Take the length out of it
+      detail: A longer winner may have won on length. Pad the loser with words that say nothing, and ask again.
+      leaves: [pad only when the winner is longer, ask in both orders again]
+    - label: Read replies strictly
+      leaves: ["exactly 1, 2 or tie", anything else is no vote, never ask that pair again]
+    - label: Spend calls only where they inform
+      leaves: [identical answers are a tie, a pair stops at its first doubt]
+
+coach:
+  opening: >-
+    Before you write code, decide what you would accept as evidence that the
+    judge prefers version 14's answer for what it says, and not for where it
+    sits or how long it is.
+  signals:
+    - id: no-length-check
+      when: { code_lacks: '^(?!\s*PAD\s*=).*\bPAD\b' }
+      say: >-
+        Your code never pads an answer. When the longer answer wins in both
+        orders, how do you know it won on what it says rather than its length?
+    - id: digit-anywhere
+      when: { code_matches: '["''][12]["'']\s+in\b' }
+      say: >-
+        Your code looks for a digit anywhere in the judge's reply. What does it
+        make of a reply that talks about both answers before choosing?
+    - id: length-won
+      when: { test_failed: distrusts_a_verdict_that_follows_the_length }
+      say: >-
+        In that batch a longer answer won in both orders. What happened when
+        the shorter one was padded to the same length, and did your report
+        say so?
+    - id: guessed-a-reply
+      when: { test_failed: an_unreadable_reply_is_not_a_vote }
+      say: >-
+        One reply in that batch was not 1, 2 or tie. What did your code
+        count it as?
+    - id: asked-about-twins
+      when: { test_failed: identical_answers_are_a_tie_without_asking }
+      say: >-
+        Both versions gave the same answer to one question in that batch. What
+        verdict did your code report, and how many judge calls did it spend?
+    - id: asked-again
+      when: { test_failed: adversarial_the_judge_never_gives_a_verdict }
+      say: >-
+        The judge never answered one pair in its format. How many times did
+        your code ask it about that pair?
+    - id: tie-after-padding
+      when: { test_failed: adversarial_padding_turns_a_win_into_a_tie }
+      say: >-
+        Once the shorter answer was padded, the judge called the pair a tie in
+        both orders. Did the original win survive that, by your rule?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the first public case. Print each prompt and each reply,
+        and write beside every reply which version it favours.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint starts from what a swap
+        tells you.
+  wrap_up: >-
+    A judge's verdict is evidence only when it survives a change that should
+    not matter. Swap the order, pad the shorter answer with words that say
+    nothing, read replies strictly, and report what fails beside the wins.
+
+tests:
+  - name: trusts_a_judge_that_agrees_with_itself
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "CMP-1401" }
+      llm_script:
+        - { match: { regex: 'Answer 1: Yes\. Add your baby' }, reply: "1" }
+        - { match: { regex: 'Answer 1: Thank you for your question' }, reply: "2" }
+        - { match: { regex: 'Answer 1: Cashless claims work only' }, reply: "tie" }
+        - { match: { regex: 'Answer 1: Only network hospitals offer' }, reply: "Tie." }
+        - { match: "*", reply: "I cannot tell which answers these are." }
+      tools:
+        pairs:
+          returns:
+            status: 200
+            pairs:
+              - id: P1
+                question: "Can I add my newborn to my family floater policy?"
+                a: "Yes. Add your baby within 90 days of birth from the policy page, with the birth certificate, and the premium changes from the date of birth."
+                b: "Thank you for your question. Newborns can usually be added to family floater policies, subject to the terms of your policy. We recommend checking your policy wording or contacting your insurer for details."
+              - id: P2
+                question: "Can I get a cashless claim at any hospital?"
+                a: "Cashless claims work only at network hospitals. Search the network list on the claims page before admission, and anywhere else you pay first and claim a refund."
+                b: "Only network hospitals offer cashless claims. Check the network list on the claims page before you are admitted, and at other hospitals you pay and then claim back."
+      budget: { max_llm_calls: 10, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [pairs, a_wins, b_wins, ties, untrusted]
+            properties:
+              pairs:
+                type: array
+                minItems: 2
+                maxItems: 2
+                prefixItems:
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P1 }, verdict: { const: a }, reason: { const: null } } }
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P2 }, verdict: { const: tie }, reason: { const: null } } }
+              a_wins: { const: 1 }
+              b_wins: { const: 0 }
+              ties: { const: 1 }
+              untrusted: { const: 0 }
+        - { type: llm_calls_at_most, value: 4 }
+
+  - name: distrusts_a_verdict_that_follows_the_order
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "CMP-1402" }
+      llm_script:
+        - { match: { regex: 'Answer 1: No\. Tyre damage' }, reply: "1" }
+        - { match: { regex: 'Answer 1: Your motor policy does not' }, reply: "1" }
+        - { match: { regex: 'Answer 1: Most reimbursement claims' }, reply: "2" }
+        - { match: { regex: 'Answer 1: Within 30 days of your last' }, reply: "1." }
+        - { match: "*", reply: "I cannot tell which answers these are." }
+      tools:
+        pairs:
+          returns:
+            status: 200
+            pairs:
+              - id: P1
+                question: "Does my motor policy cover a flat tyre?"
+                a: "No. Tyre damage is covered only when the car is damaged in the same accident, unless you bought the tyre protection add-on."
+                b: "Your motor policy does not cover a flat tyre on its own. It pays for tyres damaged in an accident along with the car, or under the tyre protection add-on if you bought it."
+              - id: P2
+                question: "How long does a reimbursement claim take?"
+                a: "Most reimbursement claims are settled within 30 days of the last document arriving. You can track yours from the claims page, and we will message you at each step, including when the payment leaves our bank."
+                b: "Within 30 days of your last document. Track it on the claims page."
+      budget: { max_llm_calls: 10, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [pairs, a_wins, b_wins, ties, untrusted]
+            properties:
+              pairs:
+                type: array
+                minItems: 2
+                maxItems: 2
+                prefixItems:
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P1 }, verdict: { const: untrusted }, reason: { const: position } } }
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P2 }, verdict: { const: b }, reason: { const: null } } }
+              a_wins: { const: 0 }
+              b_wins: { const: 1 }
+              ties: { const: 0 }
+              untrusted: { const: 1 }
+
+  - name: distrusts_a_verdict_that_follows_the_length
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "CMP-1403" }
+      llm_script:
+        - { match: { regex: 'Answer 1: Yes\. Apply at least 45 days[^\n]*Please let us know' }, reply: "1" }
+        - { match: { regex: 'Answer 2: Yes\. Apply at least 45 days[^\n]*Please let us know' }, reply: "2" }
+        - { match: { regex: 'Answer 1: Yes\. Apply at least 45 days' }, reply: "2" }
+        - { match: { regex: 'Answer 1: Yes, you can port' }, reply: "1" }
+        - { match: { regex: 'Answer 1: Maternity is not covered[^\n]*Please let us know' }, reply: "2" }
+        - { match: { regex: 'Answer 2: Maternity is not covered[^\n]*Please let us know' }, reply: "1" }
+        - { match: { regex: 'Answer 1: Maternity is not covered' }, reply: "2" }
+        - { match: { regex: 'Answer 1: Not in the first year' }, reply: "1" }
+        - { match: "*", reply: "I cannot tell which answers these are." }
+      tools:
+        pairs:
+          returns:
+            status: 200
+            pairs:
+              - id: P1
+                question: "Can I move my health policy to you from another insurer?"
+                a: "Yes. Apply at least 45 days before renewal and your waiting periods carry over."
+                b: "Yes, you can port your health policy to us. Porting lets you move your existing cover to a new insurer while keeping the benefits you have built up. Apply at least 45 days before your renewal date and your waiting periods carry over, so you do not start again."
+              - id: P2
+                question: "Is maternity covered in my first year?"
+                a: "Maternity is not covered."
+                b: "Not in the first year. Maternity cover starts after a 24-month waiting period on this plan, and the newborn is covered from day one once it does."
+      budget: { max_llm_calls: 10, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [pairs, a_wins, b_wins, ties, untrusted]
+            properties:
+              pairs:
+                type: array
+                minItems: 2
+                maxItems: 2
+                prefixItems:
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P1 }, verdict: { const: untrusted }, reason: { const: length } } }
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P2 }, verdict: { const: b }, reason: { const: null } } }
+              a_wins: { const: 0 }
+              b_wins: { const: 1 }
+              ties: { const: 0 }
+              untrusted: { const: 1 }
+
+  - name: an_unreadable_reply_is_not_a_vote
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "CMP-1404" }
+      llm_script:
+        - { match: { regex: 'Answer 1: Yes, within 15 days' }, reply: "Neither is complete, but answer 1 is closer." }
+        - { match: { regex: 'Answer 1: Yes\. Cancel within' }, reply: "Neither is complete, but answer 2 is closer." }
+        - { match: { regex: 'Answer 1: Only dental treatment' }, reply: "1" }
+        - { match: { regex: 'Answer 1: Dental treatment is covered' }, reply: "2" }
+        - { match: "*", reply: "I cannot tell which answers these are." }
+      tools:
+        pairs:
+          returns:
+            status: 200
+            pairs:
+              - id: P1
+                question: "Can I cancel my policy after buying it?"
+                a: "Yes, within 15 days of receiving the policy, for a full refund less the cost of any medical tests."
+                b: "Yes. Cancel within the free-look period and you get your premium back."
+              - id: P2
+                question: "Do you cover dental treatment?"
+                a: "Only dental treatment needed after an accident, done in hospital."
+                b: "Dental treatment is covered in some cases. Please check your policy document for the full list of what is and is not covered, or contact us for help."
+      budget: { max_llm_calls: 10, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [pairs, a_wins, b_wins, ties, untrusted]
+            properties:
+              pairs:
+                type: array
+                minItems: 2
+                maxItems: 2
+                prefixItems:
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P1 }, verdict: { const: untrusted }, reason: { const: unreadable } } }
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P2 }, verdict: { const: a }, reason: { const: null } } }
+              a_wins: { const: 1 }
+              b_wins: { const: 0 }
+              ties: { const: 0 }
+              untrusted: { const: 1 }
+
+  - name: identical_answers_are_a_tie_without_asking
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "CMP-1405" }
+      llm_script:
+        - { match: { regex: 'Answer 1: A co-payment is' }, reply: "1" }
+        - { match: { regex: 'Answer 1: Yes, monthly premiums' }, reply: "2" }
+        - { match: { regex: 'Answer 1: Yes, on most plans' }, reply: "1" }
+        - { match: "*", reply: "I cannot tell which answers these are." }
+      tools:
+        pairs:
+          returns:
+            status: 200
+            pairs:
+              - id: P1
+                question: "What is a co-payment?"
+                a: "A co-payment is the share of each claim you pay yourself. On this plan it is 10 percent for members over 60."
+                b: "A co-payment is the share of each claim you pay yourself. On this plan it is 10 percent for members over 60."
+              - id: P2
+                question: "Can I pay my premium monthly?"
+                a: "Yes, monthly premiums are possible on most plans, although some plans only allow yearly payment, and a monthly plan can cost a little more over the year because of the instalment charge."
+                b: "Yes, on most plans, with a small instalment charge."
+      budget: { max_llm_calls: 10, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [pairs, a_wins, b_wins, ties, untrusted]
+            properties:
+              pairs:
+                type: array
+                minItems: 2
+                maxItems: 2
+                prefixItems:
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P1 }, verdict: { const: tie }, reason: { const: null } } }
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P2 }, verdict: { const: b }, reason: { const: null } } }
+              a_wins: { const: 0 }
+              b_wins: { const: 1 }
+              ties: { const: 1 }
+              untrusted: { const: 0 }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: adversarial_the_judge_never_gives_a_verdict
+    visibility: adversarial
+    fixture: loop_bait
+    annotation_md: |
+      For one pair the judge never answered in its format. Every call came
+      back with the same polite refusal to choose, and it would have done so
+      on the tenth call too.
+
+      Code that asks again until a reply parses spends the batch's model
+      budget on one pair and learns nothing, because a judge that drifts off
+      its format on a question tends to drift the same way when asked the
+      same question again. The pair is untrusted, for unreadable, after one
+      call, and the remaining calls go to pairs that can still be judged.
+    spec:
+      kind: agent_run
+      input: { question: "CMP-1406" }
+      llm_script:
+        - { match: { regex: 'Answer 1: (No, if the diabetes|Not declaring a condition)' },
+            reply: "I would need to read the full proposal form before choosing between these two answers." }
+        - { match: { regex: 'Answer 1: Yes, from the second year' }, reply: "1" }
+        - { match: { regex: 'Answer 1: Outpatient consultations may' }, reply: "2" }
+        - { match: "*", reply: "I cannot tell which answers these are." }
+      tools:
+        pairs:
+          returns:
+            status: 200
+            pairs:
+              - id: P1
+                question: "Will my claim be rejected because I did not declare my diabetes?"
+                a: "No, if the diabetes started after the policy began. If it was there before and not declared, the claim can be refused and the policy cancelled."
+                b: "Not declaring a condition you already had can lead to a rejected claim. Update your health declaration from the policy page now."
+              - id: P2
+                question: "Are doctor's consultations covered without a hospital stay?"
+                a: "Yes, from the second year, up to ₹5,000 a year."
+                b: "Outpatient consultations may be covered depending on the plan you hold, the add-ons you chose and the year of the policy. Please refer to your policy schedule for the exact limits that apply to you."
+      budget: { max_llm_calls: 10, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 3 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [pairs, a_wins, b_wins, ties, untrusted]
+            properties:
+              pairs:
+                type: array
+                minItems: 2
+                maxItems: 2
+                prefixItems:
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P1 }, verdict: { const: untrusted }, reason: { const: unreadable } } }
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P2 }, verdict: { const: a }, reason: { const: null } } }
+
+  - name: adversarial_padding_turns_a_win_into_a_tie
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      Version 14's answer won in both orders and was the longer one. Once
+      version 13's answer was padded to the same length with a sentence that
+      says nothing, the judge called the pair a tie in both orders, with
+      complete confidence each time.
+
+      A check that only looks for the win flipping to the other answer sees
+      no flip here and keeps the original verdict. But the win did not
+      survive: equal lengths took it away, so it was a win on length. The
+      verdict is untrusted, for length, and the win rate is computed without
+      it.
+    spec:
+      kind: agent_run
+      input: { question: "CMP-1407" }
+      llm_script:
+        - { match: { regex: 'Answer [12]: Yes, up to [^\n]*Please let us know' }, reply: "tie" }
+        - { match: { regex: 'Answer 1: Yes, up to' }, reply: "2" }
+        - { match: { regex: 'Answer 1: Yes\. Road ambulance' }, reply: "1" }
+        - { match: { regex: 'Answer 1: Room rent is capped at 1' }, reply: "1" }
+        - { match: { regex: 'Answer 1: Room rent is capped on this plan' }, reply: "2" }
+        - { match: "*", reply: "I cannot tell which answers these are." }
+      tools:
+        pairs:
+          returns:
+            status: 200
+            pairs:
+              - id: P1
+                question: "Does the policy pay for an ambulance?"
+                a: "Yes, up to ₹2,000 for each hospitalisation."
+                b: "Yes. Road ambulance charges are covered up to ₹2,000 for each hospitalisation, when the hospitalisation itself is covered. Keep the ambulance bill and attach it to your claim."
+              - id: P2
+                question: "Is there a limit on hospital room rent?"
+                a: "Room rent is capped at 1 percent of the sum insured a day."
+                b: "Room rent is capped on this plan. The cap depends on the sum insured and the city, and it changes the amount we pay for the rest of the bill too, so check the room category before admission."
+      budget: { max_llm_calls: 10, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [pairs, a_wins, b_wins, ties, untrusted]
+            properties:
+              pairs:
+                type: array
+                minItems: 2
+                maxItems: 2
+                prefixItems:
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P1 }, verdict: { const: untrusted }, reason: { const: length } } }
+                  - { type: object, required: [id, verdict, reason],
+                      properties: { id: { const: P2 }, verdict: { const: a }, reason: { const: null } } }
+              a_wins: { const: 1 }
+              b_wins: { const: 0 }
+              ties: { const: 0 }
+              untrusted: { const: 1 }
+
+reference_md: |
+  A judge's verdict is evidence when it survives a change that should not
+  matter, and two changes are cheap to make: the order the answers are shown
+  in, and their length. The release script showed version 14 first every
+  time, so a judge that leans towards the first answer turned that habit into
+  a win rate.
+
+  The lean is measured, and it is large. Zheng and colleagues, in "Judging
+  LLM-as-a-Judge with MT-Bench and Chatbot Arena" (arXiv 2306.05685, version
+  4 of 24 December 2023), swapped the order of two similar answers and found
+  GPT-4 gave the same verdict in 65.0 percent of cases and Claude-v1 in 23.8
+  percent, with Claude-v1 favouring the first answer in 75.0 percent. Their
+  remedy is the one used here: ask in both orders and declare a win only when
+  the same answer wins both times. Each reply names a position, so it has to
+  be mapped back to a version before the two are compared. Comparing the raw
+  replies makes a steady judge look inconsistent and a judge that always says
+  1 look steady.
+
+  The same paper calls an inconsistent pair a tie in its own experiments.
+  This report keeps it apart, because a tie is a claim that the two answers
+  are equally good, and nobody has shown that. A win rate over the counted
+  pairs, with the untrusted count beside it, is honest about its own size.
+
+  Length is the second change. A longer winner may have won on its length,
+  so the shorter answer is padded with a sentence that adds nothing and the
+  question is asked again in both orders. If the same answer does not win
+  twice, by flipping or by sliding to a tie, the original verdict rested on
+  length. The paper's own test was harder on the judge: its "repetitive list"
+  attack rephrased a numbered list without adding information and put the
+  copy in front, and Claude-v1 and GPT-3.5 preferred the padded answer in
+  91.3 percent of 23 cases, GPT-4 in 8.7 percent. Padding is checked only
+  when the winner is longer, because a shorter answer that wins has won
+  against its length.
+
+  Strict reading is the platform's own rule for its grader: output that does
+  not conform is rejected, never interpreted. A reply that discusses both
+  answers before leaning one way is a judge that has drifted off its format,
+  and guessing its meaning turns that drift into confident numbers. Asking
+  again rarely helps, since the same question tends to draw the same drift,
+  so the pair stops there. Identical answers need no judge at all: the
+  verdict is a tie by definition, and a call can only add cost or show bias.
+
+  Both checks test the judge against itself, so a verdict that survives them
+  is still only the judge's reading of the content. A judge that prefers a
+  confident wrong answer passes both, and catching that needs an answer
+  somebody decided was right, which is what a golden set is for. Build a
+  golden set from a week's failures, another problem in this chapter, makes
+  one.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    You use a model to judge which of two answers is better, and the release depends on its win rate. How do you make that number defensible?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I024, and its follow-up,
+    "The judge prefers verbose incorrect answers". That bank labels every entry "Original interview-style
+    practice; actual employer frequency unverified", and this inherits the caveat.
+
+tools:
+  - name: pairs
+    args: batch
+    returns: '`{"status": 200, "pairs": [...]}`, each pair with an `id`, the customer''s `question` and the
+      two versions'' answers, `a` and `b`.'
+example:
+  case: trusts_a_judge_that_agrees_with_itself
+  expect: The judge names the same answer in both orders for both pairs, and no winner is longer, so `P1`
+    is a win for `a`, `P2` is a tie, and the counts are one win for `a` and one tie.
+traps:
+  - Counting a verdict that changes when the two answers swap places as a win for either version.
+  - Accepting a longer answer's win without checking whether it survives the shorter answer being padded
+    to the same length.
+  - Reading a digit anywhere in the judge's reply as a vote, so a reply that discusses both answers
+    counts for one of them.
+  - Asking the judge about two identical answers, when the verdict is a tie and its reply can only show
+    its bias.

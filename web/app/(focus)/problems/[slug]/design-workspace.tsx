@@ -17,6 +17,7 @@ import type { PaletteProblem } from "@/lib/problems/catalogue";
 import type { AttemptHistory, PastSubmission, WorkspaceProblem } from "@/lib/problems/workspace";
 import type { PalettePage } from "@/components/shell/command-palette";
 import { Button } from "@/components/ui/button";
+import { giveUp, submitOnce, useConfirm } from "@/components/workspace/confirm";
 import { Markdown } from "@/components/ui/markdown";
 import { renderCode } from "@/components/ui/code";
 import { StatusIcon } from "@/components/ui/status";
@@ -58,6 +59,7 @@ export default function DesignWorkspace(props: Props) {
   const [gateNotice, setGateNotice] = useState<string | null>(null);
   const [settledKey, setSettledKey] = useState(0);
   const [past, setPast] = useState<PastSubmission[]>(props.history.submissions);
+  const [ask, confirmation] = useConfirm();
 
   const refreshPolicy = useCallback(async () => {
     const response = await fetch(`/api/problems/${problem.id}/policy`);
@@ -123,15 +125,16 @@ export default function DesignWorkspace(props: Props) {
 
   const submit = useCallback(() => {
     if (running || !policy.submit.allowed) return;
-    if (policy.confirmBeforeSubmit && !confirm(props.rehearsalId
-      ? "One submit per problem in a rehearsal. Submit this one?"
-      : "This is your only submit today on an Extreme problem. Submit it?")) return;
-    void send("submit", draft.live, { rehearsalId: props.rehearsalId });
-  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, props.rehearsalId, send, draft]);
+    const go = () => void send("submit", draft.live, { rehearsalId: props.rehearsalId });
+    if (policy.confirmBeforeSubmit) ask(submitOnce(Boolean(props.rehearsalId), go));
+    else go();
+  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, props.rehearsalId, send, draft, ask]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === "Enter") {
+      // Nothing runs behind an open dialog, such as the question before a submit.
+      if ((event.metaKey || event.ctrlKey) && event.shiftKey && event.key === "Enter" &&
+          !document.querySelector("dialog[open]")) {
         event.preventDefault();
         submit();
       }
@@ -150,7 +153,7 @@ export default function DesignWorkspace(props: Props) {
                 hintBadge={hintGate && hintGate.total ? `${hintGate.revealed}/${hintGate.total}` : null} />
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {tab === "brief" ? (
-          <ProblemIntro title={problem.title} day={problem.day} skill={problem.skill}
+          <ProblemIntro title={problem.title} day={problem.day}
                         interview={problem.interview} track={problem.track} difficulty={problem.difficulty}
                         estMinutes={problem.estMinutes} artefactLabel="Written argument"
                         kit={problem.kit} briefMd={problem.briefMd}>
@@ -204,15 +207,13 @@ export default function DesignWorkspace(props: Props) {
                       ) : null}
                       coachLog={policy.coach.enabled ? coach.log : null}
                       giveUp={policy.giveUp}
-                      onGiveUp={() => {
-                        if (!confirm("Give up on this problem? The walkthrough opens and the choice is recorded on your attempt.")) return;
-                        void act("give-up", {
-                          method: "POST", headers: { "content-type": "application/json" },
-                          body: JSON.stringify({ reason: note || null }),
-                        }).then(() => setTab("brief"));
-                      }} />
+                      onGiveUp={() => ask(giveUp(() => void act("give-up", {
+                        method: "POST", headers: { "content-type": "application/json" },
+                        body: JSON.stringify({ reason: note || null }),
+                      }).then(() => setTab("brief"))))} />
         ) : (
-          <AttemptsPanel submissions={past} />
+          <AttemptsPanel submissions={past}
+                         empty="Nothing submitted yet. Press Submit, or Cmd Shift Enter, to send your answer for grading. Every submit lands here with its result." />
         )}
         {gateNotice ? (
           <p role="alert" className="mx-5 mb-6 rounded-control border border-warn/40 bg-warn-soft px-3 py-2 text-text">
@@ -283,6 +284,7 @@ export default function DesignWorkspace(props: Props) {
       <WorkspaceLayout storageKey={`fdeprep.split.${problem.id}`} left={left} editor={editor}
                        dock={dock} editorLabel="Answer" editorShare={64}
                        dockSignal={`${view?.id ?? ""}:${view?.status ?? ""}:${coach.current?.say ?? ""}:${notice ?? ""}`} />
+      {confirmation}
     </div>
   );
 }

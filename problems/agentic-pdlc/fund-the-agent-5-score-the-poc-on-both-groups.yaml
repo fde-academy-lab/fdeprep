@@ -1,0 +1,722 @@
+slug: fund-the-agent-5-score-the-poc-on-both-groups
+title: "Score the POC on both groups whole"
+day: 25
+skill: Score every request in both groups, and check the agent's own number against the data
+artefact_type: code
+difficulty: hard
+complexity: C2
+track: agentic-pdlc
+concept:
+  topic: "Measuring value"
+  question: "What is the POC's number when every request in both groups is counted?"
+est_minutes: 45
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json]
+
+build: { id: fund-the-agent, title: "Fund a field-service agent", stage: 5, of: 7 }
+
+brief_md: |
+  Your client is an air-conditioner and appliance maker the size of Voltas,
+  with 9,000 technicians working through 1,100 franchise partners. Its head
+  of customer service sponsors a field-service agent for AC-not-cooling
+  (ACNC) requests. On Friday 20 February she confirmed that the POC measures
+  ACNC and nothing else.
+
+  The POC ran for four weeks, from Monday 23 February to Sunday 22 March, in
+  Nagpur and Indore. Every ACNC request was assigned at random at intake:
+  1,840 went to the agent, which runs a diagnostic chat on WhatsApp before it
+  books a technician, and 1,790 were held back and handled as today. The
+  week-6 review on Wednesday 25 March compares the two groups, and two days
+  later she takes one slide to the board.
+
+  The construction agent, which drafts every artefact in this engagement and
+  approves none, has sent its POC report: 81 percent repaired within 3 days.
+  It counted the 1,120 customers who finished its chat. The other 720 in its
+  group did not finish it, and 214 requests in the agent group had no
+  completed repair by 22 March.
+
+  The held-back group is the comparison. Its median was 3.1 days against
+  last summer's 4.3. The POC ran in late winter, and a POC measured against
+  last summer would credit the agent with the season.
+
+  The data lead's export holds every request in both groups. Write the
+  scorer the review reads: each group's share repaired within 3 days, the
+  difference between the groups, and a flag whenever the agent's own number
+  is not its group's number.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` asks for one export to be scored. Nothing in the scoring
+  depends on it.
+
+  Call `tools["poc_results"](group=...)` once with `"agent"` and once with
+  `"held_back"`. Each returns that group's export:
+
+      {"status": 200, "group": "agent",
+       "bins": [{"chat_completed": true, "completed_days": 0, "requests": 196},
+                {"chat_completed": false, "completed_days": null, "requests": 162},
+                ...]}
+
+  A bin counts the requests that share a `chat_completed` and a
+  `completed_days`. `completed_days` is whole days from the request to the
+  technician's close code: 0 for a repair closed the day the request came
+  in, and null when no repair was completed by the export's cut-off.
+  `chat_completed` is true or false in the agent group, and null in the
+  held-back group, which was never offered the chat. An export that failed
+  carries an `error` key and no `bins`.
+
+  Ask the construction agent for its report once, with `llm(REPORT_PROMPT)`
+  from the starter code. When it follows the prompt, it replies with one
+  JSON object:
+
+      {"headline": "81 percent repaired within 3 days",
+       "basis": "customers who completed the diagnostic chat",
+       "n": 1120, "within_3_days": 907}
+
+  Score each group whole. `n` is every request in the group, `within_3` the
+  requests repaired in 0 to 3 days, and `share` is `100 * within_3 / n`
+  rounded to one decimal. `difference` is the agent's share minus the
+  held-back share, rounded to one decimal.
+
+  Then check the report against the agent group. Work out the `basis` in
+  your record from the data, whatever the report's own `basis` says:
+
+  | `basis` | When |
+  |---|---|
+  | `whole_group` | The report's `n` and `within_3_days` are the agent group's `n` and `within_3` |
+  | `chat_completed` | They are the `n` and `within_3` of the agent group's bins where `chat_completed` is true |
+  | `unmatched` | They are neither |
+  | `unreadable` | The reply is not a JSON object with both numbers |
+
+  `report_flag` is null when the basis is `whole_group`. Otherwise it is
+  `{"reported": ..., "basis": ..., "whole_group": ...}`, where `reported` is
+  the report's `100 * within_3_days / n` rounded to one decimal, or null when
+  the reply is unreadable, and `whole_group` is the agent group's share.
+
+  Return a JSON string:
+
+      {"status": "scored",
+       "agent": {"n": 1840, "within_3": 1067, "share": 58.0},
+       "held_back": {"n": 1790, "within_3": 877, "share": 49.0},
+       "difference": 9.0,
+       "report_flag": {"reported": 81.0, "basis": "chat_completed", "whole_group": 58.0}}
+
+  When a group's export failed, or a group has no requests, the POC cannot
+  be scored, and the record carries no number:
+
+      {"status": "not_scorable", "group": "agent", "reason": "no requests"}
+
+  `group` is the first group that could not be scored, and `reason` is its
+  export's `error` text, or `no requests`.
+
+  Budget: one model call, and one call to `poc_results` for each group.
+  Allowed imports: json.
+
+stub_code: |
+  import json
+
+  REPORT_PROMPT = (
+      "Send your POC report for the week-6 review as one JSON object: "
+      '{"headline": "...", "basis": "...", "n": ..., "within_3_days": ...}'
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Score both POC groups whole, and check the agent's report against them.
+
+      tools["poc_results"](group="agent" or "held_back") returns
+      {"status": 200, "group": ..., "bins": [{"chat_completed": ...,
+      "completed_days": ..., "requests": ...}, ...]}, and an export that
+      failed has an error key and no bins. completed_days is 0 for a repair
+      closed the same day and None when nobody repaired the request.
+
+      The agent sends its report when asked with REPORT_PROMPT, as JSON
+      with headline, basis, n and within_3_days.
+
+      Return json.dumps of {"status": "scored", "agent": {"n", "within_3",
+      "share"}, "held_back": {...}, "difference": ..., "report_flag": None or
+      {"reported", "basis", "whole_group"}}, where basis is whole_group,
+      chat_completed, unmatched or unreadable. A failed export or a group
+      with no requests returns {"status": "not_scorable", "group": ...,
+      "reason": ...} and no number. One model call. Allowed imports: json.
+      """
+      export = tools["poc_results"](group="agent")
+      return json.dumps({"status": "not_scorable", "group": "agent",
+                         "reason": "the scorer is not written yet"})
+
+defence_question: |
+  The sponsor asks why the 720 customers who never finished the chat count
+  against the agent when it never got to help them. Would you score them
+  differently, and what would that number be evidence of?
+
+hints:
+  - Pick one request in the agent group and list what can happen to it
+    (repaired within 3 days, repaired later, never repaired, with or without
+    the chat finished). Then decide which of those outcomes the share
+    divides by.
+  - The split made two groups, and the customers who finish a chat are a
+    part of one of them. The agent's report is a claim about some part of its
+    group. Its `n` and its `within_3_days` both have to match the data before
+    you know which part it measured.
+  - A request nobody repaired has a `completed_days` of `None`, and a repair
+    closed the same day has `0`. A test that cannot tell those two apart
+    scores the fastest repairs as failures.
+  - Two failures need opposite answers. When a group's export failed or holds
+    no requests, there is no POC number. When the agent's reply cannot be
+    read, there is no claim to check, and the POC is still scored.
+  - "Shape: read both exports first, and return early when one failed or has
+    no requests. Score each group from its bins. Then read the report inside
+    a guard, and match its two numbers against the whole group and the chat
+    completers."
+
+scenario:
+  headline: "The agent reported 81 percent; the whole group is 58 against 49"
+  who: The head of customer service at an AC maker the size of Voltas
+  situation: >-
+    The four-week POC split AC-not-cooling requests in Nagpur and Indore at
+    random: 1,840 to the agent and 1,790 held back. The agent's own report
+    says 81 percent were repaired within 3 days. It counted only the 1,120
+    customers who finished its chat.
+  stakes: >-
+    She takes one slide to the board on 27 March. If the 81 reaches it as the
+    POC's number, the MVP is funded on the customers who answered the agent,
+    and the 720 who never finished the chat go uncounted.
+  metrics:
+    - { label: "Agent's own report", value: "81%" }
+    - { label: "Agent group, every request", value: "58%" }
+    - { label: Held-back group, value: "49%" }
+
+diagram:
+  title: "Where the agent's 81 and the POC's number part ways"
+  caption: >-
+    The split was random at intake, so each group is scored whole. The
+    agent's report counts one part of its group, and the scorer checks which.
+  direction: lr
+  nodes:
+    - { id: intake, label: Intake from 23 February, sub: ACNC requests split at random, kind: service, tone: purple, at: [0, 1] }
+    - { id: agent, label: Agent group, sub: "1,840 requests, chat then booking", kind: agent, tone: teal, at: [1, 0] }
+    - { id: held, label: Held-back group, sub: "1,790 requests, handled as today", kind: queue, tone: neutral, at: [1, 2] }
+    - { id: export, label: "Data lead's export", sub: every request in both groups, kind: store, tone: blue, at: [2, 1] }
+    - { id: report, label: "The agent's POC report", sub: "81% of the 1,120 who finished the chat", kind: doc, tone: pink, at: [2, 3] }
+    - { id: scorer, label: POC scorer, sub: "both groups whole, the report checked", kind: guard, tone: teal, at: [3, 1] }
+    - { id: record, label: POC-1, sub: "a share per group, the difference, a flag", kind: output, tone: green, at: [4, 1] }
+    - { id: review, label: Week-6 review, sub: "25 March, the board two days later", kind: actor, tone: blue, at: [5, 1] }
+  edges:
+    - { from: intake, to: agent, label: at random, step: 1 }
+    - { from: intake, to: held, label: at random, step: 1 }
+    - { from: agent, to: export, label: every request, step: 2 }
+    - { from: held, to: export, label: every request, step: 2 }
+    - { from: agent, to: report, label: its own count, tone: muted }
+    - { from: export, to: scorer, label: bins for each group, step: 3 }
+    - { from: report, to: scorer, label: a claim to check, step: 3 }
+    - { from: scorer, to: record, label: one number per group, tone: success, step: 4 }
+    - { from: record, to: review, label: the number she shows, step: 5 }
+    - { from: report, to: review, label: "81 on the slide", tone: danger }
+
+approach:
+  goal: One number for each group, counted on every request the split sent there
+  branches:
+    - label: Count every request in a group
+      leaves: ["a request nobody repaired is still a request", "a repair the same day is 0 days", "a share to one decimal"]
+    - label: Compare the two groups the split made
+      detail: >-
+        Finishing the chat was each customer's choice, so the customers who
+        finished it are a part of one group.
+      leaves: ["agent share minus held-back share", "never last summer's 4.3 days"]
+    - label: Check the agent's report against the data
+      leaves: ["which part of the group has both its numbers", "a reply you cannot read is flagged too"]
+    - label: Refuse to score what is missing
+      leaves: ["an export that failed", "a group with no requests", "no number, and the group named"]
+
+coach:
+  opening: >-
+    Before you count anything, list what can happen to one request in the
+    agent group, and decide which of those the share divides by.
+  signals:
+    - id: both-groups-whole
+      when: { test_failed: the_poc_scores_both_groups_whole }
+      say: >-
+        That run expects 1,067 of 1,840 and 877 of 1,790. Which requests did
+        your count leave out of the denominator, and which repairs did it
+        leave out of the 3 days?
+    - id: flag-on-a-true-report
+      when: { test_failed: a_report_on_the_whole_group_raises_no_flag }
+      say: >-
+        In that run the agent's report covered every request in its group.
+        What should the review see when the agent's number is the group's
+        number?
+    - id: truthy-days
+      when: { code_matches: 'if\s+(not\s+)?\(?\s*(\w+\s*\[\s*["'']completed_days["'']\s*\]|days)\s*\)?\s*(and|or|:)' }
+      say: >-
+        A repair closed the day it was raised has `completed_days` 0. What
+        does that test do with it, and with a request nobody repaired?
+    - id: own-prompt
+      when:
+        code_matches: '\bllm\s*\('
+        code_lacks: 'llm\s*\(\s*REPORT_PROMPT\s*\)'
+      say: >-
+        The agent sends its report only when it is asked with `REPORT_PROMPT`
+        from the starter code. Send that prompt, once.
+    - id: report-unguarded
+      when:
+        code_matches: 'json\.loads\(\s*llm\s*\('
+        code_lacks: '\bexcept\b'
+      say: >-
+        Your scorer reads the agent's reply as JSON with nothing around it. If
+        the agent answers in a sentence, does the POC still get its number?
+    - id: failed-export-unread
+      when: { code_lacks: '\[\s*["'']error["'']\s*\]|get\(\s*["'']error["'']|["'']error["'']\s+(not\s+)?in\b|["'']bins["'']\s+(not\s+)?in\b' }
+      say: >-
+        Nothing in your scorer looks for an export that failed. What would
+        your record say if one group came back with an error in place of its
+        bins?
+    - id: hidden-size-alone
+      when: { test_failed: a_report_with_the_groups_size_and_another_count }
+      say: >-
+        In that run the agent's report had its whole group's size. Did its
+        count of repairs within 3 days match the group's as well?
+    - id: hidden-no-requests
+      when: { test_failed: a_city_the_poc_never_ran_in_has_no_number }
+      say: >-
+        In that run a group had no requests at all. What share does a group
+        of nothing have, and what should the review read instead?
+    - id: hidden-prose-report
+      when: { test_failed: a_report_in_prose_still_leaves_a_scored_poc }
+      say: >-
+        In that run the agent did not answer with JSON. Which part of your
+        record needs its reply, and which part never should?
+    - id: adversarial-failed-export
+      when: { test_failed: a_held_back_export_that_failed_with_a_200 }
+      say: >-
+        In that run one group's export failed. What did your record say about
+        that group, and which numbers did it still print?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the agent group's bins in the first public case. Add up
+        every request, then the ones repaired in 0 to 3 days, and check that
+        you reach 1,067 of 1,840.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints go from where to look to the shape
+        of the scorer, so open the first one.
+  wrap_up: >-
+    The POC's number counts every request the split sent to each group, and
+    the agent's own number is a claim the data has to reproduce on both of
+    its counts. When the data is missing, the record names the group and
+    carries no number.
+
+tests:
+  - name: the_poc_scores_both_groups_whole
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Score the POC for the week-6 review on Wednesday 25 March." }
+      llm_script:
+        - match: { contains: "Send your POC report" }
+          reply: |
+            {"headline": "81 percent repaired within 3 days", "basis": "customers who completed the diagnostic chat", "n": 1120, "within_3_days": 907}
+        - { match: "*", reply: "Tell me which report to send: the POC report, the PRD or the tickets." }
+      tools:
+        poc_results:
+          by_arg:
+            arg: group
+            values:
+              agent:
+                status: 200
+                group: agent
+                bins: [
+                  { chat_completed: true, completed_days: 0, requests: 196 }, { chat_completed: true, completed_days: 1, requests: 301 },
+                  { chat_completed: true, completed_days: 2, requests: 254 }, { chat_completed: true, completed_days: 3, requests: 156 },
+                  { chat_completed: true, completed_days: 4, requests: 74 }, { chat_completed: true, completed_days: 5, requests: 43 },
+                  { chat_completed: true, completed_days: 6, requests: 25 }, { chat_completed: true, completed_days: 8, requests: 19 },
+                  { chat_completed: true, completed_days: null, requests: 52 }, { chat_completed: false, completed_days: 0, requests: 22 },
+                  { chat_completed: false, completed_days: 1, requests: 41 }, { chat_completed: false, completed_days: 2, requests: 47 },
+                  { chat_completed: false, completed_days: 3, requests: 50 }, { chat_completed: false, completed_days: 4, requests: 96 },
+                  { chat_completed: false, completed_days: 5, requests: 88 }, { chat_completed: false, completed_days: 6, requests: 79 },
+                  { chat_completed: false, completed_days: 7, requests: 63 }, { chat_completed: false, completed_days: 9, requests: 46 },
+                  { chat_completed: false, completed_days: 12, requests: 26 }, { chat_completed: false, completed_days: null, requests: 162 } ]
+              held_back:
+                status: 200
+                group: held_back
+                bins: [
+                  { chat_completed: null, completed_days: 0, requests: 158 }, { chat_completed: null, completed_days: 1, requests: 236 },
+                  { chat_completed: null, completed_days: 2, requests: 261 }, { chat_completed: null, completed_days: 3, requests: 222 },
+                  { chat_completed: null, completed_days: 4, requests: 198 }, { chat_completed: null, completed_days: 5, requests: 152 },
+                  { chat_completed: null, completed_days: 6, requests: 117 }, { chat_completed: null, completed_days: 7, requests: 84 },
+                  { chat_completed: null, completed_days: 9, requests: 61 }, { chat_completed: null, completed_days: 12, requests: 38 },
+                  { chat_completed: null, completed_days: null, requests: 263 } ]
+            default: { status: 200, error: "no group by that name; the groups are agent and held_back" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: tool_calls_at_most, value: 2 }
+        - { type: calls_tool_with, name: poc_results, args: { group: agent } }
+        - { type: calls_tool_with, name: poc_results, args: { group: held_back } }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [status, agent, held_back, difference, report_flag]
+            properties:
+              status: { const: scored }
+        - type: valid_json_return
+          schema:
+            properties:
+              agent: { const: { n: 1840, within_3: 1067, share: 58.0 } }
+        - type: valid_json_return
+          schema:
+            properties:
+              held_back: { const: { n: 1790, within_3: 877, share: 49.0 } }
+        - type: valid_json_return
+          schema:
+            properties:
+              difference: { const: 9.0 }
+        - type: valid_json_return
+          schema:
+            properties:
+              report_flag: { const: { reported: 81.0, basis: chat_completed, whole_group: 58.0 } }
+        - { type: returns_lacks, value: '"share":\s*81' }
+
+  - name: a_report_on_the_whole_group_raises_no_flag
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Before the full export, score the requests raised on Monday 23 February, the POC's first day." }
+      llm_script:
+        - match: { contains: "Send your POC report" }
+          reply: |
+            {"headline": "64 percent repaired within 3 days", "basis": "every request in the agent group", "n": 64, "within_3_days": 41}
+        - { match: "*", reply: "Tell me which report to send: the POC report, the PRD or the tickets." }
+      tools:
+        poc_results:
+          by_arg:
+            arg: group
+            values:
+              agent:
+                status: 200
+                group: agent
+                bins: [
+                  { chat_completed: true, completed_days: 0, requests: 9 }, { chat_completed: true, completed_days: 1, requests: 12 },
+                  { chat_completed: true, completed_days: 2, requests: 8 }, { chat_completed: true, completed_days: 3, requests: 4 },
+                  { chat_completed: true, completed_days: 4, requests: 3 }, { chat_completed: true, completed_days: 5, requests: 2 },
+                  { chat_completed: true, completed_days: 7, requests: 1 }, { chat_completed: false, completed_days: 0, requests: 1 },
+                  { chat_completed: false, completed_days: 1, requests: 2 }, { chat_completed: false, completed_days: 2, requests: 2 },
+                  { chat_completed: false, completed_days: 3, requests: 3 }, { chat_completed: false, completed_days: 4, requests: 5 },
+                  { chat_completed: false, completed_days: 5, requests: 4 }, { chat_completed: false, completed_days: 6, requests: 3 },
+                  { chat_completed: false, completed_days: 8, requests: 3 }, { chat_completed: false, completed_days: 11, requests: 2 } ]
+              held_back:
+                status: 200
+                group: held_back
+                bins: [
+                  { chat_completed: null, completed_days: 0, requests: 6 }, { chat_completed: null, completed_days: 1, requests: 9 },
+                  { chat_completed: null, completed_days: 2, requests: 8 }, { chat_completed: null, completed_days: 3, requests: 7 },
+                  { chat_completed: null, completed_days: 4, requests: 9 }, { chat_completed: null, completed_days: 5, requests: 7 },
+                  { chat_completed: null, completed_days: 6, requests: 6 }, { chat_completed: null, completed_days: 8, requests: 5 },
+                  { chat_completed: null, completed_days: 10, requests: 4 } ]
+            default: { status: 200, error: "no group by that name; the groups are agent and held_back" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [status, agent, held_back, difference, report_flag]
+            properties:
+              status: { const: scored }
+              agent: { const: { n: 64, within_3: 41, share: 64.1 } }
+              held_back: { const: { n: 61, within_3: 30, share: 49.2 } }
+              difference: { const: 14.9 }
+        - type: valid_json_return
+          schema:
+            properties:
+              report_flag: { const: null }
+
+  - name: a_report_with_the_groups_size_and_another_count
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Score the test export the data lead built, with one request in four sent to the agent." }
+      llm_script:
+        - match: { contains: "Send your POC report" }
+          reply: |
+            {"headline": "64 percent repaired within 3 days", "basis": "every request in the agent group", "n": 600, "within_3_days": 384}
+        - { match: "*", reply: "Tell me which report to send: the POC report, the PRD or the tickets." }
+      tools:
+        poc_results:
+          by_arg:
+            arg: group
+            values:
+              agent:
+                status: 200
+                group: agent
+                bins: [
+                  { chat_completed: true, completed_days: 0, requests: 52 }, { chat_completed: true, completed_days: 1, requests: 96 },
+                  { chat_completed: true, completed_days: 2, requests: 77 }, { chat_completed: true, completed_days: 3, requests: 45 },
+                  { chat_completed: true, completed_days: 4, requests: 31 }, { chat_completed: true, completed_days: 5, requests: 19 },
+                  { chat_completed: true, completed_days: 6, requests: 12 }, { chat_completed: true, completed_days: 9, requests: 8 },
+                  { chat_completed: true, completed_days: null, requests: 20 }, { chat_completed: false, completed_days: 0, requests: 8 },
+                  { chat_completed: false, completed_days: 1, requests: 14 }, { chat_completed: false, completed_days: 2, requests: 17 },
+                  { chat_completed: false, completed_days: 3, requests: 21 }, { chat_completed: false, completed_days: 4, requests: 34 },
+                  { chat_completed: false, completed_days: 5, requests: 30 }, { chat_completed: false, completed_days: 6, requests: 25 },
+                  { chat_completed: false, completed_days: 7, requests: 19 }, { chat_completed: false, completed_days: 10, requests: 14 },
+                  { chat_completed: false, completed_days: 13, requests: 8 }, { chat_completed: false, completed_days: null, requests: 50 } ]
+              held_back:
+                status: 200
+                group: held_back
+                bins: [
+                  { chat_completed: null, completed_days: 0, requests: 150 }, { chat_completed: null, completed_days: 1, requests: 228 },
+                  { chat_completed: null, completed_days: 2, requests: 251 }, { chat_completed: null, completed_days: 3, requests: 217 },
+                  { chat_completed: null, completed_days: 4, requests: 214 }, { chat_completed: null, completed_days: 5, requests: 166 },
+                  { chat_completed: null, completed_days: 6, requests: 131 }, { chat_completed: null, completed_days: 7, requests: 98 },
+                  { chat_completed: null, completed_days: 9, requests: 72 }, { chat_completed: null, completed_days: 12, requests: 43 },
+                  { chat_completed: null, completed_days: null, requests: 230 } ]
+            default: { status: 200, error: "no group by that name; the groups are agent and held_back" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [status, agent, held_back, difference, report_flag]
+            properties:
+              status: { const: scored }
+              agent: { const: { n: 600, within_3: 330, share: 55.0 } }
+              held_back: { const: { n: 1800, within_3: 846, share: 47.0 } }
+              difference: { const: 8.0 }
+        - type: valid_json_return
+          schema:
+            properties:
+              report_flag: { const: { reported: 64.0, basis: unmatched, whole_group: 55.0 } }
+
+  - name: a_city_the_poc_never_ran_in_has_no_number
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The board slide says three cities. Score the POC for Raipur." }
+      llm_script:
+        - match: { contains: "Send your POC report" }
+          reply: |
+            {"headline": "81 percent repaired within 3 days", "basis": "customers who completed the diagnostic chat", "n": 1120, "within_3_days": 907}
+        - { match: "*", reply: "Tell me which report to send: the POC report, the PRD or the tickets." }
+      tools:
+        poc_results:
+          by_arg:
+            arg: group
+            values:
+              agent: { status: 200, group: agent, bins: [] }
+              held_back: { status: 200, group: held_back, bins: [] }
+            default: { status: 200, error: "no group by that name; the groups are agent and held_back" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [status, reason]
+            properties:
+              status: { const: not_scorable }
+              reason: { const: no requests }
+        - { type: returns_lacks, value: '"(share|difference|reported)"' }
+
+  - name: a_report_in_prose_still_leaves_a_scored_poc
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Score the POC again for the board pack, after the agent re-ran its report." }
+      llm_script:
+        - match: { contains: "Send your POC report" }
+          reply: "Of the customers who finished the chat, 81 percent were repaired within three days."
+        - { match: "*", reply: "Tell me which report to send: the POC report, the PRD or the tickets." }
+      tools:
+        poc_results:
+          by_arg:
+            arg: group
+            values:
+              agent:
+                status: 200
+                group: agent
+                bins: [
+                  { chat_completed: true, completed_days: 0, requests: 196 }, { chat_completed: true, completed_days: 1, requests: 301 },
+                  { chat_completed: true, completed_days: 2, requests: 254 }, { chat_completed: true, completed_days: 3, requests: 156 },
+                  { chat_completed: true, completed_days: 4, requests: 74 }, { chat_completed: true, completed_days: 5, requests: 43 },
+                  { chat_completed: true, completed_days: 6, requests: 25 }, { chat_completed: true, completed_days: 8, requests: 19 },
+                  { chat_completed: true, completed_days: null, requests: 52 }, { chat_completed: false, completed_days: 0, requests: 22 },
+                  { chat_completed: false, completed_days: 1, requests: 41 }, { chat_completed: false, completed_days: 2, requests: 47 },
+                  { chat_completed: false, completed_days: 3, requests: 50 }, { chat_completed: false, completed_days: 4, requests: 96 },
+                  { chat_completed: false, completed_days: 5, requests: 88 }, { chat_completed: false, completed_days: 6, requests: 79 },
+                  { chat_completed: false, completed_days: 7, requests: 63 }, { chat_completed: false, completed_days: 9, requests: 46 },
+                  { chat_completed: false, completed_days: 12, requests: 26 }, { chat_completed: false, completed_days: null, requests: 162 } ]
+              held_back:
+                status: 200
+                group: held_back
+                bins: [
+                  { chat_completed: null, completed_days: 0, requests: 158 }, { chat_completed: null, completed_days: 1, requests: 236 },
+                  { chat_completed: null, completed_days: 2, requests: 261 }, { chat_completed: null, completed_days: 3, requests: 222 },
+                  { chat_completed: null, completed_days: 4, requests: 198 }, { chat_completed: null, completed_days: 5, requests: 152 },
+                  { chat_completed: null, completed_days: 6, requests: 117 }, { chat_completed: null, completed_days: 7, requests: 84 },
+                  { chat_completed: null, completed_days: 9, requests: 61 }, { chat_completed: null, completed_days: 12, requests: 38 },
+                  { chat_completed: null, completed_days: null, requests: 263 } ]
+            default: { status: 200, error: "no group by that name; the groups are agent and held_back" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [status, agent, held_back, difference, report_flag]
+            properties:
+              status: { const: scored }
+              agent: { const: { n: 1840, within_3: 1067, share: 58.0 } }
+              held_back: { const: { n: 1790, within_3: 877, share: 49.0 } }
+              difference: { const: 9.0 }
+        - type: valid_json_return
+          schema:
+            properties:
+              report_flag: { const: { reported: null, basis: unreadable, whole_group: 58.0 } }
+
+  - name: a_held_back_export_that_failed_with_a_200
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      The held-back export answered with status 200 and an `error` where its
+      bins should be. A scorer that trusts the status goes on to read `bins`
+      and raises. A scorer that reads the missing list as an empty one either
+      guards the division with 0.0, and gives the agent a 58-point lead over
+      a group nobody scored, or applies the rule for a group with no
+      requests, and reports something false that leaves the export unfixed.
+      The record names the group, quotes the export's own error and carries
+      no number, because the POC has no result until the export runs again.
+    spec:
+      kind: agent_run
+      input: { question: "Score the POC from this morning's export." }
+      llm_script:
+        - match: { contains: "Send your POC report" }
+          reply: |
+            {"headline": "81 percent repaired within 3 days", "basis": "customers who completed the diagnostic chat", "n": 1120, "within_3_days": 907}
+        - { match: "*", reply: "Tell me which report to send: the POC report, the PRD or the tickets." }
+      tools:
+        poc_results:
+          by_arg:
+            arg: group
+            values:
+              agent:
+                status: 200
+                group: agent
+                bins: [
+                  { chat_completed: true, completed_days: 0, requests: 196 }, { chat_completed: true, completed_days: 1, requests: 301 },
+                  { chat_completed: true, completed_days: 2, requests: 254 }, { chat_completed: true, completed_days: 3, requests: 156 },
+                  { chat_completed: true, completed_days: 4, requests: 74 }, { chat_completed: true, completed_days: 5, requests: 43 },
+                  { chat_completed: true, completed_days: 6, requests: 25 }, { chat_completed: true, completed_days: 8, requests: 19 },
+                  { chat_completed: true, completed_days: null, requests: 52 }, { chat_completed: false, completed_days: 0, requests: 22 },
+                  { chat_completed: false, completed_days: 1, requests: 41 }, { chat_completed: false, completed_days: 2, requests: 47 },
+                  { chat_completed: false, completed_days: 3, requests: 50 }, { chat_completed: false, completed_days: 4, requests: 96 },
+                  { chat_completed: false, completed_days: 5, requests: 88 }, { chat_completed: false, completed_days: 6, requests: 79 },
+                  { chat_completed: false, completed_days: 7, requests: 63 }, { chat_completed: false, completed_days: 9, requests: 46 },
+                  { chat_completed: false, completed_days: 12, requests: 26 }, { chat_completed: false, completed_days: null, requests: 162 } ]
+              held_back: { status: 200, error: "held_back group export failed" }
+            default: { status: 200, error: "no group by that name; the groups are agent and held_back" }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [status, group, reason]
+            properties:
+              status: { const: not_scorable }
+              group: { const: held_back }
+              reason: { type: string, pattern: "held_back group export failed" }
+        - { type: returns_lacks, value: '"(share|difference|reported)"' }
+
+reference_md: |
+  The agent's 81 is a true number about part of its group. It is 907 of the
+  1,120 customers who finished the diagnostic chat, and those customers
+  chose to finish it. The random split at intake made two groups that
+  differ only in how they were handled: 1,840 requests to the agent and
+  1,790 held back. Nobody randomised who finished the chat, and the
+  customers who do not answer a chat are the ones who do not answer the
+  phone either, so they wait longer in either group. Scored whole, the agent
+  group is 1,067 of 1,840, 58.0 percent, against 877 of 1,790 held back,
+  49.0 percent. The 9.0 points between them are what the agent did.
+
+  Every request stays in its group. The 214 agent requests with no repair by
+  22 March are requests the agent did not get repaired, and leaving them out
+  of the denominator scores each group on its finished work, 65.6 against
+  57.4. The test for a missing repair is `is None`, because a repair closed
+  the day it was raised is `0`, and a truthiness test throws away the
+  fastest repairs in both groups.
+
+  The comparison is the held-back group. Last summer's 4.3 days would be the
+  wrong one: the POC ran in late winter, the held-back group's median was 3.1
+  days, and the gap between the two is the season.
+
+  The report is checked on both of its numbers. Its `n` says how much of the
+  group it counted, and its `within_3_days` says what it found there. A
+  report with the whole group's size and a different count measured
+  something else, such as days from the end of the chat instead of from the
+  request, so it reaches the review flagged as `unmatched`. A reply the
+  scorer cannot read is flagged as `unreadable`, and the POC is still
+  scored, because its number never came from the agent.
+
+  A group the data cannot give has no share. An export that failed, or a
+  group with no requests, makes the POC not scorable, and the record names
+  the group and the reason. The usual repairs for the crash invent a
+  number. A guard that returns 0.0 when nothing was counted scores a city
+  the POC never ran in, and with a missing list read as an empty one it
+  gives the held-back group 0.0 and the agent a 58-point lead. A failed
+  export and an empty group also need different reasons, because one sends
+  the data lead back to the export and the other says the POC never ran
+  there.
+
+  The two error paths need opposite answers, which is why one handler
+  around everything fails. A failed export stops the scoring. An unreadable
+  report stops only the check, and the POC's number still goes to the
+  review.
+
+  AWS describes the AI-Driven Development Life Cycle as one in which AI
+  "defers critical decisions to humans"
+  ([AWS DevOps blog](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/),
+  Raja SP, 31 July 2025, read 8 October 2026). Whether the POC earned an
+  MVP is one of those decisions, so its number comes from the data the split
+  produced, and the agent's account of its own work is a claim the scorer
+  checks. The voice question "Explain why the POC scored 58, not 81" asks
+  you to say this to the sponsor before the board meets. The MVP that
+  follows runs without a held-back group, which the next stage of this
+  build has to reckon with. The client, the POC and every number here are
+  this problem's own construction.
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your agent's own report says 81 percent of requests were repaired within three days. Counting every request in the trial it is 58, against 49 for the control group. Which number goes to the board, and how do you compute it?
+  source: |
+    Author judgement. No employer frequency data stands behind it. The split it practises, an
+    agent that drafts and a person who decides, follows the AWS DevOps blog post "AI-Driven
+    Development Life Cycle: Reimagining Software Engineering" (Raja SP, 31 July 2025,
+    https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/), which says AI
+    "defers critical decisions to humans", read 8 October 2026.
+
+tools:
+  - name: poc_results
+    args: group
+    returns: One group's export, `agent` or `held_back`, with `bins` counting requests by `chat_completed`
+      and `completed_days`, or an `error` key and no `bins`.
+example:
+  case: the_poc_scores_both_groups_whole
+  expect: Every request counts, so the agent group is 1,067 of 1,840, 58.0, against 877 of 1,790 held
+    back, 49.0. The report's 907 of 1,120 are the chat completers, flagged at 81.0 against 58.0.
+traps:
+  - Matching the agent's report to a part of its group by its size alone, when the count of repairs
+    inside it has to match as well.
+  - Guarding the division with a zero, or reading a failed export as an empty list, so the record
+    carries a share nobody measured.
+  - Handling every error one way, so a reply you cannot read stops the scoring, or an export that
+    failed gets a reason that sends nobody to fix it.

@@ -1,0 +1,639 @@
+slug: order-units-of-work-by-their-dependencies
+title: "Order units of work by their dependencies"
+drill: true
+skill: Order units by the dependencies a model names, and send unknown ids and loops to a person
+artefact_type: code
+difficulty: hard
+track: agentic-sdlc
+concept:
+  topic: "Units of work and bolts"
+  question: "When the planner cannot find a safe order, who decides, and what are they told?"
+est_minutes: 45
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json]
+
+brief_md: |
+  A services firm the size of Mindtree delivers a client's build in bolts,
+  the short work cycles of AWS's AI-DLC, and the delivery lead plans each
+  release as units of work. Before she packs any bolts, a model reads the
+  units and says which depend on which, and her planner turns that answer
+  into an order.
+
+  In week two the model wrote that the reporting unit depended on "the schema
+  work". No unit has that name. The planner matched it to nothing, dropped
+  it, and scheduled reporting before the data model it reads. In week three
+  the model said two units depended on each other. There is no order that
+  satisfies both, and the planner picked one by alphabet. Each wrong order
+  cost the team a bolt of rework before anyone noticed.
+
+  Write the planner's ordering step. It orders the units when the model's
+  answer allows it, and when the answer does not, it stops and tells the
+  delivery lead exactly why.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the delivery lead's request. `tools["plan"]()` returns the
+  units of work:
+
+      {"units": [{"id": "UW-1", "title": "Customer data model",
+                  "description": "Tables for customers and accounts."}, ...]}
+
+  Every plan here numbers its units from `UW-1` to `UW-9`, so sorting the ids
+  as text puts the lowest first.
+
+  Ask the model once, with every unit's id, title and description, which
+  units depend on which. Ask for one line in this shape, ids only:
+
+      Depends: {"UW-2": ["UW-1"], "UW-3": ["UW-1", "UW-2"]}
+
+  A reply is in that shape when, with the whitespace around it stripped, it
+  starts with `Depends:` and the rest is one JSON object whose values are
+  lists of strings. A unit the object leaves out depends on nothing, and a key
+  that is not in the plan is ignored. When a reply is in any other shape, ask
+  once more, with the reply that failed and the shape in the prompt. There is
+  no third ask.
+
+  Check every id the map names against the plan before ordering anything.
+  An id the plan lacks is the whole report: the ordering never runs, so no
+  loop is looked for. When every id is in the plan, order the units so that
+  none comes before a unit it depends on, and whenever more than one unit is
+  ready, take the lowest id.
+
+  Some answers stop the ordering. The delivery lead decides those, so return
+  `needs_person`, an empty `order`, and every reason in `problems`:
+
+  | What stopped it | Entry in `problems` |
+  |---|---|
+  | A unit depends on an id that is not in the plan | `{"unit": "UW-4", "problem": "depends on UW-9, which is not in the plan"}`, in that wording, one for each such dependency |
+  | The ordering is left with units that wait on each other in a loop | `{"cycle": ["UW-2", "UW-5"], "problem": "these units depend on each other"}`, the loop's ids sorted. A unit that only waits on the loop is not in it |
+  | The reply is still in the wrong shape after the second ask | `{"problem": "the model did not reply in the Depends: shape"}` |
+
+  Return a JSON string:
+
+      {"outcome": "ordered", "order": ["UW-1", "UW-3", "UW-2"], "problems": []}
+
+  Budget: at most 2 model calls, and one call to `plan`. Allowed imports:
+  json.
+
+defence_question: |
+  Your planner stops on every id the plan lacks and asks the delivery lead.
+  She says the model names a unit by its title about once a week, the match
+  is obvious every time, and she is tired of answering the same question.
+  Would you let the planner match a title to an id on its own? If yes, say
+  what the match has to show her so that a wrong one is caught before a
+  bolt is packed. If no, say what you would change in the ask so the model
+  stops doing it.
+
+stub_code: |
+  import json
+
+  # The one shape the model is asked to reply in, ids only.
+  SHAPE = 'Depends: {"UW-2": ["UW-1"], "UW-3": ["UW-1", "UW-2"]}'
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      units = tools["plan"]()["units"]
+      ids = sorted(unit["id"] for unit in units)
+
+      # TODO 1: ask llm once, with every unit's id, title and description,
+      #         to reply with one line in the shape of SHAPE
+      # TODO 2: read the reply: Depends: and then a JSON object whose values
+      #         are lists of ids. When it is anything else, ask once more with
+      #         the failed reply and SHAPE in the prompt. A second reply in the
+      #         wrong shape goes to a person
+      # TODO 3: order the units so none comes before a unit it depends on,
+      #         taking the lowest id among the ready units each time
+      # TODO 4: before ordering, a dependency on an id that is not in ids goes
+      #         to a person. After it, units left over wait on each other:
+      #         name the units of the loop for a person
+
+      return json.dumps({"outcome": "ordered", "order": [], "problems": []})
+
+steps:
+  - id: s1
+    text: Ask the model once, with every unit's id, title and description, for the `Depends:` shape.
+    check_id: s1
+  - id: s2
+    text: Ask once more, carrying the failed reply, when a reply is in the wrong shape, and hand a second one to a person.
+    check_id: s2
+  - id: s3
+    text: Order the units with none before a unit it depends on, taking the lowest ready id first.
+    check_id: s3
+  - id: s4
+    text: Hand a person every dependency on an id the plan lacks, and the units of any loop.
+    check_id: s4
+
+step_checks:
+  # The first public plan: its first prompt has to carry an id, a title, a
+  # description and the shape.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: plan }
+        - { type: prompt_contains, value: 'UW-4', in: first }
+        - { type: prompt_contains, value: 'Consent capture', in: first }
+        - { type: prompt_contains, value: 'stores it with the customer', in: first }
+        - { type: prompt_contains, value: 'Depends:', in: first }
+  # Every public reply is in the right shape, so this step runs its own: a
+  # model that answers in a sentence both times.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Order the units for the help centre release." }
+      llm_script:
+        - { match: "*", reply: "Depends: UW-2 needs UW-1, and UW-3 needs UW-1." }
+      tools:
+        plan:
+          returns:
+            units:
+              - { id: "UW-1", title: "Article editor", description: "Lets support staff write and publish help articles." }
+              - { id: "UW-2", title: "Article search", description: "Finds published articles by keyword." }
+              - { id: "UW-3", title: "Feedback buttons", description: "Asks readers whether an article helped them." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: prompt_contains, value: 'UW-3 needs UW-1', in: last }
+        - { type: returns_matches, value: '"outcome":\s*"needs_person"' }
+        - { type: returns_matches, value: '"order":\s*\[\s*\]' }
+  # The second public plan lists reporting before the ledger it reads.
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"order":\s*\["UW-2",\s*"UW-1",\s*"UW-3",\s*"UW-4"\]' }
+  # No public answer stops the ordering, so this step runs two of its own:
+  # an id the plan does not have, and a loop with a unit waiting behind it.
+  - step_id: s4
+    spec:
+      cases:
+        - kind: agent_run
+          input: { question: "Order the units for the stock release." }
+          llm_script:
+            - { match: "*", reply: 'Depends: {"UW-2": ["UW-1"], "UW-3": ["UW-2", "UW-9"]}' }
+          tools:
+            plan:
+              returns:
+                units:
+                  - { id: "UW-1", title: "Stock levels", description: "Keeps the count of each item in each warehouse." }
+                  - { id: "UW-2", title: "Low stock alerts", description: "Warns buyers when an item runs low, from the stock levels." }
+                  - { id: "UW-3", title: "Reorder suggestions", description: "Suggests what to reorder from the alerts and the supplier list." }
+          budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+          assertions:
+            - { type: returns_matches, value: '"outcome":\s*"needs_person"' }
+            - { type: returns_matches, value: '"order":\s*\[\s*\]' }
+            - { type: returns_matches, value: '"unit":\s*"UW-3"' }
+            - { type: returns_matches, value: 'depends on UW-9, which is not in the plan' }
+        - kind: agent_run
+          input: { question: "Order the units for the delivery tracking release." }
+          llm_script:
+            - { match: "*", reply: 'Depends: {"UW-2": ["UW-1", "UW-3"], "UW-3": ["UW-2"], "UW-4": ["UW-3"]}' }
+          tools:
+            plan:
+              returns:
+                units:
+                  - { id: "UW-1", title: "Courier updates", description: "Takes status updates from the courier partners." }
+                  - { id: "UW-2", title: "Tracking page", description: "Shows where the parcel is, from the courier updates and the delivery estimate." }
+                  - { id: "UW-3", title: "Delivery estimate", description: "Works out the arrival day and shows it on the tracking page." }
+                  - { id: "UW-4", title: "Late delivery emails", description: "Emails the customer when the estimate slips." }
+          budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+          assertions:
+            - { type: returns_matches, value: '"outcome":\s*"needs_person"' }
+            - { type: returns_matches, value: '"order":\s*\[\s*\]' }
+            - { type: returns_matches, value: '"cycle":\s*\["UW-2",\s*"UW-3"\]' }
+
+hints:
+  - List what the model's answer can look like before you order anything. It
+    can be in the right shape or the wrong one, name an id the plan does not
+    have, or describe a loop. The public cases show only the first.
+  - An id that matches no unit is a question for a person, and so is a loop.
+    Dropping the id, or picking one unit of the loop, gives an order that
+    looks finished and is a guess.
+  - Keep, for each unit, the set of units it still waits on. A unit with an
+    empty set is ready. Place the lowest ready id, remove it from every other
+    set, and repeat until nothing is ready.
+  - When nothing is ready and units are left, some of them may only wait on
+    the loop. A unit like that has a dependency among the leftovers, and so
+    does every unit in the loop. What tells them apart is whether following
+    dependencies from a unit ever comes back to it.
+
+scenario:
+  headline: "The planner put the reporting unit before the data model it reads"
+  who: A delivery lead at a services firm the size of Mindtree
+  situation: >-
+    A model reads her units of work and names which depend on which. In week
+    two it named a dependency "the schema work", which matches no unit. The
+    planner dropped it and scheduled reporting before the data model.
+  stakes: >-
+    In week three two units depended on each other and the planner picked one
+    by alphabet. Each wrong order cost a bolt of rework before anyone noticed.
+  metrics:
+    - { label: Unmatched dependency, value: the schema work }
+    - { label: Loop broken by, value: alphabet }
+    - { label: Bolts of rework, value: "2" }
+
+diagram:
+  title: Where an answer the planner cannot order should go
+  caption: >-
+    Every id is checked against the plan before ordering. An unknown id or a
+    loop goes to the delivery lead with the units it involves.
+  direction: lr
+  nodes:
+    - { id: plan, label: "`plan()`", sub: "ids, titles and descriptions", kind: store, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: names the dependencies, kind: model, tone: teal, at: [1, 0] }
+    - { id: reader, label: Reply check, sub: "the `Depends:` shape, one repair", kind: guard, tone: purple, at: [1, 1] }
+    - { id: ids, label: Id check, sub: every id is in the plan, kind: guard, tone: green, at: [2, 1] }
+    - { id: order, label: Ordering, sub: lowest ready id first, kind: decision, tone: blue, at: [3, 1] }
+    - { id: ordered, label: An order, sub: no unit before what it needs, kind: output, tone: green, at: [4, 0] }
+    - { id: lead, label: Delivery lead, sub: unknown ids and loops, kind: actor, tone: orange, at: [4, 2] }
+    - { id: guess, label: A guessed order, sub: "a dropped id, a loop broken by alphabet", kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: plan, to: model, label: every unit, step: 1 }
+    - { from: model, to: reader, label: a dependency map, step: 2 }
+    - { from: reader, to: model, label: the failed reply and the shape, tone: muted }
+    - { from: reader, to: lead, label: the wrong shape twice }
+    - { from: reader, to: ids, label: the shape holds, tone: success, step: 3 }
+    - { from: ids, to: order, label: every id is known, tone: success, step: 4 }
+    - { from: order, to: ordered, label: every unit placed, tone: success, step: 5 }
+    - { from: ids, to: lead, label: an id the plan lacks }
+    - { from: order, to: lead, label: units left in a loop }
+    - { from: ids, to: guess, label: drop what matches nothing, tone: danger }
+
+approach:
+  goal: Order units only on dependencies the plan can name, and hand the rest to a person
+  branches:
+    - label: Ask once, with what the model needs
+      leaves: ["every id, title and description", the reply shape written out]
+    - label: Read the reply before trusting it
+      detail: A reply in prose or in the wrong JSON shape gets one more ask that carries it back.
+      leaves: [one repair, then a person]
+    - label: Check every id against the plan
+      leaves: [an id the plan lacks stops the ordering, a title is not an id]
+    - label: Order, and notice when you cannot
+      leaves: [the lowest ready id each time, units left over wait in a loop]
+
+coach:
+  opening: >-
+    Before you write the ordering, list the ways the model's answer can stop
+    it. The planner that broke in weeks two and three handled none of them.
+  signals:
+    - id: drops-unknown-ids
+      when: { code_matches: '\bif\s+\w+\s+in\s+ids\s*[\]\}\)]' }
+      say: >-
+        This keeps the dependencies whose ids are in the plan and drops the
+        rest without a word. Who decides what an id the plan does not have
+        was meant to be?
+    - id: no-loop
+      when: { code_lacks: '(?i)cycle' }
+      say: >-
+        Nothing in your code names a cycle yet. When two units each wait on
+        the other, what does your ordering do?
+    - id: unguarded-parse
+      when:
+        code_matches: 'json\.loads'
+        code_lacks: '\bexcept\b'
+      say: >-
+        Your code reads the reply with `json.loads`, and nothing catches a
+        reply that is not JSON. What happens when the model answers in a
+        sentence?
+    - id: title-lookup
+      when: { code_matches: '\[\s*["'']title["'']\s*\]\s*:' }
+      say: >-
+        This maps titles to ids. When the model names a unit by its title, is
+        it your code's place to decide which unit it meant?
+    - id: hidden-self-loop
+      when: { test_failed: a_unit_that_depends_on_itself_stops_the_order }
+      say: >-
+        In that run one unit was listed as its own dependency. What does your
+        ordering do with a unit that can never be ready, and which units did
+        you name?
+    - id: hidden-two-chains
+      when: { test_failed: two_separate_chains_are_ordered_by_lowest_ready_id }
+      say: >-
+        In that run the plan held two separate chains. When units from both
+        were ready at once, which one did your ordering take?
+    - id: hidden-title
+      when: { test_failed: a_dependency_named_by_its_title_goes_to_a_person }
+      say: >-
+        In that run the model named one dependency by a unit's title. Is a
+        title an id in this plan, and who should decide which unit it meant?
+    - id: hidden-unknown-before-loop
+      when: { test_failed: an_unknown_id_is_reported_before_any_loop_is_looked_for }
+      say: >-
+        In that run the map named an id the plan lacks and two units that
+        wait on each other. The id check runs first and the ordering never
+        starts, so what should `problems` hold?
+    - id: prose-reply
+      when: { test_failed: adversarial_a_reply_in_prose_gets_one_more_ask }
+      say: >-
+        The model's first reply was a sentence. Did your second ask carry that
+        sentence back, and did your code read the second reply?
+    - id: wrong-shape-twice
+      when: { test_failed: adversarial_json_in_the_wrong_shape_twice_goes_to_a_person }
+      say: >-
+        The model answered in JSON twice, and neither answer was a map of id
+        lists. What did your code make of a string where a list belonged?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the ask and the ordering, TODO 1 and TODO 3 in the starter
+        code. Both public replies are in the right shape and name only ids
+        the plan has.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints go from where to look to the shape
+        of the fix, so open the first one.
+  wrap_up: >-
+    A planner that cannot place a unit has learnt something the delivery
+    lead needs to know. Check every id, name the loop, repair a bad reply
+    once, and hand her the rest with the reason.
+
+tests:
+  - name: orders_each_unit_after_the_units_it_needs
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Order the units for the onboarding release." }
+      llm_script:
+        - { match: "*", reply: 'Depends: {"UW-2": ["UW-1", "UW-3"], "UW-3": ["UW-1"], "UW-4": []}' }
+      tools:
+        plan:
+          returns:
+            units:
+              - { id: "UW-1", title: "Customer data model", description: "Tables for customers, accounts and consents, and the migrations that create them." }
+              - { id: "UW-2", title: "Consent reporting", description: "Weekly charts of customers who gave consent, read from the consent records." }
+              - { id: "UW-3", title: "Consent capture", description: "The sign-up step that asks for consent and stores it with the customer." }
+              - { id: "UW-4", title: "Staff single sign-on", description: "Staff log in through the company directory. It touches no customer data." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: plan }
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: prompt_contains, value: 'Consent capture', in: first }
+        - { type: prompt_contains, value: 'stores it with the customer', in: first }
+        - { type: prompt_contains, value: 'Depends:', in: first }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, order, problems]
+            properties:
+              outcome: { enum: [ordered, needs_person] }
+              order: { type: array, items: { type: string } }
+              problems: { type: array }
+        - { type: returns_matches, value: '"outcome":\s*"ordered"' }
+        - { type: returns_matches, value: '"order":\s*\["UW-1",\s*"UW-3",\s*"UW-2",\s*"UW-4"\]' }
+        - { type: returns_matches, value: '"problems":\s*\[\s*\]' }
+
+  - name: orders_a_plan_whose_ids_run_against_its_dependencies
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Order the units for the payments release." }
+      llm_script:
+        - { match: "*", reply: 'Depends: {"UW-1": ["UW-2"], "UW-3": ["UW-2"], "UW-4": []}' }
+      tools:
+        plan:
+          returns:
+            units:
+              - { id: "UW-1", title: "Payment reports", description: "Daily totals by payment method, read from the ledger." }
+              - { id: "UW-2", title: "Ledger", description: "The table every payment is written to, with its migrations." }
+              - { id: "UW-3", title: "Refund flow", description: "Lets support refund a payment, writing the refund to the ledger." }
+              - { id: "UW-4", title: "Receipt emails", description: "Sends the customer a receipt when a payment goes through." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: returns_matches, value: '"outcome":\s*"ordered"' }
+        - { type: returns_matches, value: '"order":\s*\["UW-2",\s*"UW-1",\s*"UW-3",\s*"UW-4"\]' }
+
+  - name: a_unit_that_depends_on_itself_stops_the_order
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order the units for the search release." }
+      llm_script:
+        - { match: "*", reply: 'Depends: {"UW-2": ["UW-1"], "UW-3": ["UW-3"], "UW-4": ["UW-2", "UW-3"]}' }
+      tools:
+        plan:
+          returns:
+            units:
+              - { id: "UW-1", title: "Search index", description: "Builds the product index the search box reads." }
+              - { id: "UW-2", title: "Search box", description: "The search field and results page, reading the index." }
+              - { id: "UW-3", title: "Synonym list", description: "Lets merchandisers add synonyms, checking each against the synonyms already listed." }
+              - { id: "UW-4", title: "Search analytics", description: "Counts searches that find nothing, including those that used a synonym." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"outcome":\s*"needs_person"' }
+        - { type: returns_matches, value: '"order":\s*\[\s*\]' }
+        - { type: returns_matches, value: '"cycle":\s*\["UW-3"\]' }
+
+  - name: two_separate_chains_are_ordered_by_lowest_ready_id
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order the units for the mobile release." }
+      llm_script:
+        - { match: "*", reply: 'Depends: {"UW-2": ["UW-5"], "UW-3": ["UW-2"], "UW-4": ["UW-1"], "UW-6": ["UW-4"]}' }
+      tools:
+        plan:
+          returns:
+            units:
+              - { id: "UW-1", title: "Push service", description: "Sends push notifications through the phone platforms' gateways." }
+              - { id: "UW-2", title: "Offline cart sync", description: "Keeps the cart in step when the phone comes back online, using the sync engine." }
+              - { id: "UW-3", title: "Cart conflict screen", description: "Shows the customer which cart changes clashed during a sync." }
+              - { id: "UW-4", title: "Order alerts", description: "Tells the customer when an order ships, through the push service." }
+              - { id: "UW-5", title: "Sync engine", description: "Queues changes made offline and replays them in order." }
+              - { id: "UW-6", title: "Alert preferences", description: "Lets the customer pick which order alerts they get." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"ordered"' }
+        - { type: returns_matches, value: '"order":\s*\["UW-1",\s*"UW-4",\s*"UW-5",\s*"UW-2",\s*"UW-3",\s*"UW-6"\]' }
+
+  - name: a_dependency_named_by_its_title_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order the units for the invoicing release." }
+      llm_script:
+        - { match: "*", reply: 'Depends: {"UW-3": ["UW-1", "Tax rules"], "UW-4": ["UW-1", "UW-2"]}' }
+      tools:
+        plan:
+          returns:
+            units:
+              - { id: "UW-1", title: "Invoice numbering", description: "Gives each invoice a number that never repeats within a financial year." }
+              - { id: "UW-2", title: "Tax rules", description: "Works out GST for each line of an invoice." }
+              - { id: "UW-3", title: "Invoice PDF", description: "Renders the invoice, with its number and tax lines, as a PDF." }
+              - { id: "UW-4", title: "Credit notes", description: "Cancels part of an invoice, with its own number and tax lines." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"needs_person"' }
+        - { type: returns_matches, value: '"order":\s*\[\s*\]' }
+        - { type: returns_matches, value: '"unit":\s*"UW-3"' }
+        - { type: returns_matches, value: 'depends on Tax rules, which is not in the plan' }
+
+  - name: an_unknown_id_is_reported_before_any_loop_is_looked_for
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order the units for the subscriptions release." }
+      llm_script:
+        - { match: "*", reply: 'Depends: {"UW-2": ["UW-1", "UW-7"], "UW-3": ["UW-4"], "UW-4": ["UW-3"]}' }
+      tools:
+        plan:
+          returns:
+            units:
+              - { id: "UW-1", title: "Plan catalogue", description: "The plans a customer can pick, with their prices." }
+              - { id: "UW-2", title: "Checkout", description: "Takes a card for the plan the customer picked, through the billing gateway." }
+              - { id: "UW-3", title: "Renewal reminders", description: "Emails the customer before a renewal, with the amount the renewal job will charge." }
+              - { id: "UW-4", title: "Renewal job", description: "Charges the card on the renewal date and tells the reminder what it charged." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"outcome":\s*"needs_person"' }
+        - { type: returns_matches, value: '"unit":\s*"UW-2"' }
+        - { type: returns_matches, value: 'depends on UW-7, which is not in the plan' }
+        - { type: returns_lacks, value: '"cycle"' }
+
+  - name: adversarial_a_reply_in_prose_gets_one_more_ask
+    visibility: adversarial
+    fixture: malformed_on_nth
+    annotation_md: |
+      The model's first reply named every dependency correctly, in a sentence.
+      `json.loads` raises on it, and a planner that lets the exception escape
+      orders nothing and tells nobody why.
+
+      The second ask works only because it is different from the first. It
+      carries the sentence back and names the shape again, and the model
+      answers with the map. A second ask that repeats the first prompt gets
+      the same sentence, because the same prompt gets the same reply. The
+      order then puts the points ledger first, ahead of the lower ids that
+      read from it.
+    spec:
+      kind: agent_run
+      input: { question: "Order the units for the loyalty release." }
+      llm_script:
+        - { match: { contains: "UW-2 needs UW-1 and UW-3" }, reply: 'Depends: {"UW-1": ["UW-3"], "UW-2": ["UW-1", "UW-3"], "UW-4": []}' }
+        - { match: "*", reply: "Depends: UW-1 needs UW-3, and UW-2 needs UW-1 and UW-3." }
+      tools:
+        plan:
+          returns:
+            units:
+              - { id: "UW-1", title: "Rewards page", description: "Shows a member their points balance, read from the points ledger." }
+              - { id: "UW-2", title: "Reward claims", description: "Lets a member spend points from the rewards page, writing to the points ledger." }
+              - { id: "UW-3", title: "Points ledger", description: "Records the points each member earns and spends." }
+              - { id: "UW-4", title: "Member survey", description: "A short survey after the third order. It uses no points data." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: prompt_contains, value: 'UW-2 needs UW-1 and UW-3', in: last }
+        - { type: prompt_contains, value: 'Depends:', in: last }
+        - { type: returns_matches, value: '"outcome":\s*"ordered"' }
+        - { type: returns_matches, value: '"order":\s*\["UW-3",\s*"UW-1",\s*"UW-2",\s*"UW-4"\]' }
+
+  - name: adversarial_json_in_the_wrong_shape_twice_goes_to_a_person
+    visibility: adversarial
+    fixture: schema_drift
+    annotation_md: |
+      Both replies parsed as JSON, and neither was a map of id lists. The first
+      gave each dependency as a string, and the second gave a list of pairs.
+
+      A planner that checks only that the JSON parses reads `"UW-1"` where a
+      list belonged, and iterating over a string gives its characters. Those
+      match no unit, so the naive planner drops them and orders the units as
+      if nothing depended on anything. A planner that reports them asks the
+      delivery lead about units called `U` and `W`. The right reading is that
+      the reply is in the wrong shape: ask once more with the reply that
+      failed, and when the second reply is wrong too, tell her the model
+      could not answer.
+    spec:
+      kind: agent_run
+      input: { question: "Order the units for the returns release." }
+      llm_script:
+        - { match: { call_index: 2 }, reply: 'Depends: [["UW-2", "UW-1"], ["UW-3", "UW-2"]]' }
+        - { match: "*", reply: 'Depends: {"UW-2": "UW-1", "UW-3": "UW-2"}' }
+      tools:
+        plan:
+          returns:
+            units:
+              - { id: "UW-1", title: "Return requests", description: "Customers start a return from the order page." }
+              - { id: "UW-2", title: "Pickup booking", description: "Books a courier pickup for an accepted return." }
+              - { id: "UW-3", title: "Refund on pickup", description: "Pays the refund once the courier confirms the pickup." }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: prompt_contains, value: '"UW-3": "UW-2"', in: last }
+        - { type: returns_matches, value: '"outcome":\s*"needs_person"' }
+        - { type: returns_matches, value: '"order":\s*\[\s*\]' }
+        - { type: returns_lacks, value: 'which is not in the plan' }
+
+reference_md: |
+  The planner failed the same way twice. It met an answer it could not use
+  and produced an order anyway, and an order looks finished, so nobody
+  checked it until a bolt was lost. Each stop in this problem turns that kind
+  of answer into a question for the delivery lead.
+
+  An id the plan does not have is the model saying something the plan cannot
+  check. In week two "the schema work" meant the data model, and in a hidden
+  case a title stood in for an id. Matching by title or by a guess would be
+  right on one plan and wrong on the next, so the check is exact and the
+  person who wrote the plan resolves it. It runs before the ordering, because
+  an order built on a dropped dependency is wrong in a way the ordering
+  cannot see. An unknown id is also the whole report. Until the delivery lead
+  says what it meant, the map is not one the plan can order: a unit waiting
+  on an id that never arrives is left over the way a unit in a loop is, and
+  her answer can make a loop or break one.
+
+  A loop has no correct order. When two units each wait on the other, any
+  order breaks one of the dependencies, and only someone who knows the work
+  can say which one was wrong. Kahn's algorithm, from Arthur Kahn's 1962
+  paper "Topological sorting of large networks" in Communications of the
+  ACM, notices a loop as a side effect: when no unit is ready and units are
+  left, the ones left cannot all be placed. Some of them may only wait on the
+  loop, and naming those would send the delivery lead looking for a mistake
+  that is not there. Following dependencies among the units left until one
+  comes round again finds the loop itself.
+
+  Taking the lowest ready id each time makes the order the same on every run
+  and easy to check by hand. A queue that takes units in the order they
+  became ready also gives a valid order, a different one, so two people
+  comparing plans would see them disagree for no reason.
+
+  The repair is one more ask that carries the failed reply and the shape. The
+  same prompt gets the same reply, so a second ask is worth something only
+  when it tells the model what went wrong. After that the reply goes to a
+  person: a model that misses the same shape twice is unlikely to manage it
+  the third time, and every extra ask is paid for on every plan.
+
+  The `Depends:` shape, the tie-break and the wording of each problem are
+  this problem's own construction. AWS's AI-DLC post, read on 8 October 2026,
+  names bolts and units of work and does not say how units are ordered.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your planning agent asks a model which tasks depend on which. What do you do when the answer names a task that does not exist, or two tasks that need each other?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: plan
+    args: ""
+    returns: "The `units` of the release, each with an `id`, a `title` and a `description`."
+example:
+  case: orders_each_unit_after_the_units_it_needs
+  expect: The model's map is in the right shape and names only plan ids. The customer data model comes first, consent capture next, then the reporting that reads both, then sign-on.
+traps:
+  - Dropping a dependency on an id the plan does not have, so the unit that needs it is scheduled first.
+  - Breaking a loop by picking one of its units, when only a person can say which dependency is wrong.
+  - Taking ready units in the order they became ready, when the lowest ready id goes first.
+  - Reading a reply that is not the `Depends:` shape as if it were one.

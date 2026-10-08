@@ -1,0 +1,436 @@
+slug: explain-an-incident-from-half-the-traces
+title: "Explain an incident with half the traces missing"
+day: 19
+skill: Explain an incident when half the traces were never kept
+artefact_type: design
+difficulty: extreme
+track: observability
+concept:
+  topic: "Traces for debugging"
+  question: "What can you still prove when half the traces are gone?"
+est_minutes: 50
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: client-communication, weight: 1.0 }
+
+brief_md: |
+  Your team runs the appointment assistant for a regional hospital group. On
+  Tuesday between 09:40 and 12:10 it told 212 patients their appointment was
+  confirmed. The hospital's overnight reconciliation found no booking for 131
+  of them, and this morning some of those patients arrived at clinics that
+  were not expecting them.
+
+  Traces are sampled at 50 percent, decided when a conversation starts, so 106
+  of the 212 conversations have one. In 64 of those, the `create_booking` tool
+  returned HTTP 200 with an empty body and the assistant confirmed anyway. The
+  message log is not sampled: it records every confirmation and nothing about
+  the tool. The hospital's IT team deployed a new API gateway in front of the
+  scheduling system at 09:35 and rolled it back at 12:10, and they have not
+  shared its logs yet. Your team upgraded its tool-calling library on Monday
+  evening. The model provider's status page shows increased latency from 10:05
+  to 10:30.
+
+  It is Wednesday afternoon. The hospital's chief operating officer wants a
+  root cause by 17:00, for the board and for a decision on whether to notify
+  the regulator. Write the update you would send at 17:00.
+
+contract_md: |
+  Write the update you would send the chief operating officer at 17:00. They
+  will forward it to the board and decide from it whether to notify the
+  regulator.
+
+  Between 400 and 600 words. There is no template and no required structure.
+
+  Every claim should be one you could defend against the telemetry in the
+  brief, and the reader should be able to tell which claims were observed and
+  which are inferred.
+
+word_range: [400, 600]
+required_headings: []
+
+rubric:
+  - label: Separates what was observed from what is inferred, and says what each source covers
+    weight: 25
+    descriptor_md: |
+      Strong answers say which source saw what. The message log saw every
+      confirmation, the traces saw the tool in half the conversations, and the
+      reconciliation saw the bookings. They use the reconciliation's 131 as
+      the count and do not scale up the sample when a full count exists.
+      Answers that treat the 64 empty responses as the whole picture, or
+      stretch them across all 212, have mistaken a sample for a census.
+  - label: Ranks hypotheses, each with a check that could rule it out, and names no unobserved cause
+    weight: 25
+    descriptor_md: |
+      Strong answers treat the gateway release, the library upgrade and the
+      latency spike as hypotheses, rank them on the evidence, and give each
+      one a check that could come out either way: the gateway's logs, a replay
+      against both library versions, the timing of the 131 against the
+      slowdown. They notice that two hypotheses can both hold. An answer that
+      tells the board the gateway was the root cause has named something no
+      telemetry observed, and it has blamed the client for the one failure
+      the telemetry did observe, the assistant confirming without a
+      reference.
+  - label: Contains the harm now, whatever the cause
+    weight: 20
+    descriptor_md: |
+      Strong answers stop the assistant confirming without a booking
+      reference, or route confirmations to people, today, and make sure the
+      131 patients are contacted, soonest appointments first. Containment that
+      waits for the root cause leaves patients exposed for as long as the
+      investigation runs.
+  - label: Lists next checks with owners and times, including closing the telemetry gap
+    weight: 15
+    descriptor_md: |
+      Each check has an owner and a time its result is due, and one of them
+      makes the next incident easier to investigate, such as recording every
+      booking call unsampled. A list of intentions with no times gives the
+      chief operating officer nothing to hold anyone to.
+  - label: Gives the chief operating officer an update they can forward today
+    weight: 15
+    descriptor_md: |
+      Strong answers open with what happened, what has been done and what is
+      not yet known, say when the root cause will be known, and give the
+      regulator decision the facts it needs: how many patients, what they were
+      told, and that it can no longer happen. They are plain enough to forward
+      without editing.
+
+exemplars:
+  - band: strong
+    score: 91
+    body_md: |
+      Summary. Between 09:40 and 12:10 on Tuesday our assistant told 212
+      patients their appointment was confirmed, and 131 of those bookings do
+      not exist in your scheduling system. We have contained it: since 14:30
+      today the assistant cannot say "confirmed" without a booking reference
+      from your system. We do not yet know why the bookings were lost, and I
+      will not give the board a root cause that the evidence has not shown.
+
+      What we observed. The message log, which records every conversation,
+      shows the 212 confirmations. Your reconciliation shows the 131 missing
+      bookings, and that is the count to use. Our traces cover 106 of the 212
+      conversations, because they are sampled at 50 percent. In 64 of those
+      106, the booking call came back from your gateway as a success with an
+      empty body, and our assistant confirmed anyway. That part is our defect
+      whatever else turns out to be true: a confirmation should have required
+      a booking reference, and it did not.
+
+      What we believe, most likely first.
+
+      1. Your new gateway, live from 09:35 to 12:10, returned empty successes
+         for some booking requests. The timing fits: the incident sits inside
+         the hours the gateway was live and ended when it was rolled back.
+         The gateway's own logs for those hours will confirm or rule this out.
+      2. Our tool-calling library upgrade on Monday evening changed how an
+         empty success is handled, so a response treated as an error last
+         week became a confirmation on Tuesday. Replaying a recorded empty
+         response against the old and new library will confirm or rule this
+         out.
+      3. The model provider's slowdown from 10:05 to 10:30. This looks
+         unlikely, because the failures span the full two and a half hours
+         and the slowdown lasted 25 minutes, and we will check the 131
+         against that window to be sure.
+
+      The first two hypotheses can both be true. One would explain why the
+      bookings failed, and the other why a failure became a confirmation.
+
+      What we have done. Since 14:30, no reference means no confirmation: the
+      assistant tells the patient their request is received and that a
+      confirmation text will follow once the booking exists. Patients wait a
+      few minutes longer, and we accept that rather than risk one more patient
+      arriving for an appointment that does not exist. Your bookings team has
+      the list of 131 patients, and our team is helping them call every one
+      today, starting with appointments this week.
+
+      What happens next.
+
+      - Your IT team shares the gateway logs for 09:35 to 12:10, requested at
+        15:00 and due by 18:00.
+      - We replay an empty response against both library versions by 19:00
+        today.
+      - We match the 131 against our 106 traces by 20:00, to see whether
+        every empty success became a missing booking.
+      - From tonight we record every booking call in full, unsampled, so the
+        next investigation does not start with half the evidence.
+
+      By 12:00 tomorrow I expect to tell you which of the first two
+      hypotheses holds, or that both do. For the regulator decision, what we
+      can state today is that 131 patients were told they had appointments
+      that were never booked, that the assistant confirmed without the proof
+      it should have required, and that this can no longer happen.
+  - band: adequate
+    score: 61
+    body_md: |
+      Here is where we are on Tuesday's booking incident.
+
+      What happened: between 09:40 and 12:10, the assistant sent 212 booking
+      confirmations, and 131 of those bookings are not in the scheduling
+      system. Some patients have arrived for appointments that do not exist.
+      The hospital's reconciliation found the missing bookings overnight, and
+      our message log confirms that all 212 confirmations were sent.
+
+      What our data shows: our traces cover about half of the conversations,
+      because trace sampling is set to 50 percent. In the traces we have, 64
+      booking calls returned a success code with an empty response, and the
+      assistant treated that as a successful booking. So the assistant
+      confirmed bookings that had not been made.
+
+      The most likely cause is the hospital's new API gateway, which was
+      deployed at 09:35 and rolled back at 12:10. That matches the incident
+      window almost exactly, and the empty responses came from the gateway. We
+      also upgraded a library on Monday evening, which may have changed how the
+      assistant handles empty responses, so it could be a contributing factor.
+      The model provider had a slowdown during the morning, but it does not
+      match the timing and we do not think it is related.
+
+      What we have done: we have paused automatic confirmations. The assistant
+      now takes booking requests and a member of staff confirms each one. This
+      will stay in place until we have fixed the handling of empty responses.
+
+      Next steps:
+
+      - Get the gateway logs from the hospital IT team.
+      - Test the new library against an empty response.
+      - Change the assistant so it only confirms a booking when it receives a
+        booking reference.
+      - Increase trace sampling for booking conversations.
+      - Review the messages sent to the 131 patients, so we know exactly what
+        each of them was told.
+
+      For the board: the incident was most likely caused by the gateway
+      release and made worse by the way our assistant handled the empty
+      responses. It has been contained, and we will confirm the cause once we
+      have the gateway logs. The 131 affected patients should be contacted as
+      soon as possible, and we can provide the list to your team today.
+
+      We are sorry for the disruption this has caused to patients and to your
+      clinic staff. We take it seriously, and we will send a full written
+      report once the investigation is complete, including what we are
+      changing so that it cannot happen again.
+  - band: weak
+    score: 22
+    body_md: |
+      Root cause analysis: booking confirmations without bookings, Tuesday.
+
+      The root cause was the hospital's API gateway release at 09:35. The new
+      gateway returned empty responses to our booking requests, so the bookings
+      were never created, and the problem stopped as soon as the hospital
+      rolled the gateway back at 12:10. This is clear from our traces, which
+      show the empty responses.
+
+      The timing leaves no doubt about this. The gateway went live at 09:35,
+      the first confirmation of the incident went out five minutes later at
+      09:40, and the confirmations without bookings stopped at 12:10, the
+      minute the gateway was rolled back. A problem that starts and stops with
+      one release has one cause.
+
+      We looked at the other events around the incident and ruled them out.
+      Our tool-calling library was upgraded on Monday evening, many hours
+      before the first confirmation without a booking, so it cannot explain a
+      problem that began on Tuesday morning. The model provider's slowdown from 10:05 to 10:30
+      lasted only 25 minutes and was outside our control, so it has no bearing
+      on the result either. Neither event needs any further investigation.
+
+      Based on the traces, 64 of 106 conversations were affected, which is 60
+      percent. Applying that to all 212 confirmations sent in the window,
+      around 128 patients were affected. The hospital's reconciliation found a
+      similar number, which confirms our figure, so we suggest the board uses
+      128 as the number of affected patients. The other 84 patients were
+      booked as normal.
+
+      Our assistant behaved correctly given the responses it received. It got
+      a success code from the gateway and passed the confirmation on to the
+      patient, which is what it is designed to do. A success code tells the
+      assistant that the booking exists, and the assistant cannot be expected
+      to second-guess a success code from the hospital's own systems.
+
+      Some patients arrived at clinics this morning for appointments that did
+      not exist, and we regret the inconvenience to them and to clinic staff.
+      That inconvenience came from the gateway release.
+
+      The decision on notifying the regulator belongs to the hospital, because
+      the fault sits with the hospital's own release. Nothing in our service
+      needs to be reported, and we would ask that any notification describes
+      the incident as a gateway failure.
+
+      Recommended actions:
+
+      - The hospital IT team should review their release process and test the
+        gateway properly before deploying changes.
+      - The hospital IT team should send us the gateway logs when they are
+        ready, so that we can attach them to this report as further proof of
+        the root cause.
+      - The hospital should contact the affected patients.
+
+      No changes are needed on our side. We consider this incident closed from
+      our perspective, and we are happy to support the hospital's own review.
+
+hints:
+  - List what each source actually recorded before you explain anything. The
+    message log, the traces and the reconciliation each cover a different set
+    of conversations.
+  - Half the conversations have no trace, so anything you say about them is
+    an inference, even a likely one.
+  - The gateway window and the incident window line up. Timing makes a
+    hypothesis, and a cause needs a check that could have come out the other
+    way.
+  - Containment does not wait for the cause. Ask what the assistant should
+    require before it says confirmed.
+  - The 17:00 update can be honest and still decisive. Say what is known,
+    what is believed and how firmly, what has been done, and when the rest
+    will be known.
+
+scenario:
+  headline: "Patients arrive for appointments that were never booked"
+  who: The chief operating officer of a regional hospital group
+  situation: >-
+    For two and a half hours the appointment assistant confirmed bookings the
+    scheduling system never received. Half the conversations have no trace.
+  stakes: >-
+    131 patients hold confirmations for appointments that do not exist. The
+    board wants a root cause by 17:00 to decide whether to notify the
+    regulator.
+  metrics:
+    - { label: Confirmations sent, value: "212" }
+    - { label: Bookings that do not exist, value: "131" }
+    - { label: Conversations with a trace, value: 106 of 212 }
+
+diagram:
+  title: What saw the lost bookings, and what did not
+  caption: >-
+    The empty 200 shows up in half the traces. Nothing yet shows whether the
+    gateway, the library upgrade or both turned a failed write into a
+    confirmation.
+  direction: lr
+  nodes:
+    - { id: patient, label: Patient, sub: asks for an appointment, kind: actor, tone: blue, at: [0, 1] }
+    - { id: traces, label: Traces, sub: half the conversations, kind: doc, tone: neutral, at: [1, 0] }
+    - { id: assistant, label: Appointment assistant, sub: confirms after `create_booking`, kind: agent, tone: purple, at: [1, 1] }
+    - { id: messages, label: Message log, sub: every confirmation and no tool data, kind: doc, tone: neutral, at: [1, 2] }
+    - { id: gateway, label: Hospital API gateway, sub: new release from 09:35 to 12:10, kind: service, tone: orange, at: [2, 1] }
+    - { id: schedule, label: Scheduling system, sub: 131 bookings never written, kind: store, tone: pink, at: [3, 1] }
+    - { id: update, label: 17:00 update, sub: each claim observed or inferred, kind: output, tone: green, at: [3, 2] }
+  edges:
+    - { from: patient, to: assistant, label: books, step: 1 }
+    - { from: assistant, to: gateway, label: "`create_booking`", step: 2 }
+    - { from: gateway, to: assistant, label: 200 with an empty body, tone: danger, step: 3 }
+    - { from: gateway, to: schedule, label: no booking written, tone: danger }
+    - { from: assistant, to: traces, label: sampled at 50 percent, tone: muted }
+    - { from: assistant, to: messages, label: every confirmation, tone: muted }
+    - { from: traces, to: update, label: 64 empty bodies in 106 }
+    - { from: messages, to: update, label: 212 confirmations }
+
+approach:
+  goal: An update the board can act on, with every claim marked observed or inferred
+  branches:
+    - label: What was observed
+      leaves: [212 confirmations and 131 missing bookings, 64 empty bodies in 106 traces]
+    - label: What is inferred
+      detail: Timing and a pattern in half the traces make hypotheses, and each one needs a check that could fail.
+      leaves: [the gateway release, the library upgrade, the latency spike]
+    - label: Contain before you explain
+      leaves: [no reference means no confirmation, reach the 131 patients today]
+    - label: Say when the rest is known
+      leaves: [each check with an owner and a time, close the sampling gap]
+
+coach:
+  opening: >-
+    Before you write a sentence to the board, list what each source actually
+    recorded. Everything else in the update is inference, and it should read
+    that way.
+  signals:
+    - id: claims-a-cause
+      when:
+        code_matches: '(?i)\broot cause (is|was)\b|\b(is|was) the root cause\b|\broot cause:\s|\b(was|were) caused by\b'
+        code_lacks: '(?i)hypothes'
+      say: >-
+        You have named a root cause, and nothing in the telemetry observed it.
+        What would you need to see before it stops being a hypothesis?
+    - id: no-sampling
+      when: { code_lacks: '(?i)sampl' }
+      say: >-
+        Half the conversations have no trace. Where does your update say what
+        the evidence covers?
+    - id: blames-the-client
+      when: { code_matches: '(?i)(assistant|agent|system) (behaved|worked|performed) (correctly|as designed|as expected)|no changes are needed on our side|nothing (needs|needed) to change on our side' }
+      say: >-
+        The assistant confirmed a booking with no reference. Whatever the
+        gateway did, that step is yours to fix. Where does your update say so?
+    - id: no-containment
+      when: { code_lacks: '(?i)\bcontain|\bpaus|\bno reference|\bswitch(ed)? off|\bturn(ed)? off|\bdisabl' }
+      say: >-
+        What stops the next patient getting a confirmation for a booking that
+        does not exist, before anyone knows why?
+    - id: no-times
+      when: { code_lacks: '(?i)\b(by|at|before) \d{1,2}[:.]\d{2}\b|\b(by|at|before) \d{1,2} ?(am|pm)\b|\bwithin (\d+|one|two|three|four|six|twelve) (hours?|minutes?|days?)\b|\bby (the )?end of (the )?day\b|\bby (tomorrow|noon|midday|monday|tuesday|wednesday|thursday|friday)\b' }
+      say: >-
+        Each check needs an owner and a time. When does the chief operating
+        officer hear the next result?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start by listing what the message log, the traces and the
+        reconciliation each recorded. The update is easier once the evidence
+        is on the page.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three drafts have not passed. The first hint asks what each source
+        actually recorded, which is where a defensible update starts.
+  wrap_up: >-
+    When the telemetry has gaps, the update's job is to say where they are.
+    Name what was observed, rank what is inferred with the check that settles
+    it, contain the harm without waiting, and put a time on everything.
+
+reference_md: |
+  The update has to be decisive about what is known and honest about what is
+  not, and the telemetry makes that harder than it looks.
+
+  Start with coverage, because every later sentence depends on it. The
+  message log saw every confirmation and nothing about the tool. The traces
+  saw the tool in half the conversations, chosen when each conversation
+  started, which makes them close to a random half and still only half. The
+  reconciliation saw the bookings from the hospital's side. The 131 comes from
+  the reconciliation and is a count. Scaling 64 of 106 across 212 produces an
+  estimate of the same thing and a worse one, and an update that quotes both
+  leaves the board unsure which number to repeat.
+
+  The gateway release is the tempting root cause, because its window brackets
+  the incident, and it may well be right. Timing makes a hypothesis. It
+  becomes a cause when a check that could have come out the other way comes
+  out this way: the gateway's logs showing empty successes for the missing
+  bookings, or a replay that reproduces one. Until then, naming it to a board
+  is a claim the evidence has not made, and it points the hospital at its own
+  IT team on the day the assistant's defect is the one thing that is certain.
+
+  That defect anchors a good update. Whatever the gateway did, the assistant
+  confirmed a booking without a reference, which turned a failed write into a
+  patient standing at a clinic that was not expecting them. Fixing it is
+  containment that does not wait for the cause, and saying so plainly is what
+  makes the rest of the update credible.
+
+  The telemetry gap is itself a finding. Sampling half the conversations at
+  their start is a reasonable default for chat and the wrong one for a call
+  that creates a booking. Recording every booking call costs storage, and it
+  is far cheaper than another investigation that starts with half the
+  evidence, so it belongs on the list of next checks with the same weight as
+  the gateway logs.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A production incident has missing traces, and an executive wants a definite root cause today. How do you explain the cause?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I035.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat.
+
+traps:
+  - Naming the gateway as the root cause, which no telemetry observed, and clearing the assistant that
+    confirmed without a booking reference.
+  - Scaling 64 of 106 traced conversations up to all 212, when the reconciliation already counted 131.
+  - Waiting for the root cause before containing, which leaves the assistant free to confirm bookings
+    that have no reference.
+  - Listing next checks with no owner or time, which gives the chief operating officer nothing to hold
+    anyone to.

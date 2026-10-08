@@ -12,6 +12,7 @@
     "validate:voice": "tsx scripts/validate-voice-questions.ts",
     "migrate": "tsx scripts/migrate.ts",
     "import:content": "tsx scripts/import-content.ts",
+    "db:seed": "tsx scripts/seed.ts",
     "invite": "tsx scripts/invite.ts",
     "worker": "tsx scripts/worker.ts",
     "lint": "eslint .",

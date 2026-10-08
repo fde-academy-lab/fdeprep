@@ -178,8 +178,27 @@ def _step_status(step_id: str, held: dict[str, bool], baseline: frozenset[str]) 
     return "unchecked" if step_id in baseline else "pass"
 
 
+# What a framework imports on first use rather than as it loads. LangChain
+# core loads langsmith's run helpers, and asyncio with them, on a tool's first
+# call, and pydantic loads importlib.metadata when it builds its first model.
+# Importing langgraph loads both up front, so this gives a solution that names
+# only langchain_core or pydantic the sandbox a LangGraph solution already has
+# (8 October 2026).
+FIRST_USE = {
+    "langchain_core": ("langsmith.run_helpers",),
+    "pydantic": ("importlib.metadata",),
+}
+
+
 def _imports_to_preload(source: str, allowed_imports) -> list[str]:
-    """The modules this solution imports that the gate allows, by top-level name."""
+    """The modules this solution imports that the gate allows, by their full names.
+
+    A framework imports interpreter modules the sandbox blocks (importlib,
+    asyncio) as it loads, so the module the learner names has to be loaded
+    before the blocker goes in. `from langgraph.graph import StateGraph` needs
+    langgraph.graph itself, not only langgraph; and `from pkg import name`
+    may name a submodule, so pkg.name is tried too and a miss is ignored.
+    """
     allowed = set(ALWAYS_ALLOWED_IMPORTS) | {str(m) for m in (allowed_imports or ())}
     try:
         tree = ast.parse(source)
@@ -188,10 +207,15 @@ def _imports_to_preload(source: str, allowed_imports) -> list[str]:
     wanted: set[str] = set()
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
-            wanted.update(alias.name.split(".")[0] for alias in node.names)
+            wanted.update(alias.name for alias in node.names)
         elif isinstance(node, ast.ImportFrom) and node.module and not node.level:
-            wanted.add(node.module.split(".")[0])
-    return sorted(wanted & allowed)
+            wanted.add(node.module)
+            wanted.update(f"{node.module}.{alias.name}" for alias in node.names
+                          if alias.name != "*")
+    names = {name for name in wanted if name.split(".")[0] in allowed}
+    for root in {name.split(".")[0] for name in names}:
+        names.update(FIRST_USE.get(root, ()))
+    return sorted(names)
 
 
 def _close_trace(trace: Trace, document: dict[str, Any]) -> None:

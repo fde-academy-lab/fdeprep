@@ -63,8 +63,15 @@ security model and needs saying out loud in the pull request, not a silent edit.
 ## The two Lambdas never merge
 
 The runner executes learner code. It has no Bedrock permission, no database
-write permission, and sits in a VPC with no internet route. The judge calls
-models and never executes learner code. Results return through a queue.
+credential, no bucket and no queue, and sits in a VPC with no internet route
+and no endpoint. The judge calls models and never executes learner code. The
+worker invokes each one directly and writes what comes back; neither function
+writes a result anywhere itself (amended 30 September 2026, when results
+stopped travelling through a queue).
+
+The web host holds no model credential either: the judge function does. A
+production worker refuses to run learner code on its own host unless
+`RUNNER_LOCAL_OK=1` says somebody meant it.
 
 If a task seems to need learner code to call a model, use the step protocol in
 `docs/03-RUNNER-AND-GRADING.md` section 9.4 instead.
@@ -74,6 +81,25 @@ If a task seems to need learner code to call a model, use the step protocol in
 Learner code can read anything staged into its own process. Stage one case, or
 a bounded batch, per invocation. Never stage an expected output next to an
 input. Comparison happens in the trusted evaluator, outside the sandbox.
+
+## The harness lives in the runner, and the sandbox holds proxies
+
+Learner code calls `llm` and `tools`, and each call crosses a pipe to the
+runner, which runs the scripted model and the fixtures and records the trace.
+The script, the fixtures, the budget and the trace are never in the sandbox's
+process. `llm._script` was the whole scripted model, which turns a problem
+into a lookup, and `llm._trace` was the trace every count is recomputed from,
+which is how a solution would write tool calls that never happened. Neither
+exists in the sandbox now, so do not move either back.
+
+The static gate still rejects a private attribute read on anything other than
+`self`, `cls` or `super()`, and the public routes to the interpreter's own
+modules. That gives an honest learner a named reason. It is not the boundary:
+the boundary is that nothing worth reaching is in the process.
+
+The sandbox starts with an allowlisted environment, no process allowance, and
+a runner that is not dumpable. The runner's environment holds the execution
+role's credentials, so none of those three is optional.
 
 ## Never trust learner-reported anything
 
@@ -479,6 +505,10 @@ node_modules/
 out/
 .turbo/
 
+# panelist 2's embedding model: 46MB, fetched by
+# scripts/fetch_embedding_model.py and pinned by checksum there.
+.models/
+
 # python
 __pycache__/
 *.pyc
@@ -509,6 +539,25 @@ test-results/
 *.opus
 *.flac
 *.pcm
+
+# next / typescript build output
+web/.next/
+web/out/
+*.tsbuildinfo
+
+# `next dev` writes these on every run: AGENTS.md carries Next.js's own agent
+# instructions and CLAUDE.md is a one-line include of it. Ignored rather than
+# committed, because a file that steers every future agent session in this
+# repository should arrive by a decision someone made, not as a side effect of
+# starting the dev server. The generated file argues for committing it; that is
+# the tool's opinion about its own output, not a review.
+web/AGENTS.md
+web/CLAUDE.md
+
+# CDK synth output. The template is generated from infra/lib and asserted in
+# infra/test, so a committed copy would just be a second thing to keep current.
+infra/cdk.out/
+.claude/worktrees/
 __FDEPREP_07__
 
 # ---------------------------------------------------------------------------
@@ -533,6 +582,11 @@ if [ "$WITH_SKILLS" = "1" ]; then
   ANTHROPIC_REF="34040c9c568585f6929bedeaad110ad08f079624"
   KNOWLEDGE_WORK_REF="da38ec1ee89d41e5380e652a97382695003396e7"
   HUMANIZER_REF="225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8"
+  # Added 2026-10-08 at the product owner's request, each read before pinning.
+  PONYTAIL_REF="b088b2df6e08d4306c6a3c3d575fe38c2d2d2989"
+  KARPATHY_REF="2c606141936f1eeef17fa3043a72095b4765b9c2"
+  TASTE_REF="b482f7a970abb98c4108d4a9f761e458c64cefc8"
+  UI_UX_PRO_MAX_REF="1a2c459b35f26116fd165b0a0f30597f252749ff"
 
   # Allowlists. Paths are relative to each repo's skills/ directory, and nothing
   # outside these lists is copied, so a re-run cannot restore a skill that was
@@ -564,6 +618,7 @@ engineering/wizard
 misc/setup-pre-commit
 productivity/grill-me
 productivity/grilling
+productivity/teach
 productivity/writing-for-agents
 "
 
@@ -601,6 +656,33 @@ product-management/skills/write-spec
   # beside a README, packaging for other agents and a validator script the
   # skill never calls. Only these files are copied.
   HUMANIZER_FILES="SKILL.md LICENSE"
+
+  # Added 2026-10-08. Each kept skill is instructions only: no shell command
+  # and no fetch, except ui-ux-pro-max, whose scripts/ search the CSV files it
+  # ships (python3, standard library, no network). ponytail's hooks and
+  # installers are not copied, only its two SKILL.md files; the karpathy
+  # repository carries no LICENSE file and states MIT in its README and in the
+  # skill's frontmatter.
+  #
+  # taste and ui-ux-pro-max propose visual identities, which the rule above
+  # keeps out because docs/08 owns every styling decision. They come in as
+  # audit and anti-slop discipline only: where they disagree with docs/08,
+  # docs/08 wins, and neither may pick a font, a colour or a motion curve.
+  PONYTAIL_KEEP="
+ponytail
+ponytail-review
+"
+  KARPATHY_KEEP="
+karpathy-guidelines
+"
+  TASTE_KEEP="
+taste-skill
+redesign-skill
+minimalist-skill
+"
+  UI_UX_PRO_MAX_KEEP="
+ui-ux-pro-max
+"
 
   # A pinned SHA is not a branch, so the first clone form always fails on one
   # and the fallback is what actually does the work. Both are kept: the shallow
@@ -734,6 +816,11 @@ __KEEPLIST__
   fetch_skills "anthropics/knowledge-work-plugins" "$KNOWLEDGE_WORK_REF" "knowledge-work" "." \
     "$KNOWLEDGE_WORK_KEEP" "$KNOWLEDGE_WORK_EXTRAS"
   fetch_root_skill "blader/humanizer" "$HUMANIZER_REF" "humanizer" "$HUMANIZER_FILES"
+  fetch_skills "DietrichGebert/ponytail" "$PONYTAIL_REF" "ponytail" "skills" "$PONYTAIL_KEEP" "LICENSE"
+  fetch_skills "forrestchang/andrej-karpathy-skills" "$KARPATHY_REF" "karpathy" "skills" "$KARPATHY_KEEP"
+  fetch_skills "leonxlnx/taste-skill" "$TASTE_REF" "taste" "skills" "$TASTE_KEEP" "LICENSE"
+  fetch_skills "nextlevelbuilder/ui-ux-pro-max-skill" "$UI_UX_PRO_MAX_REF" "ui-ux-pro-max" ".claude/skills" \
+    "$UI_UX_PRO_MAX_KEEP" "LICENSE"
 
   say "vendored skills written to $DEST"
   say "re-running is safe: only the allowlisted skills are copied"

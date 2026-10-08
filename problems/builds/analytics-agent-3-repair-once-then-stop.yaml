@@ -1,11 +1,14 @@
 slug: analytics-agent-3-repair-once-then-stop
-title: The agent's fix for a failed query skipped the safety check
-day: 24
+title: "Fix a failed query once, then stop"
+day: 23
 skill: Repair a failed query once from its error message, then stop
 artefact_type: code
 difficulty: hard
 complexity: C2
 track: builds
+concept:
+  topic: "Analytics agent"
+  question: "How many times should an agent repair a failed query?"
 est_minutes: 40
 competencies:
   - { slug: tool-error-handling, weight: 1.0 }
@@ -27,7 +30,9 @@ brief_md: |
   then showed the manager a stack trace. The second version asked the model to
   fix the query and ran whatever came back. On Tuesday the fix for `column
   "region" does not exist` joined `regional_targets`, a table the picker never
-  chose, and it ran without passing the guard.
+  chose, and it ran without passing the guard. On Thursday the fix for a
+  refused query was the same query laid out over seven lines, and the agent
+  sent it to the database a second time.
 
   A repair is a new query that the model wrote, and it earns the same checks
   as the first one. One repair is usually enough to fix a typo or a wrong
@@ -50,17 +55,24 @@ contract_md: |
   - It raises, because the database did not answer in time.
 
   Only the first can be repaired. Repair it once: ask the model for a
-  corrected query, showing it the failed query and the database's error
-  message word for word. The corrected query goes through stage 2's guard like
-  any other and runs only when the guard allows it.
+  corrected query, showing it the failed query, the database's error message
+  word for word, and the tables the picker chose with their columns, written
+  as `table_listing` writes them. The corrected query goes through stage 2's
+  guard, against those same tables, and runs only when the guard allows it.
+
+  Two queries are the same when they match once every run of whitespace is
+  collapsed to one space and case is folded. A repair that is the same as the
+  failed query never runs, and the question ends `failed` with the database's
+  error.
 
   When the repair fails too, or the failure cannot be repaired, stop. Never
-  send the same query twice, and never send a query the guard refused to the
-  model for repair.
+  send the same query twice, and never send a query the guard refused, first
+  or repaired, to the model for repair.
 
   Return stage 2's fields. `status` gains a third value, `failed`, with
   `reason` holding the database's error, or a short description when it gave
-  none. `sql` is the last query that ran.
+  none. A repair the guard refuses ends `refused`, with the guard's reason.
+  `sql` is the last query that ran.
 
   Budget: at most 3 model calls. Allowed imports: json, re.
 
@@ -192,8 +204,9 @@ stub_code: |
 
 
   def repair_sql(question: str, tables: list, schema: dict, sql: str, error: str, llm) -> str:
-      """Ask the model once for a corrected query, showing it the failed query
-      and the database's error message word for word."""
+      """Ask the model once for a corrected query, showing it the failed query,
+      the database's error message word for word, and the picked tables as
+      table_listing writes them."""
       ...
 
 
@@ -202,12 +215,15 @@ stub_code: |
 
       run_query can answer with an error field (repairable), answer with
       something that is not a result, or raise (neither is repairable).
-      A repair goes through guard() before it runs. Stop after one repair.
-      Never send the same query twice, and never repair a refused query.
+      A repair goes through guard() against the picked tables before it runs.
+      A repair that matches the failed query once whitespace is collapsed and
+      case is folded is the same query, and it never runs. Stop after one
+      repair, and never repair a refused query, first or repaired.
 
       Return stage 2's fields, with status "failed" and the database's error
-      in reason when the question cannot be answered. sql is the last query
-      that ran. At most 3 model calls. Allowed imports: json, re.
+      in reason when the question cannot be answered, and status "refused"
+      with the guard's reason when the repair is refused. sql is the last
+      query that ran. At most 3 model calls. Allowed imports: json, re.
       """
       schema = read_schema(tools)
       tables = pick_tables(question, schema, llm)
@@ -231,15 +247,20 @@ hints:
   - The database's reply now comes in three shapes, a result, an error message
     and something unusable. Only one of them tells the model what to change.
   - A repair is a second query written by the same model that wrote the first.
-    It passes through the same guard before it runs, every time.
-  - Put the failed query and the database's error message, word for word,
-    into the repair prompt. Without the message the model has nothing new to
-    work with, and it will likely write the same query again.
+    It passes through the same guard, against the tables the picker chose,
+    before it runs, every time.
+  - Put the failed query, the database's error message word for word and the
+    picked tables with their columns into the repair prompt. The error says
+    what is wrong, and the columns show where a fix can come from.
+  - A model with nothing to change sends the query back, sometimes laid out
+    differently. Compare the repair with the failed query before it runs,
+    with whitespace collapsed and case folded.
   - One repair, then stop. A second failure, a timeout or a reply that is not
-    a result all end with status failed and the reason, and a query the guard
-    refused is never sent for repair.
+    a result all end with status failed and the reason, and a refused query,
+    first or repaired, is never sent for repair.
 
 scenario:
+  headline: "The agent's fix for a failed query skipped the safety check"
   who: The data team at a garden-centre chain
   situation: >-
     The first retry resent a failing query four times and then showed the
@@ -285,14 +306,14 @@ approach:
     - label: Sort the failures
       leaves: [an error message can be repaired, a timeout or no result cannot]
     - label: Give the model the evidence
-      leaves: [the failed query, "the error, word for word"]
+      leaves: [the failed query, "the error, word for word", the picked tables and their columns]
     - label: Guard every query
       detail: >-
         The repair is a new query from the same model, and it can be wrong in
         new ways.
-      leaves: [the same guard as the first, a refused repair is a refusal]
+      leaves: [the same guard as the first, against the tables the picker chose, a refused repair is a refusal]
     - label: Stop after one
-      leaves: [a second failure ends it, the reason goes to the manager]
+      leaves: [a re-spaced copy is the same query, a second failure ends it, the reason goes to the manager]
 
 coach:
   opening: >-
@@ -330,6 +351,12 @@ coach:
       say: >-
         The repaired query in that run came back with rows. What did your
         agent report to the manager, and which query does your sql field name?
+    - id: hidden-repair-off-the-picked-tables
+      when: { test_failed: a_repair_may_only_read_the_picked_tables }
+      say: >-
+        The repair in that run read a table the schema describes and the
+        picker never chose. Which tables did your repair prompt show the
+        model, and which list did the guard check the repair against?
     - id: adversarial-nothing
       when: { test_failed: adversarial_the_database_answers_with_nothing }
       say: >-
@@ -340,6 +367,12 @@ coach:
       say: >-
         The query tool raised instead of answering. Catch it, and decide
         whether a query with no explanation is worth a repair.
+    - id: adversarial-reformatted-repair
+      when: { test_failed: adversarial_the_repair_only_reformats_the_query }
+      say: >-
+        The model's repair in that run was your first query laid out on new
+        lines. What does your agent compare before a repair reaches the
+        database?
     - id: stuck
       when: { idle_minutes: 5 }
       say: >-
@@ -349,7 +382,8 @@ coach:
       when: { failed_runs_at_least: 3 }
       say: >-
         Three failed runs in. The hints sort the database's replies first,
-        then cover the repair prompt, then the guard.
+        then cover the guard, the repair prompt and when a repair counts as
+        new.
   wrap_up: >-
     Retrying helps only when the second attempt knows something the first did
     not. Give the model the database's own words once, guard what comes back,
@@ -569,6 +603,51 @@ tests:
                                     sql: { type: string, pattern: 'SUM\(l\.quantity\)' },
                                     rows: { const: [["Peat-free compost 50L", 2315], ["Wild bird seed 2kg", 1790], ["Lavender Hidcote 2L", 1466]] } } } }
 
+  # regional_targets is described and current in this schema, so a guard
+  # that checks the repair against every described table, instead of the
+  # tables the picker chose, lets it run. The repair prompt has to list the
+  # picked tables with their columns, as table_listing writes them, which is
+  # where the model could have found region on stores. The refused repair
+  # ends the question: no second repair, and sql still names the first query,
+  # the last one that ran.
+  - name: a_repair_may_only_read_the_picked_tables
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Which region took the most revenue from January to June?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores"]}' }
+        - { match: { contains: 'column "region" does not exist' },
+            reply: "SELECT t.region, SUM(l.net_gbp) AS revenue_gbp FROM order_lines l JOIN regional_targets t ON t.store_id = l.store_id WHERE l.sold_on >= '2026-01-01' AND l.sold_on < '2026-07-01' GROUP BY t.region ORDER BY revenue_gbp DESC LIMIT 1" }
+        - { match: "*",
+            reply: "SELECT region, SUM(net_gbp) AS revenue_gbp FROM order_lines WHERE sold_on >= '2026-01-01' AND sold_on < '2026-07-01' GROUP BY region ORDER BY revenue_gbp DESC LIMIT 1" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: regional_targets, deprecated: false, columns: [store_id, region, quarter, target_gbp],
+                  description: "Each store's revenue target for each quarter, with the region it counts towards. Set by finance every January." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 400, error: 'column "region" does not exist' } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_contains, in: last, value: 'stores\W+store_id\W+name\W+region\W+opened_on' }
+        - { type: llm_calls_at_most, value: 3 }
+        - { type: tool_calls_at_most, value: 2 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql, reason],
+                      properties: { status: { const: refused },
+                                    reason: { type: string, pattern: regional_targets },
+                                    sql: { type: string, not: { pattern: regional_targets } } } } }
+
   - name: adversarial_the_database_answers_with_nothing
     visibility: adversarial
     fixture: empty_tool_result
@@ -654,6 +733,57 @@ tests:
             schema: { type: object, required: [status],
                       properties: { status: { const: failed } } } }
 
+  - name: adversarial_the_repair_only_reformats_the_query
+    visibility: adversarial
+    fixture: loop_bait
+    annotation_md: |
+      The `stores` table was rebuilt overnight and nobody granted the agent's
+      read-only role access to it again, so the database refused the query
+      with `permission denied for table stores`. Nothing in the SQL was wrong,
+      and the model's repair was the same query laid out over seven lines with
+      its key words in lower case.
+
+      Compared character by character, that repair is a new query, and the
+      guard passes it, as it passed the first one. PostgreSQL 18 reads key
+      words in any case, folds unquoted names to lower case and uses
+      whitespace only to separate words, so the database would read the
+      failed query again and refuse it again. With whitespace collapsed and case folded the repair is
+      a copy, so it never runs. The manager gets the database's own words,
+      which tell the data team which grant to restore.
+    spec:
+      kind: agent_run
+      input: { question: "What was revenue by region from April to June?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores"]}' }
+        - { match: { contains: "permission denied for table" },
+            reply: "select s.region,\n       sum(l.net_gbp) as revenue_gbp\n  from order_lines l\n  join stores s on s.store_id = l.store_id\n where l.sold_on >= '2026-04-01'\n   and l.sold_on < '2026-07-01'\n group by s.region" }
+        - { match: "*",
+            reply: "SELECT s.region, SUM(l.net_gbp) AS revenue_gbp FROM order_lines l JOIN stores s ON s.store_id = l.store_id WHERE l.sold_on >= '2026-04-01' AND l.sold_on < '2026-07-01' GROUP BY s.region" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 403, error: permission denied for table stores } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 3 }
+        - { type: tool_calls_at_most, value: 2 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, sql, reason],
+                      properties: { status: { const: failed },
+                                    reason: { type: string, pattern: 'permission denied for table stores' },
+                                    sql: { const: "SELECT s.region, SUM(l.net_gbp) AS revenue_gbp FROM order_lines l JOIN stores s ON s.store_id = l.store_id WHERE l.sold_on >= '2026-04-01' AND l.sold_on < '2026-07-01' GROUP BY s.region" } } } }
+
 reference_md: |
   There are three kinds of failure here, and only one of them is worth a model
   call.
@@ -674,15 +804,46 @@ reference_md: |
   The repaired query is a new query from the same model, and it gets the same
   guard. This is the part the second version got wrong. Its repair path
   called `run_query` directly because the first query had already passed the
-  guard, as if passing were a property of the question and not of the SQL. A
+  guard, as if one pass covered every query written for the same question. A
   repair for a missing column is exactly when a model reaches for a table it
   imagines has the column, and `regional_targets` is where it went.
+
+  The repair prompt names the picked tables with their columns, and the guard
+  checks the repair against that same list. `column "region" does not exist`
+  sends the model looking for a region column, and the line
+  `stores(store_id, name, region, opened_on)` shows it one in a table it may
+  read.
+  Without that line it guesses by name, and `regional_targets` sounds right.
+  That table is described and current, so a guard that checked the repair
+  against the whole schema would let it run. When the model reaches for it
+  anyway, the repair ends `refused` with the table named, nothing goes back
+  for a second repair, and `sql` still names the first query, the last one
+  that ran.
+
+  A repair that only re-spaces or re-cases the failed query is the failed
+  query. PostgreSQL 18 reads key words in any case, folds unquoted names to
+  lower case and uses whitespace only to separate words, so the database
+  would read the tidy copy as the same request and refuse it the same way. An exact string
+  comparison misses the copy, and so does the guard, which passed the
+  original. Collapsed and case-folded, the two match, there is nothing to run,
+  and the answer is the first error. Folding case also folds string literals
+  and quoted names, which PostgreSQL keeps as written, so a repair that only
+  fixed `"Region"` to `"region"` would be stopped too. This schema quotes no
+  names, and that mistake costs one honest failure where a repeated query
+  costs a second refusal.
+
+  A copy is the model saying it has nothing to change, which ends the repair
+  and leaves retries to the code that owns the connection. PostgreSQL 18's
+  documentation says a query cancelled by a recovery conflict on a standby
+  may well succeed when run again, so resending an unchanged query after a
+  pause can be right. That is a retry policy with its own budget, and the
+  repair path is the wrong place for it.
 
   One repair, then stop. A typo or a wrong column is usually fixed on the
   first attempt, and a query that still fails after a repair has usually
   failed for a reason more attempts will not fix. The manager gets the
-  database's own words, which the data team can act on, and no query ever runs
-  twice unchanged.
+  database's own words, which the data team can act on, and no query runs
+  twice, however it is laid out.
 
 interview_evidence:
   round: both
@@ -705,14 +866,15 @@ tools:
       also answer with no result at all, or raise on a timeout.
 example:
   case: a_query_the_database_keeps_rejecting_ends_in_an_honest_failure
-  expect: Repair the rejected query once with the database's error, guard the repair, and when it fails
-    too, stop with `status` failed, the syntax error as `reason` and the repair as `sql`.
+  expect: Repair the rejected query once with the database's error and the picked tables, guard the
+    repair, and when it fails too, stop with `status` failed, the syntax error as `reason` and the repair
+    as `sql`.
 traps:
-  - Running the repaired query without passing it through the guard again, as if the first query's pass
-    covered the repair.
-  - Asking for a repair without the failed query and the database's error word for word, so the model
-    has nothing new to go on.
-  - Sending a refused query, a timeout or an empty reply off for repair, when only a database error message
-    gives the model something to fix.
-  - Reporting a repair that ran as a failure, or leaving the first query in `sql` when it should name
-    the last query that ran.
+  - Running a repair without the guard, guarding it against every described table, or sending a repair
+    the guard refused back for another repair.
+  - Asking for a repair without the failed query, the database's error word for word and the picked
+    tables with their columns, so the model has to guess.
+  - Treating a repair that only re-spaces or re-cases the failed query as new, so the same query reaches
+    the database twice.
+  - Repairing a refusal, a timeout or an empty reply, reporting a repair that ran as failed, or naming
+    in `sql` anything but the last query that ran.

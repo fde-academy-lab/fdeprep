@@ -329,6 +329,18 @@ wait runs out are kept as last heard. Leaving the page mid-answer by a link
 inside the application closes the microphone and the socket and saves what
 was heard, as closing the tab already did.
 
+Amended 1 October 2026, after a local run found the debrief failing for
+every session and Stop showing "Answer recorded" whatever the server said.
+
+| Rule | Detail |
+|---|---|
+| Saving is tried three times | A second and then three seconds apart, on a failed connection or a reply in the 500s. A 409 counts as saved, because only an earlier try can have finished the session. A refusal in the 400s is not repeated. |
+| An unsaved answer is never shown as recorded | It stays in the tab with Save again and the typed answer, and nothing on that screen leaves the page, since leaving loses it. |
+| A socket that closes mid-answer says so | At once, with the time it closed and what to press: Stop and debrief saves what was heard, or the learner types the answer. Mid-answer transcription errors show the socket's own words, because behind API Gateway the next batch tries again. |
+| Start opens one session | The button is disabled while the request is out, so a double click cannot claim two units of the allowance. |
+| Every voice route answers JSON | Failures included, with a sentence that names the next action. A signed-out request gets 401 rather than a redirect a fetch cannot read. |
+| A page that fails says so inside the application | With Try again, which fetches the page again, and a reference an admin finds beside the error in the web log. |
+
 ### Streaming
 
 The browser opens a WebSocket to the voice session endpoint. Vercel's serverless functions are a poor fit for a long bidirectional socket, so this endpoint is separate infrastructure: API Gateway WebSocket API in front of a Lambda, on the same AWS account as the runner. Verify the current WebSocket API limits against the AWS documentation before building, and set an idle timeout below the platform maximum so an abandoned session cannot hold a connection.
@@ -513,6 +525,8 @@ Twelve questions for the first cohort, each with beats, anchors, a rubric and th
 | client-communication | 3 | Saying no to a date, explaining a limit to a non-engineer, reporting a failure |
 
 The client-communication questions matter most and are the ones no coding platform covers.
+
+Amended 8 October 2026: the PDLC and SDLC simulations (docs/04 section 2.0) each close on a client-communication question, explaining to the sponsor why the POC's number for the board is 58 and not 81, and defending the bolt 2 plan to a sponsor who wants dates. The set is fourteen questions, and client-communication holds five.
 
 ---
 

@@ -11,6 +11,7 @@ import type { Pool, PoolClient } from "pg";
 import { db, inTransaction } from "../db/pool.ts";
 import { send } from "../queue/shim.ts";
 import { setDegradedMode, type DegradedMode } from "../policy/settings.ts";
+import { lastActivitySql } from "./activity.ts";
 import type { Persona } from "../policy/roadmap.ts";
 import type { Scope } from "../policy/caps.ts";
 
@@ -67,9 +68,7 @@ export async function roster(
     `select e.id as enrolment_id, u.id as user_id, u.github_login as login,
             u.display_name, e.persona::text as persona, e.role::text as role,
             e.state::text as state,
-            (select max(s.queued_at) from submission s
-               join attempt a on a.id = s.attempt_id
-              where a.enrolment_id = e.id) as last_activity
+            ${lastActivitySql} as last_activity
        from enrolment e join app_user u on u.id = e.user_id
       where e.cohort_id = $1
       order by u.github_login`, [cohortId]);
@@ -277,10 +276,36 @@ export async function requeueSubmission(
   void send;
 }
 
+/**
+ * Every scope a counter can be cleared for, the voice allowances among them,
+ * and the one list the Ops dialog and the counters route both read. A record
+ * over Scope, so a scope added to the policy module stops the build until it
+ * is listed here.
+ */
+const CLEARABLE: Record<Scope, true> = {
+  run_hourly: true, submit_daily: true, live_daily: true, rehearsal_weekly: true,
+  defence_daily: true, voice_guided_daily: true, voice_unguided_daily: true,
+};
+export const COUNTER_SCOPES = Object.keys(CLEARABLE) as Scope[];
+
 export interface CounterTarget {
   enrolmentId: number;
   scope: Scope;
   problemId?: number;
+}
+
+/**
+ * The enrolment a GitHub login holds in this cohort, or null. Ops asks for the
+ * login, which every admin screen shows, and resolves it in the admin's own
+ * cohort, as the persona CSV does.
+ */
+export async function enrolmentByLogin(
+  login: string, cohortId: number, client: Pool | PoolClient = db(),
+): Promise<number | null> {
+  const { rows } = await client.query<{ id: string }>(
+    `select e.id from enrolment e join app_user u on u.id = e.user_id
+      where e.cohort_id = $1 and lower(u.github_login) = lower($2)`, [cohortId, login]);
+  return rows[0] ? Number(rows[0].id) : null;
 }
 
 /**

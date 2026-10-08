@@ -1,0 +1,590 @@
+slug: deliver-in-bolts-1-accept-only-traceable-units
+title: "Accept only units that trace to the PRD"
+day: 26
+skill: Accept a unit of work only when every id it traces to was accepted
+artefact_type: code
+difficulty: easy
+complexity: C2
+track: agentic-sdlc
+concept:
+  topic: "Inception and mob elaboration"
+  question: "Which of the agent's units of work did the sponsor ask for?"
+est_minutes: 20
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json]
+
+build: { id: deliver-in-bolts, title: "Deliver the field-service agent in bolts", stage: 1, of: 9 }
+
+brief_md: |
+  Stage 1 of 9. An air-conditioner and appliance maker the size of Voltas is
+  building a field-service agent for "AC not cooling" requests in Nagpur,
+  Indore and Raipur. The agent asks the customer a few diagnostic questions,
+  names the likely fault and part, checks the franchise partner's stock,
+  books the slot and briefs the technician. Construction runs six weeks, from
+  4 May to 12 June, in bolts of two working days.
+
+  Inception opened on Monday 4 May with the first mob elaboration session.
+  AWS's post on AI-DLC (Raja SP, AWS DevOps blog, 31 July 2025, read 8 October
+  2026) says that in Inception "AI transforms business intent into detailed
+  requirements, stories and units" through Mob Elaboration, "where the entire
+  team actively validates AI's questions and proposals". The aidlc-workflows
+  guide, release 2.11.0, read the same day, lists Units Generation as
+  Inception stage 2.7, marked ALWAYS, and says "Construction repeats its
+  stages for each Unit", so a unit the session lets through gets built.
+
+  The construction agent, given the two intent lines and PRD v2, proposed
+  eight units as JSON. Every unit carried `traces_to`, the ids it rests on,
+  and the session's first check asked only whether that list had anything in
+  it. UoW-7, "close a request with no reply in 24 hours", passed. It traces to
+  R-9, which the head of customer service, the sponsor, rejected in PRD v2 on
+  Wednesday 18 February: "We do not cancel a customer's request because they
+  did not answer a chatbot."
+
+  Write the check the session runs before any unit reaches the bolt plan. A
+  unit is accepted when every id in its `traces_to` is an intent line or a
+  requirement PRD v2 accepted. Every other unit goes back to the session with
+  the first id that failed.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is your request for the session.
+
+  | Call | Returns |
+  |---|---|
+  | `tools["intent"]()` | The intent lines, `[{"id": "INT-1", "text": "..."}, {"id": "INT-2", "text": "..."}]` |
+  | `tools["prd"](version=2)` | PRD v2's decisions, `{"accepted": ["R-1", ...], "rejected": [...], "deferred": [...]}` |
+  | `llm(prompt)` | The construction agent's reply |
+
+  Ask the agent once. Start the prompt with `ASK` from the starter code, then
+  add every intent line and every accepted requirement, each with its id. The
+  agent replies with one JSON object:
+
+      {"units": [{"id": "UoW-1", "unit": "...", "estimate_h": 6, "depends_on": [],
+                  "traces_to": ["R-1", "R-2"], "done_when": "..."}, ...]}
+
+  A unit is accepted when its `traces_to` names at least one id and every id
+  it names is an intent line's id or is in PRD v2's `accepted` list. Any other
+  unit is rejected, and `failed` names the first id in its `traces_to` that is
+  neither, or is `null` when `traces_to` is empty.
+
+  Return a JSON string, both lists in the agent's order:
+
+      {"accepted": ["UoW-1", "UoW-2"], "rejected": [{"id": "UoW-7", "failed": "R-9"}]}
+
+  Budget: one model call, and one call each to `intent` and `prd`. Allowed
+  imports: json.
+
+stub_code: |
+  import json
+
+  ASK = (
+      "You are the construction agent in a mob elaboration session. Propose the "
+      "units of work for the intent lines and the accepted PRD v2 requirements "
+      "below. Reply with one JSON object and nothing else, in this shape:\n"
+      '{"units": [{"id": "UoW-1", "unit": "...", "estimate_h": 6, "depends_on": [], '
+      '"traces_to": ["R-1"], "done_when": "..."}]}\n'
+  )
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      accepted = []
+      rejected = []
+      # TODO 1: read the intent lines with tools["intent"]() and PRD v2 with
+      #         tools["prd"](version=2). Put every intent line's id and every id
+      #         in PRD v2's accepted list into one set
+      # TODO 2: ask llm once: ASK, then each intent line and each accepted
+      #         requirement with its id. Read the units from the JSON reply
+      # TODO 3: in the agent's order, add a unit's id to accepted only when its
+      #         traces_to names at least one id and every id is in that set
+      # TODO 4: add every other unit to rejected as {"id": ..., "failed": ...},
+      #         with the first id that is not in the set, or None when its
+      #         traces_to is empty
+      return json.dumps({"accepted": accepted, "rejected": rejected})
+
+steps:
+  - id: s1
+    text: Read the intent lines and PRD v2, and put every id a unit may rest on into one set.
+    check_id: s1
+  - id: s2
+    text: Ask the agent once, with the intent lines and the accepted requirements, and read the units from its reply.
+    check_id: s2
+  - id: s3
+    text: Accept a unit, in the agent's order, only when every id in its `traces_to` is in that set.
+    check_id: s3
+  - id: s4
+    text: Reject every other unit with the first id that failed, or `null` when it traces to nothing.
+    check_id: s4
+
+step_checks:
+  # Both public cases read the intent lines and PRD v2, so either turns this green.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: intent }
+        - { type: calls_tool_with, name: prd, args: { version: 2 } }
+  # The agent proposes units only when the prompt carries the ask, the intent
+  # lines and the accepted requirements, so the prompt is what this reads.
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: prompt_contains, value: "units of work" }
+        - { type: prompt_contains, value: "INT-2" }
+        - { type: prompt_contains, value: "R-10" }
+  # The first public case: seven units trace to accepted ids.
+  - step_id: s3
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              accepted: { const: ["UoW-1", "UoW-2", "UoW-3", "UoW-4", "UoW-5", "UoW-6", "UoW-8"] }
+  # No public case holds a unit with nothing in traces_to, or one whose first
+  # id resolves and whose second does not, so this step runs a case of its own.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "Check the three units the agent proposed for the messaging work." }
+      llm_script:
+        - match:
+            all:
+              - { contains: "units of work" }
+              - { contains: "INT-2" }
+              - { contains: "R-10" }
+          reply: |-
+            {"units": [
+              {"id": "UoW-4", "unit": "Technician brief: fault, part, visit history", "estimate_h": 3, "depends_on": ["UoW-1", "UoW-2"], "traces_to": ["R-6"], "done_when": "Every booking has a brief before the slot"},
+              {"id": "UoW-5", "unit": "Customer messaging: confirmation and reschedule on WhatsApp", "estimate_h": 4, "depends_on": ["UoW-3"], "traces_to": [], "done_when": "Confirmation sent within one minute of booking"},
+              {"id": "UoW-7", "unit": "Auto-cancel: close a request with no reply in 24 hours", "estimate_h": 2, "depends_on": ["UoW-5"], "traces_to": ["R-7", "R-9"], "done_when": null}
+            ]}
+        - { match: "*", reply: "Send me the intent lines and the accepted requirements, each with its id, and I will propose the units." }
+      tools:
+        intent:
+          returns:
+            - { id: "INT-1", text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: "INT-2", text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        prd:
+          by_arg:
+            arg: version
+            values:
+              "2": { accepted: ["R-1", "R-2", "R-3", "R-4", "R-5", "R-6", "R-7", "R-10"], rejected: ["R-9"], deferred: ["R-11"] }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [accepted, rejected]
+            properties:
+              accepted: { const: ["UoW-4"] }
+              rejected: { const: [{ id: "UoW-5", failed: null }, { id: "UoW-7", failed: "R-9" }] }
+
+hints:
+  - Pick UoW-7 and follow each id in its `traces_to` to where it points. A
+    list with something in it says the agent wrote an id down, and nothing
+    about what the id is.
+  - PRD v2 sorts requirements into accepted, rejected and deferred, and only
+    one of those is something the sponsor asked for. The intent lines are the
+    only other thing a unit may rest on.
+  - Build one set from the intent lines' ids and PRD v2's `accepted` list, and
+    look every id up in it. A unit is accepted when its `traces_to` is not
+    empty and every id is in the set.
+  - Walk the units in the agent's order. The first id outside the set, or
+    nothing at all to look up, sends the unit to `rejected`, and the id goes
+    in `failed`.
+
+scenario:
+  headline: "UoW-7 auto-cancels requests, tracing to the requirement the sponsor rejected"
+  who: The FDE running Inception for an appliance maker the size of Voltas
+  situation: >-
+    On Monday 4 May the construction agent proposed eight units of work from
+    the intent and PRD v2. Every unit carried a trace. UoW-7, close a request
+    after 24 hours with no reply, traced to R-9, which the sponsor rejected in
+    writing on 18 February.
+  stakes: >-
+    Construction runs its stages for every unit the session accepts. A unit
+    nobody asked for costs bolt hours, and this one cancels a customer's
+    request because they did not answer a chatbot.
+  metrics:
+    - { label: Units proposed, value: "8" }
+    - { label: Requirements accepted, value: "8 of 11" }
+    - { label: Traced to a rejected one, value: "1" }
+
+diagram:
+  title: Where a unit's trace gets looked up
+  caption: >-
+    The agent proposes units, each with the ids it rests on. A unit reaches
+    the bolt plan only when every id is an intent line or an accepted
+    requirement.
+  direction: lr
+  nodes:
+    - { id: intent, label: Intent lines, sub: "INT-1 and INT-2", kind: doc, tone: blue, at: [0, 0] }
+    - { id: prd, label: PRD v2, sub: "accepted, rejected, deferred", kind: doc, tone: blue, at: [0, 2] }
+    - { id: agent, label: Construction agent, sub: proposes units as JSON, kind: model, tone: teal, at: [1, 1] }
+    - { id: check, label: Trace check, sub: every id looked up, kind: guard, tone: purple, at: [2, 1] }
+    - { id: plan, label: Bolt plan, sub: accepted units only, kind: output, tone: green, at: [3, 0] }
+    - { id: session, label: Mob elaboration, sub: gets each rejected unit back, kind: actor, tone: orange, at: [3, 2] }
+    - { id: cancel, label: "UoW-7 accepted", sub: "traces to R-9, which was rejected", kind: output, tone: pink, at: [2, 3] }
+  edges:
+    - { from: intent, to: agent, label: what the sponsor wants, step: 1 }
+    - { from: prd, to: agent, label: accepted requirements, step: 1 }
+    - { from: agent, to: check, label: eight units, step: 2 }
+    - { from: intent, to: check, label: ids a unit may rest on, tone: muted }
+    - { from: prd, to: check, label: ids a unit may rest on, tone: muted }
+    - { from: check, to: plan, label: every id resolves, tone: success, step: 3 }
+    - { from: check, to: session, label: the first id that failed, step: 3 }
+    - { from: agent, to: cancel, label: a trace nobody followed, tone: danger }
+
+approach:
+  goal: Accept a unit only when everything it rests on was asked for
+  branches:
+    - label: Know what a unit may rest on
+      leaves: [the two intent lines, "PRD v2's accepted requirements"]
+    - label: Follow every id
+      detail: A trace is an id the agent wrote down. It counts once you have looked it up and found an accepted thing there.
+      leaves: [an id outside the set fails the unit, an empty trace rests on nothing]
+    - label: Send the rest back with a reason
+      leaves: [the first id that failed, "`null` when there was nothing to look up"]
+    - label: Ask the agent once
+      leaves: [the agent proposes, the session decides]
+
+coach:
+  opening: >-
+    Before you write the check, take UoW-7 and follow each id in its
+    `traces_to` to where it points.
+  signals:
+    - id: non-empty-is-not-a-trace
+      when: { code_matches: 'if\s+(not\s+)?\w+\[\s*["'']traces_to["'']\s*\]\s*:' }
+      say: >-
+        This branch decides on whether `traces_to` has anything in it. UoW-7's
+        list has R-9 in it. What did the sponsor decide about R-9?
+    - id: checks-the-rejected-list
+      when:
+        code_matches: '\bin\s+\w+\[\s*["'']rejected["'']\s*\]'
+        code_lacks: '\bnot\s+in\b'
+      say: >-
+        Your check looks each id up in what PRD v2 rejected. A trace counts
+        when it points at something accepted. What happens to a unit that
+        rests on a requirement the sponsor deferred, or on nothing?
+    - id: no-agent-call
+      when: { code_lacks: '\bllm\s*\(' }
+      say: >-
+        Nothing asks the agent for its units yet. Start the prompt with `ASK`
+        and add the intent lines and the accepted requirements with their ids.
+    - id: hidden-empty-trace
+      when: { test_failed: a_unit_with_nothing_in_traces_to_is_rejected }
+      say: >-
+        In that run one unit's `traces_to` was empty. Nothing in it was
+        rejected, and nothing in it was accepted either. Which did your check
+        ask about?
+    - id: hidden-deferred
+      when: { test_failed: a_unit_tracing_to_a_deferred_requirement_is_rejected }
+      say: >-
+        In that run one unit traced to an accepted requirement and to one the
+        sponsor deferred. Is a deferred requirement something she asked for?
+    - id: hidden-withdrawn
+      when: { test_failed: a_unit_tracing_to_a_withdrawn_requirement_is_rejected }
+      say: >-
+        In that run one unit traced to an id that is in none of PRD v2's
+        lists. Which list did your check need it to be in?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1. Once the set holds the intent lines' ids and the
+        accepted requirements, each later step is a lookup in it.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and on
+        this tier it costs nothing to open.
+  wrap_up: >-
+    A trace is an id the agent wrote down, and it counts only when it points at
+    something the sponsor accepted. Look every id up in one set, and send a
+    unit back with the id that failed so the session knows what to fix.
+
+tests:
+  - name: accepts_the_units_that_trace_to_prd_v2
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Mob elaboration, session 1: check the agent's proposal before it reaches the bolt plan." }
+      llm_script:
+        - match:
+            all:
+              - { contains: "units of work" }
+              - { contains: "INT-2" }
+              - { contains: "R-10" }
+          reply: |-
+            {"units": [
+              {"id": "UoW-1", "unit": "Intake and diagnosis: read the request, ask at most four questions, name the likely fault and part", "estimate_h": 6, "depends_on": [], "traces_to": ["R-1", "R-2"], "done_when": "200 replayed ACNC requests name a fault; symptom asked before model number"},
+              {"id": "UoW-2", "unit": "Parts check: read the partner's stock sheet, pick the partner with the part, refuse a sheet older than a day", "estimate_h": 5, "depends_on": ["UoW-1"], "traces_to": ["R-3", "R-5"], "done_when": "Every booking in the replay carries a sheet updated_at under 24 h"},
+              {"id": "UoW-3", "unit": "Slot booking in the service system, honouring the dispatch threshold", "estimate_h": null, "depends_on": ["UoW-2"], "traces_to": ["R-4"], "done_when": "A booked slot appears in the service system within one minute"},
+              {"id": "UoW-4", "unit": "Technician brief: fault, part, visit history", "estimate_h": 3, "depends_on": ["UoW-1", "UoW-2"], "traces_to": ["R-6"], "done_when": "Every booking has a brief before the slot"},
+              {"id": "UoW-5", "unit": "Customer messaging: confirmation and reschedule on WhatsApp", "estimate_h": 4, "depends_on": ["UoW-3"], "traces_to": ["R-7"], "done_when": "Confirmation sent within one minute of booking"},
+              {"id": "UoW-6", "unit": "Partner dashboard: today's bookings and parts to pull", "estimate_h": 4, "depends_on": ["UoW-3"], "traces_to": ["R-10"], "done_when": "A partner sees a booking within one minute"},
+              {"id": "UoW-7", "unit": "Auto-cancel: close a request with no reply in 24 hours", "estimate_h": 2, "depends_on": ["UoW-5"], "traces_to": ["R-9"], "done_when": null},
+              {"id": "UoW-8", "unit": "Measurement: daily first-time fix and median-days reads per centre", "estimate_h": 4, "depends_on": [], "traces_to": ["INT-1", "INT-2"], "done_when": "Yesterday's read is in the metrics table by 06:00"}
+            ]}
+        - { match: "*", reply: "Send me the intent lines and the accepted requirements, each with its id, and I will propose the units." }
+      tools:
+        intent:
+          returns:
+            - { id: "INT-1", text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: "INT-2", text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        prd:
+          by_arg:
+            arg: version
+            values:
+              "2": { accepted: ["R-1", "R-2", "R-3", "R-4", "R-5", "R-6", "R-7", "R-10"], rejected: ["R-9"], deferred: ["R-11"] }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: intent }
+        - { type: calls_tool_with, name: prd, args: { version: 2 } }
+        - { type: llm_calls_at_most, value: 1 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [accepted, rejected]
+            properties:
+              accepted: { const: ["UoW-1", "UoW-2", "UoW-3", "UoW-4", "UoW-5", "UoW-6", "UoW-8"] }
+              rejected: { const: [{ id: "UoW-7", failed: "R-9" }] }
+
+  - name: accepts_a_unit_that_traces_to_an_intent_line_alone
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "The agent proposed three units again after the session's questions. Check them." }
+      llm_script:
+        - match:
+            all:
+              - { contains: "units of work" }
+              - { contains: "INT-2" }
+              - { contains: "R-10" }
+          reply: |-
+            {"units": [
+              {"id": "UoW-5", "unit": "Customer messaging: confirmation and reschedule on WhatsApp", "estimate_h": 4, "depends_on": ["UoW-3"], "traces_to": ["R-7"], "done_when": "Confirmation sent within one minute of booking"},
+              {"id": "UoW-6", "unit": "Partner dashboard: today's bookings and parts to pull", "estimate_h": 4, "depends_on": ["UoW-3"], "traces_to": ["R-10"], "done_when": "A partner sees a booking within one minute"},
+              {"id": "UoW-8", "unit": "Measurement: daily first-time fix and median-days reads per centre", "estimate_h": 4, "depends_on": [], "traces_to": ["INT-2"], "done_when": "Yesterday's read is in the metrics table by 06:00"}
+            ]}
+        - { match: "*", reply: "Send me the intent lines and the accepted requirements, each with its id, and I will propose the units." }
+      tools:
+        intent:
+          returns:
+            - { id: "INT-1", text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: "INT-2", text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        prd:
+          by_arg:
+            arg: version
+            values:
+              "2": { accepted: ["R-1", "R-2", "R-3", "R-4", "R-5", "R-6", "R-7", "R-10"], rejected: ["R-9"], deferred: ["R-11"] }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 1 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [accepted, rejected]
+            properties:
+              accepted: { const: ["UoW-5", "UoW-6", "UoW-8"] }
+              rejected: { const: [] }
+
+  - name: a_unit_with_nothing_in_traces_to_is_rejected
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Session 1, second pass. The agent rewrote its proposal; check it again." }
+      llm_script:
+        - match:
+            all:
+              - { contains: "units of work" }
+              - { contains: "INT-2" }
+              - { contains: "R-10" }
+          reply: |-
+            {"units": [
+              {"id": "UoW-1", "unit": "Intake and diagnosis: read the request, ask at most four questions, name the likely fault and part", "estimate_h": 6, "depends_on": [], "traces_to": ["R-1", "R-2"], "done_when": "200 replayed ACNC requests name a fault; symptom asked before model number"},
+              {"id": "UoW-2", "unit": "Parts check: read the partner's stock sheet, pick the partner with the part, refuse a sheet older than a day", "estimate_h": 5, "depends_on": ["UoW-1"], "traces_to": ["R-3", "R-5"], "done_when": "Every booking in the replay carries a sheet updated_at under 24 h"},
+              {"id": "UoW-3", "unit": "Slot booking in the service system, honouring the dispatch threshold", "estimate_h": null, "depends_on": ["UoW-2"], "traces_to": ["R-4"], "done_when": "A booked slot appears in the service system within one minute"},
+              {"id": "UoW-4", "unit": "Technician brief: fault, part, visit history", "estimate_h": 3, "depends_on": ["UoW-1", "UoW-2"], "traces_to": ["R-6"], "done_when": "Every booking has a brief before the slot"},
+              {"id": "UoW-5", "unit": "Customer messaging: confirmation and reschedule on WhatsApp", "estimate_h": 4, "depends_on": ["UoW-3"], "traces_to": ["R-7"], "done_when": "Confirmation sent within one minute of booking"},
+              {"id": "UoW-6", "unit": "Partner dashboard: today's bookings and parts to pull", "estimate_h": 4, "depends_on": ["UoW-3"], "traces_to": [], "done_when": "A partner sees a booking within one minute"},
+              {"id": "UoW-7", "unit": "Auto-cancel: close a request with no reply in 24 hours", "estimate_h": 2, "depends_on": ["UoW-5"], "traces_to": ["R-9"], "done_when": null},
+              {"id": "UoW-8", "unit": "Measurement: daily first-time fix and median-days reads per centre", "estimate_h": 4, "depends_on": [], "traces_to": ["INT-1", "INT-2"], "done_when": "Yesterday's read is in the metrics table by 06:00"}
+            ]}
+        - { match: "*", reply: "Send me the intent lines and the accepted requirements, each with its id, and I will propose the units." }
+      tools:
+        intent:
+          returns:
+            - { id: "INT-1", text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: "INT-2", text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        prd:
+          by_arg:
+            arg: version
+            values:
+              "2": { accepted: ["R-1", "R-2", "R-3", "R-4", "R-5", "R-6", "R-7", "R-10"], rejected: ["R-9"], deferred: ["R-11"] }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [accepted, rejected]
+            properties:
+              accepted: { const: ["UoW-1", "UoW-2", "UoW-3", "UoW-4", "UoW-5", "UoW-8"] }
+              rejected: { const: [{ id: "UoW-6", failed: null }, { id: "UoW-7", failed: "R-9" }] }
+
+  - name: a_unit_tracing_to_a_deferred_requirement_is_rejected
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The agent folded installations into slot booking overnight. Check the proposal." }
+      llm_script:
+        - match:
+            all:
+              - { contains: "units of work" }
+              - { contains: "INT-2" }
+              - { contains: "R-10" }
+          reply: |-
+            {"units": [
+              {"id": "UoW-1", "unit": "Intake and diagnosis: read the request, ask at most four questions, name the likely fault and part", "estimate_h": 6, "depends_on": [], "traces_to": ["R-1", "R-2"], "done_when": "200 replayed ACNC requests name a fault; symptom asked before model number"},
+              {"id": "UoW-2", "unit": "Parts check: read the partner's stock sheet, pick the partner with the part, refuse a sheet older than a day", "estimate_h": 5, "depends_on": ["UoW-1"], "traces_to": ["R-3", "R-5"], "done_when": "Every booking in the replay carries a sheet updated_at under 24 h"},
+              {"id": "UoW-3", "unit": "Slot booking in the service system for repairs and installations, honouring the dispatch threshold", "estimate_h": null, "depends_on": ["UoW-2"], "traces_to": ["R-4", "R-11"], "done_when": "A booked slot appears in the service system within one minute"},
+              {"id": "UoW-4", "unit": "Technician brief: fault, part, visit history", "estimate_h": 3, "depends_on": ["UoW-1", "UoW-2"], "traces_to": ["R-6"], "done_when": "Every booking has a brief before the slot"},
+              {"id": "UoW-5", "unit": "Customer messaging: confirmation and reschedule on WhatsApp", "estimate_h": 4, "depends_on": ["UoW-3"], "traces_to": ["R-7"], "done_when": "Confirmation sent within one minute of booking"},
+              {"id": "UoW-6", "unit": "Partner dashboard: today's bookings and parts to pull", "estimate_h": 4, "depends_on": ["UoW-3"], "traces_to": ["R-10"], "done_when": "A partner sees a booking within one minute"},
+              {"id": "UoW-7", "unit": "Auto-cancel: close a request with no reply in 24 hours", "estimate_h": 2, "depends_on": ["UoW-5"], "traces_to": ["R-9"], "done_when": null},
+              {"id": "UoW-8", "unit": "Measurement: daily first-time fix and median-days reads per centre", "estimate_h": 4, "depends_on": [], "traces_to": ["INT-1", "INT-2"], "done_when": "Yesterday's read is in the metrics table by 06:00"}
+            ]}
+        - { match: "*", reply: "Send me the intent lines and the accepted requirements, each with its id, and I will propose the units." }
+      tools:
+        intent:
+          returns:
+            - { id: "INT-1", text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: "INT-2", text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        prd:
+          by_arg:
+            arg: version
+            values:
+              "2": { accepted: ["R-1", "R-2", "R-3", "R-4", "R-5", "R-6", "R-7", "R-10"], rejected: ["R-9"], deferred: ["R-11"] }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [accepted, rejected]
+            properties:
+              accepted: { const: ["UoW-1", "UoW-2", "UoW-4", "UoW-5", "UoW-6", "UoW-8"] }
+              rejected: { const: [{ id: "UoW-3", failed: "R-11" }, { id: "UoW-7", failed: "R-9" }] }
+
+  - name: a_unit_tracing_to_a_withdrawn_requirement_is_rejected
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "The agent retraced the measurement unit to the target it reads. Check the proposal." }
+      llm_script:
+        - match:
+            all:
+              - { contains: "units of work" }
+              - { contains: "INT-2" }
+              - { contains: "R-10" }
+          reply: |-
+            {"units": [
+              {"id": "UoW-1", "unit": "Intake and diagnosis: read the request, ask at most four questions, name the likely fault and part", "estimate_h": 6, "depends_on": [], "traces_to": ["R-1", "R-2"], "done_when": "200 replayed ACNC requests name a fault; symptom asked before model number"},
+              {"id": "UoW-2", "unit": "Parts check: read the partner's stock sheet, pick the partner with the part, refuse a sheet older than a day", "estimate_h": 5, "depends_on": ["UoW-1"], "traces_to": ["R-3", "R-5"], "done_when": "Every booking in the replay carries a sheet updated_at under 24 h"},
+              {"id": "UoW-3", "unit": "Slot booking in the service system, honouring the dispatch threshold", "estimate_h": null, "depends_on": ["UoW-2"], "traces_to": ["R-4"], "done_when": "A booked slot appears in the service system within one minute"},
+              {"id": "UoW-4", "unit": "Technician brief: fault, part, visit history", "estimate_h": 3, "depends_on": ["UoW-1", "UoW-2"], "traces_to": ["R-6"], "done_when": "Every booking has a brief before the slot"},
+              {"id": "UoW-5", "unit": "Customer messaging: confirmation and reschedule on WhatsApp", "estimate_h": 4, "depends_on": ["UoW-3"], "traces_to": ["R-7"], "done_when": "Confirmation sent within one minute of booking"},
+              {"id": "UoW-6", "unit": "Partner dashboard: today's bookings and parts to pull", "estimate_h": 4, "depends_on": ["UoW-3"], "traces_to": ["R-10"], "done_when": "A partner sees a booking within one minute"},
+              {"id": "UoW-7", "unit": "Auto-cancel: close a request with no reply in 24 hours", "estimate_h": 2, "depends_on": ["UoW-5"], "traces_to": ["R-9"], "done_when": null},
+              {"id": "UoW-8", "unit": "Measurement: daily first-time fix and median-days reads per centre", "estimate_h": 4, "depends_on": [], "traces_to": ["INT-1", "R-8"], "done_when": "Yesterday's read is in the metrics table by 06:00"}
+            ]}
+        - { match: "*", reply: "Send me the intent lines and the accepted requirements, each with its id, and I will propose the units." }
+      tools:
+        intent:
+          returns:
+            - { id: "INT-1", text: "For AC-not-cooling requests in Nagpur, Indore and Raipur, cut the median time from request to completed repair from 4.3 days to 3.0 by the week-6 review." }
+            - { id: "INT-2", text: "First-time fix on those requests stays at or above 61 percent while INT-1 is pursued." }
+        prd:
+          by_arg:
+            arg: version
+            values:
+              "2": { accepted: ["R-1", "R-2", "R-3", "R-4", "R-5", "R-6", "R-7", "R-10"], rejected: ["R-9"], deferred: ["R-11"] }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [accepted, rejected]
+            properties:
+              accepted: { const: ["UoW-1", "UoW-2", "UoW-3", "UoW-4", "UoW-5", "UoW-6"] }
+              rejected: { const: [{ id: "UoW-7", failed: "R-9" }, { id: "UoW-8", failed: "R-8" }] }
+
+reference_md: |
+  The construction agent proposes and the session decides. That split comes
+  from AWS's post on AI-DLC (Raja SP, 31 July 2025, read 8 October 2026), where
+  Mob Elaboration is "where the entire team actively validates AI's questions
+  and proposals". The aidlc-workflows guide (release 2.11.0, read the same
+  day) adds why the check matters this early: "Construction repeats its stages
+  for each Unit", so every unit accepted here runs through every Construction
+  stage.
+
+  A trace is an id the agent wrote down. The first check asked whether the
+  list had anything in it, which says what the agent typed and nothing about
+  what the ids are. UoW-7's list had R-9, and R-9 is the one requirement the
+  sponsor rejected in writing, so the check has to follow each id to where
+  it points.
+
+  That makes it an allowlist: one set of the ids a unit may rest on, the two
+  intent lines and PRD v2's eight accepted requirements, with every id
+  looked up in it. A check against the rejected list catches UoW-7 and
+  nothing else. PRD v2 also deferred R-11, installations, to the MVP gate,
+  and withdrew R-8, the 2.5-day target, which appears in none of its lists.
+  A unit resting on either was not asked for, and a unit with an empty list
+  rests on nothing. Each of those passes a blocklist.
+
+  A rejected unit goes back with the first id that failed, because that is
+  what the session can act on: re-trace the unit to an accepted requirement,
+  take the question to the sponsor, or drop the unit. `null` says there was
+  nothing to look up, which is a different conversation from a bad id.
+
+  The seven accepted units go to the next stage, which plans bolt 1 from
+  them. UoW-3 came through with no estimate; that is a planning problem, and
+  a trace check has no business deciding it. The rule here, intent lines and
+  accepted requirements only, is this engagement's own construction after the
+  two sources above, and the ids, dates and the sponsor's sentence are the
+  scenario's.
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    An agent proposes units of work, each with a list of the requirement ids it traces to. How do you decide which units the client asked for, and what do you send back for the rest?
+  source: |
+    Author judgement. No employer frequency data stands behind it. Method facts from the AWS DevOps
+    post "AI-Driven Development Life Cycle: Reimagining Software Engineering" by Raja SP, 31 July 2025
+    (https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/), and the aidlc-workflows
+    guide docs/guide/04-phases-and-stages.md at release v2.11.0
+    (https://github.com/awslabs/aidlc-workflows), both read 8 October 2026.
+
+tools:
+  - name: intent
+    args: ""
+    returns: "The intent lines, each with its `id` and `text`."
+  - name: prd
+    args: version
+    returns: "PRD v2's decisions when asked for version 2: the `accepted`, `rejected` and `deferred` requirement ids."
+example:
+  case: accepts_the_units_that_trace_to_prd_v2
+  expect: >-
+    Read the intent lines and PRD v2, ask the agent once, and accept seven
+    units. UoW-7 traces to R-9, which PRD v2 rejected, so it comes back with
+    `failed` set to R-9.
+traps:
+  - Accepting a unit because its `traces_to` has something in it, without looking up what each id is.
+  - Checking ids against what the sponsor rejected, when a trace counts only if it points at something accepted.
+  - Accepting a unit with an empty `traces_to` because nothing in it was turned down.

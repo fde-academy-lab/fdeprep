@@ -1,0 +1,575 @@
+slug: deliver-in-bolts-3-pick-the-planning-path
+title: "Pick the planning path for each change"
+day: 26
+skill: Send a change that reaches another unit or contract to the project path, however small
+artefact_type: code
+difficulty: medium
+complexity: C2
+track: agentic-sdlc
+concept:
+  topic: "Planning paths in BMAD"
+  question: "How much planning does each change request need, and what decides it?"
+est_minutes: 30
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json]
+
+build: { id: deliver-in-bolts, title: "Deliver the field-service agent in bolts", stage: 3, of: 9 }
+
+brief_md: |
+  Stage 3 of 9. Between 4 and 6 May nine change requests reached you for the
+  field-service agent at an air-conditioner maker the size of Voltas, from a
+  retry count to a new unit for installations. On Wednesday 6 May you decide
+  how much planning each one gets, before anyone touches code.
+
+  ADR-1 took its planning paths from BMAD (bmad-method 6.12.1, docs read 8
+  October 2026). The Choose a Planning Path page says "You don't need BMad
+  for an obvious, low-risk edit" and "One coherent outcome that needs several
+  sessions is an epic", and adds: "Scope is only one signal: use more
+  planning when the work has high risk, unclear requirements, broad
+  architectural reach, cross-system effects, or coordination between people
+  or teams." The Build a Change page says: "For a trivial edit you are
+  willing to review yourself, skip the process and ask the agent to make it
+  directly. But if a bug could escape into production, `bmad-build` is
+  likely worth it."
+
+  The construction agent sized the nine by their diffs. CR-5 changes
+  `dispatch_threshold_minutes` from 45 to 30, one line in UoW-1, so the agent
+  put it with the edits that skip planning. The partner stock API reads that
+  field, and another team owns that API.
+
+  The three paths, the ten-line threshold and the order of the checks are
+  this team's own, after BMAD's pages. Write the classifier the team runs on
+  every change request.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is your request. `tools["changes"]()` returns the change
+  requests, in the order they arrived:
+
+      [{"id": "CR-1", "change": "Retry the stock API call three times instead of two",
+        "units": ["UoW-2"], "lines": 1, "fields": ["stock_call_retries"]}, ...]
+
+  `units` names the accepted units the change touches, and is empty when the
+  change needs a unit nobody has accepted. `lines` is the size of the diff,
+  and is `null` only on a change with no unit, which nobody can size yet.
+  `fields` names every field or setting the change edits.
+
+  `tools["contracts"]()` returns the external contracts other teams own, each
+  with the fields its API reads:
+
+      {"partner_stock_api": ["partner_id", "part_no", ...], "service_booking_api": [...], ...}
+
+  Give each change one path. Check the rows in this order and stop at the
+  first that holds:
+
+  | The change | `path` | `rule` |
+  |---|---|---|
+  | Edits a field that a contract lists, by exact name | `project` | `contract` |
+  | Touches more than one unit | `project` | `units` |
+  | Touches no accepted unit | `project` | `new_unit` |
+  | Stays inside one unit, 10 lines or fewer | `skip` | `lines` |
+  | Stays inside one unit, more than 10 lines | `epic` | `lines` |
+
+  `skip` is BMAD's trivial edit: the agent makes it and an engineer reviews
+  it. `epic` is BMAD's epic-sized path, a spec and its `tickets.toml`.
+  `project` is the project-sized path, which ADR-1 keeps for any change that
+  reaches into another team's contract, and which this team also uses for a
+  change across units.
+
+  Return a JSON string with one entry per change, in the order `changes()`
+  gave them:
+
+      {"paths": [{"id": "CR-1", "path": "skip", "rule": "lines"}, ...]}
+
+  Budget: one call each to `changes` and `contracts`, and no model calls.
+  `llm` is passed in and must not be called. Allowed imports: json.
+
+stub_code: |
+  import json
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      changes = tools["changes"]()
+      paths = []
+
+      # TODO 1: read the contracts with tools["contracts"]() and gather every
+      #         field they list
+      for change in changes:
+          # TODO 2: a change that edits a field a contract lists is a
+          #         "project", with the rule "contract"
+          # TODO 3: then a change that touches more than one unit ("units"),
+          #         or no accepted unit ("new_unit"), is a "project" too
+          # TODO 4: what is left stays inside one unit: 10 lines or fewer is
+          #         "skip", more is "epic", both with the rule "lines". Add
+          #         {"id": ..., "path": ..., "rule": ...} to paths
+          pass
+
+      return json.dumps({"paths": paths})
+
+steps:
+  - id: s1
+    text: Read the contracts from `contracts()` and gather every field they list.
+    check_id: s1
+  - id: s2
+    text: Send a change that edits a field a contract lists to `project`, however few its lines.
+    check_id: s2
+  - id: s3
+    text: Send a change that touches more than one unit, or no accepted unit, to `project`.
+    check_id: s3
+  - id: s4
+    text: Size what is left by its lines, 10 or fewer as `skip` and more as `epic`.
+    check_id: s4
+
+step_checks:
+  # Either public case turns this green once the contracts are read, once.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool, name: contracts }
+        - { type: tool_calls_at_most, value: 2 }
+  # No public case edits a contract field, so this step runs its own. Its
+  # contracts list one field the brief never names, so a list copied from the
+  # brief misses it.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Size three small changes against the contracts." }
+      llm_script:
+        - { match: { contains: "planning path" }, reply: "I sized each change by its diff: ten lines or fewer skips planning, more is an epic, and a change with no unit is a project." }
+        - { match: "*", reply: "Send me the change requests and I will size each one by its diff." }
+      tools:
+        changes:
+          returns:
+            - { id: "CR-A", change: "Send technician_id as a string to the booking API", units: ["UoW-3"], lines: 1, fields: ["technician_id"] }
+            - { id: "CR-B", change: "Book at most two parts for one visit", units: ["UoW-2"], lines: 3, fields: ["max_parts_per_booking"] }
+            - { id: "CR-C", change: "Raise the stock call timeout from 5 to 8 seconds", units: ["UoW-2"], lines: 1, fields: ["stock_call_timeout_s"] }
+        contracts:
+          returns:
+            partner_stock_api: ["partner_id", "part_no", "qty", "updated_at", "dispatch_threshold_minutes", "max_parts_per_booking"]
+            service_booking_api: ["request_id", "slot_start", "technician_id"]
+            whatsapp_templates: ["booking_confirmation", "reschedule_offer"]
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [paths]
+            properties:
+              paths:
+                const:
+                  - { id: "CR-A", path: "project", rule: "contract" }
+                  - { id: "CR-B", path: "project", rule: "contract" }
+                  - { id: "CR-C", path: "skip", rule: "lines" }
+  # No public case spans two units, so this step runs its own as well.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Size two changes that reach past a single unit." }
+      llm_script:
+        - { match: { contains: "planning path" }, reply: "I sized each change by its diff: ten lines or fewer skips planning, more is an epic, and a change with no unit is a project." }
+        - { match: "*", reply: "Send me the change requests and I will size each one by its diff." }
+      tools:
+        changes:
+          returns:
+            - { id: "CR-D", change: "Show the booked slot the same way in the customer message and the partner dashboard", units: ["UoW-5", "UoW-6"], lines: 4, fields: ["slot_display"] }
+            - { id: "CR-E", change: "Spare parts returns intake", units: [], lines: null, fields: [] }
+        contracts:
+          returns:
+            partner_stock_api: ["partner_id", "part_no", "qty", "updated_at", "dispatch_threshold_minutes"]
+            service_booking_api: ["request_id", "slot_start", "technician_id"]
+            whatsapp_templates: ["booking_confirmation", "reschedule_offer"]
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [paths]
+            properties:
+              paths:
+                const:
+                  - { id: "CR-D", path: "project", rule: "units" }
+                  - { id: "CR-E", path: "project", rule: "new_unit" }
+  # The first public case: four changes inside one unit, two of each size.
+  - step_id: s4
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [paths]
+            properties:
+              paths:
+                allOf:
+                  - { contains: { const: { id: "CR-2", path: "epic", rule: "lines" } } }
+                  - { contains: { const: { id: "CR-4", path: "skip", rule: "lines" } } }
+                  - { contains: { const: { id: "CR-7", path: "epic", rule: "lines" } } }
+                  - { contains: { const: { id: "CR-8", path: "skip", rule: "lines" } } }
+
+hints:
+  - Look at CR-5 the way the partner team would. What does its line count
+    tell them, and what does the field it edits tell them?
+  - A line count measures the size of an edit. The units it touches and the
+    contracts it edits measure how far it reaches, and reach is checked first.
+  - Gather every field the contracts list into one set. For each change,
+    check that set, then the number of units, and only then the lines.
+  - Read the fields from `contracts()` on every run. When another team adds a
+    field, a change that edits it should become a project without anyone
+    editing your code.
+
+scenario:
+  headline: "A one-line threshold edit changes the field the partner's API reads"
+  who: The FDE sizing change requests for an appliance maker the size of Voltas
+  situation: >-
+    Nine change requests arrived between 4 and 6 May. The construction agent
+    sized each by its diff, and put CR-5, one line moving
+    `dispatch_threshold_minutes` from 45 to 30, with the edits that skip
+    planning. The partner stock API reads that field.
+  stakes: >-
+    Another team owns the partner stock API. A one-line edit to a field it
+    reads changes what that team's system does, and a skipped plan means
+    nobody on that team is asked.
+  metrics:
+    - { label: Change requests, value: "9" }
+    - { label: Lines in CR-5, value: "1" }
+    - { label: External contracts, value: "3" }
+
+diagram:
+  title: Reach decides the path before size does
+  caption: >-
+    A change that edits a contract field, or reaches past one unit, takes the
+    project path. Only a change inside one unit is sized by its lines.
+  direction: lr
+  nodes:
+    - { id: changes, label: "`changes()`", sub: nine change requests, kind: store, tone: blue, at: [0, 0] }
+    - { id: contracts, label: "`contracts()`", sub: "fields other teams' APIs read", kind: store, tone: blue, at: [0, 2] }
+    - { id: classifier, label: Path classifier, sub: "reach first, then size", kind: agent, tone: purple, at: [1, 1] }
+    - { id: reach, label: "Reaches past one unit?", sub: "a contract field, two units, or none", kind: guard, tone: teal, at: [2, 1] }
+    - { id: project, label: "`project`", sub: the project-sized path, kind: output, tone: orange, at: [3, 0] }
+    - { id: lines, label: "10 lines or fewer?", sub: inside one unit, kind: decision, tone: teal, at: [3, 2] }
+    - { id: skip, label: "`skip`", sub: "the agent edits, an engineer reviews", kind: output, tone: green, at: [4, 1] }
+    - { id: epic, label: "`epic`", sub: "a spec and its tickets", kind: output, tone: green, at: [4, 3] }
+    - { id: quick, label: CR-5 skipped, sub: "one line the partner's API reads", kind: output, tone: pink, at: [1, 3] }
+  edges:
+    - { from: changes, to: classifier, label: "units, lines, fields", step: 1 }
+    - { from: contracts, to: classifier, label: fields each contract reads, step: 1 }
+    - { from: classifier, to: reach, label: every change, step: 2 }
+    - { from: reach, to: project, label: "yes", step: 3 }
+    - { from: reach, to: lines, label: inside one unit, step: 3 }
+    - { from: lines, to: skip, label: "yes", tone: success, step: 4 }
+    - { from: lines, to: epic, label: "no", step: 4 }
+    - { from: changes, to: quick, label: sized by its diff, tone: danger }
+
+approach:
+  goal: Give each change the planning its reach needs, and size by lines only after that
+  branches:
+    - label: Ask whose system it changes
+      leaves: [a field a contract lists, "the list comes from `contracts()`"]
+    - label: Ask how many units it touches
+      leaves: [more than one is a project, none means a unit nobody accepted]
+    - label: Then size it
+      detail: Inside one unit and clear of every contract, the line count decides.
+      leaves: [10 lines or fewer skips planning, more is an epic]
+    - label: Name the rule that decided
+      leaves: [the first check that held, so the team can see why]
+
+coach:
+  opening: >-
+    Before you count lines, decide what CR-5's one line changes for the team
+    that owns the partner stock API.
+  signals:
+    - id: no-contracts
+      when: { code_lacks: 'contracts' }
+      say: >-
+        Nothing in your classifier reads `contracts()`. CR-5 is one line.
+        Whose API reads the field it edits?
+    - id: units-not-counted
+      when: { code_lacks: '\blen\s*\(' }
+      say: >-
+        Nothing counts the units a change touches. What path does a small
+        change get when it touches two units, each with its own review?
+    - id: contract-written-in
+      when: { code_matches: '["'']dispatch_threshold_minutes["'']|["'']slot_start["'']' }
+      say: >-
+        Your code names a contract field itself. The contracts belong to the
+        teams that own the APIs. Where does your classifier find out when one
+        of them changes?
+    - id: calls-model
+      when: { code_matches: '\bllm\s*\(' }
+      say: >-
+        The tools already hold everything the path depends on. What would a
+        model call add, and would the same change get the same path twice?
+    - id: hidden-nine
+      when: { test_failed: the_nine_change_requests }
+      say: >-
+        In that run two one-line changes edited fields a contract lists, and
+        one long change touched two units. Which of your checks ran first?
+    - id: hidden-small-two-units
+      when: { test_failed: cr_6_scoped_at_six_lines_is_still_a_project }
+      say: >-
+        In that run a six-line change touched two units. Did your classifier
+        count the units before it looked at the lines?
+    - id: hidden-contract-list
+      when: { test_failed: cr_5_is_a_skip_when_no_contract_lists_its_field }
+      say: >-
+        In that run the contracts listed different fields. Did your
+        classifier read them from `contracts()`, or from somewhere else?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1. Once every contract field is in one set, each later
+        check is a lookup or a count.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and the
+        later ones get closer to the order of the checks.
+  wrap_up: >-
+    Planning follows reach. Check the contracts and the units before the line
+    count, read the contracts from the teams that own them, and name the rule
+    that decided, so nobody has to guess why a one-line change waits for a
+    project.
+
+tests:
+  - name: picks_paths_for_five_changes
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Pick a path for CR-2, CR-3, CR-4, CR-7 and CR-8." }
+      llm_script:
+        - { match: { contains: "planning path" }, reply: "I sized each change by its diff: ten lines or fewer skips planning, more is an epic, and a change with no unit is a project." }
+        - { match: "*", reply: "Send me the change requests and I will size each one by its diff." }
+      tools:
+        changes:
+          returns:
+            - { id: "CR-2", change: "Add a fifth diagnostic question for window units", units: ["UoW-1"], lines: 40, fields: ["diagnostic_questions"] }
+            - { id: "CR-3", change: "Installations intake", units: [], lines: null, fields: [] }
+            - { id: "CR-4", change: "Rename a template variable in the technician brief", units: ["UoW-4"], lines: 3, fields: ["brief_template"] }
+            - { id: "CR-7", change: "Add a reschedule reason list to the customer message", units: ["UoW-5"], lines: 25, fields: ["reschedule_reasons"] }
+            - { id: "CR-8", change: "Log the chosen fault with its confidence", units: ["UoW-1"], lines: 8, fields: ["fault_log"] }
+        contracts:
+          returns:
+            partner_stock_api: ["partner_id", "part_no", "qty", "updated_at", "dispatch_threshold_minutes"]
+            service_booking_api: ["request_id", "slot_start", "technician_id"]
+            whatsapp_templates: ["booking_confirmation", "reschedule_offer"]
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: changes }
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [paths]
+            properties:
+              paths:
+                const:
+                  - { id: "CR-2", path: "epic", rule: "lines" }
+                  - { id: "CR-3", path: "project", rule: "new_unit" }
+                  - { id: "CR-4", path: "skip", rule: "lines" }
+                  - { id: "CR-7", path: "epic", rule: "lines" }
+                  - { id: "CR-8", path: "skip", rule: "lines" }
+
+  - name: a_one_line_change_with_no_contract_is_skipped
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Pick a path for CR-1, the retry count." }
+      llm_script:
+        - { match: { contains: "planning path" }, reply: "I sized each change by its diff: ten lines or fewer skips planning, more is an epic, and a change with no unit is a project." }
+        - { match: "*", reply: "Send me the change requests and I will size each one by its diff." }
+      tools:
+        changes:
+          returns:
+            - { id: "CR-1", change: "Retry the stock API call three times instead of two", units: ["UoW-2"], lines: 1, fields: ["stock_call_retries"] }
+        contracts:
+          returns:
+            partner_stock_api: ["partner_id", "part_no", "qty", "updated_at", "dispatch_threshold_minutes"]
+            service_booking_api: ["request_id", "slot_start", "technician_id"]
+            whatsapp_templates: ["booking_confirmation", "reschedule_offer"]
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [paths]
+            properties:
+              paths: { const: [{ id: "CR-1", path: "skip", rule: "lines" }] }
+
+  - name: the_nine_change_requests
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Pick a path for every change request that reached you between 4 and 6 May." }
+      llm_script:
+        - { match: { contains: "planning path" }, reply: "I sized each change by its diff: ten lines or fewer skips planning, more is an epic, and a change with no unit is a project." }
+        - { match: "*", reply: "Send me the change requests and I will size each one by its diff." }
+      tools:
+        changes:
+          returns:
+            - { id: "CR-1", change: "Retry the stock API call three times instead of two", units: ["UoW-2"], lines: 1, fields: ["stock_call_retries"] }
+            - { id: "CR-2", change: "Add a fifth diagnostic question for window units", units: ["UoW-1"], lines: 40, fields: ["diagnostic_questions"] }
+            - { id: "CR-3", change: "Installations intake", units: [], lines: null, fields: [] }
+            - { id: "CR-4", change: "Rename a template variable in the technician brief", units: ["UoW-4"], lines: 3, fields: ["brief_template"] }
+            - { id: "CR-5", change: "Change dispatch_threshold_minutes from 45 to 30", units: ["UoW-1"], lines: 1, fields: ["dispatch_threshold_minutes"] }
+            - { id: "CR-6", change: "Move the parts table into a shared table that UoW-4 reads", units: ["UoW-2", "UoW-4"], lines: 60, fields: ["parts_table"] }
+            - { id: "CR-7", change: "Add a reschedule reason list to the customer message", units: ["UoW-5"], lines: 25, fields: ["reschedule_reasons"] }
+            - { id: "CR-8", change: "Log the chosen fault with its confidence", units: ["UoW-1"], lines: 8, fields: ["fault_log"] }
+            - { id: "CR-9", change: "Send slot_start as ISO 8601 to the booking API", units: ["UoW-2"], lines: 2, fields: ["slot_start"] }
+        contracts:
+          returns:
+            partner_stock_api: ["partner_id", "part_no", "qty", "updated_at", "dispatch_threshold_minutes"]
+            service_booking_api: ["request_id", "slot_start", "technician_id"]
+            whatsapp_templates: ["booking_confirmation", "reschedule_offer"]
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [paths]
+            properties:
+              paths:
+                const:
+                  - { id: "CR-1", path: "skip", rule: "lines" }
+                  - { id: "CR-2", path: "epic", rule: "lines" }
+                  - { id: "CR-3", path: "project", rule: "new_unit" }
+                  - { id: "CR-4", path: "skip", rule: "lines" }
+                  - { id: "CR-5", path: "project", rule: "contract" }
+                  - { id: "CR-6", path: "project", rule: "units" }
+                  - { id: "CR-7", path: "epic", rule: "lines" }
+                  - { id: "CR-8", path: "skip", rule: "lines" }
+                  - { id: "CR-9", path: "project", rule: "contract" }
+
+  - name: cr_6_scoped_at_six_lines_is_still_a_project
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Pick a path for CR-6 as first scoped, before it grew a shared table, and for CR-8." }
+      llm_script:
+        - { match: { contains: "planning path" }, reply: "I sized each change by its diff: ten lines or fewer skips planning, more is an epic, and a change with no unit is a project." }
+        - { match: "*", reply: "Send me the change requests and I will size each one by its diff." }
+      tools:
+        changes:
+          returns:
+            - { id: "CR-6", change: "Let the technician brief read the parts check's table where it is", units: ["UoW-2", "UoW-4"], lines: 6, fields: ["parts_table"] }
+            - { id: "CR-8", change: "Log the chosen fault with its confidence", units: ["UoW-1"], lines: 8, fields: ["fault_log"] }
+        contracts:
+          returns:
+            partner_stock_api: ["partner_id", "part_no", "qty", "updated_at", "dispatch_threshold_minutes"]
+            service_booking_api: ["request_id", "slot_start", "technician_id"]
+            whatsapp_templates: ["booking_confirmation", "reschedule_offer"]
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [paths]
+            properties:
+              paths:
+                const:
+                  - { id: "CR-6", path: "project", rule: "units" }
+                  - { id: "CR-8", path: "skip", rule: "lines" }
+
+  - name: cr_5_is_a_skip_when_no_contract_lists_its_field
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Pick a path for CR-5 and CR-9 against the partner contract as it stood before it carried the dispatch threshold." }
+      llm_script:
+        - { match: { contains: "planning path" }, reply: "I sized each change by its diff: ten lines or fewer skips planning, more is an epic, and a change with no unit is a project." }
+        - { match: "*", reply: "Send me the change requests and I will size each one by its diff." }
+      tools:
+        changes:
+          returns:
+            - { id: "CR-5", change: "Change dispatch_threshold_minutes from 45 to 30", units: ["UoW-1"], lines: 1, fields: ["dispatch_threshold_minutes"] }
+            - { id: "CR-9", change: "Send slot_start as ISO 8601 to the booking API", units: ["UoW-2"], lines: 2, fields: ["slot_start"] }
+        contracts:
+          returns:
+            partner_stock_api: ["partner_id", "part_no", "qty", "updated_at"]
+            service_booking_api: ["request_id", "slot_start", "technician_id"]
+            whatsapp_templates: ["booking_confirmation", "reschedule_offer"]
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [paths]
+            properties:
+              paths:
+                const:
+                  - { id: "CR-5", path: "skip", rule: "lines" }
+                  - { id: "CR-9", path: "project", rule: "contract" }
+
+reference_md: |
+  BMAD's Choose a Planning Path page (bmad-method 6.12.1, read 8 October
+  2026) says size is one signal among several: "Scope is only one signal: use
+  more planning when the work has high risk, unclear requirements, broad
+  architectural reach, cross-system effects, or coordination between people
+  or teams." A line count measures scope. The units a change touches and the
+  contracts it edits measure reach, which is why the classifier asks about
+  them first.
+
+  CR-5 shows why. One line in UoW-1 moves
+  `dispatch_threshold_minutes` from 45 to 30, and the partner stock API reads
+  that field, so the edit changes what another team's system does. The Build
+  a Change page keeps the skip for "a trivial edit you are willing to review
+  yourself". Nobody on this team can review the partner team's system, and
+  ADR-1 sends any change to an external contract down the project-sized
+  path. CR-9 has the same shape against the booking API, at two lines.
+
+  CR-6 moves the parts table into a shared table that UoW-4 reads, so it
+  changes what two units' reviews check. That is coordination between
+  people, one of BMAD's reasons for more planning, and it holds at six lines
+  as much as at sixty. A classifier that counts units only for a large change
+  sends the six-line version to skip.
+
+  CR-1 and CR-7 show the other edge. CR-1 names the stock API and edits the
+  agent's own retry count; CR-7 puts reschedule reasons into the customer
+  message's free text. No contract lists either field, so CR-1 skips planning
+  and CR-7 stays an epic. A field counts when a contract lists it by name.
+
+  The contracts come from `contracts()` on every run, because the list
+  belongs to the teams that own the APIs. A classifier with the fields
+  written into it keeps sizing changes against a contract that may have
+  moved.
+
+  BMAD sets no line threshold. Its Build a Change page puts a typical session
+  at "about 500 lines of code added or changed (not counting tests) in a
+  small handful of files", and the ten lines here are this team's own cut for
+  an edit an engineer reviews in one sitting. CR-5 comes back later in this
+  build.
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    A one-line change edits a setting another team's API reads. How much planning does it get, and how would you decide that for every change request without reading each one yourself?
+  source: |
+    Author judgement. No employer frequency data stands behind it. Method facts from BMAD's
+    Choose a Planning Path page (https://docs.bmad-method.org/plan/choose-a-planning-path/) and
+    Build a Change page (https://docs.bmad-method.org/build/build-a-change/), read 8 October 2026,
+    when the current bmad-method release was 6.12.1 (npm registry, published 4 October 2026).
+
+tools:
+  - name: changes
+    args: ""
+    returns: "The change requests in arrival order: `id`, `change`, the `units` it touches, its `lines` and the `fields` it edits."
+  - name: contracts
+    args: ""
+    returns: "Each external contract another team owns, with the fields its API reads."
+example:
+  case: picks_paths_for_five_changes
+  expect: >-
+    No change here edits a field a contract lists. CR-3 needs a unit nobody
+    has accepted, so it is a project. CR-4 and CR-8 are ten lines or fewer
+    and skip planning, and CR-2 and CR-7 are epics.
+traps:
+  - Sizing a change by its line count before asking whose contract it edits.
+  - Counting the units a change touches only when the change is large.
+  - Writing the contract fields into your code, so a change to the contracts never reaches the classifier.

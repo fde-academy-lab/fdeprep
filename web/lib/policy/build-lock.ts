@@ -1,5 +1,5 @@
 /**
- * The order of a capstone build. Added 29 September 2026 with the builds track.
+ * The order of an end-to-end build. Added 29 September 2026 with the builds track.
  *
  * Each stage's starter code carries the previous stage's capability as working
  * code, because a build is assembled one stage on the last. So stage N opens

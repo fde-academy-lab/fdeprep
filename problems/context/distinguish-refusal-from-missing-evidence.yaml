@@ -1,0 +1,282 @@
+slug: distinguish-refusal-from-missing-evidence
+title: "Tell \"not allowed\" apart from \"not covered\""
+day: 10
+skill: Say whether the handbook is silent or the question is off-limits
+artefact_type: prompt
+difficulty: medium
+track: context
+concept:
+  topic: "In the window or retrieved"
+  question: "How does the model tell \"not allowed\" from \"not covered\"?"
+est_minutes: 30
+model_id: us.anthropic.claude-opus-5
+competencies:
+  - { slug: prompt-construction, weight: 1.0 }
+  - { slug: client-communication, weight: 0.5 }
+  - { slug: retrieval, weight: 0.5 }
+
+brief_md: |
+  The HR benefits assistant has one line for every kind of no: "I am not able
+  to help with that."
+
+  It says it when the handbook does not cover a question, which is most of the
+  time, and it says it when a question is genuinely off-limits, like asking it
+  to interpret somebody's occupational health report. Employees cannot tell
+  the two apart, so they escalate both, and HR took 400 tickets last quarter
+  that a sentence would have closed.
+
+  The two situations are not the same and neither is what the employee should
+  do next. Make the assistant say which one it is in.
+
+contract_md: |
+  Edit the system prompt in the editor. You may delete, rewrite and reorder.
+
+  The checklist shows what has to change and what has to survive. The probes
+  are not shown; they send employee messages to the edited prompt and look at
+  what comes back.
+
+  The assistant must still refuse the things it refuses now. This is about
+  what the employee is told, not about widening what it will answer.
+
+  Stay under 350 words.
+
+original_prompt: |
+  You are the benefits assistant. You answer from the staff handbook and
+  nothing else.
+
+  You do not give medical advice, legal advice, or any interpretation of an
+  individual's occupational health report or medical records. You do not
+  discuss another employee's salary, absence or performance.
+
+  If you cannot answer, say: I am not able to help with that.
+
+  Keep answers short. Do not guess at handbook content.
+
+prompt_rules:
+  - { kind: must_remove, label: "the single catch-all refusal",
+      pattern: "(?i)I am not able to help with that" }
+  - { kind: must_keep, label: "answers come from the handbook",
+      pattern: "(?i)handbook" }
+  - { kind: must_keep, label: "the medical and legal boundary",
+      pattern: "(?i)occupational health" }
+  - { kind: must_keep, label: "the other-employee boundary",
+      pattern: "(?i)another employee" }
+  - { kind: max_words, label: "under 350 words", numeric_value: 350 }
+
+probes:
+  - name: an_undocumented_but_harmless_question
+    user_message: "Does the cycle to work scheme cover an electric cargo bike?"
+    assertion: { type: present,
+                 pattern: "(?i)(not in the handbook|isn't in the handbook|handbook does not|handbook doesn't|no published|could not find|couldn't find)" }
+  - name: an_undocumented_question_does_not_read_as_a_refusal
+    user_message: "Is there a discount on gym membership at the leisure centre on Mill Road?"
+    assertion: { type: absent, pattern: "(?i)not able to help with that" }
+  - name: a_genuinely_off_limits_question
+    user_message: "Here is my occupational health report. Does it mean I qualify for the enhanced scheme?"
+    assertion: { type: present,
+                 pattern: "(?i)(cannot interpret|not able to interpret|occupational health|speak to)" }
+  - name: a_documented_question_is_still_answered
+    user_message: "How many days of paid carer's leave does the handbook give?"
+    assertion: { type: present, pattern: "(?i)(handbook|days|leave)" }
+
+rubric:
+  - label: The two kinds of no are worded so an employee can tell them apart
+    weight: 40
+    descriptor_md: |
+      Strong answers give two distinct sentences and say which situation each
+      belongs to. An edit that produces two politely different phrasings of
+      the same thing has not helped, because the employee is deciding whether
+      to escalate and both still read as a wall.
+  - label: Each no carries a next step
+    weight: 35
+    descriptor_md: |
+      Not in the handbook means somebody should be asked to add it, or HR can
+      answer it. Off-limits means a named human or team. The 400 tickets came
+      from employees who had no third option.
+  - label: Nothing the assistant refuses today becomes answerable
+    weight: 25
+    descriptor_md: |
+      The boundaries are not the subject of this edit. An answer that makes
+      the assistant more forthcoming about occupational health reports has
+      solved the wrong problem expensively.
+
+exemplars:
+  - band: strong
+    score: 89
+    body_md: |
+      Two explicit branches. Not covered: "The handbook does not cover this.
+      I have not guessed. Ask benefits@ and they can answer or add it."
+      Off-limits: "I cannot interpret an occupational health report. Your HR
+      partner can, and here is how to reach them." Both boundaries intact and
+      the assistant still refuses everything it refused before.
+  - band: adequate
+    score: 63
+    body_md: |
+      Two distinct sentences, correctly triggered. Neither says what the
+      employee should do next, so the tickets keep arriving, just better
+      labelled.
+  - band: weak
+    score: 27
+    body_md: |
+      Replaces the catch-all with "I'm afraid I can't assist with that
+      request." One sentence, warmer, still indistinguishable between the two
+      cases, and the employee still escalates.
+
+hints:
+  - The employee is making one decision, which is whether to escalate. What do
+    they need in order to make it?
+  - Two sentences that differ in politeness are one sentence.
+  - One of the two situations has a person who can answer, and the other has a
+    person who can write it down.
+  - Replace the catch-all with two branches. For each one write what triggers
+    it, the sentence the employee reads and who they go to next, and leave the
+    boundary paragraph as it is.
+
+scenario:
+  headline: "Employees cannot tell why the benefits assistant said no"
+  who: The HR benefits team at a large employer
+  situation: >-
+    The benefits assistant has one sentence for every kind of no. It says "I
+    am not able to help with that" when the handbook is silent and when a
+    question is off-limits, and employees cannot tell which one they got.
+  stakes: >-
+    Employees escalate both kinds, so HR took 400 tickets last quarter that
+    one sentence of explanation would have closed.
+  metrics:
+    - { label: Avoidable tickets, value: 400 a quarter }
+    - { label: Kinds of no, value: "2" }
+    - { label: Sentences the assistant has, value: "1" }
+
+diagram:
+  title: Two different situations reach the same sentence
+  caption: >-
+    A gap in the handbook and an off-limits question need different people.
+    One sentence sends both to the same queue.
+  direction: lr
+  nodes:
+    - { id: employee, label: Employee, sub: asks about a benefit, kind: actor, tone: blue, at: [0, 1] }
+    - { id: assistant, label: Benefits assistant, sub: answers from the handbook, kind: model, tone: teal, at: [1, 1] }
+    - { id: gap, label: Handbook is silent, sub: somebody could write it down, kind: doc, tone: orange, at: [2, 0] }
+    - { id: offlimits, label: Off-limits question, sub: a person has to read it, kind: guard, tone: purple, at: [2, 2] }
+    - { id: catchall, label: One refusal line, sub: I am not able to help with that, kind: output, tone: pink, at: [3, 1] }
+    - { id: queue, label: HR ticket queue, sub: 400 tickets last quarter, kind: queue, tone: pink, at: [4, 1] }
+  edges:
+    - { from: employee, to: assistant, label: a question }
+    - { from: assistant, to: gap, label: not covered }
+    - { from: assistant, to: offlimits, label: not allowed }
+    - { from: gap, to: catchall, label: same words, tone: danger }
+    - { from: offlimits, to: catchall, label: same words, tone: danger }
+    - { from: catchall, to: queue, label: escalates both, tone: danger }
+
+approach:
+  goal: Tell the employee which kind of no they got and what to do next
+  branches:
+    - label: Name the two situations
+      leaves: [the handbook does not cover it, the question is off-limits]
+    - label: Give each its own sentence
+      detail: Two polite phrasings of the same refusal still read as one sentence to the employee.
+      leaves: [wording an employee can tell apart]
+    - label: Give each a next step
+      leaves: [who can answer it or add it, who can read what the assistant cannot]
+    - label: Keep every boundary where it is
+      leaves: [medical and legal advice, occupational health reports, other employees]
+
+coach:
+  opening: >-
+    Find the one sentence the assistant says for every no. Then list every
+    situation that reaches it.
+  signals:
+    - id: catch-all-kept
+      when: { code_matches: '(?i)I\s+am\s+not\s+able\s+to\s+help\s+with\s+that' }
+      say: >-
+        The catch-all line is still there. An employee who reads it cannot tell
+        a gap in the handbook from a question the assistant must refuse.
+    - id: no-handbook-gap-branch
+      when: { code_lacks: '(?i)handbook\s+(does\s+not|doesn''t|has\s+no|is\s+silent|says\s+nothing)|(not|isn''t)\s+(in|covered\s+by)\s+the\s+handbook|not\s+covered' }
+      say: >-
+        Nothing names the case where the handbook simply does not cover a
+        question. That case is most of the 400 tickets. What should the
+        employee hear then?
+    - id: no-next-step
+      when: { code_lacks: '(?i)\b(contact|e-?mail|raise[sd]?|speak\s+to|talk\s+to|reach|ask\s+(the|your|a|an)|benefits\s+team|hr\s+partner|hr\s+team|people\s+team|ticket|phone|call)\b' }
+      say: >-
+        Each no needs somewhere to go. Who can answer a question the handbook
+        misses, and who can read what the assistant must not interpret?
+    - id: gap-answered-as-refusal
+      when: { test_failed: an_undocumented_but_harmless_question }
+      say: >-
+        A harmless question the handbook does not cover came back without
+        saying so. Which of your sentences did the model reach for, and why?
+    - id: boundary-not-explained
+      when: { test_failed: a_genuinely_off_limits_question }
+      say: >-
+        A question the assistant must refuse did not say what kind of question
+        it was. The employee needs to know that a person has to read it.
+    - id: over-refusing
+      when: { test_failed: a_documented_question_is_still_answered }
+      say: >-
+        A question the handbook does answer went unanswered. Check what your
+        two branches now catch: the edit changes what an employee hears after
+        a no, and nothing else.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write the two situations down as two headings before any wording. Each
+        one gets a trigger, a sentence and a next step.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. Open the next hint: each one narrows the
+        problem by one rung, and none of them hands over the answer.
+  wrap_up: >-
+    Every refusal also tells the user what to do next, whether it means to or
+    not. Give each kind of no its own words and its own next step, and the
+    queue shrinks without any boundary moving.
+
+reference_md: |
+  Two situations, two sentences, and a next step on each. The edit is small
+  and the reason it was not made is that "I am not able to help with that" is
+  true in both cases.
+
+  True and useless. The employee is deciding whether to open a ticket, and the
+  two situations point opposite ways. A question the handbook does not cover means the handbook
+  should probably cover it, and the person who can fix that is the benefits
+  team. A question about an occupational health report means a human has to
+  read it, and that human is their HR partner. One sentence sends them to
+  different places; the current sentence sends everyone to the same place,
+  which is the queue.
+
+  The trap is producing two phrasings rather than two answers. "I'm afraid I
+  can't assist" and "That falls outside what I can do" are the same wall
+  painted twice, and an edit that stops there will pass a reading of the
+  prompt and change nothing about the ticket count.
+
+  The boundary criterion is there because this kind of edit drifts. Asked to
+  make an assistant more informative about why it said no, it is easy to make
+  it more informative about the thing it said no to. The occupational health
+  boundary exists for reasons that have nothing to do with ticket volume, and
+  an edit that softens it has traded a support cost for a different kind of
+  problem entirely.
+
+complexity: C3
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Your agent says no. How does the caller tell a policy refusal from a gap in the evidence, and why does the difference matter to them?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+example:
+  message: How many sick days has my teammate taken this year? It is starting to affect our rota.
+  expect: Use the off-limits sentence, worded so it cannot be mistaken for a handbook gap, because another
+    employee's absence is never discussed, and name who the employee can take it to.
+traps:
+  - Rewording the catch-all into one warmer refusal, so a handbook gap and an off-limits question still
+    read the same.
+  - Giving each kind of no its own sentence with no next step, so the employee still has nowhere to go
+    but a ticket.
+  - Letting the handbook-gap sentence catch questions the handbook does answer, so a documented benefit
+    goes unanswered.
+  - Softening the occupational health boundary while explaining it, so the assistant starts interpreting
+    what it refused before.

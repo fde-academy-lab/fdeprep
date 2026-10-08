@@ -1,0 +1,461 @@
+slug: design-approval-gates-for-a-refunds-agent
+title: "Design approval gates for a refunds agent"
+day: 22
+skill: Route an agent's refunds to approvers by risk, size each queue, measure what it catches
+artefact_type: design
+difficulty: extreme
+track: human-in-the-loop
+concept:
+  topic: "Approval gates"
+  question: "Who should approve an agent's refunds, and how would you know the approvals catch anything?"
+est_minutes: 55
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: evaluation-design, weight: 0.5 }
+  - { slug: client-communication, weight: 0.5 }
+
+brief_md: |
+  A payments company the size of Razorpay offers its merchants a refunds
+  agent. When a merchant switches it on, the agent reads the merchant's
+  customer messages and issues refunds from the merchant's balance: back to
+  the card or UPI account that paid, or, on a cash-on-delivery order, to a UPI
+  ID the customer gives. Last month it issued 1.4 million refunds for 9,000
+  merchants, and the median refund was ₹640.
+
+  One rule decides oversight today. A refund over ₹2,000 waits for someone on
+  the merchant's side to click approve, which is 210,000 refunds a month.
+  Merchants approve 98.7 percent of them, in a median of 3 seconds on the
+  screen, and refunds proposed at night wait a median of 9 hours.
+
+  Last month an attacker phished a merchant's support login and asked the
+  agent for 212 refunds of ₹1,950 each, on cash-on-delivery orders, to UPI IDs
+  that had never paid that merchant. None crossed ₹2,000, and ₹4.1 lakh left
+  in 40 minutes.
+
+  The head of risk wants a person to approve every refund. The head of
+  merchant success wants the line raised to ₹10,000, because merchants are
+  tired of clicking. The risk operations team has 14 analysts, and each
+  reviews about 350 cases a day. These are last quarter's signals, per month:
+
+  | Signal on a proposed refund | Refunds a month | Fraud or error found |
+  |---|---|---|
+  | To a UPI ID that has never paid the merchant | 41,000 | 1 in 160 |
+  | On an order already refunded in part | 18,000 | 1 in 25 |
+  | More than the order's total | 900 | 1 in 3 |
+  | From a merchant login on a new device in the last day | 26,000 | 1 in 400 |
+  | The merchant's refunds in an hour over 3 times its usual rate | 3,500 | 1 in 12 |
+  | None of these | 1,320,000 | 1 in 90,000 |
+
+  Signals overlap, and the platform can look up the name registered to any UPI
+  ID before money moves.
+
+  Design the human oversight for the refunds agent: who approves which
+  refunds, at what thresholds, how the review load stays bearable, and how you
+  will know whether it works.
+
+contract_md: |
+  Write the design as you would send it to the head of risk and the head of
+  merchant success together. Both know payments well, and neither writes code.
+
+  Between 400 and 700 words. There is no template and no required structure.
+
+  Say who approves which refunds and why, with thresholds; what nobody may
+  approve; how many reviews a day each queue produces against the people who
+  work it; and how you will know within a month whether the design works.
+  The table in the brief is last quarter's, and any figure you use that is
+  not in it should be marked as your estimate.
+
+word_range: [400, 700]
+required_headings: []
+
+rubric:
+  - label: Routes on evidence of risk, with amount as one input
+    weight: 25
+    descriptor_md: |
+      Strong answers observe that the attack was 212 refunds of ₹1,950, under
+      any line drawn on one refund's amount, and that 98.7 percent approved in
+      a median of 3 seconds is a rubber stamp. They route refunds by the
+      signals in the table, using their hit rates, and add limits that add up
+      across refunds, such as a merchant's refunds in an hour against its usual
+      rate or the refunds one UPI ID receives in a day, so splitting cannot
+      evade them. An answer that only moves the amount line, in either
+      direction, has missed what the attack showed.
+  - label: Gives each approver a question they can answer
+    weight: 20
+    descriptor_md: |
+      Strong answers separate the merchant's question, whether a customer
+      should get money back under the merchant's policy, from the payments
+      company's question, whether a refund is what it appears to be. They send
+      each to the party able to answer it, never let the login that asked for
+      a refund approve it, and make the worst refunds impossible rather than
+      reviewable, such as one larger than the order's total.
+  - label: Sizes every queue against the people who work it
+    weight: 20
+    descriptor_md: |
+      Strong answers turn the table into reviews a day for each queue and set
+      them against 14 analysts at about 350 a day, leaving each reviewer time
+      to read a case. They give high-volume, low-yield signals a cheaper
+      control than a person, such as a name check on the UPI ID or a one-time
+      code after a new-device login, and they mark their own estimates as
+      estimates. An answer that sends every flagged refund to people without
+      counting has designed a queue that will be rubber-stamped.
+  - label: Measures what the oversight catches
+    weight: 20
+    descriptor_md: |
+      Strong answers name measures with a number and a consequence: loss in
+      basis points by tier, each queue's rejection rate with the level that
+      moves its threshold, planted known-bad cases that test whether reviewers
+      read, and time to refund. They admit that a random sample cannot measure
+      a 1 in 90,000 rate, and use disputes, chargebacks and targeted audits for
+      the automatic tier instead. "Monitor fraud closely" measures nothing.
+  - label: Answers both executives with one design
+    weight: 15
+    descriptor_md: |
+      Strong answers show that approving every refund means about 47,000
+      reviews a day, or 134 analysts, and would still be a rubber stamp, and
+      that a ₹10,000 line would not have stopped this attack. They give each
+      executive something real, fewer merchant clicks for one and blocking
+      review where fraud concentrates for the other, and name what the design
+      costs: more money moving with no person in front of it.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      Amount is the wrong gate for this agent, and both proposals keep it. The
+      attack was 212 refunds of ₹1,950. A line at ₹2,000 passed every one, a line
+      at ₹10,000 would too, and a lower line only teaches the next attacker to
+      split smaller. Today's approval checks little either: 98.7 percent approved
+      in a median of 3 seconds is a rubber stamp. So I would route refunds by what
+      last quarter showed predicts fraud or error, and give each approver a
+      question only they can answer.
+
+      Blocked, with nobody able to approve: a refund larger than the order's
+      total, or one that takes an order's refunds past its total. Refunds larger
+      than the order alone are 900 a month at 1 in 3 bad, and no reason exists to
+      let a person wave one through.
+
+      Held for our risk analysts before money moves:
+      - The merchant's refunds in an hour running over 3 times its usual rate,
+        3,500 a month at 1 in 12 bad. This is the rule that would have stopped
+        last month's attack within minutes, long before its 212th refund. When it
+        trips, the agent stops issuing for that merchant until an analyst clears
+        the queue.
+      - A cash-on-delivery refund to a UPI ID that has never paid the merchant,
+        when the name registered to that ID does not match the customer on the
+        order. All 41,000 a month get the name check. I estimate a tenth fail it,
+        about 4,100. Any one ID receiving more than two of a merchant's refunds in
+        a day is held whatever its name.
+
+      That is about 250 reviews a day, nearer 300 with the audit below, against
+      4,900 the team can do. I would keep it that far under capacity on purpose,
+      so an analyst has a minute per case rather than seconds.
+
+      A cheaper control instead of a person: after a merchant login from a new
+      device, the agent acts on its refund requests only once the account owner
+      confirms a one-time code. At 1 in 400, those 26,000 a month are not worth an
+      analyst each, and they are worth a code.
+
+      Merchants decide questions of their own policy. They approve refunds that
+      break their own rules, such as a second refund on one order, 18,000 a month
+      where I expect the 1 in 25 to be mostly duplicates the merchant's own records
+      show, or a return outside the window, and anything over ₹10,000, which I
+      estimate at 2 percent of refunds, about 28,000 a month. The screen says why
+      each one is there. The
+      login that asked the agent for a refund can never approve it. Everything
+      else is automatic and appears in a daily digest the merchant can dispute.
+
+      How we will know, reviewed weekly by the head of risk:
+      - Loss in basis points of refund value, by tier, against last quarter's.
+      - Each queue's rejection rate. If the velocity queue rejects under 2 percent
+        for a month, its threshold is wrong and we move it.
+      - Planted cases: 2 percent of the analyst queue are known-bad refunds. If
+        analysts pass more than one in twenty, the queue is too big or too fast.
+      - What the automatic tier lets through. No random sample can see 1 in
+        90,000, so we count disputes and chargebacks on automatic refunds, and
+        audit 300 a week drawn from merchants who tripped any signal that day.
+      - Time to refund, median and 95th percentile, per tier.
+
+      To the head of risk: approving all 1.4 million is about 47,000 reviews a
+      day, or 134 analysts, and at that pace a review becomes a click. This puts
+      people on the 1 in 12 instead of the 1 in 90,000. To the head of merchant
+      success: merchants go from 210,000 clicks a month to about 46,000, and the
+      ones left are decisions only they can make. The trade-off is that more money
+      moves with no person in front of it, and the dispute count is how we will
+      see if that was the wrong call.
+  - band: adequate
+    score: 62
+    body_md: |
+      The ₹1,950 attack shows that a single amount threshold is not enough on its
+      own, because an attacker can stay just under it. I would keep amount-based
+      approval but add rules that look at patterns across refunds.
+
+      First, a velocity limit. If a merchant issues far more refunds in an hour
+      than usual, the agent should stop and send the refunds to the risk team. The
+      table shows 3,500 refunds a month trip this and 1 in 12 of them are bad, so
+      it is clearly worth a person's time. This rule alone would have caught most
+      of last month's attack.
+
+      Second, refunds to a UPI ID that has never paid the merchant should go to
+      the risk team for review. These are the cash-on-delivery refunds where the
+      money can go anywhere, and 1 in 160 of them were fraud or error last
+      quarter, which is far higher than normal refunds.
+
+      Third, refunds larger than the order total should go to the risk team as
+      well, since a third of them were bad.
+
+      For merchant approvals, I would raise the threshold to ₹5,000 as a
+      compromise between the two executives. Merchants are clearly not reading the
+      approvals at the moment, since they approve almost everything in a few
+      seconds, so fewer approvals that matter more should get more attention. The
+      merchant should also see the reason the refund needs approval.
+
+      New-device logins are a weaker signal at 1 in 400, so I would flag those
+      refunds in the merchant's dashboard rather than send them to the risk team,
+      and let merchants decide whether to look at them.
+
+      For measurement, I would track the fraud and error rate each month, the
+      approval rate on the merchant side, and how long customers wait for refunds.
+      If fraud does not fall after the first month, we should tighten the
+      thresholds further. I would also ask the risk team to look at a sample of
+      automatic refunds now and then to check nothing is getting through.
+
+      On the two proposals: approving every refund would not work, because the
+      team could not keep up and merchants would wait even longer for refunds.
+      Raising the line to ₹10,000 would not have stopped the attack, because every
+      refund in it was under ₹2,000. The design above gives the head of risk
+      stronger checks where fraud actually happens and gives merchant success
+      fewer clicks for merchants, so both should be able to accept it.
+
+      The main risk is the size of the risk team's queue. If the queue grows too
+      large, reviews will slow down and customers will wait, so the thresholds may
+      need adjusting once we see the real volumes.
+  - band: weak
+    score: 28
+    body_md: |
+      The attack last month shows that the current approval threshold is too high
+      and the process needs to be made stricter. I agree with the head of risk
+      that refunds need more human oversight, and that safety should come first
+      for a payments company.
+
+      I would lower the threshold from ₹2,000 to ₹1,000, so that more refunds are
+      checked by a person before any money moves. At ₹1,000, the attack in the
+      brief would have been caught, because every one of those refunds was above
+      that line. Refunds over ₹1,000 should be approved by the risk team rather
+      than by the merchant, because the risk team has the training to spot fraud
+      and merchants clearly approve almost everything without reading it.
+
+      We should also add an AI fraud detection model that scores every refund
+      before it is issued. The model can learn from past fraud cases and will
+      improve over time, so it will catch patterns that people might miss. Any
+      refund with a high fraud score should be blocked automatically and sent to
+      the risk team for a decision.
+
+      To keep the team from being overloaded, the risk team could be expanded with
+      more analysts, and we could add more shifts so that refunds are reviewed
+      around the clock. This will also fix the problem of refunds waiting
+      overnight. Analysts should be trained regularly on new fraud patterns so
+      that their reviews stay effective.
+
+      The head of merchant success is right that merchants are frustrated, but
+      raising the threshold to ₹10,000 would make the system much less safe and
+      would not be responsible after an incident like this. Instead, merchants
+      should be told about the attack so they understand why the extra checks are
+      needed. Most merchants will accept a short wait for refunds if it keeps
+      their money safe.
+
+      For measurement, we should monitor fraud levels closely and track the number
+      of refunds approved and rejected every week. We should also run regular
+      reviews of the process with both teams and make adjustments as needed. A
+      dashboard showing these numbers would help leadership see how the process is
+      working. We could also survey merchants every quarter to see how they feel
+      about the new checks, and the fraud model should be retrained every month on
+      the latest cases.
+
+      Overall, the design should be strict and safe, with humans in the loop for
+      every refund that carries real risk. Being strict now is better than losing
+      more money later, and the process can be relaxed once we are confident that
+      fraud is under control.
+
+hints:
+  - Ask what a 98.7 percent approval rate at a median of 3 seconds says about
+    what the merchant's click checks today.
+  - The attack was 212 refunds of ₹1,950. Any rule that looks at one refund's
+    amount at a time passes every one of them, wherever the line is drawn.
+  - "Two questions are being asked of one approver: whether this customer should get money back, and whether this refund is what it appears to be. Who can answer each?"
+  - Turn the table into reviews a day for each queue, against 14 analysts at
+    about 350 a day. A queue bigger than its people becomes a rubber stamp,
+    and some signals deserve a cheaper control than a person.
+  - "Decide now how you will know in a month that it works: what the automatic tier let through, whether reviewers read what they approve, and how long customers waited."
+
+scenario:
+  headline: "A phished login took ₹4.1 lakh in refunds, all under the approval line"
+  who: "The risk and merchant success heads at a payments company the size of Razorpay"
+  situation: >-
+    Its refunds agent issues 1.4 million refunds a month for merchants.
+    Refunds over ₹2,000 wait for the merchant's click, which approves 98.7
+    percent of them in a median of 3 seconds.
+  stakes: >-
+    An attacker took ₹4.1 lakh in 212 refunds of ₹1,950 each, every one under
+    the line, while customers with refunds over it wait overnight for a click.
+  metrics:
+    - { label: Refunds a month, value: 1.4 million }
+    - { label: Approved by merchants, value: "98.7%" }
+    - { label: Taken in 40 minutes, value: "₹4.1 lakh" }
+
+diagram:
+  title: Where oversight sits today, and where the attack went through
+  caption: >-
+    One amount line decides review today. The attack stayed under it, and the
+    approvals above it take a median of 3 seconds.
+  direction: lr
+  nodes:
+    - { id: customers, label: Customers, sub: write to the merchant, kind: actor, tone: blue, at: [0, 2] }
+    - { id: phished, label: Phished merchant login, sub: "asks for 212 refunds of ₹1,950", kind: actor, tone: pink, at: [0, 0] }
+    - { id: agent, label: Refunds agent, sub: 1.4 million refunds a month, kind: agent, tone: purple, at: [1, 1] }
+    - { id: line, label: "₹2,000 line", sub: the only rule today, kind: guard, tone: orange, at: [2, 1] }
+    - { id: merchant, label: Merchant approver, sub: "98.7% approved, median 3 seconds", kind: actor, tone: neutral, at: [3, 0] }
+    - { id: analysts, label: Risk analysts, sub: "14 people, about 350 cases a day each", kind: actor, tone: green, at: [3, 2] }
+    - { id: paid, label: Refunds paid, sub: "₹4.1 lakh in 40 minutes", kind: output, tone: pink, at: [4, 1] }
+  edges:
+    - { from: customers, to: agent, label: refund requests }
+    - { from: phished, to: agent, label: 212 requests, tone: danger }
+    - { from: agent, to: line, label: every refund, step: 1 }
+    - { from: line, to: merchant, label: "over ₹2,000", step: 2 }
+    - { from: merchant, to: paid, label: approved in seconds }
+    - { from: line, to: paid, label: "under ₹2,000, unchecked", tone: danger }
+    - { from: line, to: analysts, label: no route today, tone: muted }
+
+approach:
+  goal: Oversight that catches the refunds that matter, at a load people can carry
+  branches:
+    - label: Ask what each approval checks
+      leaves: [a 3-second click checks little, one amount line misses a split attack]
+    - label: Route on evidence
+      detail: Signals with a high hit rate earn a person. Large signals with a low hit rate earn a cheaper control.
+      leaves: [limits that add up across refunds, the worst refunds made impossible]
+    - label: One question per approver
+      leaves: [the merchant decides its own policy, an analyst decides whether it is real, the login that asked never approves]
+    - label: Count every queue
+      leaves: [reviews a day against people a day, time to read each case]
+    - label: Measure the oversight
+      leaves: [loss by tier, planted known-bad cases, disputes on automatic refunds]
+
+coach:
+  opening: >-
+    Before you write the design, name the one rule that would have stopped
+    last month's attack, and who should see a refund that rule flags.
+  signals:
+    - id: amount-only
+      when: { code_lacks: '(?i)an hour|per hour|in an hour|velocity|usual rate|baseline|adds? up|cumulative|split' }
+      say: >-
+        Every rule in your design looks at one refund at a time. The attack was
+        212 refunds of ₹1,950. Which of your rules sees them together?
+    - id: requester-approves
+      when: { code_lacks: '(?i)login that (asked|requested)|cannot approve (its|their) own|never approve (its|their) own|different (person|user|login)|separation of duties|requester' }
+      say: >-
+        In the attack, the login asking for the refunds was the attacker's. In
+        your design, could that same login approve them?
+    - id: no-load-count
+      when: { code_lacks: '(?i)\d[\d,]*\s+(reviews?|cases?|refunds?|approvals?|clicks?)\s+(a|per|each)\s+(day|month)|\d+\s+analysts' }
+      say: >-
+        Your design sends refunds to people without counting them. How many
+        reviews a day does each queue produce, against 14 analysts at about 350
+        a day each?
+    - id: no-audit
+      when: { code_lacks: '(?i)audit|sampl|planted|seeded|known-bad|canar|dispute|chargeback' }
+      say: >-
+        How will you know what the automatic tier let through, and whether
+        reviewers read what they approve?
+    - id: approve-everything
+      when:
+        code_matches: '(?i)(approve|review)s?\s+(every|all)\s+refunds?|every refund (is|must be|should be) (approved|reviewed)'
+        code_lacks: '(?i)analysts?|capacity|a day|per day'
+      say: >-
+        Approving every refund means 1.4 million reviews a month. How many
+        people is that, and what is one review worth at that pace?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with two lines: the signal that would have stopped last month's
+        attack, and who should see a refund it flags. The tiers hang off those.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 2 }
+      say: >-
+        Two runs without a pass. Once your attempt note is written the hints
+        open, starting with what a 3-second approval checks.
+  wrap_up: >-
+    An approval is worth the attention behind it. Spend people where the
+    evidence says fraud concentrates, give each approver a question they can
+    answer, make the worst refunds impossible, and measure what the oversight
+    catches.
+
+reference_md: |
+  The ₹2,000 line measures how much a refund is worth, and the attack shows it
+  says nothing about whether a refund is what it appears to be. Two hundred
+  and twelve refunds of ₹1,950 passed it, a ₹10,000 line would have passed
+  them too, and a ₹1,000 line teaches the next attacker to split smaller.
+  Amount still matters to a merchant deciding policy. It is a poor proxy for
+  fraud, and the table in the brief shows better ones.
+
+  The 98.7 percent approved in a median of 3 seconds is the second finding. A
+  review that almost never says no, and takes less time than reading the
+  amount, is a click. Adding more of them, as approving every refund would,
+  buys more clicks: 1.4 million refunds a month is about 47,000 reviews a day,
+  or 134 analysts at 350 each, and at that pace the analysts become merchants
+  in a hurry too. Strong answers treat reviewer attention as the scarce
+  resource and spend it where last quarter's hit rate is highest.
+
+  Two different questions were being asked of one approver. Whether a customer
+  should get money back under the merchant's policy is a question only the
+  merchant can answer. Whether this refund is what it appears to be, which is
+  what account takeover attacks, is one the merchant's own screen cannot
+  answer when the merchant's login is the attacker's. That is why the strong
+  answers send policy exceptions to merchants, fraud signals to the payments
+  company's analysts, and never let the login that asked for a refund approve
+  it.
+
+  Not every signal deserves a person. The ones with a high hit rate and a
+  small volume, velocity against the merchant's own baseline above all, earn a
+  blocking review, and that rule alone stops this attack early. The ones with
+  a large volume and a low hit rate earn a cheaper control: a name check on
+  the UPI ID, a one-time code after a new-device login, a cap on refunds to
+  one ID. A refund larger than the order is better made impossible than
+  reviewable, because an approver who can wave it through eventually will.
+
+  Measurement has to show what the oversight catches as well as that it runs.
+  Each queue's rejection rate says whether its threshold earns its people.
+  Planted known-bad cases say whether reviewers read. The automatic tier is
+  the hard part: no random sample can measure a 1 in 90,000 rate, so disputes,
+  chargebacks and targeted audits stand in for it, and the answer should say
+  so rather than promise an audit that cannot see anything.
+
+  The executives are both partly right, and the strong answers give each of
+  them something real rather than splitting the difference on the amount line.
+  The head of risk gets blocking review where fraud concentrates. The head of
+  merchant success gets about 46,000 merchant decisions a month instead of
+  210,000 clicks, and the price of that is more money moving with no person in
+  front of it, which the dispute count will show.
+
+  The Easy problem in this chapter placed one action in, on or out of the loop
+  by whether anyone could undo it. This one places 1.4 million a month, and
+  every placement now has a price: a queue someone has to work, a click that
+  checks nothing, or money that moves with no person in front of it.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Design the approval process for an agent that issues refunds at a payments company. Who approves what, and how do you stop the approvals becoming a rubber stamp?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+traps:
+  - Answering the attack with a lower amount line, which an attacker splits under as easily as the old one.
+  - Leaving the merchant's click as the only approval, so the login that asked for a refund can also approve
+    it.
+  - Sending every flagged refund to people without counting each queue against the 14 analysts who work it.
+  - Measuring that reviews happen instead of what they catch, with nothing to show what the automatic tier
+    let through.

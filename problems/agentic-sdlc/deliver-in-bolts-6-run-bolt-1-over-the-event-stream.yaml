@@ -1,0 +1,817 @@
+slug: deliver-in-bolts-6-run-bolt-1-over-the-event-stream
+title: "Run bolt 1 over the event stream"
+day: 27
+skill: Replay a bolt on its own clock, find when the overrun showed, keep new work out
+artefact_type: code
+difficulty: hard
+complexity: C2
+track: agentic-sdlc
+concept:
+  topic: "Units of work and bolts"
+  question: "When was the overrun knowable, and what does a mid-bolt message do to the bolt?"
+est_minutes: 45
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: state-and-memory, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json]
+
+build: { id: deliver-in-bolts, title: "Deliver the field-service agent in bolts", stage: 6, of: 9 }
+
+brief_md: |
+  Stage 6 of 9. Bolt 1 of the field-service agent at an air-conditioner maker
+  the size of Voltas started on Thursday 14 May at 09:00 and ended on Tuesday
+  19 May at noon. The plan from stage 2, BOLT-1, gave UoW-1 7 hours and UoW-2
+  6 hours, each with its one-hour review inside, and left 3 of the bolt's 16
+  hours spare. The engineers worked from the twelve tickets stage 4 cleared;
+  the ticket agent's re-run on Tuesday 12 May brought back no T-14. When the
+  bolt ended its clock read 27: 11 hours over.
+
+  The construction agent stamps every event with `h`, the working hours since
+  the bolt started, beside `at`, the wall-clock time. AWS's post on AI-DLC
+  (Raja SP, AWS DevOps blog, 31 July 2025, read 8 October 2026) calls bolts
+  "shorter, more intense work cycles measured in hours or days rather than
+  weeks". Eleven hours over on a 16-hour bolt is most of a second bolt.
+
+  At hour 9 the head of customer service, the sponsor, sent MSG-1: "Add
+  installs to this bolt. Same window." Before it reached you, the platform
+  engineer had started T-18, an installs intake stub, and typed UoW-9 as its
+  unit. Nobody ever accepted a UoW-9. You parked T-18 at hour 11 and moved
+  installs to bolt 2's elaboration.
+
+  The agent's own report for the retrospective says the overrun showed at
+  `BOLT_ENDED` and lists UoW-9 as the bolt's third unit. Found at the end, an
+  overrun tells the team nothing it could have acted on, and a report that
+  counts UoW-9 as planned work hides where the hours went.
+
+  Write the bolt report from the plan and the stream, the way the team will
+  read every bolt from now on.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the delivery lead asking for the report. Call `plan` and
+  `events` once each, and `message` once for each `SPONSOR_MESSAGE`:
+
+      tools["plan"]()   -> {"id": "BOLT-1", "bolt_h": 16, "units": ["UoW-1", "UoW-2"],
+                            "planned_h": {"UoW-1": 7.0, "UoW-2": 6.0},
+                            "carried": ["UoW-4", "UoW-8", "UoW-5", "UoW-6"], ...}
+      tools["events"]() -> [{"id": "EVT-17", "kind": "REVIEW_DONE", "h": 9.0,
+                             "at": "2026-05-15T10:00+05:30", "ref": "RV-1",
+                             "unit": "UoW-1", "note": "...",
+                             "outcome": "changes_requested"}, ...]
+      tools["message"](ref="MSG-1") -> {"status": 200, "text": "..."}
+
+  The stream is in order. `ref` names the bolt, a ticket, a review or a
+  message, and `unit` is null on bolt and message events. Only `REVIEW_DONE`
+  carries `outcome`, which is `approved` or `changes_requested`.
+
+  | Rule | What it says |
+  |---|---|
+  | Clock | Time is `h`. `at` is for people reading the trail |
+  | Runs | A ticket runs from `TICKET_STARTED` to `TICKET_DONE` or `TICKET_PARKED`, a review from `REVIEW_REQUESTED` to `REVIEW_DONE`. A unit's `actual_h` is the sum of its runs, and a ticket can run more than once |
+  | The bolt | The plan's `units` are the bolt. Hours on any other unit are unplanned: reported under `unplanned`, and never in `units`, `carried` or the projection |
+  | Approved | A unit is approved at the first `REVIEW_DONE` for it whose `outcome` is `approved` |
+  | Projection | At each event up to `BOLT_ENDED`, after counting the runs it ends: `h` plus, for each planned unit not yet approved, `max(0, planned_h - hours_so_far)` |
+  | First knowable | The `id` of the first event whose projection is greater than `bolt_h`, or null |
+  | Elapsed | `elapsed_h` is the `h` of `BOLT_ENDED`. `overrun_h` is `elapsed_h` minus `bolt_h`, or 0 when that is below 0 |
+  | Messages | A `SPONSOR_MESSAGE` never changes the running bolt. Each goes `to` `"bolt 2 elaboration"` with its `text` as `message` returned it, the `unit` of the first unplanned run started after it and before `BOLT_ENDED` (null when there was none), and `hours_spent`, that unit's hours |
+
+  Return a JSON string with `units` in the plan's order, and `unplanned` and
+  `messages` in the order the stream first shows them:
+
+      {"bolt": "BOLT-1",
+       "units": [{"unit": "UoW-1", "planned_h": 7.0, "actual_h": ...}, ...],
+       "unplanned": [{"unit": ..., "actual_h": ...}],
+       "elapsed_h": ..., "overrun_h": ..., "first_knowable": "EVT-..." or null,
+       "carried": [...],
+       "messages": [{"ref": "MSG-1", "text": "...", "to": "bolt 2 elaboration",
+                     "unit": ..., "hours_spent": ...}]}
+
+  Budget: one call each to `plan` and `events`, one `message` call per
+  message, and no model calls. `llm` is passed in and must not be called.
+  Allowed imports: json.
+
+defence_question: |
+  Your clock says the overrun was knowable at hour 11. The vendor engineer
+  says hour 9, when the first review asked for changes. What would the
+  projection have to know to fire at hour 9, and what would it get wrong on a
+  bolt whose first review asks for a one-line change?
+
+stub_code: |
+  import json
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Replay a bolt's event stream into the bolt report.
+
+      tools["plan"]() returns BOLT-1: its units, each unit's planned_h, the
+      bolt's length bolt_h, and the units carried to the next bolt.
+      tools["events"]() returns the stream in order. Time is each event's h.
+      tools["message"](ref=...) returns a sponsor message's status and text.
+
+      A unit's hours are the sum of its runs: ticket start to done or parked,
+      review requested to done. At every event up to BOLT_ENDED, project h
+      plus what each unapproved planned unit still owes, and keep the first
+      event past bolt_h. Work on a unit outside the plan is unplanned.
+
+      Return json.dumps({"bolt": ..., "units": [...], "unplanned": [...],
+                         "elapsed_h": ..., "overrun_h": ...,
+                         "first_knowable": ..., "carried": [...],
+                         "messages": [...]}).
+      No model calls. Allowed imports: json.
+      """
+      plan = tools["plan"]()
+      events = tools["events"]()
+      return json.dumps({"bolt": plan["id"], "units": [], "unplanned": [],
+                         "elapsed_h": 0.0, "overrun_h": 0.0, "first_knowable": None,
+                         "carried": plan["carried"], "messages": []})
+
+hints:
+  - Work EVT-20 by hand. How many hours had the bolt clock run, how many had
+    UoW-1 and UoW-2 each used, and how many did each still owe?
+  - Every hour belongs to one run, from the event that opens it to the event
+    that ends it, read on `h`. Two runs can be open at once, and a ticket a
+    review sends back runs again.
+  - A unit owes its planned hours minus the hours it has used, never below
+    zero, until a review approves it, and a review that asks for changes
+    approves nothing. The bolt's length is the clock at `BOLT_ENDED`,
+    whatever the units' hours add up to.
+  - Walk the events once. Open each run under its own `ref`, close it into
+    its unit, project after every event, and keep the first `id` past
+    `bolt_h`. A message waits for the first unplanned run after it.
+
+scenario:
+  headline: "Bolt 1 ran 27 hours of 16, and installs arrived at hour 9"
+  who: The FDE closing bolt 1 for an air-conditioner maker the size of Voltas
+  situation: >-
+    BOLT-1 planned 13 of its 16 hours for UoW-1 and UoW-2 and ended at hour 27.
+    The construction agent's report says the overrun showed at the last event,
+    and it counts UoW-9, an installs stub started on the sponsor's message, as
+    a third unit.
+  stakes: >-
+    The retrospective ranks causes from this report and plans bolt 2 from it.
+    A report that finds the overrun at the end, or counts a unit nobody
+    accepted, points bolt 2 at the wrong fix.
+  metrics:
+    - { label: Bolt, value: 16 hours }
+    - { label: Bolt clock at the end, value: "27" }
+    - { label: Units in the plan, value: "2" }
+
+diagram:
+  title: Where the bolt clock reads the stream
+  caption: >-
+    Every run is timed on h and charged to its unit. After each event the
+    clock asks whether the planned units can still finish inside 16 hours.
+  direction: lr
+  nodes:
+    - { id: plan, label: "`plan()`", sub: "BOLT-1: two units, 16 hours", kind: doc, tone: blue, at: [0, 0] }
+    - { id: events, label: "`events()`", sub: stamped by the construction agent, kind: store, tone: blue, at: [0, 1] }
+    - { id: message, label: "`message(ref)`", sub: the sponsor's words, kind: tool, tone: teal, at: [0, 2] }
+    - { id: clock, label: Your bolt clock, sub: every run timed on h, kind: agent, tone: purple, at: [1, 1] }
+    - { id: projection, label: "Still inside 16 hours?", sub: clock plus what each unit owes, kind: guard, tone: orange, at: [2, 0] }
+    - { id: report, label: Bolt report, sub: read by the retrospective, kind: output, tone: green, at: [3, 1] }
+    - { id: elaboration, label: Bolt 2 elaboration, sub: where a mid-bolt request goes, kind: actor, tone: orange, at: [3, 2] }
+    - { id: draft, label: "Agent's report", sub: "overrun found at the end, UoW-9 a unit", kind: output, tone: pink, at: [1, 3] }
+  edges:
+    - { from: plan, to: clock, label: planned hours, step: 1 }
+    - { from: events, to: clock, label: runs in order, step: 2 }
+    - { from: clock, to: projection, label: after every event, step: 3 }
+    - { from: projection, to: report, label: first event past 16, step: 4 }
+    - { from: message, to: elaboration, label: never into the bolt, step: 5 }
+    - { from: elaboration, to: report, label: hours it already cost, tone: muted }
+    - { from: events, to: draft, label: read at the end, tone: danger }
+
+approach:
+  goal: Read the bolt the way it ran, hour by hour on its own clock
+  branches:
+    - label: Time comes from h
+      leaves: [a night is no bolt time, "`at` is for people"]
+    - label: Every hour belongs to one run
+      detail: A run opens and closes on its own ref, so two can overlap and a reworked ticket counts twice.
+      leaves: [tickets and reviews alike, parking a ticket ends its run]
+    - label: The plan's units are the bolt
+      leaves: [other units' hours are unplanned, never projected or carried]
+    - label: Project after every event
+      leaves: [the clock so far, what each unapproved unit still owes, approved only when the review says so]
+    - label: A message goes to elaboration
+      leaves: [the running bolt does not change, report what it already cost]
+
+coach:
+  opening: >-
+    Before you write the loop, take EVT-20 and work out by hand what the bolt
+    clock read and what UoW-1 and UoW-2 still owed at that moment.
+  signals:
+    - id: wall-clock
+      when: { code_matches: '\[\s*["'']at["'']\s*\]|\.get\(\s*["'']at["'']' }
+      say: >-
+        Your clock reads `at`, the wall clock. A night and a weekend pass
+        inside this bolt, and none of them is bolt time. What does `h` give
+        you that `at` does not?
+    - id: reads-note
+      when: { code_matches: '\[\s*["'']note["'']\s*\]|\.get\(\s*["'']note["'']' }
+      say: >-
+        Your code reads an event's `note`. Two notes in the stream say
+        unplanned, and only one of those tickets is on a unit outside the
+        plan. Which field says where an hour belongs?
+    - id: calls-model
+      when: { code_matches: '\bllm\s*\(' }
+      say: >-
+        Every number in the report is in the plan and the stream. What would a
+        model call add, and could the retrospective rerun it and get the same
+        report?
+    - id: start-by-unit
+      when: { code_matches: '\[\s*(unit|\w+\[\s*["'']unit["'']\s*\])\s*\]\s*=\s*(h|\w+\[\s*["'']h["'']\s*\])\s*$' }
+      say: >-
+        This keeps one start time per unit. What happens to it when a second
+        ticket of the same unit starts before the first is done?
+    - id: no-outcome
+      when: { code_lacks: '["'']outcome["'']' }
+      say: >-
+        Nothing in your clock reads a review's `outcome`. Does every review
+        result finish a unit?
+    - id: hidden-two-engineers
+      when: { test_failed: two_engineers_on_one_unit_do_more_work_than_the_clock_shows }
+      say: >-
+        In that run two tickets of one unit were open at the same time. Whose
+        start time did your clock keep, and how long did the bolt really run?
+    - id: hidden-after-the-end
+      when: { test_failed: a_message_after_the_bolt_ended_still_goes_to_elaboration }
+      say: >-
+        In that run the sponsor's message came after `BOLT_ENDED`. What did it
+        do to the bolt's length, and what does your code look for after it?
+    - id: hidden-sent-back
+      when: { test_failed: a_unit_sent_back_early_still_owes_its_hours }
+      say: >-
+        In that run a review sent a unit back while it still owed hours, and
+        other work arrived next. Did your projection keep counting what that
+        unit owed?
+    - id: adversarial-text
+      when: { test_failed: adversarial_a_message_forwarded_with_invisible_characters }
+      say: >-
+        The sponsor's message arrived with characters you cannot see. Where in
+        your report does its text go, and does anything in your code change it
+        or decide from it?
+    - id: stuck
+      when: { idle_minutes: 6 }
+      say: >-
+        Start with the runs. Open one under its `ref` when it starts, close it
+        into its unit when it ends, and check each unit's hours for bolt 1.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and the
+        later ones get closer to the loop.
+  wrap_up: >-
+    A bolt is measured on its own clock. Charge every hour to the run that
+    spent it, project after every event, and keep work nobody planned out of
+    the bolt, so the retrospective sees the hour the plan stopped holding.
+
+tests:
+  - name: reports_bolt_1_as_it_ran
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Bolt 1 has ended. Write the report the retrospective reads." }
+      llm_script:
+        - { match: { contains: "event stream" }, reply: "Bolt report, drafted from the event stream: 27 hours on a 16-hour bolt, 11 over. Units in the bolt: UoW-1, UoW-2 and UoW-9. The overrun showed at BOLT_ENDED." }
+        - { match: "*", reply: "Send me BOLT-1 and the event stream, and I will draft the bolt report." }
+      tools:
+        plan:
+          returns:
+            id: BOLT-1
+            bolt_h: 16
+            units: ["UoW-1", "UoW-2"]
+            planned_h: { "UoW-1": 7.0, "UoW-2": 6.0 }
+            hours: 13
+            review_hours: 2
+            spare: 3
+            carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"]
+            elaboration: ["UoW-3"]
+        events:
+          returns:
+            - { id: "EVT-1", kind: BOLT_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "BOLT-1", unit: null, note: "plan: UoW-1 7 h, UoW-2 6 h, reviews inside" }
+            - { id: "EVT-2", kind: TICKET_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-3", kind: TICKET_DONE, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-4", kind: TICKET_STARTED, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-5", kind: TICKET_DONE, h: 2.5, at: "2026-05-14T11:30+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-6", kind: TICKET_STARTED, h: 2.5, at: "2026-05-14T11:30+05:30", ref: "T-3", unit: "UoW-1", note: "the question set" }
+            - { id: "EVT-7", kind: TICKET_DONE, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "T-3", unit: "UoW-1", note: "" }
+            - { id: "EVT-8", kind: TICKET_STARTED, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "T-4", unit: "UoW-1", note: "" }
+            - { id: "EVT-9", kind: TICKET_DONE, h: 6.0, at: "2026-05-14T16:00+05:30", ref: "T-4", unit: "UoW-1", note: "" }
+            - { id: "EVT-10", kind: TICKET_STARTED, h: 6.0, at: "2026-05-14T16:00+05:30", ref: "T-5", unit: "UoW-1", note: "" }
+            - { id: "EVT-11", kind: TICKET_DONE, h: 6.5, at: "2026-05-14T16:30+05:30", ref: "T-5", unit: "UoW-1", note: "" }
+            - { id: "EVT-12", kind: TICKET_STARTED, h: 6.5, at: "2026-05-14T16:30+05:30", ref: "T-6", unit: "UoW-1", note: "" }
+            - { id: "EVT-13", kind: TICKET_DONE, h: 7.5, at: "2026-05-14T17:30+05:30", ref: "T-6", unit: "UoW-1", note: "" }
+            - { id: "EVT-14", kind: TICKET_STARTED, h: 7.5, at: "2026-05-14T17:30+05:30", ref: "T-17", unit: "UoW-1", note: "" }
+            - { id: "EVT-15", kind: TICKET_DONE, h: 8.5, at: "2026-05-15T09:30+05:30", ref: "T-17", unit: "UoW-1", note: "uow-1 v1 written" }
+            - { id: "EVT-16", kind: REVIEW_REQUESTED, h: 8.5, at: "2026-05-15T09:30+05:30", ref: "RV-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-17", kind: REVIEW_DONE, h: 9.0, at: "2026-05-15T10:00+05:30", ref: "RV-1", unit: "UoW-1", note: "S-3 unmet: the symptom is asked after the model number", outcome: changes_requested }
+            - { id: "EVT-18", kind: SPONSOR_MESSAGE, h: 9.0, at: "2026-05-15T10:00+05:30", ref: "MSG-1", unit: null, note: "from the head of customer service" }
+            - { id: "EVT-19", kind: TICKET_STARTED, h: 9.0, at: "2026-05-15T10:00+05:30", ref: "T-18", unit: "UoW-9", note: "unplanned: installs intake stub" }
+            - { id: "EVT-20", kind: TICKET_PARKED, h: 11.0, at: "2026-05-15T12:00+05:30", ref: "T-18", unit: "UoW-9", note: "moved to bolt 2 elaboration by the FDE" }
+            - { id: "EVT-21", kind: TICKET_STARTED, h: 11.0, at: "2026-05-15T12:00+05:30", ref: "T-3", unit: "UoW-1", note: "rework" }
+            - { id: "EVT-22", kind: TICKET_DONE, h: 13.5, at: "2026-05-15T15:30+05:30", ref: "T-3", unit: "UoW-1", note: "uow-1 v2 written" }
+            - { id: "EVT-23", kind: REVIEW_REQUESTED, h: 13.5, at: "2026-05-15T15:30+05:30", ref: "RV-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-24", kind: REVIEW_DONE, h: 14.5, at: "2026-05-15T16:30+05:30", ref: "RV-2", unit: "UoW-1", note: "one nit: rename fault_code to likely_fault", outcome: approved }
+            - { id: "EVT-25", kind: TICKET_STARTED, h: 14.5, at: "2026-05-15T16:30+05:30", ref: "T-7", unit: "UoW-2", note: "" }
+            - { id: "EVT-26", kind: TICKET_DONE, h: 15.5, at: "2026-05-15T17:30+05:30", ref: "T-7", unit: "UoW-2", note: "" }
+            - { id: "EVT-27", kind: TICKET_STARTED, h: 15.5, at: "2026-05-15T17:30+05:30", ref: "T-8", unit: "UoW-2", note: "" }
+            - { id: "EVT-28", kind: TICKET_DONE, h: 16.5, at: "2026-05-18T09:30+05:30", ref: "T-8", unit: "UoW-2", note: "" }
+            - { id: "EVT-29", kind: TICKET_STARTED, h: 16.5, at: "2026-05-18T09:30+05:30", ref: "T-9", unit: "UoW-2", note: "stale-sheet refusal" }
+            - { id: "EVT-30", kind: TICKET_DONE, h: 19.0, at: "2026-05-18T12:00+05:30", ref: "T-9", unit: "UoW-2", note: "" }
+            - { id: "EVT-31", kind: TICKET_STARTED, h: 19.0, at: "2026-05-18T12:00+05:30", ref: "T-10", unit: "UoW-2", note: "" }
+            - { id: "EVT-32", kind: TICKET_DONE, h: 21.0, at: "2026-05-18T15:00+05:30", ref: "T-10", unit: "UoW-2", note: "" }
+            - { id: "EVT-33", kind: TICKET_STARTED, h: 21.0, at: "2026-05-18T15:00+05:30", ref: "T-11", unit: "UoW-2", note: "" }
+            - { id: "EVT-34", kind: TICKET_DONE, h: 22.0, at: "2026-05-18T16:00+05:30", ref: "T-11", unit: "UoW-2", note: "uow-2 v1 written" }
+            - { id: "EVT-35", kind: REVIEW_REQUESTED, h: 22.0, at: "2026-05-18T16:00+05:30", ref: "RV-3", unit: "UoW-2", note: "" }
+            - { id: "EVT-36", kind: REVIEW_DONE, h: 23.0, at: "2026-05-18T17:00+05:30", ref: "RV-3", unit: "UoW-2", note: "S-9 unmet: a sheet older than a day was booked as in stock", outcome: changes_requested }
+            - { id: "EVT-37", kind: TICKET_STARTED, h: 23.0, at: "2026-05-18T17:00+05:30", ref: "T-9", unit: "UoW-2", note: "rework" }
+            - { id: "EVT-38", kind: TICKET_DONE, h: 25.0, at: "2026-05-19T10:00+05:30", ref: "T-9", unit: "UoW-2", note: "uow-2 v2 written" }
+            - { id: "EVT-39", kind: REVIEW_REQUESTED, h: 25.0, at: "2026-05-19T10:00+05:30", ref: "RV-4", unit: "UoW-2", note: "" }
+            - { id: "EVT-40", kind: REVIEW_DONE, h: 26.0, at: "2026-05-19T11:00+05:30", ref: "RV-4", unit: "UoW-2", note: "", outcome: approved }
+            - { id: "EVT-41", kind: TICKET_STARTED, h: 26.0, at: "2026-05-19T11:00+05:30", ref: "T-19", unit: "UoW-2", note: "unplanned: partner sandbox credentials rotated, stock-call suite re-run" }
+            - { id: "EVT-42", kind: TICKET_DONE, h: 27.0, at: "2026-05-19T12:00+05:30", ref: "T-19", unit: "UoW-2", note: "" }
+            - { id: "EVT-43", kind: BOLT_ENDED, h: 27.0, at: "2026-05-19T12:00+05:30", ref: "BOLT-1", unit: null, note: "" }
+        message:
+          by_arg:
+            arg: ref
+            values:
+              "MSG-1": { status: 200, text: "Add installs to this bolt. Same window." }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: plan }
+        - { type: calls_tool, name: events }
+        - { type: calls_tool_with, name: message, args: { ref: "MSG-1" } }
+        - { type: tool_calls_at_most, value: 3 }
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [bolt, units, unplanned, elapsed_h, overrun_h, first_knowable, carried, messages]
+            properties:
+              bolt: { const: "BOLT-1" }
+              units: { const: [{ unit: "UoW-1", planned_h: 7.0, actual_h: 12.5 }, { unit: "UoW-2", planned_h: 6.0, actual_h: 12.5 }] }
+              unplanned: { const: [{ unit: "UoW-9", actual_h: 2.0 }] }
+              elapsed_h: { const: 27.0 }
+              overrun_h: { const: 11.0 }
+              first_knowable: { const: "EVT-20" }
+              carried: { const: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"] }
+              messages: { const: [{ ref: "MSG-1", text: "Add installs to this bolt. Same window.", to: "bolt 2 elaboration", unit: "UoW-9", hours_spent: 2.0 }] }
+
+  - name: reports_a_bolt_that_absorbed_the_installs_work
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Replay bolt 1 as it would have run had UoW-1 come in two hours under its plan." }
+      llm_script:
+        - { match: { contains: "event stream" }, reply: "Bolt report, drafted from the event stream: 27 hours on a 16-hour bolt, 11 over. Units in the bolt: UoW-1, UoW-2 and UoW-9. The overrun showed at BOLT_ENDED." }
+        - { match: "*", reply: "Send me BOLT-1 and the event stream, and I will draft the bolt report." }
+      tools:
+        plan:
+          returns:
+            id: BOLT-1
+            bolt_h: 16
+            units: ["UoW-1", "UoW-2"]
+            planned_h: { "UoW-1": 7.0, "UoW-2": 6.0 }
+            hours: 13
+            review_hours: 2
+            spare: 3
+            carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"]
+            elaboration: ["UoW-3"]
+        events:
+          returns:
+            - { id: "EVT-1", kind: BOLT_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "BOLT-1", unit: null, note: "plan: UoW-1 7 h, UoW-2 6 h, reviews inside" }
+            - { id: "EVT-2", kind: TICKET_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-3", kind: TICKET_DONE, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-4", kind: TICKET_STARTED, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-5", kind: TICKET_DONE, h: 2.0, at: "2026-05-14T11:00+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-6", kind: TICKET_STARTED, h: 2.0, at: "2026-05-14T11:00+05:30", ref: "T-3", unit: "UoW-1", note: "the question set" }
+            - { id: "EVT-7", kind: TICKET_DONE, h: 3.5, at: "2026-05-14T12:30+05:30", ref: "T-3", unit: "UoW-1", note: "" }
+            - { id: "EVT-8", kind: TICKET_STARTED, h: 3.5, at: "2026-05-14T12:30+05:30", ref: "T-4", unit: "UoW-1", note: "" }
+            - { id: "EVT-9", kind: TICKET_DONE, h: 4.5, at: "2026-05-14T14:30+05:30", ref: "T-4", unit: "UoW-1", note: "uow-1 v1 written" }
+            - { id: "EVT-10", kind: REVIEW_REQUESTED, h: 4.5, at: "2026-05-14T14:30+05:30", ref: "RV-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-11", kind: REVIEW_DONE, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "RV-1", unit: "UoW-1", note: "", outcome: approved }
+            - { id: "EVT-12", kind: SPONSOR_MESSAGE, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "MSG-1", unit: null, note: "from the head of customer service" }
+            - { id: "EVT-13", kind: TICKET_STARTED, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "T-18", unit: "UoW-9", note: "unplanned: installs intake stub" }
+            - { id: "EVT-14", kind: TICKET_PARKED, h: 9.0, at: "2026-05-15T10:00+05:30", ref: "T-18", unit: "UoW-9", note: "moved to bolt 2 elaboration by the FDE" }
+            - { id: "EVT-15", kind: TICKET_STARTED, h: 9.0, at: "2026-05-15T10:00+05:30", ref: "T-7", unit: "UoW-2", note: "" }
+            - { id: "EVT-16", kind: TICKET_DONE, h: 10.0, at: "2026-05-15T11:00+05:30", ref: "T-7", unit: "UoW-2", note: "" }
+            - { id: "EVT-17", kind: TICKET_STARTED, h: 10.0, at: "2026-05-15T11:00+05:30", ref: "T-8", unit: "UoW-2", note: "" }
+            - { id: "EVT-18", kind: TICKET_DONE, h: 11.0, at: "2026-05-15T12:00+05:30", ref: "T-8", unit: "UoW-2", note: "" }
+            - { id: "EVT-19", kind: TICKET_STARTED, h: 11.0, at: "2026-05-15T12:00+05:30", ref: "T-9", unit: "UoW-2", note: "stale-sheet refusal" }
+            - { id: "EVT-20", kind: TICKET_DONE, h: 13.0, at: "2026-05-15T15:00+05:30", ref: "T-9", unit: "UoW-2", note: "" }
+            - { id: "EVT-21", kind: TICKET_STARTED, h: 13.0, at: "2026-05-15T15:00+05:30", ref: "T-10", unit: "UoW-2", note: "" }
+            - { id: "EVT-22", kind: TICKET_DONE, h: 14.0, at: "2026-05-15T16:00+05:30", ref: "T-10", unit: "UoW-2", note: "uow-2 v1 written" }
+            - { id: "EVT-23", kind: REVIEW_REQUESTED, h: 14.0, at: "2026-05-15T16:00+05:30", ref: "RV-3", unit: "UoW-2", note: "" }
+            - { id: "EVT-24", kind: REVIEW_DONE, h: 15.0, at: "2026-05-15T17:00+05:30", ref: "RV-3", unit: "UoW-2", note: "", outcome: approved }
+            - { id: "EVT-25", kind: BOLT_ENDED, h: 15.0, at: "2026-05-15T17:00+05:30", ref: "BOLT-1", unit: null, note: "" }
+        message:
+          by_arg:
+            arg: ref
+            values:
+              "MSG-1": { status: 200, text: "Add installs to this bolt. Same window." }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [bolt, units, unplanned, elapsed_h, overrun_h, first_knowable, carried, messages]
+            properties:
+              bolt: { const: "BOLT-1" }
+              units: { const: [{ unit: "UoW-1", planned_h: 7.0, actual_h: 5.0 }, { unit: "UoW-2", planned_h: 6.0, actual_h: 6.0 }] }
+              unplanned: { const: [{ unit: "UoW-9", actual_h: 4.0 }] }
+              elapsed_h: { const: 15.0 }
+              overrun_h: { const: 0.0 }
+              first_knowable: { const: null }
+              carried: { const: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"] }
+              messages: { const: [{ ref: "MSG-1", text: "Add installs to this bolt. Same window.", to: "bolt 2 elaboration", unit: "UoW-9", hours_spent: 4.0 }] }
+
+  - name: two_engineers_on_one_unit_do_more_work_than_the_clock_shows
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Report on a bolt where the vendor engineer took half of UoW-2." }
+      llm_script:
+        - { match: { contains: "event stream" }, reply: "Bolt report, drafted from the event stream: 27 hours on a 16-hour bolt, 11 over. Units in the bolt: UoW-1, UoW-2 and UoW-9. The overrun showed at BOLT_ENDED." }
+        - { match: "*", reply: "Send me BOLT-1 and the event stream, and I will draft the bolt report." }
+      tools:
+        plan:
+          returns:
+            id: BOLT-1
+            bolt_h: 16
+            units: ["UoW-1", "UoW-2"]
+            planned_h: { "UoW-1": 7.0, "UoW-2": 6.0 }
+            hours: 13
+            review_hours: 2
+            spare: 3
+            carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"]
+            elaboration: ["UoW-3"]
+        events:
+          returns:
+            - { id: "EVT-1", kind: BOLT_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "BOLT-1", unit: null, note: "plan: UoW-1 7 h, UoW-2 6 h, reviews inside" }
+            - { id: "EVT-2", kind: TICKET_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-3", kind: TICKET_DONE, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-4", kind: TICKET_STARTED, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-5", kind: TICKET_DONE, h: 2.5, at: "2026-05-14T11:30+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-6", kind: TICKET_STARTED, h: 2.5, at: "2026-05-14T11:30+05:30", ref: "T-3", unit: "UoW-1", note: "the question set" }
+            - { id: "EVT-7", kind: TICKET_DONE, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "T-3", unit: "UoW-1", note: "" }
+            - { id: "EVT-8", kind: TICKET_STARTED, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "T-4", unit: "UoW-1", note: "" }
+            - { id: "EVT-9", kind: TICKET_DONE, h: 6.0, at: "2026-05-14T16:00+05:30", ref: "T-4", unit: "UoW-1", note: "uow-1 v1 written" }
+            - { id: "EVT-10", kind: REVIEW_REQUESTED, h: 6.0, at: "2026-05-14T16:00+05:30", ref: "RV-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-11", kind: REVIEW_DONE, h: 7.0, at: "2026-05-14T17:00+05:30", ref: "RV-1", unit: "UoW-1", note: "", outcome: approved }
+            - { id: "EVT-12", kind: TICKET_STARTED, h: 7.0, at: "2026-05-14T17:00+05:30", ref: "T-7", unit: "UoW-2", note: "the FDE" }
+            - { id: "EVT-13", kind: TICKET_STARTED, h: 7.0, at: "2026-05-14T17:00+05:30", ref: "T-8", unit: "UoW-2", note: "the vendor engineer" }
+            - { id: "EVT-14", kind: TICKET_DONE, h: 8.0, at: "2026-05-14T18:00+05:30", ref: "T-7", unit: "UoW-2", note: "" }
+            - { id: "EVT-15", kind: TICKET_STARTED, h: 8.0, at: "2026-05-15T09:00+05:30", ref: "T-9", unit: "UoW-2", note: "the FDE: stale-sheet refusal" }
+            - { id: "EVT-16", kind: TICKET_DONE, h: 8.5, at: "2026-05-15T09:30+05:30", ref: "T-8", unit: "UoW-2", note: "" }
+            - { id: "EVT-17", kind: TICKET_STARTED, h: 8.5, at: "2026-05-15T09:30+05:30", ref: "T-10", unit: "UoW-2", note: "the vendor engineer" }
+            - { id: "EVT-18", kind: TICKET_DONE, h: 10.5, at: "2026-05-15T11:30+05:30", ref: "T-9", unit: "UoW-2", note: "" }
+            - { id: "EVT-19", kind: TICKET_STARTED, h: 10.5, at: "2026-05-15T11:30+05:30", ref: "T-11", unit: "UoW-2", note: "the FDE" }
+            - { id: "EVT-20", kind: TICKET_DONE, h: 11.5, at: "2026-05-15T12:30+05:30", ref: "T-10", unit: "UoW-2", note: "" }
+            - { id: "EVT-21", kind: TICKET_DONE, h: 11.5, at: "2026-05-15T12:30+05:30", ref: "T-11", unit: "UoW-2", note: "uow-2 v1 written" }
+            - { id: "EVT-22", kind: REVIEW_REQUESTED, h: 11.5, at: "2026-05-15T12:30+05:30", ref: "RV-3", unit: "UoW-2", note: "" }
+            - { id: "EVT-23", kind: REVIEW_DONE, h: 12.5, at: "2026-05-15T14:30+05:30", ref: "RV-3", unit: "UoW-2", note: "", outcome: approved }
+            - { id: "EVT-24", kind: BOLT_ENDED, h: 12.5, at: "2026-05-15T14:30+05:30", ref: "BOLT-1", unit: null, note: "" }
+        message:
+          by_arg:
+            arg: ref
+            values:
+              "MSG-1": { status: 200, text: "Add installs to this bolt. Same window." }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [units, unplanned, elapsed_h, overrun_h, first_knowable, messages]
+            properties:
+              units: { const: [{ unit: "UoW-1", planned_h: 7.0, actual_h: 7.0 }, { unit: "UoW-2", planned_h: 6.0, actual_h: 10.0 }] }
+              unplanned: { const: [] }
+              elapsed_h: { const: 12.5 }
+              overrun_h: { const: 0.0 }
+              first_knowable: { const: null }
+              messages: { const: [] }
+
+  - name: a_message_after_the_bolt_ended_still_goes_to_elaboration
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Report on bolt 1 as it would have run without the installs ticket." }
+      llm_script:
+        - { match: { contains: "event stream" }, reply: "Bolt report, drafted from the event stream: 27 hours on a 16-hour bolt, 11 over. Units in the bolt: UoW-1, UoW-2 and UoW-9. The overrun showed at BOLT_ENDED." }
+        - { match: "*", reply: "Send me BOLT-1 and the event stream, and I will draft the bolt report." }
+      tools:
+        plan:
+          returns:
+            id: BOLT-1
+            bolt_h: 16
+            units: ["UoW-1", "UoW-2"]
+            planned_h: { "UoW-1": 7.0, "UoW-2": 6.0 }
+            hours: 13
+            review_hours: 2
+            spare: 3
+            carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"]
+            elaboration: ["UoW-3"]
+        events:
+          returns:
+            - { id: "EVT-1", kind: BOLT_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "BOLT-1", unit: null, note: "plan: UoW-1 7 h, UoW-2 6 h, reviews inside" }
+            - { id: "EVT-2", kind: TICKET_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-3", kind: TICKET_DONE, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-4", kind: TICKET_STARTED, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-5", kind: TICKET_DONE, h: 2.5, at: "2026-05-14T11:30+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-6", kind: TICKET_STARTED, h: 2.5, at: "2026-05-14T11:30+05:30", ref: "T-3", unit: "UoW-1", note: "the question set" }
+            - { id: "EVT-7", kind: TICKET_DONE, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "T-3", unit: "UoW-1", note: "" }
+            - { id: "EVT-8", kind: TICKET_STARTED, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "T-4", unit: "UoW-1", note: "" }
+            - { id: "EVT-9", kind: TICKET_DONE, h: 6.0, at: "2026-05-14T16:00+05:30", ref: "T-4", unit: "UoW-1", note: "" }
+            - { id: "EVT-10", kind: TICKET_STARTED, h: 6.0, at: "2026-05-14T16:00+05:30", ref: "T-5", unit: "UoW-1", note: "" }
+            - { id: "EVT-11", kind: TICKET_DONE, h: 6.5, at: "2026-05-14T16:30+05:30", ref: "T-5", unit: "UoW-1", note: "" }
+            - { id: "EVT-12", kind: TICKET_STARTED, h: 6.5, at: "2026-05-14T16:30+05:30", ref: "T-6", unit: "UoW-1", note: "" }
+            - { id: "EVT-13", kind: TICKET_DONE, h: 7.5, at: "2026-05-14T17:30+05:30", ref: "T-6", unit: "UoW-1", note: "" }
+            - { id: "EVT-14", kind: TICKET_STARTED, h: 7.5, at: "2026-05-14T17:30+05:30", ref: "T-17", unit: "UoW-1", note: "" }
+            - { id: "EVT-15", kind: TICKET_DONE, h: 8.5, at: "2026-05-15T09:30+05:30", ref: "T-17", unit: "UoW-1", note: "uow-1 v1 written" }
+            - { id: "EVT-16", kind: REVIEW_REQUESTED, h: 8.5, at: "2026-05-15T09:30+05:30", ref: "RV-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-17", kind: REVIEW_DONE, h: 9.0, at: "2026-05-15T10:00+05:30", ref: "RV-1", unit: "UoW-1", note: "S-3 unmet: the symptom is asked after the model number", outcome: changes_requested }
+            - { id: "EVT-18", kind: TICKET_STARTED, h: 9.0, at: "2026-05-15T10:00+05:30", ref: "T-3", unit: "UoW-1", note: "rework" }
+            - { id: "EVT-19", kind: TICKET_DONE, h: 11.5, at: "2026-05-15T12:30+05:30", ref: "T-3", unit: "UoW-1", note: "uow-1 v2 written" }
+            - { id: "EVT-20", kind: REVIEW_REQUESTED, h: 11.5, at: "2026-05-15T12:30+05:30", ref: "RV-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-21", kind: REVIEW_DONE, h: 12.5, at: "2026-05-15T14:30+05:30", ref: "RV-2", unit: "UoW-1", note: "one nit: rename fault_code to likely_fault", outcome: approved }
+            - { id: "EVT-22", kind: TICKET_STARTED, h: 12.5, at: "2026-05-15T14:30+05:30", ref: "T-7", unit: "UoW-2", note: "" }
+            - { id: "EVT-23", kind: TICKET_DONE, h: 13.5, at: "2026-05-15T15:30+05:30", ref: "T-7", unit: "UoW-2", note: "" }
+            - { id: "EVT-24", kind: TICKET_STARTED, h: 13.5, at: "2026-05-15T15:30+05:30", ref: "T-8", unit: "UoW-2", note: "" }
+            - { id: "EVT-25", kind: TICKET_DONE, h: 14.5, at: "2026-05-15T16:30+05:30", ref: "T-8", unit: "UoW-2", note: "" }
+            - { id: "EVT-26", kind: TICKET_STARTED, h: 14.5, at: "2026-05-15T16:30+05:30", ref: "T-9", unit: "UoW-2", note: "stale-sheet refusal" }
+            - { id: "EVT-27", kind: TICKET_DONE, h: 17.0, at: "2026-05-18T10:00+05:30", ref: "T-9", unit: "UoW-2", note: "" }
+            - { id: "EVT-28", kind: TICKET_STARTED, h: 17.0, at: "2026-05-18T10:00+05:30", ref: "T-10", unit: "UoW-2", note: "" }
+            - { id: "EVT-29", kind: TICKET_DONE, h: 19.0, at: "2026-05-18T12:00+05:30", ref: "T-10", unit: "UoW-2", note: "" }
+            - { id: "EVT-30", kind: TICKET_STARTED, h: 19.0, at: "2026-05-18T12:00+05:30", ref: "T-11", unit: "UoW-2", note: "" }
+            - { id: "EVT-31", kind: TICKET_DONE, h: 20.0, at: "2026-05-18T13:00+05:30", ref: "T-11", unit: "UoW-2", note: "uow-2 v1 written" }
+            - { id: "EVT-32", kind: REVIEW_REQUESTED, h: 20.0, at: "2026-05-18T14:00+05:30", ref: "RV-3", unit: "UoW-2", note: "" }
+            - { id: "EVT-33", kind: REVIEW_DONE, h: 21.0, at: "2026-05-18T15:00+05:30", ref: "RV-3", unit: "UoW-2", note: "S-9 unmet: a sheet older than a day was booked as in stock", outcome: changes_requested }
+            - { id: "EVT-34", kind: TICKET_STARTED, h: 21.0, at: "2026-05-18T15:00+05:30", ref: "T-9", unit: "UoW-2", note: "rework" }
+            - { id: "EVT-35", kind: TICKET_DONE, h: 23.0, at: "2026-05-18T17:00+05:30", ref: "T-9", unit: "UoW-2", note: "uow-2 v2 written" }
+            - { id: "EVT-36", kind: REVIEW_REQUESTED, h: 23.0, at: "2026-05-18T17:00+05:30", ref: "RV-4", unit: "UoW-2", note: "" }
+            - { id: "EVT-37", kind: REVIEW_DONE, h: 24.0, at: "2026-05-18T18:00+05:30", ref: "RV-4", unit: "UoW-2", note: "", outcome: approved }
+            - { id: "EVT-38", kind: TICKET_STARTED, h: 24.0, at: "2026-05-19T09:00+05:30", ref: "T-19", unit: "UoW-2", note: "unplanned: partner sandbox credentials rotated, stock-call suite re-run" }
+            - { id: "EVT-39", kind: TICKET_DONE, h: 25.0, at: "2026-05-19T10:00+05:30", ref: "T-19", unit: "UoW-2", note: "" }
+            - { id: "EVT-40", kind: BOLT_ENDED, h: 25.0, at: "2026-05-19T10:00+05:30", ref: "BOLT-1", unit: null, note: "" }
+            - { id: "EVT-41", kind: SPONSOR_MESSAGE, h: 26.0, at: "2026-05-19T11:00+05:30", ref: "MSG-1", unit: null, note: "from the head of customer service" }
+        message:
+          by_arg:
+            arg: ref
+            values:
+              "MSG-1": { status: 200, text: "Add installs to this bolt. Same window." }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [units, unplanned, elapsed_h, overrun_h, first_knowable, carried, messages]
+            properties:
+              units: { const: [{ unit: "UoW-1", planned_h: 7.0, actual_h: 12.5 }, { unit: "UoW-2", planned_h: 6.0, actual_h: 12.5 }] }
+              unplanned: { const: [] }
+              elapsed_h: { const: 25.0 }
+              overrun_h: { const: 9.0 }
+              first_knowable: { const: "EVT-19" }
+              carried: { const: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"] }
+              messages: { const: [{ ref: "MSG-1", text: "Add installs to this bolt. Same window.", to: "bolt 2 elaboration", unit: null, hours_spent: 0.0 }] }
+
+  - name: a_unit_sent_back_early_still_owes_its_hours
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Report on a bolt where RV-1 came back before lunch on the first day." }
+      llm_script:
+        - { match: { contains: "event stream" }, reply: "Bolt report, drafted from the event stream: 27 hours on a 16-hour bolt, 11 over. Units in the bolt: UoW-1, UoW-2 and UoW-9. The overrun showed at BOLT_ENDED." }
+        - { match: "*", reply: "Send me BOLT-1 and the event stream, and I will draft the bolt report." }
+      tools:
+        plan:
+          returns:
+            id: BOLT-1
+            bolt_h: 16
+            units: ["UoW-1", "UoW-2"]
+            planned_h: { "UoW-1": 7.0, "UoW-2": 6.0 }
+            hours: 13
+            review_hours: 2
+            spare: 3
+            carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"]
+            elaboration: ["UoW-3"]
+        events:
+          returns:
+            - { id: "EVT-1", kind: BOLT_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "BOLT-1", unit: null, note: "plan: UoW-1 7 h, UoW-2 6 h, reviews inside" }
+            - { id: "EVT-2", kind: TICKET_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-3", kind: TICKET_DONE, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-4", kind: TICKET_STARTED, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-5", kind: TICKET_DONE, h: 2.0, at: "2026-05-14T11:00+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-6", kind: TICKET_STARTED, h: 2.0, at: "2026-05-14T11:00+05:30", ref: "T-3", unit: "UoW-1", note: "the question set" }
+            - { id: "EVT-7", kind: TICKET_DONE, h: 3.0, at: "2026-05-14T12:00+05:30", ref: "T-3", unit: "UoW-1", note: "uow-1 v1 written" }
+            - { id: "EVT-8", kind: REVIEW_REQUESTED, h: 3.0, at: "2026-05-14T12:00+05:30", ref: "RV-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-9", kind: REVIEW_DONE, h: 3.5, at: "2026-05-14T12:30+05:30", ref: "RV-1", unit: "UoW-1", note: "S-3 unmet: the symptom is asked after the model number", outcome: changes_requested }
+            - { id: "EVT-10", kind: SPONSOR_MESSAGE, h: 3.5, at: "2026-05-14T12:30+05:30", ref: "MSG-1", unit: null, note: "from the head of customer service" }
+            - { id: "EVT-11", kind: TICKET_STARTED, h: 3.5, at: "2026-05-14T12:30+05:30", ref: "T-18", unit: "UoW-9", note: "unplanned: installs intake stub" }
+            - { id: "EVT-12", kind: TICKET_PARKED, h: 7.0, at: "2026-05-14T17:00+05:30", ref: "T-18", unit: "UoW-9", note: "moved to bolt 2 elaboration by the FDE" }
+            - { id: "EVT-13", kind: TICKET_STARTED, h: 7.0, at: "2026-05-14T17:00+05:30", ref: "T-3", unit: "UoW-1", note: "rework" }
+            - { id: "EVT-14", kind: TICKET_DONE, h: 9.0, at: "2026-05-15T10:00+05:30", ref: "T-3", unit: "UoW-1", note: "uow-1 v2 written" }
+            - { id: "EVT-15", kind: REVIEW_REQUESTED, h: 9.0, at: "2026-05-15T10:00+05:30", ref: "RV-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-16", kind: REVIEW_DONE, h: 9.5, at: "2026-05-15T10:30+05:30", ref: "RV-2", unit: "UoW-1", note: "", outcome: approved }
+            - { id: "EVT-17", kind: TICKET_STARTED, h: 9.5, at: "2026-05-15T10:30+05:30", ref: "T-7", unit: "UoW-2", note: "" }
+            - { id: "EVT-18", kind: TICKET_DONE, h: 10.5, at: "2026-05-15T11:30+05:30", ref: "T-7", unit: "UoW-2", note: "" }
+            - { id: "EVT-19", kind: TICKET_STARTED, h: 10.5, at: "2026-05-15T11:30+05:30", ref: "T-8", unit: "UoW-2", note: "" }
+            - { id: "EVT-20", kind: TICKET_DONE, h: 11.5, at: "2026-05-15T12:30+05:30", ref: "T-8", unit: "UoW-2", note: "" }
+            - { id: "EVT-21", kind: TICKET_STARTED, h: 11.5, at: "2026-05-15T12:30+05:30", ref: "T-9", unit: "UoW-2", note: "stale-sheet refusal" }
+            - { id: "EVT-22", kind: TICKET_DONE, h: 14.0, at: "2026-05-15T16:00+05:30", ref: "T-9", unit: "UoW-2", note: "" }
+            - { id: "EVT-23", kind: TICKET_STARTED, h: 14.0, at: "2026-05-15T16:00+05:30", ref: "T-10", unit: "UoW-2", note: "" }
+            - { id: "EVT-24", kind: TICKET_DONE, h: 16.0, at: "2026-05-15T18:00+05:30", ref: "T-10", unit: "UoW-2", note: "uow-2 v1 written" }
+            - { id: "EVT-25", kind: REVIEW_REQUESTED, h: 16.0, at: "2026-05-18T09:00+05:30", ref: "RV-3", unit: "UoW-2", note: "" }
+            - { id: "EVT-26", kind: REVIEW_DONE, h: 17.0, at: "2026-05-18T10:00+05:30", ref: "RV-3", unit: "UoW-2", note: "", outcome: approved }
+            - { id: "EVT-27", kind: BOLT_ENDED, h: 17.0, at: "2026-05-18T10:00+05:30", ref: "BOLT-1", unit: null, note: "" }
+        message:
+          by_arg:
+            arg: ref
+            values:
+              "MSG-1": { status: 200, text: "Add installs to this bolt. Same window." }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [units, unplanned, elapsed_h, overrun_h, first_knowable, messages]
+            properties:
+              units: { const: [{ unit: "UoW-1", planned_h: 7.0, actual_h: 6.0 }, { unit: "UoW-2", planned_h: 6.0, actual_h: 7.5 }] }
+              unplanned: { const: [{ unit: "UoW-9", actual_h: 3.5 }] }
+              elapsed_h: { const: 17.0 }
+              overrun_h: { const: 1.0 }
+              first_knowable: { const: "EVT-12" }
+              messages: { const: [{ ref: "MSG-1", text: "Add installs to this bolt. Same window.", to: "bolt 2 elaboration", unit: "UoW-9", hours_spent: 3.5 }] }
+
+  - name: adversarial_a_message_forwarded_with_invisible_characters
+    visibility: adversarial
+    fixture: unicode_payload
+    annotation_md: |
+      In this run the message tool returned the sponsor's message the way a
+      forwarded WhatsApp text can arrive: a zero-width space at the start, an
+      emoji, and a right-to-left mark before a phrase in Arabic script. None of
+      that is about the bolt.
+
+      The message still goes to bolt 2 elaboration, and the installs ticket it
+      started still cost 4 hours. Both come from the events. The text goes into the
+      report exactly as it came, because the report is the record of what the
+      sponsor asked for. A clock that cleans the text, re-encodes it, or reads it
+      to decide what happens to the message breaks here, or changes her words.
+    spec:
+      kind: agent_run
+      input: { question: "Replay the bolt that absorbed the installs work, with the message as it was forwarded." }
+      llm_script:
+        - { match: { contains: "event stream" }, reply: "Bolt report, drafted from the event stream: 27 hours on a 16-hour bolt, 11 over. Units in the bolt: UoW-1, UoW-2 and UoW-9. The overrun showed at BOLT_ENDED." }
+        - { match: "*", reply: "Send me BOLT-1 and the event stream, and I will draft the bolt report." }
+      tools:
+        plan:
+          returns:
+            id: BOLT-1
+            bolt_h: 16
+            units: ["UoW-1", "UoW-2"]
+            planned_h: { "UoW-1": 7.0, "UoW-2": 6.0 }
+            hours: 13
+            review_hours: 2
+            spare: 3
+            carried: ["UoW-4", "UoW-8", "UoW-5", "UoW-6"]
+            elaboration: ["UoW-3"]
+        events:
+          returns:
+            - { id: "EVT-1", kind: BOLT_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "BOLT-1", unit: null, note: "plan: UoW-1 7 h, UoW-2 6 h, reviews inside" }
+            - { id: "EVT-2", kind: TICKET_STARTED, h: 0.0, at: "2026-05-14T09:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-3", kind: TICKET_DONE, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-4", kind: TICKET_STARTED, h: 1.0, at: "2026-05-14T10:00+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-5", kind: TICKET_DONE, h: 2.0, at: "2026-05-14T11:00+05:30", ref: "T-2", unit: "UoW-1", note: "" }
+            - { id: "EVT-6", kind: TICKET_STARTED, h: 2.0, at: "2026-05-14T11:00+05:30", ref: "T-3", unit: "UoW-1", note: "the question set" }
+            - { id: "EVT-7", kind: TICKET_DONE, h: 3.5, at: "2026-05-14T12:30+05:30", ref: "T-3", unit: "UoW-1", note: "" }
+            - { id: "EVT-8", kind: TICKET_STARTED, h: 3.5, at: "2026-05-14T12:30+05:30", ref: "T-4", unit: "UoW-1", note: "" }
+            - { id: "EVT-9", kind: TICKET_DONE, h: 4.5, at: "2026-05-14T14:30+05:30", ref: "T-4", unit: "UoW-1", note: "uow-1 v1 written" }
+            - { id: "EVT-10", kind: REVIEW_REQUESTED, h: 4.5, at: "2026-05-14T14:30+05:30", ref: "RV-1", unit: "UoW-1", note: "" }
+            - { id: "EVT-11", kind: REVIEW_DONE, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "RV-1", unit: "UoW-1", note: "", outcome: approved }
+            - { id: "EVT-12", kind: SPONSOR_MESSAGE, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "MSG-1", unit: null, note: "from the head of customer service" }
+            - { id: "EVT-13", kind: TICKET_STARTED, h: 5.0, at: "2026-05-14T15:00+05:30", ref: "T-18", unit: "UoW-9", note: "unplanned: installs intake stub" }
+            - { id: "EVT-14", kind: TICKET_PARKED, h: 9.0, at: "2026-05-15T10:00+05:30", ref: "T-18", unit: "UoW-9", note: "moved to bolt 2 elaboration by the FDE" }
+            - { id: "EVT-15", kind: TICKET_STARTED, h: 9.0, at: "2026-05-15T10:00+05:30", ref: "T-7", unit: "UoW-2", note: "" }
+            - { id: "EVT-16", kind: TICKET_DONE, h: 10.0, at: "2026-05-15T11:00+05:30", ref: "T-7", unit: "UoW-2", note: "" }
+            - { id: "EVT-17", kind: TICKET_STARTED, h: 10.0, at: "2026-05-15T11:00+05:30", ref: "T-8", unit: "UoW-2", note: "" }
+            - { id: "EVT-18", kind: TICKET_DONE, h: 11.0, at: "2026-05-15T12:00+05:30", ref: "T-8", unit: "UoW-2", note: "" }
+            - { id: "EVT-19", kind: TICKET_STARTED, h: 11.0, at: "2026-05-15T12:00+05:30", ref: "T-9", unit: "UoW-2", note: "stale-sheet refusal" }
+            - { id: "EVT-20", kind: TICKET_DONE, h: 13.0, at: "2026-05-15T15:00+05:30", ref: "T-9", unit: "UoW-2", note: "" }
+            - { id: "EVT-21", kind: TICKET_STARTED, h: 13.0, at: "2026-05-15T15:00+05:30", ref: "T-10", unit: "UoW-2", note: "" }
+            - { id: "EVT-22", kind: TICKET_DONE, h: 14.0, at: "2026-05-15T16:00+05:30", ref: "T-10", unit: "UoW-2", note: "uow-2 v1 written" }
+            - { id: "EVT-23", kind: REVIEW_REQUESTED, h: 14.0, at: "2026-05-15T16:00+05:30", ref: "RV-3", unit: "UoW-2", note: "" }
+            - { id: "EVT-24", kind: REVIEW_DONE, h: 15.0, at: "2026-05-15T17:00+05:30", ref: "RV-3", unit: "UoW-2", note: "", outcome: approved }
+            - { id: "EVT-25", kind: BOLT_ENDED, h: 15.0, at: "2026-05-15T17:00+05:30", ref: "BOLT-1", unit: null, note: "" }
+        message: { fixture: unicode_payload }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [units, unplanned, overrun_h, first_knowable, messages]
+            properties:
+              units: { const: [{ unit: "UoW-1", planned_h: 7.0, actual_h: 5.0 }, { unit: "UoW-2", planned_h: 6.0, actual_h: 6.0 }] }
+              unplanned: { const: [{ unit: "UoW-9", actual_h: 4.0 }] }
+              overrun_h: { const: 0.0 }
+              first_knowable: { const: null }
+              messages: { const: [{ ref: "MSG-1", text: "\u200Bin transit \U0001F69A \u200F\u0642\u064A\u062F \u0627\u0644\u0646\u0642\u0644", to: "bolt 2 elaboration", unit: "UoW-9", hours_spent: 4.0 }] }
+
+reference_md: |
+  The agent's report found the overrun at `BOLT_ENDED`, where any clock finds
+  it. The retrospective needs to know when the plan stopped being possible,
+  and the end of the stream cannot say. That takes the bolt's own clock,
+  every hour charged to the run that spent it, and a projection made after
+  every event.
+
+  The clock is `h`. Between EVT-14 and EVT-15 the wall clock moves from
+  Thursday evening to Friday morning and the bolt clock moves one hour, and
+  between EVT-27 and EVT-28 a weekend passes in one bolt hour. Read from
+  `at`, T-8 took 64 hours.
+
+  Every hour belongs to one run, kept under its own `ref`. T-3 and T-9 each
+  ran twice because RV-1 and RV-3 sent their units back, and both runs count:
+  that is how UoW-1 reaches 12.5 hours against 7, and UoW-2 the same against
+  6. A start time kept per unit works on bolt 1, where one ticket was open at
+  a time, and breaks the day the vendor engineer picks up a ticket of the same
+  unit.
+
+  The plan's units are the bolt. T-18 ran on UoW-9, a unit nobody accepted,
+  so its 2 hours are unplanned: reported, never projected, never carried.
+  T-19, the credential rotation, was unplanned work on a planned unit, and it
+  counts toward UoW-2. The notes on both tickets say unplanned, and the unit
+  decides.
+
+  After each event the projection is the clock plus what each unapproved unit
+  still owes. At EVT-17, RV-1 has asked for changes, UoW-1 has used 9 of its 7
+  hours and owes nothing more on paper, and the projection reads 15. At EVT-20
+  the clock has moved two hours on T-18 while UoW-2 still owes all 6, and the
+  projection reads 17: the first event at which the bolt could not end by hour
+  16. The floor at zero is what lets it fire there. Without it, UoW-1's
+  overspend cancels UoW-2's debt, and the projection stays under 16 until RV-2
+  approves UoW-1 at EVT-24, three and a half hours later. Approval has to be
+  the review's `outcome`, because a unit sent back while it still owes hours
+  keeps owing them.
+
+  The bolt's length is the clock at `BOLT_ENDED`. On bolt 1 the hours of every
+  run add up to 27 as well, because one person worked at a time. With two
+  engineers on one unit the hours worked outrun the clock, and a report that
+  adds them up shows an overrun that never happened.
+
+  A sponsor message changes nothing in the running bolt. MSG-1 goes to bolt
+  2's elaboration with the 2 hours T-18 already cost. AWS's post (Raja SP, 31
+  July 2025, read 8 October 2026) runs new intent through Mob Elaboration,
+  "where the entire team actively validates AI's questions and proposals",
+  and installs wait there until somebody can estimate them. The message's
+  text goes into the report as the sponsor wrote it, because the report is
+  the record of what she asked for, and the events decide what happened to
+  it.
+
+  aidlc-workflows keeps an audit trail of typed events, which its guide says
+  are "organized into 25 categories", with `REVIEW_REQUESTED` and
+  `REVIEW_COMPLETED` among them (`docs/guide/10-state-and-audit.md`,
+  release 2.11.0, read 8 October 2026). The event kinds here, the bolt
+  clock and the projection rule are this engagement's own construction after
+  that trail.
+  The next stage, Bind the approval to the exact version, decides the merges
+  that came on Tuesday, and Write the retrospective for bolt 1 ranks what
+  this report found.
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your two-day work cycle finished eleven hours late. From the event log alone, how would you show when the overrun became visible, and what would you do with a scope request that arrived halfway through?
+  source: |
+    Author judgement. No employer frequency data stands behind it. Method facts from the AWS DevOps
+    post "AI-Driven Development Life Cycle: Reimagining Software Engineering" by Raja SP, 31 July 2025
+    (https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/), and the aidlc-workflows
+    guide docs/guide/10-state-and-audit.md at release v2.11.0
+    (https://github.com/awslabs/aidlc-workflows), both read 8 October 2026.
+
+tools:
+  - name: plan
+    args: ""
+    returns: "BOLT-1: its `units`, each unit's `planned_h` with its review, `bolt_h`, and the units `carried` to the next bolt."
+  - name: events
+    args: ""
+    returns: "The bolt's events in order, each with `id`, `kind`, `h`, `at`, `ref`, `unit` and `note`, and `outcome` on a review's result."
+  - name: message
+    args: ref
+    returns: "The sponsor message with that `ref`, as `status` and `text`."
+example:
+  case: reports_bolt_1_as_it_ran
+  expect: >-
+    UoW-1 and UoW-2 each used 12.5 hours against 7 and 6. At EVT-20 the clock
+    read 11 with UoW-2 still owing 6, so the projection passed 16 there. MSG-1
+    goes to bolt 2 elaboration with the 2 hours T-18 cost.
+traps:
+  - Finding the overrun at the last event, when the clock and what each unit still owed showed it hours earlier.
+  - Letting a unit nobody accepted into the bolt's units, the projection or the carried list because someone started a ticket on it.
+  - Timing runs by their unit, or adding the units' hours up and calling the sum the bolt's length.
+  - Treating any review result as the end of a unit, when a review that asks for changes leaves the unit owing hours.

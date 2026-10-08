@@ -1,0 +1,555 @@
+slug: stop-agents-handing-a-chat-back-and-forth
+title: "Stop agents handing a chat back and forth"
+day: 12
+skill: Catch a handoff that repeats, cap handoffs per chat, and give a person the whole history
+artefact_type: code
+difficulty: hard
+track: orchestration
+concept:
+  topic: "Handoffs and routing"
+  question: "How do you know two agents are passing a customer in circles?"
+est_minutes: 40
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 6
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  Customer chat at a mobile network the size of Vodafone UK runs on four
+  specialist agents: billing, devices, plans and returns. Each specialist
+  either answers the customer or hands the chat to another specialist with a
+  reason, and a router follows the handoff.
+
+  Last week a customer was charged £649 for a handset she had sent back.
+  Billing handed her to returns to confirm the handset had arrived. Returns
+  handed her back, because refunds are billing's job. Billing, with nothing
+  new in front of it, handed her to returns again. The chat went round 41
+  times in 26 minutes, every handoff a model call, until she closed the
+  window and wrote about it in public. The traces show one chat in sixty
+  doing some version of the same thing.
+
+  Write the router. Follow handoffs, carry each specialist's note to the
+  next, notice when the chat is going round, and hand it to a person with
+  everything that happened.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the chat as JSON:
+  `{"chat": "CH-7731", "message": "<what the customer wrote>", "first": "billing"}`.
+
+  The specialists are `billing`, `devices`, `plans` and `returns`. Each one
+  is the model, asked with `specialist_prompt(name, message, notes)` from the
+  starter code, and it replies in one of two forms:
+
+      Answer: <reply to the customer>
+      Handoff: <specialist> | <reason>
+
+  The starter code's `read_reply` turns a reply into `("answer", text)`,
+  `("handoff", (specialist, reason))`, or `None` for anything else.
+
+  Start with `first`. Follow each handoff to the specialist it names and
+  return the text of the first answer. Every handoff adds
+  `{"from": <specialist>, "reason": <reason>}` to `notes`, and every later
+  prompt carries all of them.
+
+  Hand the chat to a person with
+  `tools["human"](chat=..., message=..., history=..., why=...)` and return
+  the `reply` it gives back when, checked in this order:
+
+  | What happens | `why` |
+  |---|---|
+  | A specialist's call raises, or `read_reply` returns `None` | `no usable reply` |
+  | A specialist asks for a handoff already made in this chat: the same specialist to the same specialist | `loop` |
+  | A specialist asks for a fifth handoff in this chat | `too many handoffs` |
+
+  `history` is every handoff asked for in this chat, in order, the one that
+  sent the chat to a person included, each as
+  `{"from": ..., "to": ..., "reason": ...}`.
+
+  Going back to a specialist is allowed. Returns handing back to billing
+  after billing handed to returns is a new handoff, and billing may answer
+  this time, now that it has the note from returns. Only a repeat of the
+  same handoff means the chat is going round.
+
+  Budget: at most 6 model calls. `tools` holds `human`. Allowed imports: json, re.
+
+defence_question: |
+  Your router hands a chat to a person the moment a handoff repeats. A team
+  lead wants to allow one repeat, because a second pass sometimes works once
+  the customer adds a detail. What would that change for the customer and
+  for the bill, and what would you look for in the traces before agreeing?
+
+stub_code: |
+  import json
+
+  SPECIALISTS = ("billing", "devices", "plans", "returns")
+  MAX_HANDOFFS = 4
+
+
+  def specialist_prompt(name: str, message: str, notes: list) -> str:
+      """The prompt for one specialist, with every note handed on so far."""
+      lines = [
+          f"Specialist: {name}",
+          "You are one of four specialists: billing, devices, plans and returns.",
+          f"Customer: {message}",
+      ]
+      for note in notes:
+          lines.append(f"Note from {note['from']}: {note['reason']}")
+      lines.append("Reply 'Answer: <reply to the customer>' or "
+                   "'Handoff: <specialist> | <reason>'.")
+      return "\n".join(lines)
+
+
+  def read_reply(reply: str):
+      """("answer", text), ("handoff", (specialist, reason)), or None."""
+      text = (reply or "").strip()
+      if text.startswith("Answer:"):
+          return ("answer", text[len("Answer:"):].strip())
+      if text.startswith("Handoff:"):
+          target, sep, reason = text[len("Handoff:"):].partition("|")
+          if sep and target.strip() in SPECIALISTS:
+              return ("handoff", (target.strip(), reason.strip()))
+      return None
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Route the chat through the specialists until one answers.
+
+      Start with chat["first"]. Follow each handoff, adding
+      {"from": ..., "reason": ...} to the notes every later prompt carries.
+      Return the first answer's text. Give the chat to a person with
+      tools["human"](chat=..., message=..., history=..., why=...) and return
+      its "reply" when, in this order:
+        a call raises or read_reply returns None   why "no usable reply"
+        a handoff repeats one made in this chat    why "loop"
+        a handoff would be the fifth in this chat  why "too many handoffs"
+      history: every handoff asked for, in order, the last one included,
+      each {"from": ..., "to": ..., "reason": ...}. Going back to a specialist
+      is allowed; repeating a handoff is not.
+      At most 6 model calls. Allowed imports: json, re.
+      """
+      chat = json.loads(question)
+      reply = read_reply(llm(specialist_prompt(chat["first"], chat["message"], [])))
+      if reply and reply[0] == "answer":
+          return reply[1]
+      return ""
+
+hints:
+  - Write down every handoff the 41-round chat made as a pair, from and to.
+    Then look at the pairs. What gives the loop away, and how early?
+  - Going back to a specialist is not the problem, because billing may need to
+    hear from returns first. Billing handing the chat to returns a second time,
+    with no new answer, is the problem.
+  - Keep the pairs this chat has made. Before you follow a handoff, check it
+    against them, and count it against the cap, which catches a long chain
+    that never repeats a pair.
+  - Whatever stops the chat, the person needs the same two things, every
+    handoff asked for with the last one included, and the rule that stopped
+    it. Catch a failing call so it reaches them too.
+
+scenario:
+  headline: "Billing and returns passed one customer between them 41 times"
+  who: "Customer chat at a mobile network the size of Vodafone UK"
+  situation: >-
+    Four specialist agents answer chats or hand them on, and a router follows
+    each handoff. Billing sent a refund question to returns, returns sent it
+    back, and nothing in the router noticed the same handoff coming round.
+  stakes: >-
+    Every handoff is a model call and a minute of the customer's time. The
+    loop ends when the customer gives up, usually in public.
+  metrics:
+    - { label: Handoffs in one chat, value: "41" }
+    - { label: Time in the loop, value: 26 min }
+    - { label: Chats that loop, value: 1 in 60 }
+
+diagram:
+  title: Where a return trip turns into a loop
+  caption: >-
+    Returns handing the chat back to billing is a new handoff. Billing handing
+    it to returns a second time is the same handoff again, and the router can
+    see it.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: charged for a returned handset, kind: actor, tone: blue, at: [0, 1] }
+    - { id: router, label: Router, sub: follows each handoff, kind: agent, tone: purple, at: [1, 1] }
+    - { id: billing, label: Billing, sub: refunds need returns to confirm, kind: agent, tone: teal, at: [2, 0] }
+    - { id: returns, label: Returns, sub: refunds are billing's job, kind: agent, tone: teal, at: [3, 0] }
+    - { id: made, label: Handoffs made, sub: one pair per handoff in this chat, kind: store, tone: neutral, at: [2, 2] }
+    - { id: person, label: A person, sub: gets the history and the reason, kind: queue, tone: orange, at: [3, 2] }
+    - { id: answer, label: Answer, sub: with the note from returns, kind: output, tone: green, at: [4, 1] }
+  edges:
+    - { from: customer, to: router, label: the message, step: 1 }
+    - { from: router, to: billing, label: first specialist, step: 2 }
+    - { from: billing, to: returns, label: same pair twice, tone: danger }
+    - { from: returns, to: billing, label: hands it back, tone: danger }
+    - { from: router, to: made, label: checks each pair, step: 3 }
+    - { from: made, to: person, label: a pair repeats, tone: success }
+    - { from: billing, to: answer, label: answers on the new note, tone: success }
+
+approach:
+  goal: Let specialists hand off, and notice when a chat is going round
+  branches:
+    - label: Record every handoff
+      leaves: ["from, to and reason, in the order asked", the one that stops the chat as well]
+    - label: Tell a return from a loop
+      detail: Going back can bring a new note. The same handoff made twice brings nothing new.
+      leaves: [a repeated pair is a loop, a fifth handoff is too many]
+    - label: Carry the notes forward
+      leaves: [every later prompt has every note]
+    - label: Hand over the whole story
+      leaves: [the history and why it stopped, a failed call reaches a person too]
+
+coach:
+  opening: >-
+    Write out the brief's chat as a list of handoffs, from and to. Mark the
+    first moment the router could have known the chat was going round.
+  signals:
+    - id: no-repeat-check
+      when: { code_lacks: '\bin\s+(made|seen|done|pairs|edges|history|handoffs|taken)\b|\bany\(' }
+      say: >-
+        Your router follows every handoff it is given. What would tell it that
+        billing has already handed this chat to returns once?
+    - id: no-cap
+      when: { code_lacks: '[<>]=?\s*MAX_HANDOFFS|MAX_HANDOFFS\s*[<>]' }
+      say: >-
+        Nothing in your router counts handoffs. A chat can pass through every
+        specialist without repeating one handoff and still never end.
+    - id: calls-can-raise
+      when: { code_lacks: '\bexcept\b' }
+      say: >-
+        A specialist's call can fail, and the model budget can run out partway
+        through a chat. What reaches the customer when the call raises?
+    - id: escalates-without-history
+      when:
+        code_matches: 'tools\[\s*["'']human["'']\s*\]\('
+        code_lacks: 'history\s*='
+      say: >-
+        Your escalation reaches a person without the handoffs that led to it.
+        What would they have to ask the customer all over again?
+    - id: hidden-ping-pong
+      when: { test_failed: a_repeated_handoff_goes_to_a_person }
+      say: >-
+        In that run two specialists kept handing the chat to each other. On
+        which call could your router have known, and what did the person get?
+    - id: hidden-circle
+      when: { test_failed: a_circle_of_three_is_caught_on_its_first_repeat }
+      say: >-
+        In that run the chat went round three specialists. No specialist handed
+        straight back, and one handoff still repeated. Did your router see it?
+    - id: hidden-cap
+      when: { test_failed: a_fifth_handoff_goes_to_a_person }
+      say: >-
+        In that run no handoff repeated, and the chat kept moving anyway. What
+        stops a chain that never repeats?
+    - id: hidden-return
+      when: { test_failed: going_back_with_a_new_note_is_not_a_loop }
+      say: >-
+        In that run the chat went back to a specialist once, and that
+        specialist could answer with the note it now had. Did your router let
+        it?
+    - id: adversarial-refused
+      when: { test_failed: adversarial_the_gateway_refuses_a_call }
+      say: >-
+        In that run the model gateway refused a call partway through the chat.
+        Where did the customer end up, and with what history?
+    - id: adversarial-unknown-specialist
+      when: { test_failed: adversarial_a_handoff_to_a_specialist_nobody_runs }
+      say: >-
+        In that run a specialist handed the chat to a team that does not
+        exist. What does `read_reply` give you for that, and where did the
+        customer end up?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with a loop that follows handoffs and keeps a list of
+        `{"from", "to", "reason"}`. The three stopping rules all read that
+        list.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints are open, starting with what the
+        41-round chat looks like as a list of handoffs.
+  wrap_up: >-
+    A handoff is a decision, and the same decision made twice in one chat
+    will be made a third time. Record every handoff, stop on the first
+    repeat or the cap, and give the person the whole story.
+
+tests:
+  - name: follows_one_handoff_to_an_answer
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"chat": "CH-7702", "message": "I sent my old handset back two weeks ago and you charged me 649 pounds for it.", "first": "billing"}' }
+      llm_script:
+        - { match: { contains: "Specialist: billing" }, reply: "Handoff: returns | The charge is for a handset the customer says she returned." }
+        - { match: { contains: "Specialist: returns" }, reply: "Answer: Your handset reached our returns centre on 24 September. I have closed the return, and billing will refund the 649 pounds within 5 working days." }
+        - { match: "*", reply: "Answer: Thanks for waiting. A colleague will pick this up." }
+      tools:
+        human: { returns: { reply: "A member of our team has your whole chat and will reply within the hour." } }
+      budget: { max_llm_calls: 6, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "billing will refund the 649 pounds" }
+        - { type: does_not_call_tool, name: human }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: every_note_reaches_the_next_specialist
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"chat": "CH-7708", "message": "Can I move to a 5G plan this month?", "first": "plans"}' }
+      llm_script:
+        - match: { all: [ { contains: "Specialist: devices" }, { contains: "Note from plans: The customer wants a 5G plan" } ] }
+          reply: "Answer: Your handset supports 5G, so you can move to the 5G plan from your next bill."
+        - { match: { contains: "Specialist: devices" }, reply: "Handoff: plans | Which plan does the customer want?" }
+        - { match: { contains: "Specialist: plans" }, reply: "Handoff: devices | The customer wants a 5G plan. Check the handset supports 5G first." }
+        - { match: "*", reply: "Answer: Thanks for waiting. A colleague will pick this up." }
+      tools:
+        human: { returns: { reply: "A member of our team has your whole chat and will reply within the hour." } }
+      budget: { max_llm_calls: 6, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "supports 5G" }
+        - { type: prompt_contains, in: last, value: "Note from plans: The customer wants a 5G plan" }
+        - { type: does_not_call_tool, name: human }
+
+  - name: a_repeated_handoff_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"chat": "CH-7731", "message": "You charged me 649 pounds for a phone I returned. I want it back.", "first": "billing"}' }
+      llm_script:
+        - { match: { contains: "Specialist: billing" }, reply: "Handoff: returns | Returns must confirm the handset arrived before billing can refund it." }
+        - { match: { contains: "Specialist: returns" }, reply: "Handoff: billing | Refunds are issued by billing." }
+        - { match: "*", reply: "Answer: Thanks for waiting. A colleague will pick this up." }
+      tools:
+        human: { returns: { reply: "A member of our team has your whole chat and will reply within the hour." } }
+      budget: { max_llm_calls: 6, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: calls_tool_with
+          name: human
+          args:
+            chat: "CH-7731"
+            why: loop
+            history:
+              - { from: billing, to: returns, reason: "Returns must confirm the handset arrived before billing can refund it." }
+              - { from: returns, to: billing, reason: "Refunds are issued by billing." }
+              - { from: billing, to: returns, reason: "Returns must confirm the handset arrived before billing can refund it." }
+        - { type: returns_matches, value: "has your whole chat" }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: a_circle_of_three_is_caught_on_its_first_repeat
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"chat": "CH-7744", "message": "I want to upgrade my phone and send the old one back.", "first": "devices"}' }
+      llm_script:
+        - { match: { contains: "Specialist: devices" }, reply: "Handoff: plans | An upgrade changes the plan, so plans should start it." }
+        - { match: { contains: "Specialist: plans" }, reply: "Handoff: returns | The old handset has to be sent back before the upgrade." }
+        - { match: { contains: "Specialist: returns" }, reply: "Handoff: devices | A return starts once devices has booked the new handset." }
+        - { match: "*", reply: "Answer: Thanks for waiting. A colleague will pick this up." }
+      tools:
+        human: { returns: { reply: "A member of our team has your whole chat and will reply within the hour." } }
+      budget: { max_llm_calls: 6, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: calls_tool_with
+          name: human
+          args:
+            why: loop
+            history:
+              - { from: devices, to: plans, reason: "An upgrade changes the plan, so plans should start it." }
+              - { from: plans, to: returns, reason: "The old handset has to be sent back before the upgrade." }
+              - { from: returns, to: devices, reason: "A return starts once devices has booked the new handset." }
+              - { from: devices, to: plans, reason: "An upgrade changes the plan, so plans should start it." }
+        - { type: llm_calls_at_most, value: 4 }
+
+  - name: a_fifth_handoff_goes_to_a_person
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"chat": "CH-7752", "message": "There is a charge called Device Care on my bill that I never asked for.", "first": "billing"}' }
+      llm_script:
+        - match: { all: [ { contains: "Specialist: devices" }, { contains: "Note from returns:" } ] }
+          reply: "Handoff: billing | The device record shows nothing owed, so the charge is a billing matter."
+        - { match: { contains: "Specialist: billing" }, reply: "Handoff: devices | Device Care is attached to a handset, so devices should check the order." }
+        - { match: { contains: "Specialist: devices" }, reply: "Handoff: plans | Device Care looks like a plan add-on, which plans can explain." }
+        - { match: { contains: "Specialist: plans" }, reply: "Handoff: returns | The add-on came with a handset that was later returned." }
+        - { match: { contains: "Specialist: returns" }, reply: "Handoff: devices | Devices holds the record of what was returned." }
+        - { match: "*", reply: "Answer: Thanks for waiting. A colleague will pick this up." }
+      tools:
+        human: { returns: { reply: "A member of our team has your whole chat and will reply within the hour." } }
+      budget: { max_llm_calls: 6, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: calls_tool_with
+          name: human
+          args:
+            why: too many handoffs
+            history:
+              - { from: billing, to: devices, reason: "Device Care is attached to a handset, so devices should check the order." }
+              - { from: devices, to: plans, reason: "Device Care looks like a plan add-on, which plans can explain." }
+              - { from: plans, to: returns, reason: "The add-on came with a handset that was later returned." }
+              - { from: returns, to: devices, reason: "Devices holds the record of what was returned." }
+              - { from: devices, to: billing, reason: "The device record shows nothing owed, so the charge is a billing matter." }
+        - { type: llm_calls_at_most, value: 5 }
+
+  - name: going_back_with_a_new_note_is_not_a_loop
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"chat": "CH-7760", "message": "Where is my refund for the phone I sent back?", "first": "billing"}' }
+      llm_script:
+        - match: { all: [ { contains: "Specialist: billing" }, { contains: "Note from returns: The handset arrived" } ] }
+          reply: "Answer: Returns confirm your handset arrived on 24 September, so your refund of 649 pounds is on its way and reaches your card within 5 working days."
+        - { match: { contains: "Specialist: billing" }, reply: "Handoff: returns | Billing needs to know whether the handset arrived back." }
+        - { match: { contains: "Specialist: returns" }, reply: "Handoff: billing | The handset arrived on 24 September, tracking RT-55120. Please refund it." }
+        - { match: "*", reply: "Answer: Thanks for waiting. A colleague will pick this up." }
+      tools:
+        human: { returns: { reply: "A member of our team has your whole chat and will reply within the hour." } }
+      budget: { max_llm_calls: 6, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "your refund of 649 pounds is on its way" }
+        - { type: does_not_call_tool, name: human }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: adversarial_the_gateway_refuses_a_call
+    visibility: adversarial
+    fixture: budget_squeeze
+    annotation_md: |
+      The model gateway enforces a per-chat allowance by refusing the call
+      that would exceed it, and on a busy evening this chat's allowance was
+      two calls. Plans handed to devices and devices handed to returns, and
+      the call to returns was refused with an exception.
+
+      A router that lets the exception escape leaves the customer in a chat
+      that never answers, with no person told. The refusal is one more way for
+      a chat to stop: it reaches a person with the two handoffs that did
+      happen and the reason, the same as a loop or the cap.
+    spec:
+      kind: agent_run
+      input: { question: '{"chat": "CH-7769", "message": "Does the new phone support eSIM, and can I send my old one back?", "first": "plans"}' }
+      llm_script:
+        - { match: { contains: "Specialist: plans" }, reply: "Handoff: devices | The customer is asking whether the new handset supports eSIM." }
+        - { match: { contains: "Specialist: devices" }, reply: "Handoff: returns | The customer also wants to send the old handset back." }
+        - { match: { contains: "Specialist: returns" }, reply: "Answer: The new handset supports eSIM, and here is a free returns label for the old one." }
+        - { match: "*", reply: "Answer: Thanks for waiting. A colleague will pick this up." }
+      tools:
+        human: { returns: { reply: "A member of our team has your whole chat and will reply within the hour." } }
+      budget: { max_llm_calls: 2, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: no_exception }
+        - type: calls_tool_with
+          name: human
+          args:
+            why: no usable reply
+            history:
+              - { from: plans, to: devices, reason: "The customer is asking whether the new handset supports eSIM." }
+              - { from: devices, to: returns, reason: "The customer also wants to send the old handset back." }
+        - { type: returns_matches, value: "has your whole chat" }
+
+  - name: adversarial_a_handoff_to_a_specialist_nobody_runs
+    visibility: adversarial
+    fixture: schema_drift
+    annotation_md: |
+      Returns handed the chat to `fraud`, with a reason, and there is no
+      fraud specialist. `read_reply` returns `None` for it, the same as it
+      does for free text.
+
+      A router that unpacks every reply as a pair crashes here, after one
+      real handoff, with the customer in a chat that never answers and
+      nobody told. A reply the router cannot follow is one more way for a
+      chat to stop: the person gets the handoff that did happen and the
+      reason, and the trace shows which specialist asked for a team that
+      does not exist.
+    spec:
+      kind: agent_run
+      input: { question: '{"chat": "CH-7775", "message": "There are premium-rate calls on my bill that I never made. My handset was stolen last month and I sent you the replacement paperwork.", "first": "billing"}' }
+      llm_script:
+        - { match: { contains: "Specialist: billing" }, reply: "Handoff: returns | Billing needs to know whether a replacement handset was issued and the stolen one blocked." }
+        - { match: { contains: "Specialist: returns" }, reply: "Handoff: fraud | Calls the customer denies making after a theft are a fraud matter." }
+        - { match: "*", reply: "Answer: Thanks for waiting. A colleague will pick this up." }
+      tools:
+        human: { returns: { reply: "A member of our team has your whole chat and will reply within the hour." } }
+      budget: { max_llm_calls: 6, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: no_exception }
+        - type: calls_tool_with
+          name: human
+          args:
+            chat: "CH-7775"
+            why: no usable reply
+            history:
+              - { from: billing, to: returns, reason: "Billing needs to know whether a replacement handset was issued and the stolen one blocked." }
+        - { type: returns_matches, value: "has your whole chat" }
+        - { type: llm_calls_at_most, value: 2 }
+
+reference_md: |
+  A handoff loop is two agents each making a reasonable decision. Billing
+  cannot refund until the return is confirmed; returns does not issue
+  refunds. Each is right about its own job, and nothing in either prompt says
+  the other has already been asked. Better prompts make the loop rarer. Only
+  the router sees the whole chat, so only the router can end it.
+
+  The signal is a repeated handoff, meaning the same specialist handing to the
+  same specialist a second time. Going back is not that signal. Returns
+  handing back to billing with "the handset arrived on 24 September" is new
+  information, and billing answers on it. Billing handing to returns again
+  means billing looked at everything it now had and made the same decision,
+  so it will make it a third time and a fortieth. Catching the repeat costs
+  one extra call in a two-way loop. Waiting for an immediate bounce misses a
+  circle through three specialists, which never bounces and still repeats.
+
+  The cap is the backstop for the chain that never repeats. Four specialists
+  allow twelve different handoffs, and a chat that uses five of them has
+  stopped being routed and started being shuffled. Both rules read the same
+  record, so the order they are checked in has to be written down: the
+  repeat says more about what happened, so it is checked first.
+
+  The person who takes over needs what the router knows: every handoff with
+  its reason, the last one included, and which rule stopped the chat. Without
+  that history they ask the customer to start again, after 26 minutes. A
+  refused or failing call is the same event from a different direction, and
+  so is a handoff to a specialist nobody runs. Each lands with a person the
+  same way.
+
+  CrewAI's collaboration guide names this failure, "Delegation Loops: agents
+  delegate back and forth indefinitely", and its fix is a hierarchy: a
+  manager with `allow_delegation=True` and specialists with
+  `allow_delegation=False` (CrewAI documentation for version 1.15.23, read 1
+  October 2026). That removes the loop by taking routing away from the
+  specialists. This router keeps specialists able to hand off, so it pays
+  for that freedom with a detector. A later problem in this chapter takes
+  the other road, a supervisor that routes and remembers answers, so the two
+  fixes can be compared on the same chapter's chats.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Two of your agents keep handing a customer back and forth. How do you detect it, and what happens to the customer?
+  source: |
+    Author judgement. CrewAI's collaboration guide lists delegation loops as a known issue (docs for
+    version 1.15.23, read 1 October 2026), which shows the failure is known to framework authors. It
+    says nothing about how often interviewers ask about it.
+
+tools:
+  - name: human
+    args: chat, message, history, why
+    returns: '`{"reply": <text for the customer>}` from the queue a person reads.'
+example:
+  case: follows_one_handoff_to_an_answer
+  expect: Billing hands the chat to returns with its reason. Returns sees the note from billing and answers, so its
+    answer is returned and no person is needed.
+traps:
+  - Following handoffs with no record of the ones already made, so two specialists pass the chat between them until
+    the budget runs out.
+  - Treating any return to a specialist as a loop, when the second visit may be the one where it answers.
+  - Detecting only an immediate bounce, so a circle through three specialists runs on to the cap.
+  - Sending the chat to a person with no history, or letting a failed call or a reply that fits neither form end the
+    chat with nobody told.

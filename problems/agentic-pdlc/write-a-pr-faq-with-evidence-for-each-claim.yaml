@@ -1,0 +1,508 @@
+slug: write-a-pr-faq-with-evidence-for-each-claim
+title: "Write a PR/FAQ with evidence for each claim"
+drill: true
+skill: Write the PR/FAQ for an agent before it is built, and say what each claim rests on
+artefact_type: design
+difficulty: medium
+track: agentic-pdlc
+concept:
+  topic: "Discovery and evidence"
+  question: "Which claims in a PR/FAQ can your discovery actually carry?"
+est_minutes: 30
+competencies:
+  - { slug: client-communication, weight: 1.0 }
+  - { slug: evaluation-design, weight: 1.0 }
+
+brief_md: |
+  A logistics company the size of Delhivery delivers about two million
+  parcels a day. Its head of last-mile operations wants an agent that
+  messages every customer whose delivery failed, on WhatsApp, and books a new
+  attempt before the parcel goes back to the seller. The steering committee
+  decides on Friday whether to fund a four-week POC, and she has asked you
+  for a PR/FAQ before anything is built.
+
+  Two weeks of discovery produced this:
+
+  | What discovery found | Where it comes from |
+  |---|---|
+  | 8 percent of parcels fail at the first attempt, about 160,000 a day | Delivery scans, last 90 days |
+  | 30 percent of parcels that fail once go back to the seller after three attempts. Each return costs the company ₹120 in freight and handling it cannot bill | Finance ledger, last quarter |
+  | Riders' reasons for a failure: customer unavailable 54 percent, address problem 21 percent, refused 15 percent, other 10 percent | Codes riders pick in the delivery app |
+  | Of 500 customers whose parcel was coded customer unavailable, 140 said nobody had come to the door | Call-centre audit, last quarter |
+  | The call centre reaches 22 percent of customers within a day of a failed attempt | Call-centre logs |
+  | Ops staff in one city messaged 3,000 customers on WhatsApp by hand. 41 percent replied within four hours. Of the parcels whose customer replied and chose a slot, 79 percent were delivered next time, against 52 percent of the city's failed parcels nobody contacted. Nobody recorded what happened to the parcels of customers who did not reply | Three-week trial in one city |
+  | An AI voice agent "resolves 65 percent of non-deliveries" | A vendor's sales deck |
+  | A conversation will cost about ₹3 in messaging and model calls | Engineering's estimate |
+  | Delivery routes lock at 6 am, so a slot booked after that waits a day | Routing team |
+
+  The vendor's 65 percent has already appeared in two of the committee's
+  slides. Write the PR/FAQ.
+
+contract_md: |
+  Write the PR/FAQ the steering committee will read before Friday's vote. It
+  has four parts, each under its own heading, written exactly as
+  `## Press release`, `## Customer FAQ`, `## Internal FAQ` and `## Evidence`.
+
+  The press release announces the agent as if it had launched, for the
+  people it serves. The customer FAQ answers what they would ask. The
+  internal FAQ answers what the committee would ask, including what it costs,
+  what could make it fail, and what the four-week POC has to show for the
+  agent to be worth building. Under Evidence, say which row of discovery each
+  claim rests on and how far that row can be trusted.
+
+  Between 400 and 700 words.
+
+word_range: [400, 700]
+required_headings: [Press release, Customer FAQ, Internal FAQ, Evidence]
+
+rubric:
+  - label: Writes the release for the people the parcel is for
+    weight: 20
+    descriptor_md: |
+      The customer is the person waiting for the parcel. Strong answers
+      describe what changes for them after a missed delivery, in their terms:
+      a message soon after the failure, a slot they choose, an address they
+      can correct, a way to say nobody came. They say why that is better than
+      today, where the call centre reaches 22 percent of customers within a
+      day. A release that announces the agent's technology, or the company's
+      savings, is written for the committee rather than the customer.
+  - label: Gives every claim its evidence and says how strong it is
+    weight: 25
+    descriptor_md: |
+      Every number in the release and the FAQs points at a row of discovery,
+      and each row is described for what it is: counted by a system, typed by
+      a person, tried by hand in one city, estimated, or taken from a sales
+      deck. The vendor's 65 percent is either left out or named as a sales
+      claim, never stated as an expected result. Anything discovery cannot
+      support is marked as an assumption. Strong answers put no number in the
+      release that discovery did not produce.
+  - label: Reads what the trial and the reason codes cannot show
+    weight: 20
+    descriptor_md: |
+      Only customers who chose to reply are inside the trial's 79 percent,
+      and nobody recorded the rest, so the gap to 52 percent mixes the effect
+      of contact with the kind of customer who replies. The messages were
+      sent by people, in one city, for three weeks. The reason codes are
+      chosen by riders, and the audit found 140 of 500 customers coded
+      unavailable saying nobody had come. Strong answers say what each of
+      these does to the claims and the plan.
+  - label: Answers the questions the committee will ask
+    weight: 20
+    descriptor_md: |
+      Strong internal FAQs cover the economics with the arithmetic shown, ₹3
+      a conversation against ₹120 a return, so one return avoided in every 40
+      conversations pays for the agent. They cover the 6 am route lock and
+      what it does to the promise in the release, and what happens to the
+      replies saying nobody came. They include at least one question the
+      sponsor would rather nobody asked.
+  - label: Ends with the test the POC has to pass
+    weight: 15
+    descriptor_md: |
+      The release rests on one claim more than any other: that contacting a
+      customer gets the parcel delivered. Strong answers name it, design the
+      POC to test it against failed parcels held back at random and handled
+      as today, count every parcel in each group whether or not the customer
+      replied, and set the result that continues or stops the work before the
+      POC starts.
+
+exemplars:
+  - band: strong
+    score: 91
+    body_md: |
+      ## Press release
+
+      **Missed a delivery? Choose a new time on WhatsApp**
+
+      From today, when one of our couriers cannot deliver a parcel, the
+      customer gets a WhatsApp message within the hour. It says what
+      happened and offers three things: pick a delivery slot, correct the
+      address, or tell us nobody came to the door. A slot chosen before 6 am
+      goes on that morning's route, and a later one goes on the next day's.
+
+      Until now a missed parcel meant waiting for a phone call that reaches
+      about one customer in five within a day, while a courier tried the same
+      door at the same hour. After three tries the parcel went back to the
+      seller. For the 160,000 customers a day whose parcel misses its first
+      attempt, the message replaces the wait with a choice.
+
+      ## Customer FAQ
+
+      **Do I have to reply?** No. Without a reply, the courier tries again as
+      today.
+
+      **How do I know the message is from you?** It comes from our verified
+      business account, quotes your order number, and never asks for a
+      payment or a one-time password.
+
+      **What if nobody came to my door?** Say so. We book a new attempt and
+      look into the first one.
+
+      ## Internal FAQ
+
+      **What does it cost against what it saves?** Engineering estimates ₹3
+      a conversation, and every return costs us ₹120 we cannot bill. One
+      return avoided in every 40 conversations pays for the agent.
+
+      **Why WhatsApp and not the vendor's voice agent?** The only evidence we
+      hold is for WhatsApp, from our own trial. The vendor's 65 percent is a
+      sales claim that never defines "resolves".
+
+      **What happens when customers say nobody came?** The audit found 140
+      of 500 customers coded unavailable saying exactly that, so the agent
+      will hear it daily. Those replies go to the rider quality team with the
+      scan. The agent books a new attempt and cannot fix the first one.
+
+      **What could make this fail?** Customers may answer a bot less often
+      than they answered our staff, and contact may not change whether a
+      parcel is delivered.
+
+      **What must the POC show?** Run it in two cities for four weeks. Each
+      failed parcel is assigned at random: four in five get the agent, one in
+      five is held back and handled as today. We compare returns to the
+      seller across every parcel in each group, whether or not the customer
+      replied. We continue if returns fall by at least 3 points against the
+      held-back group, above the 2.5 that pays for the conversations, and we
+      stop if they do not.
+
+      ## Evidence
+
+      - 160,000 failed first attempts a day, 30 percent returned, ₹120 a
+        return: counted by our own systems. Strong.
+      - 22 percent reached by the call centre: call logs. Strong.
+      - Within the hour: an assumption that failed scans reach us that fast.
+        The POC measures it.
+      - Customers will pick a slot: 41 percent replied within four hours,
+        to staff, in one city, for three weeks. Suggestive.
+      - 79 against 52 percent delivered: only customers who chose to reply
+        are in the 79, and nobody recorded the rest. People who reply were
+        likelier to take the parcel anyway, so the gap is not the effect of
+        contact. Untested, and the question the POC exists to answer.
+      - Reason codes: typed by riders, and the audit contradicts 28 percent
+        of "unavailable". Weak.
+      - 65 percent: a vendor's sales deck. Not evidence, and not used.
+      - ₹3 a conversation: an estimate. Assumption.
+      - 6 am lock: a fact of the routing system, which is why the release
+        promises the next route rather than the same day.
+  - band: adequate
+    score: 63
+    body_md: |
+      ## Press release
+
+      **Delivery agent cuts failed deliveries with WhatsApp rescheduling**
+
+      Today we launch an AI agent that contacts customers on WhatsApp after a
+      failed delivery attempt and lets them choose a new delivery slot. Every
+      day about 160,000 parcels fail at the first attempt, and 30 percent of
+      them end up going back to the seller at a cost of ₹120 each.
+
+      In our trial, 41 percent of customers replied to a WhatsApp message
+      within four hours, and parcels where the customer chose a new slot were
+      delivered 79 percent of the time against 52 percent without contact.
+      The agent brings this to every city, around the clock, at a fraction of
+      the cost of the call centre, which reaches only 22 percent of customers
+      within a day.
+
+      ## Customer FAQ
+
+      **Do I need to install anything?** No, the messages arrive on WhatsApp.
+
+      **Can I change my delivery address?** You can add a landmark or correct
+      the flat number.
+
+      **What if I am not available at any slot?** You can ask for the parcel
+      to be held at the nearest hub for collection.
+
+      **Is the message really from you?** Yes. It comes from our official
+      business account and includes your order number.
+
+      ## Internal FAQ
+
+      **What does it cost?** Engineering estimates around ₹3 per
+      conversation, far below the ₹120 cost of each return.
+
+      **What about customers who do not reply?** The courier tries again as
+      today, and the call centre still calls them, so nobody is worse off
+      than they are now.
+
+      **What about the vendor's claim of 65 percent?** It comes from a sales
+      deck and is for a voice agent, so we have not relied on it. Our own
+      trial is the better guide.
+
+      **Are there risks?** Customers may not trust an automated message, and
+      the 6 am route lock means some slots will move to the next day. Some
+      customers may also say that nobody came to their door.
+
+      **What will the POC test?** We will run the agent in one city for four
+      weeks and measure the reply rate, the share of parcels delivered at the
+      next attempt and the cost per conversation. If the delivery rate for
+      contacted customers stays near the trial's 79 percent, we recommend a
+      national rollout.
+
+      ## Evidence
+
+      - Failure rate and returns: delivery scans and the finance ledger.
+      - Reply rate and delivery improvement: the one-city trial.
+      - Reasons for failure: rider reason codes, mostly customer unavailable.
+      - Cost per conversation: engineering estimate.
+      - Call centre reach: call-centre logs.
+      - Route lock: routing team.
+
+      All of the numbers in this document come from our own data except the
+      vendor figure, which is shown for comparison only.
+  - band: weak
+    score: 27
+    body_md: |
+      ## Press release
+
+      **AI agent eliminates failed deliveries**
+
+      We are proud to launch our AI delivery agent, which uses the latest
+      large language models to contact customers automatically after a
+      failed delivery. Industry data shows that AI agents resolve 65 percent
+      of non-deliveries, and our own trial showed delivery success jumping
+      from 52 percent to 79 percent when customers were contacted.
+
+      Most failed deliveries happen because customers are not at home: 54
+      percent of failures are customer unavailable. Our agent fixes this by
+      making sure every customer is reachable, which means far fewer parcels
+      go back to sellers and huge savings on return costs. Customers will
+      love the convenience, and sellers will see their return rates fall
+      dramatically.
+
+      ## Customer FAQ
+
+      **How does it work?** You receive a WhatsApp message and choose a new
+      delivery time.
+
+      **Is it safe?** Yes, all messages are secure and your data is
+      protected.
+
+      **Can I talk to a human?** Yes, you can ask for a human at any time.
+
+      **Which languages does it speak?** Every major Indian language, because
+      the latest models understand all of them.
+
+      ## Internal FAQ
+
+      **What does it cost?** Very little. Each conversation costs about ₹3,
+      while each return costs ₹120, so the savings are enormous.
+
+      **What happens to the call centre?** Over time the agent can take over
+      most of its work, and the staff can move to handling complaints and
+      other higher-value tasks.
+
+      **Why now?** Competitors are already using AI for last-mile delivery,
+      and we risk falling behind if we wait.
+
+      **What is the risk?** Very low. The trial has proven that customers
+      respond to WhatsApp and that contact increases deliveries. AI agents
+      are a mature technology at this point.
+
+      **What is the plan?** A two-week POC to build the agent and make sure it
+      works, then a national rollout to all cities by the end of the quarter.
+      Success will be measured by the number of conversations the agent
+      handles each day.
+
+      ## Evidence
+
+      - Industry data: AI agents resolve 65 percent of non-deliveries.
+      - Our trial: delivery success up from 52 to 79 percent with contact.
+      - Rider data: 54 percent of failures are customer unavailable.
+      - Finance: returns cost ₹120 each.
+      - Engineering: about ₹3 per conversation.
+
+      Together this evidence shows a clear business case. Even if the agent
+      achieves only half of the industry result, it would remove tens of
+      thousands of returns every day, and the savings would pay for the whole
+      project within the first month.
+
+hints:
+  - Before you write the release, sort the rows of discovery by how each was
+    produced, counted by a system, typed by a person, tried by hand, estimated
+    or taken from a sales deck. Only the first kind can be stated as fact
+    without saying so.
+  - Look at who is inside the trial's 79 percent and who is inside the 52.
+    If the two groups differed before anyone sent a message, the gap between
+    them is not what the message did.
+  - Read the reason codes next to the audit. If riders choose the code, what
+    does "customer unavailable" measure?
+  - Make the last internal question the one the POC answers. Name the claim
+    the release depends on most, what you would compare it against, and the
+    result that ends the project.
+
+scenario:
+  headline: "The committee funds a POC on Friday, and a vendor's 65 percent is everywhere"
+  who: The head of last-mile operations at a logistics company the size of Delhivery
+  situation: >-
+    About 160,000 parcels a day fail at the first attempt. She wants an agent
+    that messages each customer on WhatsApp and books a new slot, and the
+    steering committee decides on Friday whether to fund a four-week POC.
+  stakes: >-
+    A PR/FAQ that promises what discovery cannot carry gets the POC funded
+    against the wrong question, and the committee finds out in month three.
+  metrics:
+    - { label: Failed first attempts, value: "160,000 a day" }
+    - { label: Sent back to the seller, value: 30% of those }
+    - { label: Cost of one return, value: ₹120 }
+
+diagram:
+  title: Where each claim in the PR/FAQ comes from
+  caption: >-
+    Each row of discovery reaches the PR/FAQ with a different strength. Only
+    what a system counted can be stated as fact, and the POC tests the rest.
+  direction: lr
+  nodes:
+    - { id: scans, label: Delivery scans and ledger, sub: "counted: 8% fail, ₹120 a return", kind: store, tone: blue, at: [0, 0] }
+    - { id: codes, label: Rider reason codes, sub: "typed by riders, contradicted by audit", kind: doc, tone: neutral, at: [0, 1] }
+    - { id: trial, label: One-city trial, sub: "3,000 messaged by hand, by staff", kind: doc, tone: teal, at: [0, 2] }
+    - { id: vendor, label: Vendor sales deck, sub: "65%, with no definition", kind: doc, tone: pink, at: [0, 3] }
+    - { id: prfaq, label: PR/FAQ, sub: every claim points at its row, kind: output, tone: purple, at: [1, 1] }
+    - { id: committee, label: Steering committee, sub: votes on the POC on Friday, kind: actor, tone: green, at: [2, 0] }
+    - { id: poc, label: Four-week POC, sub: tests the claim it all rests on, kind: decision, tone: orange, at: [2, 2] }
+  edges:
+    - { from: scans, to: prfaq, label: stated as fact, tone: success, step: 1 }
+    - { from: codes, to: prfaq, label: weak and labelled so, tone: muted }
+    - { from: trial, to: prfaq, label: suggestive only }
+    - { from: vendor, to: prfaq, label: a sales claim, tone: danger }
+    - { from: prfaq, to: committee, label: read before the vote, step: 2 }
+    - { from: prfaq, to: poc, label: the riskiest claim, tone: success, step: 3 }
+
+approach:
+  goal: A PR/FAQ the committee can fund, with every claim traced to discovery
+  branches:
+    - label: Write for the person waiting for the parcel
+      leaves: [what changes after a missed delivery, why it beats a call that reaches 22 percent]
+    - label: Grade every row of discovery
+      detail: Counted by a system, typed by a person, tried by hand, estimated, or taken from a sales deck.
+      leaves: [who is inside each percentage, which rows somebody wanted to be true]
+    - label: Ask what the committee will ask
+      leaves: [cost per conversation against a return, the 6 am route lock, customers who say nobody came]
+    - label: Name what the POC must prove
+      leaves: [the claim the release rests on, what to compare it against, the result that ends it]
+
+coach:
+  opening: >-
+    Before you write the release, mark each row of discovery with how it was
+    produced. The release can only state the strongest kind as fact.
+  signals:
+    - id: number-from-a-sales-deck
+      when:
+        code_matches: '(?i)\b65\s*(percent|%)'
+        code_lacks: '(?i)sales\s+(deck|claim|pitch)|not\s+evidence|unverified|marketing'
+      say: >-
+        Your PR/FAQ uses the 65 percent. Where does that number come from, and
+        what would the committee assume it means?
+    - id: reply-gap-read-as-effect
+      when:
+        code_matches: '(?i)\b79\s*(percent|%)'
+        code_lacks: '(?i)(only|just)\s+(the\s+)?customers\s+who|chose\s+to\s+reply|selection|not\s+randomi[sz]ed|held[-\s]+back|hold[-\s]+out|holdout|control\s+group|not\s+the\s+effect'
+      say: >-
+        Who is inside the trial's 79 percent, and who is inside the 52? Would
+        the two groups have differed even if nobody had sent a message?
+    - id: no-assumption-named
+      when: { code_lacks: '(?i)assum|unproven|untested|not\s+yet\s+(known|measured|tested)|hypothes|we\s+do\s+not\s+know|we\s+don''t\s+know' }
+      say: >-
+        Nothing in your PR/FAQ is marked as an assumption. Which claim would
+        you least like the committee to check?
+    - id: no-comparison
+      when: { code_lacks: '(?i)held[-\s]+back|hold[-\s]+out|holdout|control\s+group|at\s+random|randomi[sz]ed|a/b' }
+      say: >-
+        Your POC measures the agent on its own. What would you compare its
+        parcels against, to know the agent made the difference?
+    - id: codes-at-face-value
+      when:
+        code_matches: '(?i)\b54\s*(percent|%)'
+        code_lacks: '(?i)\b140\b|nobody\s+(had\s+)?c[ao]me|audit|typed\s+by\s+riders|riders?\s+(pick|picks|chose|choose|enter)'
+      say: >-
+        Riders choose the reason code. What did the call-centre audit find when
+        it asked the customers?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write the release's first two sentences for the customer whose parcel
+        just missed, then find the row of discovery behind each one.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three tries without a pass. Open the hints; the second one is about who
+        is inside the trial's numbers.
+  wrap_up: >-
+    A PR/FAQ tests an idea before it costs anything. Every claim points at the
+    discovery behind it, weak evidence is named as an assumption, and the POC
+    is built to test the one claim the release depends on most.
+
+reference_md: |
+  Amazon writes the press release first on purpose. Before a budget, a team
+  or a line of code, somebody describes the finished product to its
+  customers and answers the questions it will face, first the customers'
+  and then the company's own ([AWS Executive Insights, Product Management
+  at AWS](https://aws.amazon.com/executive-insights/content/product-management-at-amazon/),
+  read 1 October 2026). The release stays under a page, and Colin Bryar and
+  Bill Carr, who ran the process inside Amazon, write that most PR/FAQs are
+  never approved and that this is the point: the document decides what not
+  to build before anything is spent
+  ([About Amazon, excerpt from Working Backwards](https://www.aboutamazon.com/news/workplace/an-insider-look-at-amazons-culture-and-processes),
+  published 9 February 2021). BMAD's `bmad-prfaq` skill runs the same
+  method as a challenge, through the customer and problem, the release, the
+  customer FAQ, the internal FAQ on feasibility and trade-offs, and a verdict
+  on whether the concept is strong enough to resource, and it checks claims
+  about the market against research rather than assuming them
+  ([BMAD, Define Requirements and a Specification](https://docs.bmad-method.org/plan/define-requirements-and-a-specification/),
+  BMAD Method 6.12.0, read 1 October 2026).
+
+  So a PR/FAQ written to win Friday's vote fails at its one job. Its job is
+  to make the idea's weakest claim visible while it is still cheap to test.
+
+  The trial is the trap because it is real. Seventy-nine against 52 looks
+  like a 27-point effect, and it is a comparison between two different groups
+  of people. Every parcel in the 79 belongs to a customer who read a message
+  and bothered to answer, and every parcel in the 52 belongs to a customer
+  nobody asked. The first group was more likely to take its parcel anyway,
+  and nobody recorded what happened to the 59 percent who never replied. The
+  honest reading is that contact might help and the trial cannot say how
+  much. That becomes the POC's question, answered against failed parcels
+  held back at random and counted whether or not anyone replied.
+
+  The reason codes fail differently. A rider picks the code, and the audit
+  found 140 of 500 "unavailable" customers saying nobody came. An agent that
+  messages customers will hear that every day, which makes it a source of
+  evidence about missed visits as well as a booking tool, and a release
+  built on "customers are not at home" would promise a fix for a problem
+  that is partly somewhere else.
+
+  The vendor's 65 percent is the easiest number in the building to quote,
+  and it measures an undefined outcome of a different channel sold by
+  someone with a stake in it. It belongs nowhere in the release.
+
+  The economics turn the POC into a decision. At ₹3 a conversation and ₹120
+  a return, one return avoided in forty conversations pays, so a POC that
+  cuts returns by 2.5 points of failed parcels breaks even and one that cuts
+  them by less loses money at scale. Setting that bar before the POC starts
+  is what stops week four from becoming a debate.
+
+  Sorting discovery into counted, typed, tried, estimated and sold is this
+  problem's own construction, as are the 3-point bar and the random
+  hold-back. Amazon's method and BMAD's skill both ask whether the product
+  is worth building and leave the test design to the team.
+
+complexity: C3
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Before anything is built, a client wants a PR/FAQ for an agent. How do you decide which claims go in the press release, and how do you show what each one rests on?
+  source: |
+    Author judgement. No employer frequency data stands behind it. The PR/FAQ form follows
+    Amazon's Working Backwards as described on About Amazon (an excerpt from Bryar and Carr,
+    published 9 February 2021) and AWS Executive Insights, Product Management at AWS, both
+    read 1 October 2026.
+
+traps:
+  - Putting the vendor's 65 percent, or any number discovery did not produce, in the release as if it were
+    measured.
+  - Reading the trial's 79 against 52 percent as the effect of contact, when only customers who chose to
+    reply are in the 79.
+  - Taking the rider reason codes at face value, when the audit found 140 of 500 customers coded unavailable
+    saying nobody came.
+  - Ending without the POC's test, which names the claim the release rests on, a group to compare against
+    and the result that stops the work.

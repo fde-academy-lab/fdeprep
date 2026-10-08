@@ -6,7 +6,7 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "../lib/db/pool.ts";
 import { createSubmission, RateLimitError } from "../lib/submissions/create.ts";
-import { dispatchOnce } from "../lib/queue/dispatcher.ts";
+import { dispatchOnce, reapExpiredLeases } from "../lib/queue/dispatcher.ts";
 import { receive, send } from "../lib/queue/shim.ts";
 import { writeResult } from "../lib/queue/result-writer.ts";
 import { listProblems } from "../lib/problems/catalogue.ts";
@@ -34,8 +34,9 @@ async function problemBySlug(slug: string) {
 }
 
 // Eight code fixtures from Phase 2, the two prompt fixtures and the design
-// fixture Phase 4 needed, and the fixture for the four newest assertion types.
-const FIXTURE_COUNT = 12;
+// fixture Phase 4 needed, the fixture for the four newest assertion types, and
+// the LangGraph fixture tests/test_frameworks.py runs.
+const FIXTURE_COUNT = 13;
 
 describe("acceptance 1: every fixture imports and appears in the catalogue", () => {
   it("imports every fixture and lists them", async () => {
@@ -250,6 +251,92 @@ describe("the lease and fencing token from docs/03 section 9.3", () => {
       `select count from rate_limit_counter where enrolment_id = $1 and scope = 'run_hourly'`,
       [learner.enrolmentId]);
     expect(after.rows[0]!.count).toBe(before.rows[0]!.count - 1);
+  });
+
+  it("gives the unit back to the window it came from and leaves earlier windows alone", async () => {
+    // Found by the seed, which keeps ninety days of counter windows: the
+    // refund took one off every window for the learner and the problem, so
+    // one error rewrote the count of every earlier day.
+    await queued();
+    await db().query(
+      `update rate_limit_counter set window_start = window_start - interval '2 hours'
+        where enrolment_id = $1 and scope = 'run_hourly'`, [learner.enrolmentId]);
+
+    const problem = await problemBySlug("echo-the-question");
+    const later = await createSubmission({
+      enrolmentId: learner.enrolmentId, cohortId: learner.cohortId,
+      problemId: Number(problem.id), kind: "run", body: "b",
+    });
+    await dispatchOnce();
+    const message = (await receive("submissions", 10))
+      .find((m) => Number(m.body["submission_id"]) === later.id)!;
+    await writeResult({
+      submission_id: later.id,
+      lease_token: message.body["lease_token"] as string,
+      fencing_token: Number(message.body["fencing_token"]),
+      body_sha256: message.body["body_sha256"] as string,
+      result: { ...RESULT, verdict: "error" },
+    });
+
+    const { rows } = await db().query<{ count: number }>(
+      `select count from rate_limit_counter where enrolment_id = $1 and scope = 'run_hourly'
+        order by window_start`, [learner.enrolmentId]);
+    expect(rows.map((row) => row.count)).toEqual([1, 0]);
+  });
+
+  it("gives the unit back when an expired lease is reaped as an error", async () => {
+    // docs/03 section 9.3 marks an orphaned submission error, and section 8
+    // says an error never consumes an allowance. The reaper tells the learner
+    // the attempt was not counted, so the counter has to agree, and a runner
+    // that reports late is refused rather than refunding a second time.
+    const { submission, message } = await queued();
+    await db().query(
+      "update submission set lease_expires_at = now() - interval '1 second' where id = $1",
+      [submission.id]);
+    expect(await reapExpiredLeases()).toBe(1);
+    expect(await writeResult({
+      submission_id: submission.id,
+      lease_token: message.body["lease_token"] as string,
+      fencing_token: Number(message.body["fencing_token"]),
+      body_sha256: message.body["body_sha256"] as string,
+      result: { ...RESULT, verdict: "error" },
+    })).toBe(false);
+
+    const { rows } = await db().query<{ verdict: string; count: number }>(
+      `select s.verdict, c.count from submission s, rate_limit_counter c
+        where s.id = $1 and c.enrolment_id = $2 and c.scope = 'run_hourly'`,
+      [submission.id, learner.enrolmentId]);
+    expect(rows).toEqual([{ verdict: "error", count: 0 }]);
+  });
+
+  it("gives nothing back when the claim's window is already at zero", async () => {
+    // A rehearsal spends one rehearsal_weekly unit when it starts, and every
+    // errored submit in it refunds that scope, so the week's window can reach
+    // zero before the last error lands. The unit was never in an earlier
+    // window, so an earlier window keeps its count.
+    const { submission, message } = await queued();
+    await db().query(
+      `insert into rate_limit_counter (enrolment_id, scope, problem_id, window_start, count)
+       select enrolment_id, scope, problem_id, window_start - interval '2 hours', 1
+         from rate_limit_counter where enrolment_id = $1 and scope = 'run_hourly'`,
+      [learner.enrolmentId]);
+    await db().query(
+      `update rate_limit_counter set count = 0
+        where enrolment_id = $1 and scope = 'run_hourly'
+          and window_start > now() - interval '1 hour'`, [learner.enrolmentId]);
+
+    await writeResult({
+      submission_id: submission.id,
+      lease_token: message.body["lease_token"] as string,
+      fencing_token: Number(message.body["fencing_token"]),
+      body_sha256: message.body["body_sha256"] as string,
+      result: { ...RESULT, verdict: "error" },
+    });
+
+    const { rows } = await db().query<{ count: number }>(
+      `select count from rate_limit_counter where enrolment_id = $1 and scope = 'run_hourly'
+        order by window_start`, [learner.enrolmentId]);
+    expect(rows.map((row) => row.count)).toEqual([1, 0]);
   });
 });
 

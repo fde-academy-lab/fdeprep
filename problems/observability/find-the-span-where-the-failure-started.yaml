@@ -1,0 +1,547 @@
+slug: find-the-span-where-the-failure-started
+title: "Find the span where a failure started"
+day: 18
+skill: Build a span tree from a broken trace and point at the span where the failure began
+artefact_type: code
+difficulty: hard
+track: observability
+concept:
+  topic: "Traces for debugging"
+  question: "Which red span in this trace is the cause, and which are only symptoms?"
+est_minutes: 45
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The checkout agent at a grocery delivery app the size of Blinkit failed
+  1,900 orders in two hours on a Friday evening. Every failed run's trace
+  was red from the top down: the run, the order step, and a scatter of spans
+  underneath.
+
+  The on-call engineer did what the trace viewer invites. They opened the
+  first red span with nothing red beneath it, an inventory read that had
+  timed out, and spent ninety minutes with the inventory team. That read had
+  been retried and had worked, and the span above it was green. The failure
+  that reached the run was in slot reservation.
+
+  Other traces were harder to read. Spans from the collector's own feed come
+  in the order they ended, children first. The order service dropped a batch
+  of spans, so some spans named a parent nobody ever received. In one trace
+  the run's own span was missing, because the agent process was killed
+  before it ended.
+
+  Write the analyser that points at the span where the failure started.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is a trace id. `llm` is not called.
+
+  `tools["trace"](trace_id=question)` returns the trace's spans. They come
+  in any order: the trace viewer's export sorts them by start time, and the
+  collector's feed lists them in the order they ended, because a span is
+  handed to the exporter only when it ends.
+
+      {"status": 200, "trace_id": "7a9c", "spans": [
+        {"span_id": "7a05", "parent_id": "7a03", "name": "payment_authorise",
+         "start_ms": 1810, "end_ms": 6000, "status": "error",
+         "message": "card issuer declined: insufficient funds"}, ...]}
+
+  `status` is OpenTelemetry's: `unset` (the default, no error recorded),
+  `ok` or `error`. A span failed when its status is `error`.
+
+  1. A span whose `parent_id` is null is a root. A span whose `parent_id`
+     names no span in the trace, or names the span itself, is an orphan, and
+     is the top of a tree of its own.
+  2. A span's ancestors are its parent, its parent's parent and so on, up to
+     a root or an orphan.
+  3. The failure path is every failed span whose ancestors all failed too. A
+     failure under a span that did not fail was handled, and is not on it.
+  4. The cause is the span on the failure path with no failed child that
+     ended first. A tie goes to the earlier start, then to the span listed
+     first. When no span failed, there is no cause.
+
+  Return a JSON string:
+
+      {"cause": "7a05",
+       "path": ["checkout_run", "place_order", "payment_authorise"],
+       "orphans": [],
+       "failed": 3}
+
+  `path` is the names from the cause's topmost ancestor down to the cause,
+  and `[]` with no cause. `orphans` lists the orphans' ids in the order the
+  trace lists them. `failed` counts the failed spans.
+
+  Budget: no model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your analyser named a payment span as the cause, and that span is an
+  orphan: its parent never reached the collector. The payments team points
+  out that the missing parent could have failed first, and asks you to
+  withdraw the finding. What can you claim from this trace and what can you
+  not, and what would you change in how the services export spans so the
+  next trace has no orphans?
+
+stub_code: |
+  import json
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Point at the span where a failed run's failure started.
+
+      tools["trace"](trace_id=question) returns {"spans": [{"span_id",
+      "parent_id", "name", "start_ms", "end_ms", "status", "message"}, ...]},
+      sorted by start time, or listed in the order the spans ended.
+
+      - parent_id null: a root. parent_id naming no span in the trace, or the
+        span itself: an orphan, the top of a tree of its own.
+      - status "error" failed; "unset" and "ok" did not.
+      - The failure path: failed spans whose ancestors all failed too.
+      - The cause: on the failure path, with no failed child, ended first;
+        a tie goes to the earlier start, then the span listed first.
+
+      Return json.dumps({"cause": <span_id or None>,
+                         "path": [<names from the topmost ancestor to the cause>],
+                         "orphans": [<span_ids in trace order>],
+                         "failed": <how many spans failed>}).
+      llm is not called. Allowed imports: json, re.
+      """
+      return json.dumps({"cause": None, "path": [], "orphans": [], "failed": 0})
+
+hints:
+  - Before reading a single error, decide where every span sits. Which can
+    you place at once, which arrive before their parent, and which name a
+    parent that never arrived?
+  - A failure explains the run only if it travelled up, so every span above
+    it failed too. A failure under a span that succeeded was handled,
+    usually by a retry, however early it happened.
+  - Among the failures that travelled up, the cause has no failed child. When
+    two of those ran at the same time, the one that ended first failed first,
+    and the other is often failing because of it.
+  - Index every span by its id before linking any of them. A span whose
+    parent you cannot find, or whose parent is itself, is the top of its own
+    tree, and it can still hold the cause.
+  - Walk up from each failed span with a set of the spans already passed, so
+    a bad parent id can never send the walk round in a circle.
+
+scenario:
+  headline: "Ninety minutes went to a timeout that a retry had already fixed"
+  who: On-call for the checkout agent at a grocery app the size of Blinkit
+  situation: >-
+    1,900 checkouts failed in two hours. Every trace was red from the run
+    down, and the engineer opened the first red span with nothing red under
+    it: an inventory read that a retry had already fixed.
+  stakes: >-
+    Every minute with the wrong team is more failed orders, and the traces
+    with missing spans are the ones the viewer explains worst.
+  metrics:
+    - { label: Checkouts failed, value: "1,900" }
+    - { label: Minutes with the wrong team, value: "90" }
+    - { label: Checkouts failed a minute, value: about 16 }
+
+diagram:
+  title: Which red span is the cause
+  caption: >-
+    A failure counts when everything above it failed too. The first one to
+    fail, with nothing failed beneath it, is the cause, even in a tree with
+    pieces missing.
+  direction: lr
+  nodes:
+    - { id: run, label: The run, sub: failed, kind: agent, tone: purple, at: [0, 1] }
+    - { id: stock, label: Inventory lookup, sub: succeeded on its retry, kind: tool, tone: green, at: [1, 0] }
+    - { id: read, label: First inventory read, sub: timed out and was retried, kind: tool, tone: neutral, at: [2, 0] }
+    - { id: order, label: The order step, sub: failed, kind: tool, tone: orange, at: [1, 1] }
+    - { id: slot, label: Slot reservation, sub: failed first and nothing under it, kind: tool, tone: pink, at: [2, 1] }
+    - { id: lost, label: A span never received, sub: its children become orphans, kind: doc, tone: neutral, at: [1, 2] }
+    - { id: orphan, label: Orphan span, sub: the top of its own tree, kind: tool, tone: blue, at: [2, 2] }
+    - { id: analyser, label: Your analyser, sub: "cause, path, orphans", kind: output, tone: teal, at: [3, 1] }
+  edges:
+    - { from: run, to: stock, label: child, tone: muted }
+    - { from: stock, to: read, label: a handled failure, tone: danger }
+    - { from: run, to: order, label: failed child, step: 1 }
+    - { from: order, to: slot, label: failed child, step: 2 }
+    - { from: lost, to: orphan, label: parent missing, tone: muted }
+    - { from: slot, to: analyser, label: the cause, tone: success, step: 3 }
+
+approach:
+  goal: Name the span where the failure started, even in a broken trace
+  branches:
+    - label: Place every span first
+      detail: Spans arrive when they end, so a child usually comes before its parent.
+      leaves: [index by id then link, a missing parent makes an orphan, so does a parent that is itself]
+    - label: Follow failures that travelled up
+      leaves: [every ancestor failed too, a handled failure sits under a success]
+    - label: Pick the first to fail
+      leaves: [nothing failed beneath it, earliest end then earliest start]
+    - label: Walk without going round
+      leaves: [remember the spans already passed]
+
+coach:
+  opening: >-
+    Before reading any error, place every span in the tree. Then decide which
+    failures reached the run.
+  signals:
+    - id: links-as-it-reads
+      when: { code_matches: '\[\s*\w+\s*\[\s*["'']parent_id["'']\s*\]\s*\]\s*\.append' }
+      say: >-
+        You attach each span to its parent with a direct lookup. What happens
+        when the parent is listed after the child, or never arrives at all?
+    - id: never-an-orphan
+      when: { code_lacks: '["'']orphans["'']\s*:\s*\[\s*\w|orphans\.append|orphans\s*=\s*\[\s*\w|orphans\s*\+=' }
+      say: >-
+        Nothing ever goes into `orphans`. Which spans in a trace can name a
+        parent the trace does not hold?
+    - id: no-end-time
+      when: { code_lacks: 'end_ms' }
+      say: >-
+        Your analyser never reads when a span ended. When two failures run at
+        the same time, how do you tell which failed first?
+    - id: walk-without-memory
+      when: { code_matches: 'while\s+\w+\s*:', code_lacks: 'seen|visited|passed' }
+      say: >-
+        Your walk up the parents stops only when it runs out of parents. What
+        if a parent id leads back to a span the walk has already passed?
+    - id: end-order-case
+      when: { test_failed: spans_arrive_in_the_order_they_ended }
+      say: >-
+        That trace came from the collector's feed, children first. Does your
+        code need a span's parent before it can place the span?
+    - id: retried-case
+      when: { test_failed: a_retried_timeout_is_not_the_cause }
+      say: >-
+        Your cause in that trace failed, and the span above it did not. Did
+        that failure reach the run?
+    - id: parallel-case
+      when: { test_failed: of_two_failures_at_once_the_first_to_fail_is_the_cause }
+      say: >-
+        Two failures in that trace ran at the same time. Which one started
+        first, and which one failed first?
+    - id: orphan-case
+      when: { test_failed: a_span_whose_parent_never_arrived }
+      say: >-
+        Some spans in that trace name a parent that never arrived. Are they
+        in your tree, and is the failure inside them?
+    - id: no-root-case
+      when: { test_failed: adversarial_the_root_span_never_arrived }
+      say: >-
+        That trace has no root at all. Where does your analyser start when no
+        span has a null parent?
+    - id: self-parent-case
+      when: { test_failed: adversarial_a_span_that_names_itself_as_its_parent }
+      say: >-
+        One span in that trace names itself as its parent. What does your walk
+        up the parents do when it reaches it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write the index first: a dict from span id to span, built before any
+        span is linked. Then press Run and print it.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hints start with placing every span
+        before reading any error.
+  wrap_up: >-
+    A red span is a symptom until everything above it failed too. Place every
+    span first, keep the orphans, follow the failures that travelled up, and
+    name the first one to fail.
+
+tests:
+  - name: names_the_failed_step_under_a_failed_run
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "7a9c" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            trace_id: "7a9c"
+            spans:
+              - { span_id: "7a00", parent_id: null, name: checkout_run, start_ms: 0, end_ms: 6200, status: error, message: "checkout failed" }
+              - { span_id: "7a01", parent_id: "7a00", name: plan, start_ms: 0, end_ms: 900, status: unset }
+              - { span_id: "7a02", parent_id: "7a00", name: cart_validate, start_ms: 910, end_ms: 1300, status: unset }
+              - { span_id: "7a03", parent_id: "7a00", name: place_order, start_ms: 1310, end_ms: 6100, status: error, message: "payment step failed" }
+              - { span_id: "7a04", parent_id: "7a03", name: slot_reserve, start_ms: 1320, end_ms: 1800, status: ok }
+              - { span_id: "7a05", parent_id: "7a03", name: payment_authorise, start_ms: 1810, end_ms: 6000, status: error, message: "card issuer declined: insufficient funds" }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [cause, path, orphans, failed] } }
+        - { type: returns_matches, value: '"cause":\s*"7a05"' }
+        - { type: returns_matches, value: '"path":\s*\["checkout_run",\s*"place_order",\s*"payment_authorise"\]' }
+        - { type: returns_matches, value: '"orphans":\s*\[\]' }
+        - { type: returns_matches, value: '"failed":\s*3\b' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: a_run_that_worked_has_no_cause
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "7b3e" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            trace_id: "7b3e"
+            spans:
+              - { span_id: "7b00", parent_id: null, name: checkout_run, start_ms: 0, end_ms: 4100, status: ok }
+              - { span_id: "7b01", parent_id: "7b00", name: plan, start_ms: 0, end_ms: 800, status: unset }
+              - { span_id: "7b02", parent_id: "7b00", name: place_order, start_ms: 810, end_ms: 4000, status: unset }
+              - { span_id: "7b03", parent_id: "7b02", name: slot_reserve, start_ms: 820, end_ms: 1300, status: ok }
+              - { span_id: "7b04", parent_id: "7b02", name: payment_authorise, start_ms: 1310, end_ms: 3900, status: unset }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [cause, path, orphans, failed] } }
+        - { type: returns_matches, value: '"cause":\s*null' }
+        - { type: returns_matches, value: '"path":\s*\[\]' }
+        - { type: returns_matches, value: '"failed":\s*0\b' }
+
+  - name: spans_arrive_in_the_order_they_ended
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "3c88" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            trace_id: "3c88"
+            spans:
+              - { span_id: "3c01", parent_id: "3c00", name: plan, start_ms: 0, end_ms: 850, status: unset }
+              - { span_id: "3c02", parent_id: "3c00", name: cart_validate, start_ms: 850, end_ms: 1240, status: unset }
+              - { span_id: "3c04", parent_id: "3c03", name: slot_reserve, start_ms: 1250, end_ms: 2900, status: error, message: "no delivery slots left for this pin code" }
+              - { span_id: "3c03", parent_id: "3c00", name: place_order, start_ms: 1245, end_ms: 3000, status: error, message: "could not reserve a slot" }
+              - { span_id: "3c05", parent_id: "3c00", name: notify_customer, start_ms: 3010, end_ms: 3300, status: unset }
+              - { span_id: "3c00", parent_id: null, name: checkout_run, start_ms: 0, end_ms: 3400, status: error, message: "checkout failed" }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"cause":\s*"3c04"' }
+        - { type: returns_matches, value: '"path":\s*\["checkout_run",\s*"place_order",\s*"slot_reserve"\]' }
+        - { type: returns_matches, value: '"orphans":\s*\[\]' }
+
+  - name: a_retried_timeout_is_not_the_cause
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "4d17" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            trace_id: "4d17"
+            spans:
+              - { span_id: "4d00", parent_id: null, name: checkout_run, start_ms: 0, end_ms: 7000, status: error, message: "checkout failed" }
+              - { span_id: "4d01", parent_id: "4d00", name: plan, start_ms: 0, end_ms: 800, status: unset }
+              - { span_id: "4d02", parent_id: "4d00", name: inventory_check, start_ms: 810, end_ms: 3200, status: unset }
+              - { span_id: "4d03", parent_id: "4d02", name: inventory_read, start_ms: 820, end_ms: 2820, status: error, message: "timed out after 2000 ms" }
+              - { span_id: "4d04", parent_id: "4d02", name: inventory_read, start_ms: 2830, end_ms: 3150, status: unset }
+              - { span_id: "4d05", parent_id: "4d00", name: place_order, start_ms: 3210, end_ms: 6900, status: error, message: "could not reserve a slot" }
+              - { span_id: "4d06", parent_id: "4d05", name: slot_reserve, start_ms: 3220, end_ms: 6800, status: error, message: "slot service returned 503" }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"cause":\s*"4d06"' }
+        - { type: returns_matches, value: '"path":\s*\["checkout_run",\s*"place_order",\s*"slot_reserve"\]' }
+        - { type: returns_matches, value: '"failed":\s*4\b' }
+
+  - name: of_two_failures_at_once_the_first_to_fail_is_the_cause
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "5e40" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            trace_id: "5e40"
+            spans:
+              - { span_id: "5e00", parent_id: null, name: checkout_run, start_ms: 0, end_ms: 4200, status: error, message: "checkout failed" }
+              - { span_id: "5e01", parent_id: "5e00", name: plan, start_ms: 0, end_ms: 700, status: unset }
+              - { span_id: "5e02", parent_id: "5e00", name: place_order, start_ms: 710, end_ms: 4100, status: error, message: "order not placed" }
+              - { span_id: "5e03", parent_id: "5e02", name: payment_authorise, start_ms: 720, end_ms: 4000, status: error, message: "cancelled because the address check failed" }
+              - { span_id: "5e04", parent_id: "5e02", name: address_verify, start_ms: 730, end_ms: 1100, status: error, message: "401 from the address service: token expired" }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"cause":\s*"5e04"' }
+        - { type: returns_matches, value: '"path":\s*\["checkout_run",\s*"place_order",\s*"address_verify"\]' }
+
+  - name: a_span_whose_parent_never_arrived
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "6f02" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            trace_id: "6f02"
+            spans:
+              - { span_id: "6f00", parent_id: null, name: checkout_run, start_ms: 0, end_ms: 6600, status: error, message: "checkout failed" }
+              - { span_id: "6f01", parent_id: "6f00", name: plan, start_ms: 0, end_ms: 900, status: unset }
+              - { span_id: "6f13", parent_id: "6f12", name: slot_reserve, start_ms: 1000, end_ms: 1500, status: ok }
+              - { span_id: "6f14", parent_id: "6f12", name: payment_authorise, start_ms: 1510, end_ms: 6300, status: error, message: "gateway timed out after 4.8 seconds" }
+              - { span_id: "6f05", parent_id: "6f00", name: notify_customer, start_ms: 6310, end_ms: 6500, status: unset }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"cause":\s*"6f14"' }
+        - { type: returns_matches, value: '"path":\s*\["payment_authorise"\]' }
+        - { type: returns_matches, value: '"orphans":\s*\["6f13",\s*"6f14"\]' }
+        - { type: returns_matches, value: '"failed":\s*2\b' }
+
+  - name: adversarial_the_root_span_never_arrived
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The agent process was killed in the middle of the run. A span reaches
+      the collector only when it ends, so the run's own span and the order
+      step's span were never sent, and every span that did arrive names a
+      parent nobody received. The trace is well formed and has no root.
+
+      An analyser that starts from the span with a null parent has nowhere to
+      start, and one that links children to parents raises on the first
+      span. Each span that arrived is an orphan and the top of its own tree.
+      Two of them failed, and the payment call ended first: the stock hold
+      was released because the payment had already failed.
+    spec:
+      kind: agent_run
+      input: { question: "8a51" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            trace_id: "8a51"
+            spans:
+              - { span_id: "8a01", parent_id: "8a00", name: plan, start_ms: 0, end_ms: 850, status: unset }
+              - { span_id: "8a02", parent_id: "8a00", name: cart_validate, start_ms: 850, end_ms: 1210, status: unset }
+              - { span_id: "8a04", parent_id: "8a03", name: slot_reserve, start_ms: 1220, end_ms: 1700, status: ok }
+              - { span_id: "8a05", parent_id: "8a03", name: payment_authorise, start_ms: 1710, end_ms: 3000, status: error, message: "card issuer returned 500" }
+              - { span_id: "8a06", parent_id: "8a03", name: stock_hold, start_ms: 1715, end_ms: 3500, status: error, message: "released after the payment failed" }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - { type: returns_matches, value: '"cause":\s*"8a05"' }
+        - { type: returns_matches, value: '"orphans":\s*\["8a01",\s*"8a02",\s*"8a04",\s*"8a05",\s*"8a06"\]' }
+
+  - name: adversarial_a_span_that_names_itself_as_its_parent
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The coupon service's tracing library writes the span's own id into
+      `parent_id`, so its span names itself as its parent. A walk up the
+      parents from that span reaches the same span again and never stops,
+      and a tree that files the span under itself gives it a failed child,
+      so it never looks like a cause.
+
+      By the contract, a span whose parent is itself is an orphan and the top
+      of its own tree. Its coupon call failed at 1,050 ms, long before the
+      payment was cancelled at 4,300 ms for want of an order total, so it is
+      the cause.
+    spec:
+      kind: agent_run
+      input: { question: "9b26" }
+      llm_script:
+        - { match: "*", reply: "Final Answer: not used" }
+      tools:
+        trace:
+          returns:
+            status: 200
+            trace_id: "9b26"
+            spans:
+              - { span_id: "9b00", parent_id: null, name: checkout_run, start_ms: 0, end_ms: 4500, status: error, message: "checkout failed" }
+              - { span_id: "9b01", parent_id: "9b00", name: plan, start_ms: 0, end_ms: 700, status: unset }
+              - { span_id: "9b02", parent_id: "9b00", name: place_order, start_ms: 710, end_ms: 4400, status: error, message: "order not placed" }
+              - { span_id: "9b03", parent_id: "9b02", name: payment_authorise, start_ms: 720, end_ms: 4300, status: error, message: "cancelled because the order total was never confirmed" }
+              - { span_id: "9b04", parent_id: "9b04", name: coupon_apply, start_ms: 725, end_ms: 1050, status: error, message: "coupon service returned 500" }
+      budget: { max_llm_calls: 1, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: returns_matches, value: '"cause":\s*"9b04"' }
+        - { type: returns_matches, value: '"path":\s*\["coupon_apply"\]' }
+        - { type: returns_matches, value: '"orphans":\s*\["9b04"\]' }
+
+reference_md: |
+  A trace viewer paints every failed span red, and in an agent run most of
+  the red is inherited. When slot reservation fails, the order step fails
+  because of it and the run fails because of that, so three spans are red
+  for one reason. The span worth opening is the one where the failure
+  started, and two rules find it.
+
+  The failure has to have travelled up. A span is on the failure path only
+  when every span above it failed too. The inventory read that timed out
+  sits under an inventory lookup that succeeded on its retry, so that
+  failure was handled where it happened and never reached the run. It is
+  the earliest red span in the trace and it explains nothing, which is how
+  ninety minutes went to the inventory team.
+
+  Among the failures that travelled up, the cause is one with nothing failed
+  beneath it, and of those, the one that ended first. A failure happens when
+  its span ends. When the address check and the payment run side by side,
+  the payment started first and failed last, because it was cancelled when
+  the address check failed. Choosing by start time blames the victim.
+
+  None of that works until every span is in the tree, and a real trace
+  makes that harder than it looks. OpenTelemetry's processors hand a span to
+  the exporter when it ends, so the collector's feed lists children before
+  their parents: index every span before linking any. Spans go missing, when
+  an exporter drops a batch or a process dies before its spans end, and a
+  span whose parent never arrived is an orphan rather than an error. It is
+  the top of its own tree and it can hold the cause, as it does when the
+  run's own span never arrived at all. A span that names itself as its
+  parent is an orphan too, and the walk up the parents keeps a set of the
+  spans it has passed, so no parent id can send it round in a circle.
+
+  An orphan is also a limit on what the trace can prove, which is what the
+  defence question asks about. The finding is that the earliest failure the
+  trace holds is in the orphan. Whether the missing parent failed before it
+  is something this trace cannot say. Explain an incident with half the
+  traces missing, a design problem later in this chapter, asks the same
+  question of a whole incident, where whole conversations are missing rather
+  than one span.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Half the spans in this trace are red, and two of them name a parent that never arrived. How do you find the span where the failure started?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: trace
+    args: trace_id
+    returns: The trace's `spans`, each with `span_id`, `parent_id`, `name`, `start_ms`, `end_ms`, `status`
+      and a `message` when it failed, in any order.
+example:
+  case: names_the_failed_step_under_a_failed_run
+  expect: Place all six spans, find that `payment_authorise` failed under a failed order step and run with
+    nothing failed beneath it, and return it as the cause with the path from `checkout_run`.
+traps:
+  - Linking each span to its parent as the list is read, which breaks when a child arrives before its parent.
+  - Dropping a span whose parent never arrived, or raising on it, when the failure may be inside it.
+  - Blaming a failure under a span that succeeded, such as a timeout that a retry already handled.
+  - Choosing between two failures that ran at the same time by which started first, not which failed first.

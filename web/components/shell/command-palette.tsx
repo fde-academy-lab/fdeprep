@@ -1,7 +1,7 @@
 "use client";
 /**
  * The command palette: Cmd K or Ctrl K anywhere, or / when the cursor is not
- * in a text field, opens a search over every problem and every screen.
+ * in a text field, opens a search over every problem, chapter and screen.
  *
  * A native modal dialog does the hard parts: the rest of the page goes inert,
  * focus stays inside, and Escape closes it. The list follows the ARIA combobox
@@ -15,12 +15,14 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { PaletteProblem } from "@/lib/problems/catalogue";
-import { search } from "@/lib/ui/palette-search";
+import type { Track } from "@/lib/problems/vocabulary";
+import { firstUnsolved, search } from "@/lib/ui/palette-search";
 import { DifficultyMeter } from "@/components/ui/difficulty";
 import { Kbd } from "@/components/ui/kbd";
 import { StatusIcon } from "@/components/ui/status";
 import { TrackIcon, trackName } from "@/components/ui/tracks";
 import { cn } from "@/components/ui/cn";
+import { paletteChapters } from "./palette-pages";
 
 /**
  * Icons by name, because a server component cannot hand a component function
@@ -38,9 +40,25 @@ export interface PalettePage {
   keywords?: string;
 }
 
+export interface PaletteChapter {
+  track: Track;
+  href: Route;
+  label: string;
+  /** The chapter's stage, so a chapter is found by its stage's name too. */
+  keywords: string;
+}
+
 type Entry =
   | { kind: "page"; key: string; page: PalettePage }
+  | { kind: "chapter"; key: string; chapter: PaletteChapter }
   | { kind: "problem"; key: string; problem: PaletteProblem };
+
+/**
+ * The same fourteen for everyone, so the palette builds them itself. The
+ * pages arrive as a prop because they depend on the role, which only the
+ * server knows.
+ */
+const CHAPTERS = paletteChapters();
 
 const OPEN_EVENT = "fdeprep:open-palette";
 
@@ -96,11 +114,15 @@ export function CommandPalette({ problems, pages }: {
 
   const entries = useMemo<Entry[]>(() => {
     const q = query.trim().toLowerCase();
-    const pageHits = pages.filter((page) =>
-      !q || `${page.label} ${page.keywords ?? ""}`.toLowerCase().includes(q));
-    const problemHits = search(problems, query, q ? 12 : 6);
+    const matches = (item: { label: string; keywords?: string }) =>
+      !q || `${item.label} ${item.keywords ?? ""}`.toLowerCase().includes(q);
+    // Before anything is typed, the first unsolved problems on the path.
+    const problemHits = q ? search(problems, query, 12) : firstUnsolved(problems, 6);
     return [
-      ...pageHits.map((page) => ({ kind: "page" as const, key: `page:${page.href}`, page })),
+      ...pages.filter(matches).map((page) => ({ kind: "page" as const, key: `page:${page.href}`, page })),
+      ...CHAPTERS.filter(matches).map((chapter) => ({
+        kind: "chapter" as const, key: `chapter:${chapter.track}`, chapter,
+      })),
       ...problemHits.map((problem) => ({
         kind: "problem" as const, key: `problem:${problem.slug}`, problem,
       })),
@@ -110,7 +132,9 @@ export function CommandPalette({ problems, pages }: {
   const go = (entry: Entry | undefined) => {
     if (!entry) return;
     dialog.current?.close();
-    router.push(entry.kind === "page" ? entry.page.href : (`/problems/${entry.problem.slug}` as Route));
+    router.push(entry.kind === "page" ? entry.page.href
+      : entry.kind === "chapter" ? entry.chapter.href
+      : (`/problems/${entry.problem.slug}` as Route));
   };
 
   const onKeyDown = (event: React.KeyboardEvent) => {
@@ -130,12 +154,14 @@ export function CommandPalette({ problems, pages }: {
     document.getElementById(`${listId}-${active}`)?.scrollIntoView({ block: "nearest" });
   }, [active, listId]);
 
-  const firstProblem = entries.findIndex((entry) => entry.kind === "problem");
+  const heading = (kind: Entry["kind"]) =>
+    kind === "page" ? "Go to" : kind === "chapter" ? "Chapters"
+      : query.trim() ? "Problems" : "Problems to start with";
 
   return (
     <dialog
       ref={dialog}
-      aria-label="Search problems and screens"
+      aria-label="Search problems, chapters or screens"
       onClick={(event) => { if (event.target === dialog.current) dialog.current?.close(); }}
       className="m-0 mx-auto mt-[12vh] w-[min(640px,calc(100vw-2rem))] max-w-none overflow-hidden
                  rounded-panel border border-border-strong bg-surface p-0 text-text
@@ -154,7 +180,7 @@ export function CommandPalette({ problems, pages }: {
           value={query}
           onChange={(event) => { setQuery(event.target.value); setActive(0); }}
           onKeyDown={onKeyDown}
-          placeholder="Search problems, tracks or screens"
+          placeholder="Search problems, chapters or screens"
           className="h-12 grow bg-transparent text-lead text-text outline-none
                      placeholder:text-text-faint focus-visible:outline-none"
         />
@@ -165,16 +191,13 @@ export function CommandPalette({ problems, pages }: {
           className="relative max-h-[min(60vh,440px)] overflow-y-auto p-2">
         {entries.length === 0 ? (
           <li className="px-3 py-8 text-center text-text-dim">
-            Nothing matches &ldquo;{query}&rdquo;. Try a track name, such as retrieval or evals.
+            Nothing matches that. Try a chapter name, such as memory or evals.
           </li>
         ) : entries.map((entry, index) => (
           <li key={entry.key}>
-            {index === 0 && entry.kind === "page" ? (
-              <p className="px-3 pb-1 pt-2 text-meta text-text-faint">Go to</p>
-            ) : null}
-            {index === firstProblem ? (
-              <p className="px-3 pb-1 pt-3 text-meta text-text-faint">
-                {query.trim() ? "Problems" : "Problems to start with"}
+            {index === 0 || entries[index - 1]!.kind !== entry.kind ? (
+              <p className={cn("px-3 pb-1 text-meta text-text-faint", index === 0 ? "pt-2" : "pt-3")}>
+                {heading(entry.kind)}
               </p>
             ) : null}
             <div
@@ -191,6 +214,12 @@ export function CommandPalette({ problems, pages }: {
                 <>
                   <PageIcon name={entry.page.icon} />
                   <span className="grow text-text">{entry.page.label}</span>
+                  <ArrowRight aria-hidden className="size-3.5 text-text-faint" />
+                </>
+              ) : entry.kind === "chapter" ? (
+                <>
+                  <TrackIcon track={entry.chapter.track} />
+                  <span className="grow text-text">{entry.chapter.label}</span>
                   <ArrowRight aria-hidden className="size-3.5 text-text-faint" />
                 </>
               ) : (

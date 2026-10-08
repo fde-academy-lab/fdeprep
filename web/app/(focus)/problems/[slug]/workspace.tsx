@@ -25,6 +25,7 @@ import { renderCode } from "@/components/ui/code";
 import { cn } from "@/components/ui/cn";
 import { ProblemBar } from "@/components/workspace/problem-bar";
 import { WorkspaceLayout } from "@/components/workspace/layout";
+import { giveUp, submitOnce, useConfirm } from "@/components/workspace/confirm";
 import { editorTheme, noWritingAssistant } from "@/components/workspace/editor-theme";
 import { CoachBar, useCoach } from "@/components/workspace/coach";
 import { CodeResults } from "@/components/workspace/code-results";
@@ -77,6 +78,7 @@ export default function Workspace(props: Props) {
   const [settledKey, setSettledKey] = useState(0);
   const [past, setPast] = useState<PastSubmission[]>(props.history.submissions);
   const [stepStatus, setStepStatus] = useState<StepView[]>(props.history.steps);
+  const [ask, confirmation] = useConfirm();
 
   const refreshPolicy = useCallback(async () => {
     const response = await fetch(`/api/problems/${problem.id}/policy`);
@@ -138,17 +140,18 @@ export default function Workspace(props: Props) {
 
   const submit = useCallback(() => {
     if (running || !policy.submit.allowed) return;
-    if (policy.confirmBeforeSubmit && !confirm(props.rehearsalId
-      ? "One submit per problem in a rehearsal. Submit this one?"
-      : "This is your only submit today on an Extreme problem. Submit it?")) return;
-    void send("submit", draft.live, { rehearsalId: props.rehearsalId });
-  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, send, draft, props.rehearsalId]);
+    const go = () => void send("submit", draft.live, { rehearsalId: props.rehearsalId });
+    if (policy.confirmBeforeSubmit) ask(submitOnce(Boolean(props.rehearsalId), go));
+    else go();
+  }, [running, policy.submit.allowed, policy.confirmBeforeSubmit, send, draft, props.rehearsalId, ask]);
 
   // Cmd or Ctrl Enter runs, with Shift it submits. Captured before the editor
   // sees it, since CodeMirror binds Mod-Enter to inserting a blank line.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey) || event.key !== "Enter") return;
+      // Nothing runs behind an open dialog, such as the question before a submit.
+      if (document.querySelector("dialog[open]")) return;
       event.preventDefault();
       event.stopPropagation();
       if (event.shiftKey) submit(); else run();
@@ -174,7 +177,7 @@ export default function Workspace(props: Props) {
                 hintBadge={hintGate && hintGate.total ? `${hintGate.revealed}/${hintGate.total}` : null} />
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {tab === "brief" ? (
-          <ProblemIntro title={problem.title} day={problem.day} skill={problem.skill}
+          <ProblemIntro title={problem.title} day={problem.day}
                         interview={problem.interview} track={problem.track} difficulty={problem.difficulty}
                         estMinutes={problem.estMinutes} artefactLabel="Python"
                         kit={problem.kit} briefMd={problem.briefMd}>
@@ -233,14 +236,10 @@ export default function Workspace(props: Props) {
                        }} />
             ) : null}
             giveUp={policy.giveUp}
-            onGiveUp={() => {
-              if (!confirm("Give up on this problem? The walkthrough opens and the choice is " +
-                           "recorded on your attempt.")) return;
-              void act("give-up", {
-                method: "POST", headers: { "content-type": "application/json" },
-                body: JSON.stringify({ reason: note || null }),
-              }).then(() => setTab("brief"));
-            }}
+            onGiveUp={() => ask(giveUp(() => void act("give-up", {
+              method: "POST", headers: { "content-type": "application/json" },
+              body: JSON.stringify({ reason: note || null }),
+            }).then(() => setTab("brief"))))}
           />
         ) : (
           <AttemptsPanel submissions={past} />
@@ -263,13 +262,16 @@ export default function Workspace(props: Props) {
         <div className="flex items-center gap-3 pb-1.5 text-meta text-text-faint">
           <span className="hidden md:inline">Python {PYTHON_VERSION}</span>
           <button type="button" title="Put the starter code back"
-                  onClick={() => {
-                    if (!confirm("Replace your code with the starter code? Your draft is lost.")) return;
+                  onClick={() => ask({
+                    line: "Replace your code with the starter code? Your draft is lost.",
+                    verb: "Reset",
                     // Through the editor, as an edit, so it saves and settles
                     // like any other change and can be undone.
-                    const view = editorView.current;
-                    view?.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: stub } });
-                  }}
+                    act: () => {
+                      const view = editorView.current;
+                      view?.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: stub } });
+                    },
+                  })}
                   className="inline-flex items-center gap-1 rounded-control px-1.5 py-1 hover:bg-surface-2
                              hover:text-text">
             <RotateCcw aria-hidden className="size-3.5" /> Reset
@@ -327,6 +329,7 @@ export default function Workspace(props: Props) {
       <WorkspaceLayout storageKey={`fdeprep.split.${problem.id}`} left={left} editor={editor}
                        dock={dock} editorLabel="Code" editorShare={58}
                        dockSignal={`${view?.id ?? ""}:${view?.status ?? ""}:${coach.current?.say ?? ""}:${notice ?? ""}`} />
+      {confirmation}
     </div>
   );
 }

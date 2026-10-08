@@ -54,7 +54,10 @@ export async function browseSubmissions(
   if (filters.login) add("lower(u.github_login) = lower($?)", filters.login);
   if (filters.slug) add("p.slug = $?", filters.slug);
   if (filters.verdict && filters.verdict !== "all") {
+    // Queued and running are where a submission waits before it has a verdict.
     if (filters.verdict === "open") where.push("s.verdict is null");
+    else if (filters.verdict === "queued") where.push("s.verdict is null and s.status = 'queued'");
+    else if (filters.verdict === "running") where.push("s.verdict is null and s.status <> 'queued'");
     else add("s.verdict = $?::verdict", filters.verdict);
   }
   if (filters.since) add("s.queued_at >= $?::timestamptz", filters.since);

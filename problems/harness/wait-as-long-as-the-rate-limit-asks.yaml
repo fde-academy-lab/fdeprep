@@ -1,0 +1,565 @@
+slug: wait-as-long-as-the-rate-limit-asks
+title: "Wait as long as the rate limit asks"
+day: 5
+skill: Honour the service's Retry-After, retry only what can change, and stop inside a deadline
+artefact_type: code
+difficulty: medium
+track: harness
+concept:
+  topic: "Retries and fallbacks"
+  question: "Whose clock decides when a rate-limited call is retried?"
+est_minutes: 30
+competencies:
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A storm closed the airport for three hours on Sunday evening and 31 flights
+  were cancelled. The rebooking agent at an airline the size of IndiGo moves
+  stranded passengers onto later flights through the seat inventory service,
+  which allows each airline's key a fixed number of calls a minute. Ten
+  minutes into the rush, every answer was a 429 carrying `Retry-After: 30`.
+
+  The agent retried after one second, then two, then four, so every retry
+  landed inside the lockout. The inventory service suspends a key that keeps
+  calling during a lockout, and at 19:42 it suspended the airline's key for 40
+  minutes. 2,100 passengers watched a spinner in the app. The same loop sent
+  one rebooking nine times for a flight that had already departed, and the
+  service answered 400 every time.
+
+  The platform team has written the retry policy down. Implement it inside the
+  deadline the app gives the agent: 20 seconds of waiting, after which the app
+  tells the passenger when to expect a seat instead of showing a spinner.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `llm(prompt)` replies once, with `Action: rebook(pnr=<ref>, flight=<number>)`.
+  Everything after that is the harness, and it is yours.
+
+  `tools["rebook"](pnr=..., flight=...)` returns one of:
+
+      {"status": 200, "seat": "14C"}           booked
+      {"status": 429, "retry_after": "30"}     rate limited
+      {"status": 503}                          overloaded
+      {"status": 503, "retry_after": "5"}      overloaded, with a wait
+      {"status": 400, "error": "..."}          any other status: the request is wrong
+
+  `retry_after` is the Retry-After header as the service sent it: a whole
+  number of seconds, written as text.
+
+  `tools["sleep"](ms=<n>)` is the harness clock. It returns at once and the
+  trace records the wait. Nothing in this run sleeps for real, and `time` is
+  not importable here.
+
+  Policy:
+
+  - Retry a 429 or a 503. Any other status ends the request as `rejected`.
+  - The wait after attempt n is `backoff_ms(n)`: 1000, 2000, 4000 ms and so
+    on. When the answer carries `retry_after`, the wait is the longer of the
+    service's wait and `backoff_ms(n)`.
+  - `DEADLINE_MS` is 20000 ms of waiting in total. Before each wait, check
+    that it fits in what is left. When it does not, do not wait: return
+    `deferred`, with that wait as `retry_after_ms`, so the app can tell the
+    passenger when to expect a seat.
+
+  Return `json.dumps({"outcome": ..., "attempts": ..., "waited_ms": ...,
+  "retry_after_ms": ...})`, where `outcome` is `booked`, `rejected` or
+  `deferred`, and `retry_after_ms` is null unless the outcome is `deferred`.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  RETRYABLE = {429, 503}
+  DEADLINE_MS = 20000
+
+  _ACTION = re.compile(r"Action:\s*rebook\((.*?)\)\s*$", re.MULTILINE)
+
+
+  def backoff_ms(attempt: int) -> int:
+      """The agent's own wait after attempt n: 1000, 2000, 4000 ms and so on."""
+      return 1000 * 2 ** (attempt - 1)
+
+
+  def _result(outcome: str, attempts: int, waited_ms: int, retry_after_ms=None) -> str:
+      """The one JSON shape every path returns."""
+      return json.dumps({"outcome": outcome, "attempts": attempts,
+                         "waited_ms": waited_ms, "retry_after_ms": retry_after_ms})
+
+
+  def _arguments(raw: str) -> dict:
+      """Turns pnr=QX7P2L, flight=2134 into keyword arguments, as text."""
+      args = {}
+      for pair in raw.split(","):
+          if "=" in pair:
+              key, value = pair.split("=", 1)
+              args[key.strip()] = value.strip()
+      return args
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      found = _ACTION.search(llm(f"Passenger request: {question}\n"))
+      if found is None:
+          return _result("rejected", 0, 0)
+      args = _arguments(found.group(1))
+
+      attempts = 0
+      waited = 0
+      # TODO 1: call tools["rebook"](**args) and return booked on a 200
+      # TODO 2: return rejected on a status that asking again will not change
+      # TODO 3: work out the wait: the service's retry_after in milliseconds,
+      #         and never less than backoff_ms(attempts)
+      # TODO 4: before tools["sleep"](ms=...), check the wait fits in what is
+      #         left of DEADLINE_MS, and return deferred with it when it does not
+      return _result("deferred", attempts, waited)
+
+steps:
+  - id: s1
+    text: Book the seat on a 200, and return the JSON shape on every path.
+    check_id: s1
+  - id: s2
+    text: When the answer names no wait, back off on `backoff_ms`.
+    check_id: s2
+  - id: s3
+    text: When the answer carries `retry_after`, wait at least that long, in milliseconds.
+    check_id: s3
+  - id: s4
+    text: Before each wait, check it fits what is left of the deadline, and hand back one that does not.
+    check_id: s4
+
+step_checks:
+  # Reads books_on_the_first_attempt.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"booked"' }
+        - { type: returns_matches, value: '"attempts":\s*1\b' }
+  # Reads backs_off_on_its_own_schedule_when_no_wait_is_named.
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: sleep, args: { ms: 2000 } }
+        - { type: returns_matches, value: '"waited_ms":\s*3000\b' }
+  # No public case names a wait, because naming one is what the hidden cases
+  # are for, so s3 and s4 carry their own cases.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Rebook passenger LM4K9D onto flight 877" }
+      llm_script:
+        - { match: "*", reply: "Action: rebook(pnr=LM4K9D, flight=877)" }
+      tools:
+        rebook:
+          sequence:
+            - { status: 429, retry_after: "4" }
+            - { status: 200, seat: "9F" }
+        sleep: { returns: { ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 5000 }
+      assertions:
+        - { type: calls_tool_with, name: sleep, args: { ms: 4000 } }
+        - { type: returns_matches, value: '"outcome":\s*"booked"' }
+        - { type: returns_matches, value: '"waited_ms":\s*4000\b' }
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "Rebook passenger ZT8W3N onto flight 1190" }
+      llm_script:
+        - { match: "*", reply: "Action: rebook(pnr=ZT8W3N, flight=1190)" }
+      tools:
+        rebook: { returns: { status: 429, retry_after: "25" } }
+        sleep: { returns: { ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 5000 }
+      assertions:
+        - { type: calls_tool, name: rebook }
+        - { type: does_not_call_tool, name: sleep }
+        - { type: returns_matches, value: '"outcome":\s*"deferred"' }
+        - { type: returns_matches, value: '"retry_after_ms":\s*25000\b' }
+
+hints:
+  - Look at what the 429 told you besides its status, and at the line of your
+    loop that decides how long to wait before the next attempt.
+  - "`retry_after` is the service's clock: the earliest moment it will take the call again. Your backoff is your own clock. A wait shorter than the service's is a request you already know will be refused."
+  - Turn the text into milliseconds and take the longer of the two waits. Then
+    compare what has been waited so far plus that wait with the deadline,
+    before calling `sleep`.
+  - A wait that does not fit is still worth something. It is when the app
+    should try again, so it goes back in the answer instead of being spent.
+  - "Per attempt: call `rebook`, return booked on a 200, return rejected on a status outside `RETRYABLE`, work out the wait, return deferred if it does not fit, and otherwise sleep and add it to the total."
+
+scenario:
+  headline: "Retries inside a 30-second lockout got the rebooking key suspended"
+  who: The disruption desk at an airline the size of IndiGo
+  situation: >-
+    A storm cancelled 31 flights on Sunday evening and the rebooking agent hit
+    the seat inventory service's rate limit. Every 429 said to wait 30
+    seconds. The agent retried after one, two and four seconds, and every
+    retry was refused.
+  stakes: >-
+    The service suspends a key that keeps calling during a lockout. The
+    airline's key was suspended for 40 minutes while 2,100 passengers watched
+    a spinner in the app.
+  metrics:
+    - { label: Wait the service asked for, value: 30 s }
+    - { label: First retry, value: 1 s }
+    - { label: Key suspended, value: 40 min }
+
+diagram:
+  title: Where the agent's schedule overrides the service's
+  caption: >-
+    The 429 says when the service will take the call again. A retry before
+    then is refused, and enough refused retries suspend the key.
+  direction: lr
+  nodes:
+    - { id: app, label: Passenger app, sub: "waits 20 s, then says when", kind: actor, tone: blue, at: [0, 1] }
+    - { id: agent, label: Rebooking agent, sub: retries the rebooking, kind: agent, tone: purple, at: [1, 1] }
+    - { id: rebook, label: "`rebook()`", sub: "seat inventory, calls per key", kind: tool, tone: orange, at: [2, 0] }
+    - { id: wait, label: Wait decision, sub: "the service's wait, or a longer backoff", kind: decision, tone: green, at: [2, 1] }
+    - { id: sleep, label: "`sleep()`", sub: the harness clock, kind: queue, tone: teal, at: [3, 1] }
+    - { id: deferred, label: Deferred answer, sub: tells the app when to try again, kind: output, tone: neutral, at: [3, 2] }
+    - { id: suspended, label: Key suspended, sub: retried inside the lockout, kind: output, tone: pink, at: [1, 2] }
+  edges:
+    - { from: app, to: agent, label: rebook request, step: 1 }
+    - { from: agent, to: rebook, label: attempt, step: 2 }
+    - { from: rebook, to: agent, label: "429, `retry_after` 30", step: 3 }
+    - { from: agent, to: wait, label: before each retry, step: 4 }
+    - { from: wait, to: sleep, label: it fits the deadline, tone: success }
+    - { from: wait, to: deferred, label: it does not fit, tone: success }
+    - { from: sleep, to: agent, label: next attempt, tone: muted }
+    - { from: agent, to: suspended, label: retry after 1 s, tone: danger }
+
+approach:
+  goal: Retry when the service will take the call, inside the time the app allows
+  branches:
+    - label: Read the status first
+      leaves: [429 and 503 can change, any other status will not, a rejected request is not sent again]
+    - label: Let the service's wait win
+      detail: "`retry_after` is the earliest the service will take the call. Your backoff still applies when it is longer."
+      leaves: [seconds as text against a clock in milliseconds, the longer of the two waits]
+    - label: Spend the deadline before waiting
+      leaves: [compare with what is left of it, a wait that does not fit goes back to the app]
+    - label: Prove it on the clock
+      leaves: ["every wait is a `sleep()` call in the trace", nothing sleeps for real]
+
+coach:
+  opening: >-
+    Before you write the loop, take the 429 in the brief and say how long the
+    agent should wait, in milliseconds, and where that number comes from.
+  signals:
+    - id: ignores-retry-after
+      when: { code_lacks: '["'']retry_after["'']' }
+      say: >-
+        Your loop never reads `retry_after`. When the service has said how
+        long to wait, whose schedule should decide the next attempt?
+    - id: retries-every-status
+      when: { code_lacks: 'in\s+RETRYABLE|[=!]=\s*(429|503)|in\s*[({\[]\s*(429|503)' }
+      say: >-
+        Your loop retries whatever comes back. Which statuses could change if
+        you asked again, and which say the request itself is wrong?
+    - id: seconds-as-milliseconds
+      when: { code_matches: 'ms\s*=\s*(int\(\s*)?\w+(\.get\(\s*|\[\s*)["'']retry_after' }
+      say: >-
+        `retry_after` counts whole seconds and arrives as text, and `sleep`
+        takes milliseconds. What does your call pass when the service says 6?
+    - id: waits-then-checks
+      when: { code_matches: '(\w+)\s*\+=[^\n]*\n\s*if\s+\1\s*>' }
+      say: >-
+        Your loop adds the wait to the total and then compares the total with
+        the deadline. By then the wait is spent. What would you compare before
+        calling `sleep`?
+    - id: hidden-named-wait
+      when: { test_failed: a_named_wait_is_waited_in_full }
+      say: >-
+        The service answered 429 and named a wait. Read the `sleep` call your
+        loop made next, and compare it with what the service asked for.
+    - id: hidden-lockout
+      when: { test_failed: a_lockout_longer_than_the_deadline_is_handed_back }
+      say: >-
+        That lockout is longer than the whole deadline. How many waits should
+        the agent spend on it, and what should the app hear instead?
+    - id: hidden-adds-up
+      when: { test_failed: named_waits_add_up_against_the_deadline }
+      say: >-
+        Each wait in that run fits the deadline on its own. Do they fit
+        together? Compare the total your loop waited with 20000.
+    - id: hidden-rejected
+      when: { test_failed: a_request_the_service_refuses_is_not_retried }
+      say: >-
+        That request came back with a status that asking again will not
+        change. How many attempts did your loop spend on it?
+    - id: adversarial-overloaded
+      when: { test_failed: adversarial_an_overloaded_service_names_its_wait }
+      say: >-
+        The service was overloaded rather than rate limited, and it still
+        named a wait. On which statuses does your code read `retry_after`?
+    - id: adversarial-retry-now
+      when: { test_failed: adversarial_a_service_that_says_retry_now }
+      say: >-
+        The service said retry now, every time. What stops your loop calling
+        it as fast as the harness will let it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and press Run. Once the first public test is green,
+        add the waits one rule at a time.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint says where in the 429 to
+        look, and the second says why its number wins.
+  wrap_up: >-
+    A rate limit that names a wait is the service telling you its clock. Wait
+    at least that long, spend the deadline before each wait, and give the app a
+    time to show instead of a spinner.
+
+tests:
+  - name: books_on_the_first_attempt
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Rebook passenger QX7P2L onto flight 2134" }
+      llm_script:
+        - { match: "*", reply: "Action: rebook(pnr=QX7P2L, flight=2134)" }
+      tools:
+        rebook: { returns: { status: 200, seat: "14C" } }
+        sleep: { returns: { ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, attempts, waited_ms, retry_after_ms],
+                      properties: { outcome: { enum: [booked, rejected, deferred] },
+                                    attempts: { type: integer },
+                                    waited_ms: { type: integer },
+                                    retry_after_ms: { type: [integer, "null"] } } } }
+        - { type: returns_matches, value: '"outcome":\s*"booked"' }
+        - { type: returns_matches, value: '"attempts":\s*1\b' }
+        - { type: does_not_call_tool, name: sleep }
+
+  - name: backs_off_on_its_own_schedule_when_no_wait_is_named
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Rebook passenger NV2R5H onto flight 360" }
+      llm_script:
+        - { match: "*", reply: "Action: rebook(pnr=NV2R5H, flight=360)" }
+      tools:
+        rebook:
+          sequence:
+            - { status: 503 }
+            - { status: 503 }
+            - { status: 200, seat: "22A" }
+        sleep: { returns: { ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, attempts, waited_ms, retry_after_ms] } }
+        - { type: returns_matches, value: '"outcome":\s*"booked"' }
+        - { type: returns_matches, value: '"attempts":\s*3\b' }
+        - { type: calls_tool_with, name: sleep, args: { ms: 1000 } }
+        - { type: calls_tool_with, name: sleep, args: { ms: 2000 } }
+        - { type: returns_matches, value: '"waited_ms":\s*3000\b' }
+
+  - name: a_named_wait_is_waited_in_full
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Rebook passenger RB2J6S onto flight 3021" }
+      llm_script:
+        - { match: "*", reply: "Action: rebook(pnr=RB2J6S, flight=3021)" }
+      tools:
+        rebook:
+          sequence:
+            - { status: 429, retry_after: "6" }
+            - { status: 200, seat: "31B" }
+        sleep: { returns: { ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: sleep, args: { ms: 6000 } }
+        - { type: returns_matches, value: '"outcome":\s*"booked"' }
+        - { type: returns_matches, value: '"attempts":\s*2\b' }
+        - { type: returns_matches, value: '"waited_ms":\s*6000\b' }
+
+  - name: a_lockout_longer_than_the_deadline_is_handed_back
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Rebook passenger HG5C1V onto flight 448" }
+      llm_script:
+        - { match: "*", reply: "Action: rebook(pnr=HG5C1V, flight=448)" }
+      tools:
+        rebook: { returns: { status: 429, retry_after: "30" } }
+        sleep: { returns: { ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: sleep }
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: returns_matches, value: '"outcome":\s*"deferred"' }
+        - { type: returns_matches, value: '"retry_after_ms":\s*30000\b' }
+
+  - name: named_waits_add_up_against_the_deadline
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Rebook passenger PD3Y7Q onto flight 2650" }
+      llm_script:
+        - { match: "*", reply: "Action: rebook(pnr=PD3Y7Q, flight=2650)" }
+      tools:
+        rebook: { returns: { status: 429, retry_after: "8" } }
+        sleep: { returns: { ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"deferred"' }
+        - { type: returns_matches, value: '"attempts":\s*3\b' }
+        - { type: returns_matches, value: '"waited_ms":\s*16000\b' }
+        - { type: returns_matches, value: '"retry_after_ms":\s*8000\b' }
+
+  - name: a_request_the_service_refuses_is_not_retried
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Rebook passenger WN6E2X onto flight 515" }
+      llm_script:
+        - { match: "*", reply: "Action: rebook(pnr=WN6E2X, flight=515)" }
+      tools:
+        rebook: { returns: { status: 400, error: "flight 515 departed at 18:05" } }
+        sleep: { returns: { ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"rejected"' }
+        - { type: returns_matches, value: '"attempts":\s*1\b' }
+        - { type: does_not_call_tool, name: sleep }
+        - { type: tool_calls_at_most, value: 1 }
+
+  - name: adversarial_an_overloaded_service_names_its_wait
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      The service answered 503 rather than 429, and named a wait of three
+      seconds. RFC 9110 lets a 503 carry Retry-After as the service's estimate
+      of how long it will be unavailable, so the wait means the same thing on
+      either status.
+
+      A policy that reads `retry_after` only on a 429 retries an overloaded
+      service after one second, then two, while it is telling you it needs
+      three. Read the wait wherever it arrives.
+    spec:
+      kind: agent_run
+      input: { question: "Rebook passenger CF9U4M onto flight 1702" }
+      llm_script:
+        - { match: "*", reply: "Action: rebook(pnr=CF9U4M, flight=1702)" }
+      tools:
+        rebook:
+          fixture: tool_soft_error
+          params: { status: 503, body: { error: "seat inventory is overloaded", retry_after: "3" } }
+        sleep: { returns: { ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 16, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: sleep, args: { ms: 3000 } }
+        - { type: returns_matches, value: '"outcome":\s*"deferred"' }
+        - { type: returns_matches, value: '"waited_ms":\s*18000\b' }
+
+  - name: adversarial_a_service_that_says_retry_now
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      Every 429 in this run said `Retry-After: 0`. Zero is a legal value, and
+      a loop that treats the service's wait as the whole schedule takes it
+      literally and calls again at once, as fast as it can, until something
+      outside it stops the loop. Here that was the harness's call limit. In
+      production it is the provider's abuse detection.
+
+      The service's wait sets a minimum under your own backoff. Taking the
+      longer of the two keeps a zero from turning the retry loop into a
+      flood.
+    spec:
+      kind: agent_run
+      input: { question: "Rebook passenger JK1S8T onto flight 96" }
+      llm_script:
+        - { match: "*", reply: "Action: rebook(pnr=JK1S8T, flight=96)" }
+      tools:
+        rebook:
+          fixture: tool_soft_error
+          params: { status: 429, body: { error: "too many requests for this key", retry_after: "0" } }
+        sleep: { returns: { ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: returns_matches, value: '"outcome":\s*"deferred"' }
+        - { type: returns_matches, value: '"attempts":\s*5\b' }
+        - { type: returns_matches, value: '"waited_ms":\s*15000\b' }
+
+reference_md: |
+  The incident code was textbook exponential backoff, and that was the
+  problem. Backoff is the schedule a client invents when the server has said
+  nothing. A 429 with Retry-After is the server saying something: RFC 9110
+  section 10.2.3 defines the header as how long the user agent ought to wait
+  before making a follow-up request, and RFC 6585 section 4 lets a 429 carry
+  it. Every retry the agent sent before 30 seconds was a request it already
+  knew would be refused, and the inventory service read a key that kept
+  calling through its lockout as exactly what it looked like.
+
+  The service's number is a minimum, and your own backoff still applies above
+  it. Taking the longer of the two waits honours the service and keeps your
+  own protection. It also
+  covers the case that breaks a policy which trusts the header completely: a
+  service that says zero, every time, which turns a retry loop with no floor
+  of its own into a flood.
+
+  Units are where this goes wrong in practice. The header carries whole
+  seconds, as text, and the clock here takes milliseconds. An agent that
+  passes the value straight through waits six milliseconds when the service
+  asked for six seconds, and the trace shows exactly that.
+
+  The deadline is spent before each wait and against what is left of it,
+  never against the whole of it. Each 8 second wait fits a 20 second deadline
+  on its own, and the third one does not fit after the first two. A wait that
+  does not fit is still information. Handing it back as
+  `retry_after_ms` turns a spinner into a sentence the app can show: we will
+  confirm your seat in 30 seconds. A queue worker can pick the request up at
+  that moment instead of guessing.
+
+  A 400 is the service answering. It said the flight had departed, and nine
+  more attempts would have heard the same thing nine more times, each one
+  counted against the same key. Two statuses in this contract mean try later,
+  and everything else means stop.
+
+  A real client adds jitter to its own backoff so a thousand agents rejected
+  together do not return together. This one leaves it out so the trace is
+  reproducible, and the floor rule is unchanged by it.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A tool your agent calls starts returning 429 with a Retry-After header. How does your retry logic change, and what do you do when the wait is longer than the time you have left?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: rebook
+    args: pnr, flight
+    returns: '`{"status": 200, "seat": ...}`, a 429 or 503 that may carry `retry_after` in seconds as text,
+      or another status with an `error`.'
+  - name: sleep
+    args: ms
+    returns: Returns at once. It is the harness clock, so the trace records every wait and nothing sleeps
+      for real.
+example:
+  case: backs_off_on_its_own_schedule_when_no_wait_is_named
+  expect: "`rebook` answers 503 twice and names no wait, so sleep 1000 then 2000 ms and book on the third
+    attempt: `outcome` booked, `attempts` 3, `waited_ms` 3000."
+traps:
+  - Retrying on your own schedule after the service named a wait, so the retry lands inside the lockout.
+  - Passing `retry_after` to `sleep` as it arrives, when it counts seconds as text and the clock counts
+    milliseconds.
+  - Comparing each wait with the whole deadline, when the deadline is spent across every wait so far.
+  - Sending again a request the service rejected, which hears the same answer every time.

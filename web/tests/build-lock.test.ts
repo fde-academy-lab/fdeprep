@@ -1,5 +1,5 @@
 /**
- * Capstone build order. A stage's starter code carries the stage before it as
+ * End-to-end build order. A stage's starter code carries the stage before it as
  * working code, so stage N opens only once stage N-1 has passed or been given
  * up. The page withholds the stage and the submission path refuses it; both
  * ask lib/policy the same question.

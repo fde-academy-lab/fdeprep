@@ -1,0 +1,561 @@
+slug: hold-one-action-for-approval-and-keep-working
+title: "Hold one action for approval, and keep working"
+day: 17
+skill: Hold an action nobody can undo for approval, and finish the work that does not need it
+artefact_type: code
+difficulty: medium
+track: human-in-the-loop
+concept:
+  topic: "Approval gates"
+  question: "How do you wait for one approval without stalling the whole run?"
+est_minutes: 30
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: system-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A software company the size of Zoho runs employee offboarding through
+  an agent. When someone leaves, the agent's planner writes the steps:
+  suspend their login, export and delete their mailbox, revoke their
+  licences, wipe their laptop, close the HR case. The agent carries them out.
+  Deleting a mailbox and wiping a laptop cannot be undone, so those two steps
+  need IT security's approval.
+
+  At six on a Friday evening the agent sent a mailbox deletion for approval
+  and waited for the answer. The approver was away until Monday. Suspending
+  the login came after the deletion in the plan, so for 62 hours the
+  leaver's account stayed live, and a sync client on a personal laptop kept
+  copying the sales team's shared drive.
+
+  Hold each step that needs approval, keep going with the work that does not
+  depend on it, and leave a report the next run can pick up from.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the offboarding request. Call `llm(prompt)` once. The planner
+  replies with the plan:
+
+      Plan: [{"id": "s1", "tool": "suspend_login", "args": {"user": "rhea.iyer"}, "after": []},
+             {"id": "s2", "tool": "export_mailbox", "args": {"user": "rhea.iyer"}, "after": []},
+             {"id": "s3", "tool": "delete_mailbox", "args": {"user": "rhea.iyer"}, "after": ["s2"]}]
+
+  `after` lists the steps that must be done before this one. A reply that
+  holds no readable plan runs nothing.
+
+  `tools["catalogue"]()` says which tools can be undone:
+
+      {"status": 200, "tools": {"suspend_login": {"reversible": true},
+                                "delete_mailbox": {"reversible": false}, ...}}
+
+  Walk the plan in order, and for each step:
+
+  1. When any step in its `after` list is not done, it waits. Call nothing
+     for it.
+  2. Otherwise, when the catalogue does not mark its tool
+     `"reversible": true`, it is held. Call
+     `tools["request_approval"](step=<id>, tool=<tool>, args=<args>)`,
+     which answers `{"status": 202, "ticket": ...}`, and do not call the
+     tool.
+  3. Otherwise call `tools[<tool>](**args)`. The step is done when the tool
+     answers `"ok": true`, and failed when it answers anything else or
+     raises.
+
+  Nothing in this run waits for an approver's answer. They decide in their
+  own time, and the next run starts from your report.
+
+  Return a JSON string with the step ids, in plan order:
+  `{"done": [...], "held": [...], "waiting": [...], "failed": [...]}`.
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      plan = read_plan(llm(
+          f"Request: {question}\n"
+          "Reply with Plan: [steps], each step an object with id, tool, args and "
+          "after, the ids of the steps it needs done first.\n"
+      ))
+      catalogue = tools["catalogue"]()["tools"]
+      report = {"done": [], "held": [], "waiting": [], "failed": []}
+
+      for step in plan:
+          # TODO 1: call the step's tool with its args. The step is done when
+          #         the tool answers "ok": true, and failed when it answers
+          #         anything else or raises
+          # TODO 2: a tool the catalogue does not mark "reversible": true is
+          #         held. Call tools["request_approval"](step=..., tool=...,
+          #         args=...) and do not call the tool
+          # TODO 3: after holding a step, carry on with the next one. Nothing
+          #         in this run waits for the approver's answer
+          # TODO 4: a step whose "after" list names a step that is not done
+          #         waits, and nothing is called for it, not even
+          #         request_approval
+          pass
+
+      return json.dumps(report)
+
+
+  def read_plan(reply: str) -> list:
+      """The steps in a "Plan: [...]" reply, or [] when the reply holds none."""
+      match = re.search(r"Plan:\s*(\[.*\])", reply, re.DOTALL)
+      if not match:
+          return []
+      try:
+          steps = json.loads(match.group(1))
+      except ValueError:
+          return []
+      if not isinstance(steps, list):
+          return []
+      return [step for step in steps if isinstance(step, dict)]
+
+steps:
+  - id: s1
+    text: Run each step's tool, and record the step as done when it answers `ok` true and as failed otherwise.
+    check_id: s1
+  - id: s2
+    text: Hold a step whose tool the catalogue does not mark reversible. Send its id, tool and arguments to `request_approval`, and do not run it.
+    check_id: s2
+  - id: s3
+    text: Carry on past a held step with every step that does not depend on it.
+    check_id: s3
+  - id: s4
+    text: Make a step wait when a step in its `after` list is not done. Call nothing for it, not even `request_approval`.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: returns_matches, value: '"done":\s*\["s1",\s*"s2",\s*"s3"\]' }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: request_approval,
+            args: { step: "s4", tool: "wipe_laptop", args: { device: "LT-2291" } } }
+        - { type: does_not_call_tool, name: wipe_laptop }
+  # Both public plans put the step that needs approval last, so this check
+  # runs its own plan, where the held step comes first.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Offboard Ines Duarte, contractor, finished on Wednesday." }
+      llm_script:
+        - { match: "*",
+            reply: 'Plan: [{"id": "x1", "tool": "delete_mailbox", "args": {"user": "ines.duarte"}, "after": []}, {"id": "x2", "tool": "suspend_login", "args": {"user": "ines.duarte"}, "after": []}, {"id": "x3", "tool": "revoke_licences", "args": {"user": "ines.duarte"}, "after": ["x2"]}]' }
+      tools:
+        catalogue:
+          returns:
+            status: 200
+            tools: { suspend_login: { reversible: true }, export_mailbox: { reversible: true }, revoke_licences: { reversible: true }, close_case: { reversible: true }, delete_mailbox: { reversible: false }, wipe_laptop: { reversible: false } }
+        request_approval: { returns: { status: 202, ticket: "APR-6001" } }
+        suspend_login: { returns: { status: 200, ok: true } }
+        export_mailbox: { returns: { status: 200, ok: true } }
+        revoke_licences: { returns: { status: 200, ok: true } }
+        close_case: { returns: { status: 200, ok: true } }
+        delete_mailbox: { returns: { status: 200, ok: true } }
+        wipe_laptop: { returns: { status: 200, ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: suspend_login }
+        - { type: returns_matches, value: '"done":\s*\["x2",\s*"x3"\]' }
+        - { type: returns_matches, value: '"held":\s*\["x1"\]' }
+  # No public plan has a step that depends on a held one, so this check runs
+  # its own: the case can close only once the wipe is done.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "Offboard Jun Park, moving to a partner firm." }
+      llm_script:
+        - { match: "*",
+            reply: 'Plan: [{"id": "y1", "tool": "wipe_laptop", "args": {"device": "LT-0420"}, "after": []}, {"id": "y2", "tool": "close_case", "args": {"case": "HR-61"}, "after": ["y1"]}, {"id": "y3", "tool": "export_mailbox", "args": {"user": "jun.park"}, "after": []}]' }
+      tools:
+        catalogue:
+          returns:
+            status: 200
+            tools: { suspend_login: { reversible: true }, export_mailbox: { reversible: true }, revoke_licences: { reversible: true }, close_case: { reversible: true }, delete_mailbox: { reversible: false }, wipe_laptop: { reversible: false } }
+        request_approval: { returns: { status: 202, ticket: "APR-6002" } }
+        suspend_login: { returns: { status: 200, ok: true } }
+        export_mailbox: { returns: { status: 200, ok: true } }
+        revoke_licences: { returns: { status: 200, ok: true } }
+        close_case: { returns: { status: 200, ok: true } }
+        delete_mailbox: { returns: { status: 200, ok: true } }
+        wipe_laptop: { returns: { status: 200, ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: close_case }
+        - { type: returns_matches, value: '"waiting":\s*\["y2"\]' }
+        - { type: returns_matches, value: '"done":\s*\["y3"\]' }
+
+hints:
+  - Look at what your loop does straight after it asks for an approval. In the
+    incident, the login suspension was the very next step in the plan.
+  - An approval request is a message to a person, who answers in their own
+    time. Nothing in this run needs that answer except the steps that depend
+    on the held one.
+  - Keep a set of the step ids that are done. A step runs, or goes for
+    approval, only when everything in its `after` list is in that set. Held,
+    waiting and failed steps never are.
+  - Check `after` before you check the catalogue. Asking a person to approve a
+    step whose prerequisite failed asks them to approve something that cannot
+    run.
+
+scenario:
+  headline: "A leaver's login stays live all weekend behind one approval"
+  who: IT operations at a software company the size of Zoho
+  situation: >-
+    The offboarding agent sent a mailbox deletion for approval at six on a
+    Friday and waited. The approver was away until Monday, and suspending the
+    login came next in the plan.
+  stakes: >-
+    For 62 hours the leaver's account stayed live, and a sync client on a
+    personal laptop kept copying the sales team's shared drive.
+  metrics:
+    - { label: Login left live, value: 62 hours }
+    - { label: Steps sent for approval, value: "1" }
+    - { label: Steps stuck behind it, value: "4" }
+
+diagram:
+  title: Where one approval held up the whole offboarding
+  caption: >-
+    The held step goes to the approver and the walk carries on. Only a step
+    that depends on it waits, and the report tells the next run what is left.
+  direction: lr
+  nodes:
+    - { id: planner, label: Planner, sub: writes the steps once, kind: model, tone: teal, at: [0, 1] }
+    - { id: walk, label: Agent loop, sub: walks the plan in order, kind: agent, tone: purple, at: [1, 1] }
+    - { id: catalogue, label: "`catalogue()`", sub: which tools can be undone, kind: store, tone: orange, at: [1, 0] }
+    - { id: approver, label: "`request_approval()`", sub: IT security decides later, kind: queue, tone: green, at: [2, 0] }
+    - { id: tools, label: Offboarding tools, sub: "suspend, export, revoke", kind: tool, tone: blue, at: [2, 1] }
+    - { id: report, label: Report, sub: "done, held, waiting, failed", kind: output, tone: green, at: [3, 1] }
+    - { id: stuck, label: Login left live, sub: queued behind the deletion, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: planner, to: walk, label: the plan, step: 1 }
+    - { from: catalogue, to: walk, label: reversible or not, step: 2 }
+    - { from: walk, to: approver, label: hold the deletion, step: 3, tone: success }
+    - { from: walk, to: tools, label: carry on, step: 4, tone: success }
+    - { from: walk, to: report, label: what the next run needs, step: 5 }
+    - { from: walk, to: stuck, label: waited for the answer, tone: danger }
+
+approach:
+  goal: Let one step wait for a person while the rest of the run keeps moving
+  branches:
+    - label: What needs a person
+      detail: A tool the catalogue does not mark reversible, including one it has never heard of.
+      leaves: [send its exact tool and arguments, do not run it here]
+    - label: What can carry on
+      leaves: [every step that does not depend on a held one, the login suspension most of all]
+    - label: What has to wait
+      leaves: [a step behind a held step, a step behind a failed or waiting one]
+    - label: Never wait inside the run
+      leaves: [the approver answers in their own time, the report is where the next run starts]
+
+coach:
+  opening: >-
+    Find the line where your loop asks for an approval, then ask what happens
+    to the next step in the plan.
+  signals:
+    - id: stops-at-the-first-hold
+      when: { code_matches: '\bbreak\b' }
+      say: >-
+        Your loop leaves the plan at the first step it holds. Which steps after
+        it could have run while the approver decides?
+    - id: ignores-after
+      when: { code_lacks: '["'']after["'']' }
+      say: >-
+        Your loop never reads a step's `after` list. What happens to a step
+        whose prerequisite is waiting for approval?
+    - id: login-after-the-deletion
+      when: { test_failed: the_login_is_suspended_while_the_deletion_waits }
+      say: >-
+        The deletion was held, and the login suspension after it never ran.
+        Did the suspension need the deletion's approval?
+    - id: ran-a-dependent-step
+      when: { test_failed: work_that_needs_the_held_step_waits_for_it }
+      say: >-
+        A step that needed the held wipe to be done ran anyway, or a step that
+        needed nothing never ran. Read that plan's `after` lists again.
+    - id: asked-for-the-impossible
+      when: { test_failed: nothing_is_asked_for_a_step_whose_prerequisite_failed }
+      say: >-
+        The export failed, and the deletion depended on it. What would an
+        approver be approving if your loop sent them that deletion?
+    - id: unclassified-tool
+      when: { test_failed: a_tool_the_catalogue_does_not_list_is_held }
+      say: >-
+        The planner used a tool the catalogue does not list. What does your
+        loop assume about a tool nobody has said can be undone?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and the first public plan, where every step can be
+        undone. The approval only matters once those steps run.
+    - id: many-failures
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The hints start from what your loop does
+        straight after it asks for an approval.
+  wrap_up: >-
+    An approval gate holds one step, never the run. Send the step a person
+    must decide, carry on with what does not depend on it, and write down what
+    is held so the next run can start from there.
+
+tests:
+  - name: runs_a_plan_with_nothing_to_approve
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Offboard Rhea Iyer, who left on Friday. HR case HR-88." }
+      llm_script:
+        - { match: "*",
+            reply: 'Plan: [{"id": "s1", "tool": "suspend_login", "args": {"user": "rhea.iyer"}, "after": []}, {"id": "s2", "tool": "export_mailbox", "args": {"user": "rhea.iyer"}, "after": []}, {"id": "s3", "tool": "revoke_licences", "args": {"user": "rhea.iyer"}, "after": ["s1"]}]' }
+      tools:
+        catalogue:
+          returns:
+            status: 200
+            tools: { suspend_login: { reversible: true }, export_mailbox: { reversible: true }, revoke_licences: { reversible: true }, close_case: { reversible: true }, delete_mailbox: { reversible: false }, wipe_laptop: { reversible: false } }
+        request_approval: { returns: { status: 202, ticket: "APR-5101" } }
+        suspend_login: { returns: { status: 200, ok: true } }
+        export_mailbox: { returns: { status: 200, ok: true } }
+        revoke_licences: { returns: { status: 200, ok: true } }
+        close_case: { returns: { status: 200, ok: true } }
+        delete_mailbox: { returns: { status: 200, ok: true } }
+        wipe_laptop: { returns: { status: 200, ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [done, held, waiting, failed] } }
+        - { type: returns_matches, value: '"done":\s*\["s1",\s*"s2",\s*"s3"\]' }
+        - { type: does_not_call_tool, name: request_approval }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: holds_the_laptop_wipe_at_the_end_of_the_plan
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Offboard Kabir Shah. His last day was yesterday." }
+      llm_script:
+        - { match: "*",
+            reply: 'Plan: [{"id": "s1", "tool": "suspend_login", "args": {"user": "kabir.shah"}, "after": []}, {"id": "s2", "tool": "export_mailbox", "args": {"user": "kabir.shah"}, "after": []}, {"id": "s3", "tool": "revoke_licences", "args": {"user": "kabir.shah"}, "after": []}, {"id": "s4", "tool": "wipe_laptop", "args": {"device": "LT-2291"}, "after": ["s2"]}]' }
+      tools:
+        catalogue:
+          returns:
+            status: 200
+            tools: { suspend_login: { reversible: true }, export_mailbox: { reversible: true }, revoke_licences: { reversible: true }, close_case: { reversible: true }, delete_mailbox: { reversible: false }, wipe_laptop: { reversible: false } }
+        request_approval: { returns: { status: 202, ticket: "APR-5102" } }
+        suspend_login: { returns: { status: 200, ok: true } }
+        export_mailbox: { returns: { status: 200, ok: true } }
+        revoke_licences: { returns: { status: 200, ok: true } }
+        close_case: { returns: { status: 200, ok: true } }
+        delete_mailbox: { returns: { status: 200, ok: true } }
+        wipe_laptop: { returns: { status: 200, ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"done":\s*\["s1",\s*"s2",\s*"s3"\]' }
+        - { type: returns_matches, value: '"held":\s*\["s4"\]' }
+        - { type: does_not_call_tool, name: wipe_laptop }
+        - { type: calls_tool, name: request_approval }
+
+  - name: the_login_is_suspended_while_the_deletion_waits
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Offboard Anita Das. She resigned with immediate effect." }
+      llm_script:
+        - { match: "*",
+            reply: 'Plan: [{"id": "s1", "tool": "export_mailbox", "args": {"user": "anita.das"}, "after": []}, {"id": "s2", "tool": "delete_mailbox", "args": {"user": "anita.das"}, "after": ["s1"]}, {"id": "s3", "tool": "suspend_login", "args": {"user": "anita.das"}, "after": []}, {"id": "s4", "tool": "revoke_licences", "args": {"user": "anita.das"}, "after": []}]' }
+      tools:
+        catalogue:
+          returns:
+            status: 200
+            tools: { suspend_login: { reversible: true }, export_mailbox: { reversible: true }, revoke_licences: { reversible: true }, close_case: { reversible: true }, delete_mailbox: { reversible: false }, wipe_laptop: { reversible: false } }
+        request_approval: { returns: { status: 202, ticket: "APR-5103" } }
+        suspend_login: { returns: { status: 200, ok: true } }
+        export_mailbox: { returns: { status: 200, ok: true } }
+        revoke_licences: { returns: { status: 200, ok: true } }
+        close_case: { returns: { status: 200, ok: true } }
+        delete_mailbox: { returns: { status: 200, ok: true } }
+        wipe_laptop: { returns: { status: 200, ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: suspend_login }
+        - { type: calls_tool, name: revoke_licences }
+        - { type: does_not_call_tool, name: delete_mailbox }
+        - { type: calls_tool_with, name: request_approval,
+            args: { step: "s2", tool: "delete_mailbox" } }
+        - { type: returns_matches, value: '"done":\s*\["s1",\s*"s3",\s*"s4"\]' }
+
+  - name: work_that_needs_the_held_step_waits_for_it
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Offboard Omar Khan at the end of his notice period." }
+      llm_script:
+        - { match: "*",
+            reply: 'Plan: [{"id": "s1", "tool": "suspend_login", "args": {"user": "omar.khan"}, "after": []}, {"id": "s2", "tool": "wipe_laptop", "args": {"device": "LT-1187"}, "after": []}, {"id": "s3", "tool": "close_case", "args": {"case": "HR-97"}, "after": ["s2"]}, {"id": "s4", "tool": "revoke_licences", "args": {"user": "omar.khan"}, "after": []}]' }
+      tools:
+        catalogue:
+          returns:
+            status: 200
+            tools: { suspend_login: { reversible: true }, export_mailbox: { reversible: true }, revoke_licences: { reversible: true }, close_case: { reversible: true }, delete_mailbox: { reversible: false }, wipe_laptop: { reversible: false } }
+        request_approval: { returns: { status: 202, ticket: "APR-5104" } }
+        suspend_login: { returns: { status: 200, ok: true } }
+        export_mailbox: { returns: { status: 200, ok: true } }
+        revoke_licences: { returns: { status: 200, ok: true } }
+        close_case: { returns: { status: 200, ok: true } }
+        delete_mailbox: { returns: { status: 200, ok: true } }
+        wipe_laptop: { returns: { status: 200, ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: close_case }
+        - { type: calls_tool, name: revoke_licences }
+        - { type: returns_matches, value: '"held":\s*\["s2"\]' }
+        - { type: returns_matches, value: '"waiting":\s*\["s3"\]' }
+
+  - name: nothing_is_asked_for_a_step_whose_prerequisite_failed
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Offboard Lena Fischer, transferring to the Berlin entity." }
+      llm_script:
+        - { match: "*",
+            reply: 'Plan: [{"id": "s1", "tool": "export_mailbox", "args": {"user": "lena.fischer"}, "after": []}, {"id": "s2", "tool": "delete_mailbox", "args": {"user": "lena.fischer"}, "after": ["s1"]}, {"id": "s3", "tool": "suspend_login", "args": {"user": "lena.fischer"}, "after": []}]' }
+      tools:
+        catalogue:
+          returns:
+            status: 200
+            tools: { suspend_login: { reversible: true }, export_mailbox: { reversible: true }, revoke_licences: { reversible: true }, close_case: { reversible: true }, delete_mailbox: { reversible: false }, wipe_laptop: { reversible: false } }
+        request_approval: { returns: { status: 202, ticket: "APR-5105" } }
+        suspend_login: { returns: { status: 200, ok: true } }
+        export_mailbox: { returns: { status: 507, ok: false, error: "mailbox export quota exceeded" } }
+        revoke_licences: { returns: { status: 200, ok: true } }
+        close_case: { returns: { status: 200, ok: true } }
+        delete_mailbox: { returns: { status: 200, ok: true } }
+        wipe_laptop: { returns: { status: 200, ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: request_approval }
+        - { type: does_not_call_tool, name: delete_mailbox }
+        - { type: calls_tool, name: suspend_login }
+        - { type: returns_matches, value: '"failed":\s*\["s1"\]' }
+        - { type: returns_matches, value: '"waiting":\s*\["s2"\]' }
+
+  - name: a_tool_the_catalogue_does_not_list_is_held
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Offboard Tomas Silva and hand his repositories to his manager." }
+      llm_script:
+        - { match: "*",
+            reply: 'Plan: [{"id": "s1", "tool": "suspend_login", "args": {"user": "tomas.silva"}, "after": []}, {"id": "s2", "tool": "transfer_ownership", "args": {"user": "tomas.silva", "to": "dev.menon"}, "after": []}, {"id": "s3", "tool": "revoke_licences", "args": {"user": "tomas.silva"}, "after": []}]' }
+      tools:
+        catalogue:
+          returns:
+            status: 200
+            tools: { suspend_login: { reversible: true }, export_mailbox: { reversible: true }, revoke_licences: { reversible: true }, close_case: { reversible: true }, delete_mailbox: { reversible: false }, wipe_laptop: { reversible: false } }
+        request_approval: { returns: { status: 202, ticket: "APR-5106" } }
+        suspend_login: { returns: { status: 200, ok: true } }
+        export_mailbox: { returns: { status: 200, ok: true } }
+        revoke_licences: { returns: { status: 200, ok: true } }
+        close_case: { returns: { status: 200, ok: true } }
+        delete_mailbox: { returns: { status: 200, ok: true } }
+        wipe_laptop: { returns: { status: 200, ok: true } }
+        transfer_ownership: { returns: { status: 200, ok: true } }
+      budget: { max_llm_calls: 2, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: does_not_call_tool, name: transfer_ownership }
+        - { type: calls_tool_with, name: request_approval,
+            args: { step: "s2", tool: "transfer_ownership" } }
+        - { type: returns_matches, value: '"done":\s*\["s1",\s*"s3"\]' }
+
+reference_md: |
+  Asking IT security before a mailbox is deleted is right, because a deleted
+  mailbox does not come back. The fault was in how the gate was built, as a
+  wall across the run: one step needed a person, so every step after it
+  waited for that person too, including the one step that mattered most that
+  weekend.
+
+  An approval gate holds one step. The step goes to the approver with its
+  exact tool and arguments, so they decide on what will actually run, and the
+  walk moves on. Every step that does not depend on it carries on, and the
+  login suspension, which needed nobody's approval, runs at six on Friday
+  evening instead of on Monday morning.
+
+  Carrying on is only safe because of the second rule: a step runs, or goes
+  for approval, only when everything it depends on is done. Closing the HR
+  case before the laptop is wiped would record an offboarding that has not
+  happened, so that step waits. The same rule stops the run from asking a
+  person to approve a mailbox deletion whose export failed, which would ask
+  them to approve something that cannot run.
+
+  A tool the catalogue has never heard of is held too. The catalogue is the
+  only record of what can be undone, and a tool nobody has classified has not
+  been shown to be safe to run without a person.
+
+  Nothing waits inside the run. The approver answers in their own time, and
+  the report, done, held, waiting and failed, is what the next run starts
+  from. LangGraph 1.2.12 builds the same idea into a framework:
+  `interrupt()` inside a node raises, the checkpointer saves the thread, and
+  `Command(resume=...)` continues it later, re-running that node from its
+  start. Either way no process sits waiting while a person thinks. The `held`
+  list is a promise to a later run. When IT security answers, that run has to
+  carry on from this report with their decision in force, and writing that
+  resume is a later problem in this chapter.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your agent needs a person to approve one step of a ten-step job, and the approver is offline until morning. What does the agent do in the meantime?
+  source: |
+    Author judgement. No employer frequency data stands behind it. The
+    LangGraph behaviour in the walkthrough was read from the installed
+    langgraph 1.2.12 source, the version the runner pins, on 1 October 2026.
+
+tools:
+  - name: catalogue
+    args: ''
+    returns: A status and `tools`, which says for each tool it lists whether it is `reversible`.
+  - name: request_approval
+    args: step, tool, args
+    returns: A status of 202 and a `ticket`. The approver decides later, outside this run.
+  - name: suspend_login
+    args: user
+    returns: A status and `ok` true once the login is suspended. Reversible.
+  - name: export_mailbox
+    args: user
+    returns: A status and `ok` true once the mailbox is exported. A failed export answers `ok` false.
+  - name: revoke_licences
+    args: user
+    returns: A status and `ok` true once the licences are revoked. Reversible.
+  - name: close_case
+    args: case
+    returns: A status and `ok` true once the HR case is closed. Reversible.
+  - name: delete_mailbox
+    args: user
+    returns: A status and `ok` true once the mailbox is deleted. It cannot be undone.
+  - name: wipe_laptop
+    args: device
+    returns: A status and `ok` true once the laptop is wiped. It cannot be undone.
+example:
+  case: runs_a_plan_with_nothing_to_approve
+  expect: Every tool in the plan can be undone and each step's prerequisites are done before it, so run all
+    three in order and return JSON whose `done` list is s1, s2 and s3.
+traps:
+  - Stopping the run at the first step that needs approval, so work that never needed it waits with it.
+  - Running a step that depends on a held step, because it looks reversible on its own.
+  - Asking a person to approve a step whose prerequisite failed, which asks them to approve something that
+    cannot run.
+  - Running a tool the catalogue does not list, when nobody has said it can be undone.

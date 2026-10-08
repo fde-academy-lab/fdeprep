@@ -1,0 +1,590 @@
+slug: run-inception-for-a-dealer-ordering-agent
+title: "Run inception for a dealer-ordering agent"
+drill: true
+skill: Turn a two-line intent into questions that move scope, and units that fit eight weeks
+artefact_type: design
+difficulty: hard
+track: agentic-sdlc
+concept:
+  topic: "Inception and mob elaboration"
+  question: "What should the AI ask, what does the room validate, and where must a person decide?"
+est_minutes: 45
+competencies:
+  - { slug: client-communication, weight: 1.0 }
+  - { slug: system-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+
+brief_md: |
+  A distributor the size of Metro Cash & Carry India supplies 11,000
+  dealers, most of them small shops that reorder every week. Dealers send
+  their orders on WhatsApp, and an order desk types each one into SAP. The
+  sales director wants an agent to take this over, and has written the
+  intent in two sentences:
+
+  > Dealers send orders on WhatsApp, often as voice notes. Book them in SAP
+  > automatically before the festive season.
+
+  Your team will run the work as AI-DLC, starting with Inception. The AWS
+  DevOps post that introduced the method, by Raja SP and published 31 July
+  2025, says that in Inception "AI transforms business intent into detailed
+  requirements, stories and units", through Mob Elaboration, "where the
+  entire team actively validates AI's questions and proposals". "Epics are
+  replaced by Units of Work", and sprints by bolts, "shorter, more intense
+  work cycles measured in hours or days rather than weeks". The AI "defers
+  critical decisions to humans". The README of awslabs/aidlc-workflows,
+  version 2.11.0, adds that a run "asks for missing decisions, and stops at
+  approval gates before moving forward". Both were read on 8 October 2026.
+
+  | What you know | Where it comes from |
+  |---|---|
+  | 11,000 dealers order on WhatsApp | Sales operations |
+  | About 60 percent of orders arrive as voice notes, in four languages | Order desk, last quarter |
+  | 14 percent of today's orders are corrected after booking | Order desk, last quarter |
+  | The catalogue has 2,100 SKUs, many with near-duplicate names, and a wrong SKU ships | Supply chain |
+  | The order desk matches a WhatsApp number to a dealer from memory | Order desk |
+  | The finance team decides credit holds, and a held order waits a day | Finance |
+  | Four engineers, and one SAP consultant who is available two days a week | Head of engineering |
+  | Bolts of three days | The team |
+  | Eight weeks to the festive cut-off | Sales director |
+
+  Plan the Inception you would run.
+
+contract_md: |
+  Write the plan you would take to the sales director, under four headings
+  written exactly as `## Questions`, `## What the room validates`,
+  `## Units of work` and `## Human decisions`.
+
+  Under the first, give the questions the AI should put to the intent, and
+  say what each answer would change. Under the second, say who must be in
+  the Mob Elaboration room and what they validate. Under the third, give the
+  units of work that come out, sized to three-day bolts and laid out in
+  order across the eight weeks, and say what the first bolt delivers and how
+  a reviewer would know it is done. Under the last, name every point where a
+  person decides: who decides, what the agent hands them, and why the agent
+  cannot decide it.
+
+  Attribute every fact about AI-DLC to its source and the date it was read.
+  Between 500 and 800 words.
+
+word_range: [500, 800]
+required_headings: [Questions, What the room validates, Units of work, Human decisions]
+
+rubric:
+  - label: Asks questions whose answers would change the scope
+    weight: 25
+    descriptor_md: |
+      The intent is two sentences, and Inception is where the AI finds what
+      they leave out. Strong answers ask questions whose answers change what
+      gets built or when, and say what each answer changes: how the 60
+      percent of voice orders splits across the four languages, and whether
+      text plus the largest one or two languages covers enough of the volume
+      by the cut-off; what the 14 percent of corrections are, wrong SKUs,
+      quantities or dealers changing their minds, since that decides whether
+      "automatically" means booked with nobody looking or drafted for the
+      order desk to confirm; which date is the cut-off and what volume the
+      festive weeks bring; whether a WhatsApp number always means one SAP
+      customer account; and what a dealer hears when an order goes on
+      credit hold. Questions that restate the intent, such as whether the
+      agent should book orders in SAP or handle voice notes, earn nothing
+      here.
+  - label: Describes Mob Elaboration correctly, dated, with the right room
+    weight: 15
+    descriptor_md: |
+      Mob Elaboration is the Inception practice in which the whole team
+      validates the AI's questions and proposals, from the AWS post of 31
+      July 2025. Strong answers put the four engineers, the SAP consultant,
+      a finance lead and two sales reps who take dealer orders today in the
+      room, with the sales director owning the intent, and hold it on one of
+      the consultant's two days, because many of the AI's proposals are
+      assumptions about SAP that only the consultant can confirm. They say
+      what the room validates: the answers to the questions, the units and
+      their order, the rule for an ambiguous SKU and the hand-off when an
+      order is held. An answer that calls it a kick-off or a brainstorm, has
+      the AI write requirements for the team to rubber-stamp, or leaves out
+      SAP or finance, has missed the practice.
+  - label: Sizes units to bolts and lays them across the eight weeks
+    weight: 25
+    descriptor_md: |
+      Eight weeks are 40 working days, about 13 three-day bolts for each
+      stream of work, and the consultant's two days a week are 16 days in
+      all, some of which Inception and go-live will take. Every unit that
+      touches SAP, reading dealer accounts and the catalogue, creating a
+      sales order in a test client, reading a credit-hold status and moving
+      to production, needs those days, so strong answers start the SAP work
+      in the first bolt, place each SAP unit on a consultant day, and fill
+      the rest with units that need no SAP: parsing text and voice, matching
+      SKUs against an exported catalogue, the dealer's clarifying question
+      and the hand-off to finance. They show the count, end every bolt on
+      something checkable, and cut or defer a language before they overrun
+      the cut-off. Units that are right, in an order that needs the
+      consultant every day or leaves SAP to the last weeks, miss this row.
+  - label: Names each human decision with what the agent hands over
+    weight: 20
+    descriptor_md: |
+      A credit hold stays with finance. The agent books the order, sees the
+      hold, hands finance the dealer's balance, limit and overdue days with
+      the order value, the lines and the dealer's own message, and tells the
+      dealer the order is waiting for a decision. An ambiguous SKU is a
+      question to the dealer with the candidates named, because a wrong SKU
+      ships. The sales director decides which languages ship by the cut-off,
+      and when the agent may book without the order desk confirming, on a
+      measured correction rate against today's 14 percent. Strong answers
+      give each decision an owner, the evidence and the reason the agent
+      cannot take it. An answer in which the agent checks credit or picks the
+      closest SKU fails this row whatever else it gets right.
+  - label: Gives the first bolt an exit a reviewer can check
+    weight: 15
+    descriptor_md: |
+      The first bolt builds something a reviewer can run and ends on a
+      number. Strong answers take a thin slice, such as typed orders from
+      known dealers matched to SKUs and booked in the SAP test client on the
+      consultant's day, and judge it on real messages from last season
+      against what the order desk finally booked: how many orders match, and
+      that every ambiguous line became a question with no guess between
+      near-duplicates. A first bolt that sets up an environment, connects
+      WhatsApp or agrees requirements has no exit a reviewer can check.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      ## Questions
+
+      The AI should put six questions to the intent before proposing a
+      single unit.
+
+      1. How do the voice notes split across the four languages? About 60
+         percent of orders are voice. If two languages carry most of it,
+         those two ship by the cut-off and the others follow. If the split is
+         even, the first release takes text and one language.
+      2. What are the 14 percent of corrections? If most are wrong SKUs
+         between near-duplicates, the agent asks the dealer before booking.
+         If most are dealers changing quantities, it needs an edit window
+         after booking instead of a question before it.
+      3. Does "automatically" mean booked with nobody looking, or drafted for
+         the order desk to confirm? That sets the bar for switching to
+         automatic booking: a measured correction rate below today's 14
+         percent.
+      4. Does one WhatsApp number always mean one SAP customer account? If
+         shops share a number, the agent asks which shop first.
+      5. Which day is the cut-off, and how many orders a day do the festive
+         weeks bring? That decides whether a language deferred past week 8
+         still matters.
+      6. What should a dealer hear when an order goes on credit hold?
+
+      ## What the room validates
+
+      Mob Elaboration, in the AWS DevOps post by Raja SP (31 July 2025, read
+      8 October 2026), is where "the entire team actively validates AI's
+      questions and proposals". The room holds the four engineers, the SAP
+      consultant, a finance lead, two sales reps who take dealer orders
+      today, and the sales director, who owns the intent. It meets on the
+      consultant's first day, because half the AI's proposals are
+      assumptions about SAP that only he can confirm.
+
+      The room validates the answers to the six questions, the units and
+      their order, the rule that an ambiguous SKU becomes a question to the
+      dealer, and the hand-off to finance. The reps bring forty real voice
+      notes and the finance lead brings what she needs to release a hold.
+
+      ## Units of work
+
+      Eight weeks are 40 working days, about 13 three-day bolts per stream.
+      The consultant's two days a week are 16 days: Mob Elaboration takes
+      one and go-live takes two, which leaves 13 for SAP work. Every unit
+      that touches SAP sits in a bolt with a consultant day, and two streams
+      run side by side.
+
+      SAP stream, two engineers:
+
+      - U1, bolt 1: read dealer accounts and the catalogue, and book a typed
+        order in the test client.
+      - U3, bolts 2 and 3: read a held order's status and hand finance the
+        evidence.
+      - U6, bolts 4 to 6: the order desk confirms every booking, and
+        corrections are counted. Bolts 7 to 11 run that confirmed period,
+        and the two SAP engineers join U7.
+      - U8, bolts 12 and 13: the production client, with the consultant.
+
+      Order stream, two engineers:
+
+      - U2, bolts 1 and 2: typed order to SKU lines, with near-duplicates
+        turned into a question.
+      - U4, bolts 3 to 5: voice notes in the two largest languages.
+      - U5, bolts 6 to 8: the dealer conversation, from question to
+        confirmation to the hold message.
+      - U7, bolts 9 to 11: the other two languages, if question 1 says they
+        matter before the cut-off.
+
+      The first bolt is a thin slice: a typed order from a known dealer,
+      matched to SKUs and booked in the test client on the consultant's
+      day. It is done when 200 typed orders from last October, replayed
+      through it, match what the order desk finally booked on at least 190,
+      every line that fits two near-duplicate SKUs produced a question, and
+      an engineer who did not build it reruns the set and gets the same
+      result.
+
+      ## Human decisions
+
+      - Credit holds: the finance team. The agent books the order, sees the
+        hold and hands finance the dealer's balance, limit and overdue days,
+        the order value, the lines and the dealer's own message, then tells
+        the dealer the order is waiting. Credit is finance's call, and the
+        AWS post says AI "defers critical decisions to humans".
+      - An ambiguous SKU: the dealer, asked with both candidates and their
+        pack sizes, because a wrong SKU ships.
+      - Which languages ship by the cut-off: the sales director, from the
+        split that question 1 returns.
+      - Automatic booking: the sales director switches it on once corrections
+        stay below 14 percent for two weeks of confirmed orders.
+      - Each bolt's exit: the tech lead signs it, since the aidlc-workflows
+        README (version 2.11.0, read 8 October 2026) says a run "stops at
+        approval gates before moving forward".
+  - band: adequate
+    score: 60
+    body_md: |
+      ## Questions
+
+      The AI should confirm the scope with the sales director before anything
+      is built, so that the requirements it drafts match what the business
+      expects:
+
+      1. Should the agent book every order in SAP automatically?
+      2. Do all 11,000 dealers order on WhatsApp?
+      3. Should the agent understand voice notes as well as text?
+      4. Should the agent support all four languages?
+      5. Is the festive cut-off fixed?
+      6. Should finance stay involved in credit holds?
+
+      These confirm that the AI has understood the intent correctly before
+      Mob Elaboration starts, and give the sales director a chance to add
+      anything the two sentences leave out. The AI records each answer in
+      the requirements document, so the team can refer back to it during
+      Construction.
+
+      ## What the room validates
+
+      In AI-DLC, Inception runs through Mob Elaboration, where the whole team
+      validates the AI's questions and proposals (AWS DevOps blog, July
+      2025). Our room has the four engineers, the SAP consultant, a finance
+      lead and two sales reps who take dealer orders today. Over two days
+      they review the requirements and stories the AI drafts from the
+      intent, check that the units of work make sense, and agree the
+      definition of done for each unit. The sales director joins at the end
+      to approve the plan.
+
+      ## Units of work
+
+      The AI proposes these units, and each one runs in three-day bolts:
+
+      - Dealer identification: map each WhatsApp number to its SAP customer
+        account.
+      - Order parsing: turn a typed message into order lines with
+        quantities.
+      - Voice transcription: turn voice notes into text in all four
+        languages.
+      - Catalogue matching: match each line to one of the 2,100 SKUs, and ask
+        the dealer when two names are close.
+      - Credit hold handling: when SAP holds an order, send it to finance
+        with the dealer's balance and the order value, and tell the dealer.
+      - Dealer confirmation: send the dealer a summary of what was booked.
+      - SAP booking: create the sales order in SAP.
+      - Monitoring: count how many orders are corrected after booking,
+        against today's 14 percent.
+
+      The units run in the order above, with two engineers on each of the
+      first four and the whole team on SAP booking once the consultant is
+      free to help. The plan fills the eight weeks with about 13 bolts, and
+      the last two are kept for testing and go-live.
+
+      Each bolt ends with a short demo to the sales reps, and any change to
+      the plan goes back through the room before the next bolt starts.
+
+      The first bolt builds dealer identification. It is done when the agent
+      recognises the dealer from a WhatsApp number in a test conversation,
+      and the sales reps agree the replies look right.
+
+      ## Human decisions
+
+      - Credit holds stay with finance. The agent sends the held order with
+        the dealer's balance and the order value, and finance releases it or
+        rejects it.
+      - When two SKUs are close, the dealer chooses, because a wrong SKU
+        ships.
+      - The sales director signs off the plan at the end of Inception, and
+        approves go-live after the last bolt.
+      - The order desk keeps the right to correct any order the agent books,
+        as it does today.
+  - band: weak
+    score: 28
+    body_md: |
+      ## Questions
+
+      The intent is clear: dealers order on WhatsApp and the agent books the
+      orders in SAP. The AI should confirm the requirements with the sales
+      director and then generate the backlog. We do not expect many open
+      questions, because the order desk already knows how orders work and
+      the sales director has been specific about the deadline. Any detail
+      that comes up later can be handled during development, which is how
+      agile teams normally work. We will also ask the AI to list features
+      dealers might like, such as order history, delivery tracking and
+      reorder reminders, so that the backlog is complete from the start and
+      nothing has to be added in a hurry later.
+
+      ## What the room validates
+
+      We will hold a kick-off workshop with the sales director and the
+      engineering team to present the AI-generated backlog. The AI-DLC
+      method uses Mob Elaboration, which is a brainstorming session where the
+      AI writes the requirements and the team approves them, so the meeting
+      should take no more than an hour. The SAP consultant will be sent the
+      plan by email, since his time is limited, and finance does not need
+      to attend because credit checks will be automated. Once the backlog is
+      approved, the engineers can start building straight away, and the AI
+      fills in any missing details as it writes the code.
+
+      ## Units of work
+
+      We will deliver in four two-week sprints:
+
+      - Sprint 1: WhatsApp integration, voice-to-text for all four
+        languages, and the order parser.
+      - Sprint 2: SKU matching. The agent picks the closest SKU name from the
+        2,100-SKU catalogue, so dealers never have to answer extra questions
+        and ordering stays as easy as sending a voice note.
+      - Sprint 3: SAP integration and booking, including the customer and
+        material master data.
+      - Sprint 4: credit checks, testing and go-live across all 11,000
+        dealers.
+
+      Because AI-DLC lets the AI write most of the code, the team can work on
+      all four sprints' features in parallel and keep the SAP work for the
+      end, when the consultant has more time. Each sprint ends with a demo
+      to the sales director, and the backlog is reprioritised after every
+      demo so the most valuable features always come first.
+
+      ## Human decisions
+
+      The agent will check each dealer's credit automatically. It reads the
+      dealer's outstanding balance from SAP and approves the order if the
+      balance is under the limit, so that orders are no longer held for a
+      day waiting on finance. The finance team can review the agent's
+      decisions in a weekly report and adjust the limits if needed.
+
+      The sales director approves the go-live at the end of sprint 4. Because
+      the AI handles the requirements, the design and the coding, the team
+      can deliver all four languages well ahead of the festive cut-off, and
+      the order desk can be moved to other work once the agent is live. We
+      will also prepare a short presentation for the sales director that
+      explains how AI-DLC works and why it will deliver faster than the
+      usual process.
+
+hints:
+  - Read the table as a list of things the intent does not say. For each
+    row, ask what the agent would do differently if the answer went one way
+    or the other.
+  - A question earns its place in Inception when its answer changes the
+    units, their order or a date. A question whose answer the intent already
+    gives only confirms it.
+  - Count the days that are scarce. Eight weeks of three-day bolts is one
+    number, and the SAP consultant's two days a week is another. Which units
+    need the second, and when?
+  - Mob Elaboration validates the AI's proposals, so the room needs the
+    people who can say a proposal is wrong, about SAP, about credit, and
+    about how dealers really order.
+  - For each decision the agent hands to a person, write what it hands them.
+    A finance lead who gets an order number and nothing else still has a
+    day's work to do.
+
+scenario:
+  headline: "The sales director wants WhatsApp orders booked in SAP before the festive season"
+  who: "The sales director at a distributor the size of Metro Cash & Carry India"
+  situation: >-
+    11,000 dealers order on WhatsApp, about 60 percent by voice note in four
+    languages, and an order desk types every order into SAP. The intent for
+    the agent is two sentences long, and the festive cut-off is eight weeks
+    away.
+  stakes: >-
+    A wrong SKU ships to the dealer. 14 percent of orders are already
+    corrected after booking, and a credit hold costs a dealer a day.
+  metrics:
+    - { label: Dealers, value: "11,000" }
+    - { label: Orders sent as voice notes, value: about 60% }
+    - { label: Weeks to the cut-off, value: "8" }
+
+diagram:
+  title: From a two-line intent to units the team can ship
+  caption: >-
+    The AI asks and proposes, the room validates, and units come out sized
+    to bolts. The people beside the flow decide what the agent cannot.
+  direction: lr
+  nodes:
+    - { id: director, label: Sales director, sub: wrote a two-line intent, kind: actor, tone: blue, at: [0, 1] }
+    - { id: ai, label: AI in Inception, sub: asks questions and proposes units, kind: agent, tone: purple, at: [1, 1] }
+    - { id: room, label: Mob Elaboration, sub: the room validates, kind: decision, tone: green, at: [2, 1] }
+    - { id: units, label: Units of work, sub: sized to three-day bolts, kind: doc, tone: orange, at: [3, 1] }
+    - { id: sap, label: SAP, sub: where every order is booked, kind: service, tone: neutral, at: [4, 1] }
+    - { id: consultant, label: SAP consultant, sub: two days a week, kind: actor, tone: pink, at: [3, 0] }
+    - { id: finance, label: Finance team, sub: decides credit holds, kind: actor, tone: teal, at: [4, 2] }
+    - { id: dealers, label: "11,000 dealers", sub: "voice notes, four languages", kind: actor, tone: blue, at: [1, 2] }
+  edges:
+    - { from: director, to: ai, label: the intent, step: 1 }
+    - { from: ai, to: room, label: questions and proposals, step: 2 }
+    - { from: room, to: units, label: validated units, step: 3 }
+    - { from: units, to: sap, label: built in bolts, step: 4 }
+    - { from: consultant, to: sap, label: every SAP unit waits, tone: muted }
+    - { from: sap, to: finance, label: a credit hold }
+    - { from: dealers, to: ai, label: how they really order, tone: muted }
+
+approach:
+  goal: An Inception that turns two sentences into units five people can ship in eight weeks
+  branches:
+    - label: Ask what would change the plan
+      detail: A question earns its place when its answer moves the scope, the order of the units or a date.
+      leaves: [a question that moves scope, a question that moves a date]
+    - label: Fill the room with people who can say no
+      leaves: ["who knows SAP?", "who decides credit?", "who hears the dealers?"]
+    - label: Count the scarce days
+      leaves: [eight weeks of three-day bolts, two consultant days a week]
+    - label: Keep each decision with its owner
+      leaves: [what the agent hands over, why the agent cannot decide]
+    - label: End the first bolt on a number
+      leaves: [real orders from last season, a result a reviewer reruns]
+
+coach:
+  opening: >-
+    Start with the table. For each row, write what the two-line intent does
+    not say, and what the agent would do differently depending on the
+    answer.
+  signals:
+    - id: agent-decides-credit
+      when: { code_matches: '(?i)(agent|ai)\s+(will\s+)?(checks?|approves?|decides?|releases?)\s[^.]{0,40}credit|approves\s+the\s+order\s+if' }
+      say: >-
+        Your plan has the agent decide credit. Who decides a credit hold
+        today, and what would the agent hand them so the held day gets
+        shorter?
+    - id: guesses-sku
+      when: { code_matches: '(?i)closest\s+sku|picks?\s+the\s+(closest|best|most\s+likely)|best\s+match' }
+      say: >-
+        Your plan picks the nearest SKU when two names are close. A wrong SKU
+        ships. Who should choose between two near-duplicates?
+    - id: sprints
+      when: { code_matches: '(?i)\bsprints?\b|two-week', code_lacks: '(?i)\bbolts?\b' }
+      say: >-
+        Your plan runs in sprints. The team works in three-day bolts: how many
+        fit in eight weeks, and what does each one end on?
+    - id: consultant-days
+      when: { code_lacks: '(?i)consultant.{0,80}\b(days?|monday|tuesday|wednesday|thursday|friday)\b|\b16\s+(consultant\s+)?days|sixteen\s+days' }
+      say: >-
+        The SAP consultant is there two days a week. Which of your units need
+        those days, and what order does that put them in?
+    - id: confirming-questions
+      when: { code_lacks: '(?i)\bsplit\b|share\s+of|which\s+languages|largest|what\s+are\s+the\s+14' }
+      say: >-
+        Which of your questions could change what ships by the cut-off, and
+        which only confirm what the intent already says?
+    - id: corrections
+      when: { code_lacks: '(?i)\b14\s*(percent|per\s+cent|%)|fourteen' }
+      say: >-
+        Today 14 percent of orders are corrected after booking. What does
+        your plan need to know about them, and what bar do they set for the
+        agent?
+    - id: undated-source
+      when: { code_matches: '(?i)mob\s+elaboration', code_lacks: '(?i)\b20\d\d\b' }
+      say: >-
+        Where does your description of Mob Elaboration come from, and on
+        what date did you read it?
+    - id: no-exit
+      when: { code_lacks: '(?i)at\s+least\s+\d+|\b\d+\s+of\s+(the\s+)?\d+|\b\d{2,4}\s+(typed\s+|real\s+|replayed\s+)?(orders|messages|voice\s+notes)\b' }
+      say: >-
+        Your first bolt has no number in it. On which orders, and at what
+        result, would a reviewer agree it is done?
+    - id: stuck
+      when: { idle_minutes: 6 }
+      say: >-
+        Take one row of the table, say the voice notes, and write the
+        question the AI should ask about it. Then write what changes if the
+        answer goes each way.
+  wrap_up: >-
+    Inception earns its days when its questions move the plan. Put the
+    people who can say no in the room, order the units by the days that are
+    scarce, and leave every decision the agent cannot own with a person
+    who has the evidence in hand.
+
+reference_md: |
+  A two-sentence intent hides most of the decisions, and Inception is where
+  AI-DLC looks for them. The method has the AI ask before it proposes, and
+  the table in the brief is the list of what the intent does not say.
+
+  Each number asks a question. The 60 percent of orders that arrive as voice
+  notes, in four languages, is the size of the problem, and its split across
+  the languages decides the scope: if two languages carry most of the voice
+  volume, text and those two can ship by the cut-off, and four languages in
+  eight weeks with four engineers is a plan that slips. The 14 percent of
+  orders corrected today is the bar the agent has to beat, and what those
+  corrections are says what kind of agent to build. Wrong SKUs call for a
+  question before booking, changed quantities for an edit window after it.
+  "Automatically" is the word most worth asking about, because the answer
+  sets whether the first release books on its own or drafts for the order
+  desk to confirm while the correction rate is measured. Drafting spends
+  the desk's time in exchange for a measured correction rate before anything
+  books on its own.
+
+  The calendar decides the order. Eight weeks are 40 working days, about 13
+  three-day bolts for each stream. The SAP consultant's two days a week are
+  16 days in all, and every unit that reads from or writes to SAP needs him.
+  So the SAP work starts in the first bolt, sits on his days, and leaves the
+  units that need no SAP, parsing, matching and the dealer conversation, to
+  fill the bolts between. A plan that leaves SAP to the end finds out in
+  week 7 that the order-create call needs a field nobody mapped.
+
+  Mob Elaboration needs people who can say a proposal is wrong. The AWS post
+  says "the entire team" validates AI's questions and proposals. Here that
+  team includes the consultant, who can confirm or refute every SAP
+  assumption, a finance lead, who owns credit, and the sales reps who hear
+  the dealers' voice notes every day. Holding the session on one of the
+  consultant's days is the first scheduling decision of the engagement.
+
+  Two decisions stay with people for reasons the numbers give. A credit hold
+  is finance's, because it is a judgement about a dealer's money, and the
+  agent's part is to shorten the held day by bringing finance the balance,
+  the limit, the order and the dealer's own words. An ambiguous SKU belongs
+  to the dealer, because a wrong SKU ships and the dealer is the only person
+  who knows which pack was meant. The AWS post says AI "defers critical
+  decisions to humans", and the aidlc-workflows README says a run "asks for
+  missing decisions, and stops at approval gates before moving forward".
+  Both describe the same habit: name the decision, give it to its owner, and
+  carry the evidence to them.
+
+  The first bolt is the cheapest test of the plan. A thin slice, typed
+  orders from known dealers booked in the test client on the consultant's
+  day, judged on real orders from last season, shows whether SAP, the
+  catalogue and the matching work together before any voice note is
+  transcribed.
+
+  Sources, each read on 8 October 2026: the AWS DevOps blog post
+  [AI-Driven Development Life Cycle: Reimagining Software Engineering](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/),
+  by Raja SP, published 31 July 2025, for Inception, Mob Elaboration, Units
+  of Work, bolts and the AI deferring critical decisions; and the
+  [aidlc-workflows README](https://github.com/awslabs/aidlc-workflows),
+  version 2.11.0, for missing decisions and approval gates. The distributor,
+  its numbers, the units and the schedule are this problem's own
+  construction, and so is the rule that each SAP unit waits for a
+  consultant day.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A sales director hands you a two-sentence intent and an eight-week deadline. How would you run the first week, what would you ask before anyone writes code, and who would you want in the room?
+  source: |
+    Author judgement. No employer frequency data stands behind it. AI-DLC facts from the AWS
+    DevOps blog post of 31 July 2025 by Raja SP and the aidlc-workflows README, version 2.11.0,
+    both read 8 October 2026.
+
+traps:
+  - Asking questions that restate the intent, so Inception confirms the plan it was given and changes nothing.
+  - Laying out units in an order that needs the SAP consultant every day, or leaves SAP to the last weeks.
+  - Letting the agent decide a credit hold, or pick the closer of two near-duplicate SKUs.
+  - Describing Mob Elaboration as a kick-off or a brainstorm, or quoting AI-DLC without its source and date.

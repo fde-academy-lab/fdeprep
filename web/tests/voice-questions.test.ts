@@ -1,7 +1,7 @@
 /**
  * The launch voice set and the gate that checks it.
  *
- * Two halves. The twelve authored questions have to validate and have to match
+ * Two halves. The fourteen authored questions have to validate and have to match
  * the docs/07 section 11 distribution. The validator has to reject the things
  * it exists to reject, because a validator that only ever passes is a file
  * that runs in CI and tests nothing.
@@ -93,15 +93,15 @@ describe("the authored launch set", () => {
       "tool-schema-design": 2,
       "evaluation-design": 2,
       "system-design": 2,
-      "client-communication": 3,
+      "client-communication": 5,
     });
   });
 
-  it("has twelve questions with unique slugs", async () => {
+  it("has fourteen questions with unique slugs", async () => {
     const all = await loadAll();
-    expect(all).toHaveLength(12);
+    expect(all).toHaveLength(14);
     const slugs = all.map(({ source }) => /^slug: (.+)$/m.exec(source)?.[1]);
-    expect(new Set(slugs).size).toBe(12);
+    expect(new Set(slugs).size).toBe(14);
   });
 
   // docs/07 section 6 reports delivery and scores none of it. The rubric is

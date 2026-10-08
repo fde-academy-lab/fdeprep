@@ -46,7 +46,11 @@ FORBIDDEN_ATTRS = ("system", "popen", "spawn", "fork", "__subclasses__", "__glob
 # the boundary. The scripted model and the trace are not in the sandbox's
 # process at all, and the sandbox starts with no credentials in reach
 # (runner/battery/host.py), so a route this list misses reaches nothing.
-MODULE_ROUTE_ATTRS = ("sys", "os", "builtins", "bltns", "importlib", "inspect", "io")
+MODULE_ROUTE_ATTRS = ("sys", "os", "builtins", "bltns", "importlib", "inspect", "io",
+                      # The routes the agent frameworks open: logging.threading,
+                      # checkpoint.memory.pickle and .shutil, and asyncio's
+                      # events.subprocess and .socket. Added 1 October 2026.
+                      "logging", "pickle", "shutil", "asyncio")
 
 # docs/03 section 9.1 says learner code can read anything staged into its own
 # process, and the harness objects are staged into it. Assertions are not, so

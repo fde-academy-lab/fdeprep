@@ -1,0 +1,754 @@
+slug: build-a-golden-set-from-a-weeks-failures
+title: "Build a golden set from a week's failures"
+day: 21
+skill: Turn fixed failures into scrubbed, distinct, unseen golden cases spread across types
+artefact_type: code
+difficulty: hard
+track: evals
+concept:
+  topic: "Golden sets from failures"
+  question: "Which of last week's failures belong in the golden set, and in what form?"
+est_minutes: 50
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The support agent at a pharmacy app the size of PharmEasy failed 412 times
+  last week by the QA team's count. It refunded the wrong amounts, promised
+  deliveries that never came, and nine times it answered a dosage question
+  that a pharmacist should have taken. Each failure a person has fixed
+  carries their decision, and the QA lead wants those failures turned into
+  the golden set the next release has to pass.
+
+  Last month's golden set went wrong three ways. The export dropped the
+  customer columns and kept the message text, so the set still held names and
+  phone numbers, and it could not be shared with the vendor who tunes the
+  prompt. Sixty-one of its 140 cases were one templated refund complaint with
+  different order numbers, so the release passed by fixing one template. And
+  18 of its cases were tickets the prompt's worked examples had been written
+  from, so the agent passed them by recognising them.
+
+  Write the job that turns a week of fixed failures into golden cases.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the week, such as `2026-W39`. `llm` is not called.
+
+  `tools["failures"](week=question)` returns the week's failures in the order
+  they arrived, and the cap on cases per failure type:
+
+      {"status": 200, "per_type": 2, "failures": [
+        {"id": "F-3101", "type": "wrong_refund",
+         "text": "Hi, this is Rohan Mehta. My order 4471-2290 had a broken strip ...",
+         "customer": {"name": "Rohan Mehta", "phone": "+91 98200 12345",
+                      "email": "rohan.mehta@example.com"},
+         "agent_action": "refund_partial",
+         "resolution": {"action": "refund_full", "by": "support lead"}}, ...]}
+
+  `resolution` is what the person who fixed the failure decided, and it is
+  `null` when nobody has. `tools["known_examples"]()` returns the texts the
+  prompt's worked examples and the fine-tuning set were written from, with
+  personal data already replaced:
+
+      {"status": 200, "examples": ["Hi, this is <NAME>. My order 1180-3321 ...", ...]}
+
+  Build the set in this order:
+
+  1. Scrub each failure's text. Every email address becomes `<EMAIL>`, then
+     every phone number becomes `<PHONE>`, then the customer's name, and each
+     word of it on its own, becomes `<NAME>`, as whole words in any case. The
+     stub's `EMAIL` and `PHONE` are the policy's patterns.
+  2. A failure with no `resolution.action` is unlabelled, and left out.
+  3. A text's key is its scrubbed form in lower case, with every number
+     replaced by `#` (the stub's `NUMBER`, commas and dots inside a number
+     included) and every run of whitespace replaced by one space, trimmed. A
+     failure whose key matches a known example's key is already known, and
+     left out.
+  4. Failures still in with the same key are near-identical. When their
+     labels disagree, every one of them is conflicting and left out.
+     Otherwise keep the first to arrive, and the rest are duplicates.
+  5. Keep at most `per_type` cases of each failure type, the first to arrive.
+     The rest are over quota.
+
+  Return a JSON string, with the cases in the order they arrived:
+
+      {"cases": [{"id": "F-3101", "type": "wrong_refund",
+                  "input": <the scrubbed text>, "expected": "refund_full"}, ...],
+       "left_out": {"unlabelled": 0, "already_known": 0, "duplicates": 0,
+                    "conflicting": 0, "over_quota": 0}}
+
+  When either tool's answer cannot be read, build nothing and return
+  `{"cases": null, "left_out": null}`.
+
+  Budget: `llm` is not called. Allowed imports: json, re.
+
+defence_question: |
+  Your job drops a whole group of near-identical complaints when two people
+  fixed them in different ways. The QA lead says that throws away the
+  template that fails most often, which is the one the golden set needs
+  most. What would you do with a conflicting group instead of dropping it,
+  who decides its label, and how would you stop the same disagreement
+  arriving again next week?
+
+stub_code: |
+  import json
+  import re
+
+  # The PII policy's patterns, applied in this order: emails, then phone
+  # numbers, then the customer's name and each word of it.
+  EMAIL = re.compile(r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+")
+  PHONE = re.compile(r"(?<!\d)(?:\+91[ -]?|0)?[6-9](?:[ -]?\d){9}(?!\d)")
+
+  # A number, with any commas or dots inside it. A key replaces each with #.
+  NUMBER = re.compile(r"\d[\d,.]*\d|\d")
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Turn this week's fixed failures into golden cases.
+
+      tools["failures"](week=question) returns {"per_type": 2, "failures": [
+          {"id", "type", "text", "customer": {"name", "phone", "email"},
+           "resolution": {"action": ...} or None}, ...]}, in arrival order.
+      tools["known_examples"]() returns {"examples": [<scrubbed texts>, ...]}.
+
+      1. Scrub: EMAIL to <EMAIL>, then PHONE to <PHONE>, then the customer's
+         name and each word of it, as whole words in any case, to <NAME>.
+      2. No resolution action: unlabelled, left out.
+      3. Key: scrubbed text in lower case, each NUMBER as #, whitespace runs
+         as one space, trimmed. A key a known example shares: already_known.
+      4. Same key: near-identical. Labels disagree: all conflicting, left
+         out. Otherwise keep the first to arrive, the rest are duplicates.
+      5. At most per_type cases of each failure type, first to arrive. The
+         rest are over_quota.
+
+      Return json.dumps({"cases": [{"id", "type", "input", "expected"}, ...],
+                         "left_out": {"unlabelled", "already_known",
+                                      "duplicates", "conflicting", "over_quota"}})
+      with cases in arrival order, or {"cases": None, "left_out": None} when
+      either tool cannot be read. llm is not called. Allowed imports: json, re.
+      """
+      return json.dumps({"cases": [], "left_out": {"unlabelled": 0, "already_known": 0,
+                                                   "duplicates": 0, "conflicting": 0,
+                                                   "over_quota": 0}})
+
+hints:
+  - Start from what went wrong last month. A release passed by fixing one
+    template and recognising tickets it had seen, and the set could not be
+    shared with the vendor. Each of the five steps exists to stop one of those.
+  - Personal data lives in what customers wrote, spelled however they chose.
+    A first name on its own, a phone number with its spaces moved and an email
+    in capitals are all still the customer.
+  - The key is your definition of the same case. Build it once per text and
+    use it for both questions, whether two failures are copies and whether a
+    failure is a ticket the prompt already saw.
+  - The order of the steps decides the counts. An unlabelled copy must not
+    stand in for a labelled one, and a duplicate must never take a slot in a
+    failure type's quota.
+  - A store that answers nothing has not answered an empty list. Decide what
+    your job reports when the known examples cannot be read, and what a clean
+    `already_known` count would mean then.
+
+scenario:
+  headline: "61 of the golden set's 140 cases were one refund complaint"
+  who: "The QA lead for the support agent at a pharmacy app the size of PharmEasy"
+  situation: >-
+    Last month's golden set held customers' names and phone numbers, 61
+    copies of one templated refund complaint, and 18 tickets the prompt's
+    worked examples had been written from.
+  stakes: >-
+    The release passed by fixing one template and recognising tickets it had
+    already seen, and the set could not go to the vendor with personal data
+    in it.
+  metrics:
+    - { label: Copies of one complaint, value: "61 of 140" }
+    - { label: Cases the prompt had seen, value: "18" }
+    - { label: Failures last week, value: "412" }
+
+diagram:
+  title: How a week of failures becomes golden cases
+  caption: >-
+    Scrub the free text, compare every text by one key, leave out what is
+    known, disputed or unfixed, and cap each failure type.
+  direction: lr
+  nodes:
+    - { id: failures, label: "A week's failures", sub: "text, customer, a person's fix", kind: store, tone: blue, at: [0, 1] }
+    - { id: scrub, label: Scrub, sub: "emails, phones, then names", kind: guard, tone: green, at: [1, 1] }
+    - { id: known, label: Known examples, sub: what the prompt and fine-tune saw, kind: store, tone: orange, at: [1, 0] }
+    - { id: keyer, label: One key per text, sub: "lower case, numbers as #", kind: guard, tone: purple, at: [2, 1] }
+    - { id: groups, label: Same key, sub: "copies, or a disputed label", kind: decision, tone: neutral, at: [3, 1] }
+    - { id: quota, label: Quota per type, sub: first to arrive up to the cap, kind: guard, tone: teal, at: [4, 1] }
+    - { id: golden, label: Golden set, sub: one right answer per case, kind: output, tone: green, at: [5, 1] }
+    - { id: flood, label: 61 copies of one complaint, sub: what exact text let through, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: failures, to: scrub, label: free text, step: 1 }
+    - { from: scrub, to: keyer, label: scrubbed text, step: 2 }
+    - { from: known, to: keyer, label: compared by key }
+    - { from: keyer, to: groups, label: new and labelled, step: 3 }
+    - { from: groups, to: quota, label: one per case, step: 4 }
+    - { from: quota, to: golden, step: 5, tone: success }
+    - { from: failures, to: flood, label: compared by exact text, tone: danger }
+
+approach:
+  goal: A golden set the next release cannot pass by recognising or repeating
+  branches:
+    - label: Scrub what customers wrote
+      detail: Personal data sits in the free text, spelled the way the customer chose to spell it.
+      leaves: [emails and phone numbers by pattern, "the name, and each word of it, in any case"]
+    - label: Decide what counts as the same case
+      leaves: [one key for every comparison, order numbers and capitals make no new case]
+    - label: Keep out what is known or disputed
+      leaves: [tickets the prompt or fine-tune saw, near-copies fixed two ways, failures nobody fixed]
+    - label: Spread the set across failure types
+      leaves: [a cap per type, a duplicate never takes a slot]
+
+coach:
+  opening: >-
+    Before you write code, decide whether two refund complaints that differ
+    only in their order numbers are one golden case or two, and write down
+    what has to be equal for the answer to be one.
+  signals:
+    - id: no-number-key
+      when: { code_lacks: 'NUMBER\.sub\(|sub\(\s*NUMBER|sub\(\s*r?["''][^"'']*(?:\\d|0-9)' }
+      say: >-
+        Your code never sets numbers aside before comparing two texts. Are
+        two refund complaints that differ only by their order numbers one
+        case or two?
+    - id: case-sensitive
+      when: { code_lacks: 're\.I\b|IGNORECASE|\(\?i\)|\.lower\(\)|\.casefold\(\)' }
+      say: >-
+        Your code scrubs and compares text in the case it arrived in. Does a
+        name typed in lower case, or a template typed without its capital
+        letter, still get caught?
+    - id: copies-counted
+      when: { test_failed: near_copies_with_different_numbers_count_once }
+      say: >-
+        That week held one complaint three times with different order numbers
+        and amounts. How many golden cases did your job make from it?
+    - id: personal-data
+      when: { test_failed: personal_data_in_any_form_is_removed }
+      say: >-
+        Personal data got through your scrub in that run. Look for a first
+        name on its own, a phone number with its spaces moved, and an email
+        typed in capitals.
+    - id: known-ticket
+      when: { test_failed: a_ticket_the_prompt_was_written_from_stays_out }
+      say: >-
+        One failure that week was a ticket the prompt's examples were written
+        from, with its numbers changed. What does your known-example check
+        actually compare?
+    - id: unfixed-copy
+      when: { test_failed: an_unfixed_copy_does_not_stand_in_for_a_fixed_one }
+      say: >-
+        One complaint that week arrived twice, and the first copy was never
+        fixed. Which copy did your job keep, and does it carry a label?
+    - id: disputed-label
+      when: { test_failed: adversarial_two_people_labelled_one_complaint_differently }
+      say: >-
+        Two people fixed the same complaint in two different ways. Which label
+        did your golden case carry, and who decided it was the right one?
+    - id: nothing-checked
+      when: { test_failed: adversarial_the_known_examples_cannot_be_read }
+      say: >-
+        The store of known examples answered with nothing. What did your job
+        then report as clean, and what had it checked?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the first public case. Print each failure's text after your
+        scrub, and the key you build from it, before deciding anything.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. The first hint starts from what went wrong
+        with last month's golden set.
+  wrap_up: >-
+    A golden case promises one right answer to a question the release has not
+    seen. Scrub what customers wrote, compare everything by one key, leave out
+    what is known, disputed or unfixed, and cap each failure type.
+
+tests:
+  - name: builds_a_set_from_a_small_week
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "2026-W36" }
+      llm_script:
+        - { match: "*", reply: "The golden set job does not call the model." }
+      tools:
+        failures:
+          returns:
+            status: 200
+            per_type: 2
+            failures:
+              - id: "F-3101"
+                type: wrong_refund
+                text: "Hi, this is Rohan Mehta. My order 4471-2290 had a broken strip of paracetamol and I was refunded ₹40 instead of ₹120. Call me on +91 98200 12345."
+                customer: { name: "Rohan Mehta", phone: "+91 98200 12345", email: "rohan.mehta@example.com" }
+                agent_action: refund_partial
+                resolution: { action: refund_full, by: "support lead" }
+              - id: "F-3102"
+                type: missed_escalation
+                text: "Anita Rao here. I asked if I can take ibuprofen with my blood pressure tablets and the chat said yes. Reply to anita.rao@example.com please."
+                customer: { name: "Anita Rao", phone: "+91 99001 23456", email: "anita.rao@example.com" }
+                agent_action: answer_directly
+                resolution: { action: escalate_pharmacist, by: pharmacist }
+              - id: "F-3103"
+                type: wrong_refund
+                text: "Hi, this is Rohan Mehta. My order 4471-2290 had a broken strip of paracetamol and I was refunded ₹40 instead of ₹120. Call me on +91 98200 12345."
+                customer: { name: "Rohan Mehta", phone: "+91 98200 12345", email: "rohan.mehta@example.com" }
+                agent_action: refund_partial
+                resolution: { action: refund_full, by: "support lead" }
+              - id: "F-3104"
+                type: wrong_eta
+                text: "This is Imran Sheikh. Order 5120-4471 was promised by 6 pm and the chat keeps saying out for delivery. It is 10 pm."
+                customer: { name: "Imran Sheikh", phone: "+91 98450 11223", email: "imran.sheikh@example.com" }
+                agent_action: explain_policy
+                resolution: { action: escalate_courier, by: "support lead" }
+              - id: "F-3105"
+                type: unsafe_advice
+                text: "Sara Thomas here. The chat told me to double my thyroid dose if I missed one. Is that right?"
+                customer: { name: "Sara Thomas", phone: "+91 97400 55667", email: "sara.thomas@example.com" }
+                agent_action: answer_directly
+                resolution: null
+        known_examples:
+          returns:
+            status: 200
+            examples:
+              - "Hi, this is <NAME>. My order 1180-3321 arrived without the cold pack for my insulin. Please call <PHONE>."
+              - "The app says my prescription for amoxicillin is verified but nobody has called me. Order 2201-7716."
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [cases, left_out],
+                      properties: { cases: { type: array,
+                                             items: { type: object, required: [id, type, input, expected] } },
+                                    left_out: { type: object,
+                                                required: [unlabelled, already_known, duplicates, conflicting, over_quota] } } } }
+        - { type: returns_matches, value: '"F-3101".*"F-3102".*"F-3104"' }
+        - { type: returns_lacks, value: '"F-3103"|"F-3105"' }
+        - { type: returns_matches, value: '"expected":\s*"escalate_pharmacist"' }
+        - { type: returns_matches, value: '"duplicates":\s*1\b' }
+        - { type: returns_matches, value: '"unlabelled":\s*1\b' }
+        - { type: returns_lacks, value: 'Rohan|98200|anita\.rao' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: leaves_out_what_the_prompt_already_shows
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "2026-W37" }
+      llm_script:
+        - { match: "*", reply: "The golden set job does not call the model." }
+      tools:
+        failures:
+          returns:
+            status: 200
+            per_type: 1
+            failures:
+              - id: "F-3201"
+                type: wrong_refund
+                text: "Hi, this is Divya Nair. My order 1180-3321 arrived without the cold pack for my insulin. Please call 9811122233."
+                customer: { name: "Divya Nair", phone: "9811122233", email: "divya.nair@example.com" }
+                agent_action: explain_policy
+                resolution: { action: refund_partial, by: "support lead" }
+              - id: "F-3202"
+                type: wrong_refund
+                text: "Hello, Manoj Pillai here. I returned an unopened inhaler a week ago and the refund has not arrived."
+                customer: { name: "Manoj Pillai", phone: "+91 98100 44556", email: "manoj.pillai@example.com" }
+                agent_action: explain_policy
+                resolution: { action: refund_full, by: "support lead" }
+              - id: "F-3203"
+                type: wrong_refund
+                text: "This is Sneha Kapoor. I was charged twice for order 3390-1182 and refunded once."
+                customer: { name: "Sneha Kapoor", phone: "+91 98330 77889", email: "sneha.kapoor@example.com" }
+                agent_action: explain_policy
+                resolution: { action: refund_full, by: "support lead" }
+              - id: "F-3204"
+                type: missed_escalation
+                text: "Ravi Menon here. My metformin came in a different strength from the one my doctor wrote, and the chat said it was fine."
+                customer: { name: "Ravi Menon", phone: "+91 99860 33221", email: "ravi.menon@example.com" }
+                agent_action: answer_directly
+                resolution: { action: escalate_pharmacist, by: pharmacist }
+        known_examples:
+          returns:
+            status: 200
+            examples:
+              - "Hi, this is <NAME>. My order 1180-3321 arrived without the cold pack for my insulin. Please call <PHONE>."
+              - "The app says my prescription for amoxicillin is verified but nobody has called me. Order 2201-7716."
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"F-3202".*"F-3204"' }
+        - { type: returns_lacks, value: '"F-3201"|"F-3203"' }
+        - { type: returns_matches, value: '"already_known":\s*1\b' }
+        - { type: returns_matches, value: '"over_quota":\s*1\b' }
+
+  - name: near_copies_with_different_numbers_count_once
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-W38" }
+      llm_script:
+        - { match: "*", reply: "The golden set job does not call the model." }
+      tools:
+        failures:
+          returns:
+            status: 200
+            per_type: 2
+            failures:
+              - id: "F-3301"
+                type: wrong_refund
+                text: "Hi, this is Meera Pillai. I was refunded ₹40 instead of ₹120 for order 4471-2290."
+                customer: { name: "Meera Pillai", phone: "+91 98201 11002", email: "meera.pillai@example.com" }
+                agent_action: refund_partial
+                resolution: { action: refund_full, by: "support lead" }
+              - id: "F-3302"
+                type: wrong_refund
+                text: "Hi, this is Arjun Das. I was refunded ₹65 instead of ₹1,240 for order 5512-0081."
+                customer: { name: "Arjun Das", phone: "+91 98202 22003", email: "arjun.das@example.com" }
+                agent_action: refund_partial
+                resolution: { action: refund_full, by: "support lead" }
+              - id: "F-3303"
+                type: wrong_refund
+                text: "hi, this is Kabir Malhotra.  I was refunded ₹90 instead of ₹980 for order 6610-2345."
+                customer: { name: "Kabir Malhotra", phone: "+91 98203 33004", email: "kabir.malhotra@example.com" }
+                agent_action: refund_partial
+                resolution: { action: refund_full, by: "support lead" }
+              - id: "F-3304"
+                type: wrong_refund
+                text: "This is Tara Singh. The refund for my damaged inhaler went to a card I closed last year. Order 7701-1120."
+                customer: { name: "Tara Singh", phone: "+91 98204 44005", email: "tara.singh@example.com" }
+                agent_action: explain_policy
+                resolution: { action: refund_full, by: "support lead" }
+              - id: "F-3305"
+                type: unsafe_advice
+                text: "Lata Gupta here. My son is 6 and the chat told me to give him half an adult dose of cough syrup. Order 2290-6614."
+                customer: { name: "Lata Gupta", phone: "+91 98205 55006", email: "lata.gupta@example.com" }
+                agent_action: answer_directly
+                resolution: { action: escalate_pharmacist, by: pharmacist }
+        known_examples:
+          returns:
+            status: 200
+            examples:
+              - "Hi, this is <NAME>. My order 1180-3321 arrived without the cold pack for my insulin. Please call <PHONE>."
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"F-3301".*"F-3304".*"F-3305"' }
+        - { type: returns_lacks, value: '"F-3302"|"F-3303"' }
+        - { type: returns_matches, value: '"duplicates":\s*2\b' }
+        - { type: returns_matches, value: '"over_quota":\s*0\b' }
+
+  - name: personal_data_in_any_form_is_removed
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-W39" }
+      llm_script:
+        - { match: "*", reply: "The golden set job does not call the model." }
+      tools:
+        failures:
+          returns:
+            status: 200
+            per_type: 2
+            failures:
+              - id: "F-3401"
+                type: missed_escalation
+                text: "Pooja Iyer here. My mother's insulin from order 3301-8890 arrived warm. Pooja again: call 9987045612 or my brother on 98110-22334, or write to POOJA.IYER@example.com."
+                customer: { name: "Pooja Iyer", phone: "+91 99870 45612", email: "pooja.iyer@example.com" }
+                agent_action: explain_policy
+                resolution: { action: escalate_pharmacist, by: pharmacist }
+              - id: "F-3402"
+                type: wrong_eta
+                text: "This is Farhan Ali. Order 4420-1907 was due yesterday and the chat says it is still being packed."
+                customer: { name: "Farhan Ali", phone: "+91 98451 66778", email: "farhan.ali@example.com" }
+                agent_action: explain_policy
+                resolution: { action: escalate_courier, by: "support lead" }
+        known_examples:
+          returns:
+            status: 200
+            examples:
+              - "The app says my prescription for amoxicillin is verified but nobody has called me. Order 2201-7716."
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"F-3401".*"F-3402"' }
+        - { type: returns_lacks, value: '(?i)pooja' }
+        - { type: returns_lacks, value: '(?i)iyer' }
+        - { type: returns_lacks, value: '9987045612' }
+        - { type: returns_lacks, value: '98110' }
+        - { type: returns_matches,
+            value: '<NAME> again: call <PHONE> or my brother on <PHONE>, or write to <EMAIL>\.' }
+
+  - name: a_ticket_the_prompt_was_written_from_stays_out
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-W40" }
+      llm_script:
+        - { match: "*", reply: "The golden set job does not call the model." }
+      tools:
+        failures:
+          returns:
+            status: 200
+            per_type: 2
+            failures:
+              - id: "F-3501"
+                type: policy_error
+                text: "hi, I am Sunil Verma. the app cancelled my order 8812-3004 for ₹640 because my prescription was 'unclear', but it was a printed one."
+                customer: { name: "Sunil Verma", phone: "+91 98206 77889", email: "sunil.verma@example.com" }
+                agent_action: decline
+                resolution: { action: escalate_pharmacist, by: pharmacist }
+              - id: "F-3502"
+                type: policy_error
+                text: "Nisha Reddy here. The app will not accept a prescription photo taken in portrait mode."
+                customer: { name: "Nisha Reddy", phone: "+91 98207 88990", email: "nisha.reddy@example.com" }
+                agent_action: decline
+                resolution: { action: explain_policy, by: "support lead" }
+              - id: "F-3503"
+                type: wrong_eta
+                text: "This is Deepak Joshi. Order 6120-3348 shows delivered but nothing came."
+                customer: { name: "Deepak Joshi", phone: "+91 98208 99001", email: "deepak.joshi@example.com" }
+                agent_action: explain_policy
+                resolution: { action: escalate_courier, by: "support lead" }
+        known_examples:
+          returns:
+            status: 200
+            examples:
+              - "Hi, this is <NAME>. My order 1180-3321 arrived without the cold pack for my insulin. Please call <PHONE>."
+              - "The app says my prescription for amoxicillin is verified but nobody has called me. Order 2201-7716."
+              - "Hi, I am <NAME>. The app cancelled my order 2290-1145 for ₹1,860 because my prescription was 'unclear', but it was a printed one."
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"F-3502".*"F-3503"' }
+        - { type: returns_lacks, value: '"F-3501"' }
+        - { type: returns_matches, value: '"already_known":\s*1\b' }
+
+  - name: an_unfixed_copy_does_not_stand_in_for_a_fixed_one
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "2026-W43" }
+      llm_script:
+        - { match: "*", reply: "The golden set job does not call the model." }
+      tools:
+        failures:
+          returns:
+            status: 200
+            per_type: 2
+            failures:
+              - id: "F-3801"
+                type: wrong_eta
+                text: "This is Priya Nair. Order 7731-0042 was promised by 6 pm and the chat keeps saying out for delivery. It is 10 pm."
+                customer: { name: "Priya Nair", phone: "+91 98215 76778", email: "priya.nair@example.com" }
+                agent_action: explain_policy
+                resolution: null
+              - id: "F-3802"
+                type: wrong_eta
+                text: "This is Karan Mehta. Order 8820-1193 was promised by 6 pm and the chat keeps saying out for delivery. It is 10 pm."
+                customer: { name: "Karan Mehta", phone: "+91 98216 87889", email: "karan.mehta@example.com" }
+                agent_action: explain_policy
+                resolution: { action: escalate_courier, by: "support lead" }
+              - id: "F-3803"
+                type: unsafe_advice
+                text: "Rekha Iyer here. The chat said I can take two sleeping tablets if one does not work."
+                customer: { name: "Rekha Iyer", phone: "+91 98217 98990", email: "rekha.iyer@example.com" }
+                agent_action: answer_directly
+                resolution: { action: escalate_pharmacist, by: pharmacist }
+        known_examples:
+          returns:
+            status: 200
+            examples:
+              - "The app says my prescription for amoxicillin is verified but nobody has called me. Order 2201-7716."
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"F-3802".*"F-3803"' }
+        - { type: returns_lacks, value: '"F-3801"' }
+        - { type: returns_matches, value: '"unlabelled":\s*1\b' }
+        - { type: returns_matches, value: '"duplicates":\s*0\b' }
+
+  - name: adversarial_two_people_labelled_one_complaint_differently
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      Three customers sent the same templated complaint with different order
+      numbers, and the people who fixed them did not agree: two refunded in
+      full and one refunded part. Each label is well formed and stated with
+      complete confidence, and at least one of them is wrong.
+
+      Keeping the first copy makes the golden set's answer depend on which
+      customer happened to write first, and the release is then graded
+      against a decision nobody made on purpose. A near-identical group with
+      two labels has no right answer yet, so all three are left out and
+      counted as conflicting, which is the number that tells the policy owner
+      there is something to decide.
+    spec:
+      kind: agent_run
+      input: { question: "2026-W41" }
+      llm_script:
+        - { match: "*", reply: "The golden set job does not call the model." }
+      tools:
+        failures:
+          returns:
+            status: 200
+            per_type: 2
+            failures:
+              - id: "F-3601"
+                type: wrong_refund
+                text: "Hi, this is Nikhil Bose. My order 2231-9087 had one strip missing and I was refunded ₹30 instead of ₹180."
+                customer: { name: "Nikhil Bose", phone: "+91 98209 10112", email: "nikhil.bose@example.com" }
+                agent_action: refund_partial
+                resolution: { action: refund_full, by: "support lead" }
+              - id: "F-3602"
+                type: wrong_refund
+                text: "Hi, this is Leela Krishnan. My order 4019-2276 had one strip missing and I was refunded ₹55 instead of ₹260."
+                customer: { name: "Leela Krishnan", phone: "+91 98210 21223", email: "leela.krishnan@example.com" }
+                agent_action: refund_partial
+                resolution: { action: refund_partial, by: "support agent" }
+              - id: "F-3603"
+                type: wrong_refund
+                text: "Hi, this is Ajay Kumar. My order 7140-5512 had one strip missing and I was refunded ₹20 instead of ₹140."
+                customer: { name: "Ajay Kumar", phone: "+91 98211 32334", email: "ajay.kumar@example.com" }
+                agent_action: refund_partial
+                resolution: { action: refund_full, by: "support lead" }
+              - id: "F-3604"
+                type: missed_escalation
+                text: "Zoya Mirza here. The chat said I can stop my antibiotics once I feel better."
+                customer: { name: "Zoya Mirza", phone: "+91 98212 43445", email: "zoya.mirza@example.com" }
+                agent_action: answer_directly
+                resolution: { action: escalate_pharmacist, by: pharmacist }
+              - id: "F-3605"
+                type: wrong_refund
+                text: "This is Varun Shah. I cancelled order 3108-7722 before dispatch and was charged a ₹49 fee anyway."
+                customer: { name: "Varun Shah", phone: "+91 98213 54556", email: "varun.shah@example.com" }
+                agent_action: explain_policy
+                resolution: { action: refund_partial, by: "support lead" }
+        known_examples:
+          returns:
+            status: 200
+            examples:
+              - "The app says my prescription for amoxicillin is verified but nobody has called me. Order 2201-7716."
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"F-3604".*"F-3605"' }
+        - { type: returns_lacks, value: '"F-360[123]"' }
+        - { type: returns_matches, value: '"conflicting":\s*3\b' }
+        - { type: returns_matches, value: '"duplicates":\s*0\b' }
+
+  - name: adversarial_the_known_examples_cannot_be_read
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The store of known examples answered with nothing at all. Read as an
+      empty list, it says the prompt and the fine-tuning set contain none of
+      this week's tickets, and every failure passes the check that last
+      month's 18 would have failed.
+
+      A golden set exists to be trusted without rechecking, so one built
+      without its contamination check reports a clean number it never
+      measured. The job builds nothing and returns null, which costs a day
+      and says exactly why.
+    spec:
+      kind: agent_run
+      input: { question: "2026-W42" }
+      llm_script:
+        - { match: "*", reply: "The golden set job does not call the model." }
+      tools:
+        failures:
+          returns:
+            status: 200
+            per_type: 2
+            failures:
+              - id: "F-3701"
+                type: wrong_refund
+                text: "Hi, this is Gita Rao. My order 1180-3321 arrived without the cold pack for my insulin. Please call 9811133344."
+                customer: { name: "Gita Rao", phone: "9811133344", email: "gita.rao@example.com" }
+                agent_action: explain_policy
+                resolution: { action: refund_partial, by: "support lead" }
+              - id: "F-3702"
+                type: wrong_eta
+                text: "This is Salim Khan. Order 5590-2214 was due on Monday and has not left the store."
+                customer: { name: "Salim Khan", phone: "+91 98214 65667", email: "salim.khan@example.com" }
+                agent_action: explain_policy
+                resolution: { action: escalate_courier, by: "support lead" }
+        known_examples: { fixture: empty_tool_result }
+      budget: { max_llm_calls: 1, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"cases":\s*null' }
+        - { type: returns_lacks, value: '"F-37' }
+
+reference_md: |
+  A golden set makes a promise about each case in it: a person decided its
+  right answer, there is only one, and the release being tested has not seen
+  it. Last month's set broke the promise three ways, and all three came from
+  treating the text as the case.
+
+  Personal data lives in what customers wrote, spelled however they chose to
+  spell it. Dropping the customer columns removed one copy and left the rest.
+  The scrub runs on the free text: emails and phone numbers by pattern,
+  because customers paste their relatives' numbers too, and the customer's
+  name and each word of it in any case, because people sign off with a first
+  name. Emails go first because they often contain the name, and a name
+  replaced inside an address leaves an address the email pattern no longer
+  recognises.
+
+  The key is the decision about what counts as the same case. Sixty-one
+  complaints that differ only by order number and amount are one case written
+  sixty-one times, and a release that fixes the template passes all of them.
+  The same key decides whether a failure is a ticket the prompt's examples
+  were written from, which is why it has to be one function used twice: a set
+  deduplicated by key and checked against the prompt by exact text lets the
+  prompt's own tickets back in with their numbers changed. A key is also the
+  cheapest near-duplicate test that can be appealed, because two texts either
+  share one or they do not. Fuzzier matching over word shingles catches more,
+  at the cost of a similarity threshold somebody has to defend.
+
+  The order of the steps sets the counts. Unlabelled failures go first, so an
+  unfixed copy cannot stand in for a fixed one. Copies are merged before the
+  quota, so a template cannot take every slot for its failure type by
+  arriving forty times. A group that two people fixed differently has no
+  right answer yet, and keeping its first copy would make the golden answer a
+  matter of which customer wrote first. It goes to whoever owns the refund
+  policy, and the conflicting count says how many cases are waiting on them.
+
+  A store of known examples that cannot be read is the step most worth
+  failing on. Treated as empty, it produces a set that reports no overlap
+  with the prompt because nothing was compared, which is last month's 18
+  with a cleaner report. Building nothing, and saying why, costs a day.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    You have a week of production failures. How do you turn them into a golden set the next release can be judged on?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: failures
+    args: week
+    returns: '`per_type`, and the week''s `failures` in arrival order, each with `text`, `customer`, `type`
+      and the `resolution` a person chose, or `null`.'
+  - name: known_examples
+    args: ''
+    returns: '`{"status": 200, "examples": [...]}`, the texts the prompt and the fine-tuning set were written
+      from, already scrubbed.'
+example:
+  case: builds_a_set_from_a_small_week
+  expect: Scrub the four labelled failures, leave out the unlabelled one and the repeat of `F-3101`, and
+    return three cases with `left_out` showing one duplicate and one unlabelled.
+traps:
+  - Treating two complaints that differ only by order number and amount as two cases, so one template
+    fills the set.
+  - Scrubbing the customer's details only as the record spells them, so a first name, a reformatted
+    number or a capitalised email survives.
+  - Checking the prompt's examples by exact text, so a ticket the prompt was written from gets back in
+    with new numbers.
+  - Keeping one copy of a complaint that two people fixed in different ways, so the golden answer is a
+    decision nobody made.

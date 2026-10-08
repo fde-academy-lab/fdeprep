@@ -509,7 +509,15 @@ VOICE_TOKEN_SECRET=pick-anything VOICE_SOCKET_URL=ws://localhost:8787 \
 
 Accept at `/voice/consent`, then answer one at `/voice/session?mode=guided`.
 
-`VOICE_STT=scripted` produces placeholder words driven by how loud you are, which makes the whole pipeline visible with no AWS credential. The two `VOICE_TOKEN_SECRET` values have to match, because one end signs the session token and the other verifies it.
+`VOICE_STT=scripted` produces placeholder words driven by how loud you are, which makes the whole pipeline visible with no AWS credential. The two `VOICE_TOKEN_SECRET` values have to match, because one end signs the session token and the other verifies it. Leave `VOICE_STT` out and the socket uses Amazon Transcribe; on a machine with no AWS credentials each Start then ends at once with "The transcriber failed", and terminal 3 prints `Could not load credentials from any providers`.
+
+Scoring calls the judge, and the judge calls Claude on Amazon Bedrock. Terminal 4 as written has no model, so every answer still saves and its debrief still replays, and after three tries, about fifteen seconds, the debrief says the judge could not score it and gives the allowance back. Terminal 4 prints `JUDGE_MODEL_ID is not set` on each try. To score for real, sign the AWS CLI in (`aws login` needs CLI 2.32.0 or newer), make sure the account can call Claude ([DEPLOY.md](DEPLOY.md) step 2), and start the scorer with the model named:
+
+```bash
+cd web && JUDGE_MODEL_ID=us.anthropic.claude-opus-5 AWS_REGION=us-east-1 npm run scorevoice
+```
+
+Each scored answer is two model calls on that account. A typed answer, from **Type the answer instead** on any question, needs neither the socket nor a microphone and is scored the same way.
 
 ## 2.6 Demonstrating it to a room
 
@@ -530,9 +538,9 @@ A five-minute path that shows the product's actual argument rather than its scre
 ```bash
 createdb fdeprep_test
 export TEST_DATABASE_URL="postgres://localhost/fdeprep_test"
-cd web   && npm test                   # 717 tests
-cd ../   && .venv/bin/python -m pytest -q   # 980 tests, some skip, see below
-cd voice && npm test                   # 26 tests
+cd web   && npm test                   # 805 tests
+cd ../   && .venv/bin/python -m pytest -q   # 1035 tests, some skip, see below
+cd voice && npm test                   # 28 tests
 cd ../infra && npm test                # 37 tests
 ```
 
@@ -672,7 +680,7 @@ The worker is also where panelist 2 runs, so run `python scripts/fetch_embedding
 
 The infrastructure is written as CDK in `infra/`, and `cdk deploy` builds both Lambda images itself. **A human runs the deploy.**
 
-1. Deploy the stack exactly as Route C steps C1 to C4 describe. Read `docs/05-DEPLOY-AND-OPS.md` section 4 first.
+1. Deploy the stack exactly as [DEPLOY.md](DEPLOY.md) steps 2 and 3 describe. Read `docs/05-DEPLOY-AND-OPS.md` section 4 first.
 2. Give the worker's host credentials that the stack's `BoxPolicy` allows, then set `RUNNER_FUNCTION`, `JUDGE_FUNCTION` and `AWS_REGION` on the worker from the stack's outputs. The worker calls each function with a signed Lambda Invoke; `RUNNER_ENDPOINT` and `JUDGE_ENDPOINT` are for the local runtime interface emulator only, since the stack gives the functions no URL.
 3. The judge's model is set on the stack with `JUDGE_MODEL_ID`, an inference profile id such as `us.anthropic.claude-opus-5`. A bare model id is refused at start-up with an error that says why.
 4. For voice, set `VOICE_SOCKET_URL` to the stack's `VoiceSocketUrl` output and `VOICE_TOKEN_SECRET` to the value stored in the secret the stack reads.
@@ -810,257 +818,21 @@ learner browser --https--> Caddy --> next start (EC2) --> Postgres (EC2)
 learner browser --wss--> API Gateway --> voice Lambdas --> Transcribe
 ```
 
-Everything below uses `us-east-1`. Replace `prep.example.com`, `YOUR_GITHUB_LOGIN` and every `PASTE_` value as you go. This route has never run against a real account: the stack synthesises and its tests pass, and the proxy, sign-in and invite steps were run in a sandbox, so the first deploy is its first live test, and step C12 is there to catch what that finds.
+**[DEPLOY.md](DEPLOY.md) is the procedure**, from an AWS account to a working beta at your own domain. It gives the console screen for every click, the CloudShell or server command for every step and what each prints when it works, with prices and AWS behaviour checked on 1 October 2026. It runs in `us-east-1` and takes about three and a half hours in one sitting, an estimate built from its step times.
 
-## C0: what you need on your laptop
-
-| Tool | Why | Check |
-|---|---|---|
-| AWS CLI v2, signed in as an administrator of the account | `cdk deploy` creates roles, functions and a VPC. | `aws sts get-caller-identity` |
-| Node.js 22 | The CDK command line runs on it. | `node --version` |
-| Docker, running | `cdk deploy` builds both Lambda images. On an Apple Silicon Mac it builds them for x86 under emulation, which is slower and otherwise the same. | `docker info` |
-| This repository on `main` | Everything deploys from your clone. | `git pull` |
-| A domain you can add a DNS record to | Caddy needs a name to get a certificate for. | |
-| Admin rights on a GitHub organisation | The OAuth application is registered under it. | |
-
-## C1: turn on Claude in Bedrock
-
-AWS documentation, read on 30 September 2026: model access is on by default in commercial regions; Anthropic models need a one-time use case form, which the Bedrock console shows when you select an Anthropic model in its model catalog; and the account needs a valid payment method for AWS Marketplace, because the first call starts a Marketplace subscription that can take up to fifteen minutes, during which calls can return `AccessDeniedException`. Make that first call yourself, since Marketplace permissions are needed only for the first use in an account:
-
-```bash
-aws bedrock-runtime converse --region us-east-1 --model-id us.anthropic.claude-opus-5 --messages '[{"role":"user","content":[{"text":"Reply with the word ready."}]}]'
-```
-
-`us.anthropic.claude-opus-5` is the default and a valid id on the Opus 5 model card. The judge accepts `us.`, `eu.`, `au.`, `apac.`, `in.`, `jp.`, `global.` and `us-gov.` profiles. Opus 5.5 reached Bedrock on 22 September 2026; nobody has yet checked that it accepts the judge's request with thinking off and temperature 0, so stay on Opus 5 until one judged submission has run on it.
-
-## C2: the voice signing secret (skip without voice)
-
-```bash
-VOICE_SECRET="$(openssl rand -base64 32)"
-aws secretsmanager create-secret --region us-east-1 --name fdeprep/voice-token --secret-string "$VOICE_SECRET" --query ARN --output text
-echo "$VOICE_SECRET"
-```
-
-Keep both lines it prints. The ARN goes to `cdk deploy` in C3; the value goes into the web host's settings in C8, because the web application signs each session token with it and the socket checks the signature against the copy in Secrets Manager.
-
-## C3: deploy the stack
-
-```bash
-cd fdeprep
-git checkout main
-git pull
-cd voice
-npm ci
-cd ../infra
-npm ci
-export AWS_REGION=us-east-1
-npx cdk bootstrap
-JUDGE_MODEL_ID=us.anthropic.claude-opus-5 ALARM_EMAIL=you@example.com VOICE_TOKEN_SECRET_ARN=PASTE_ARN_FROM_C2 npx cdk deploy
-```
-
-`cdk bootstrap` is once per account and region. `cdk deploy` builds the runner and judge images, pushes them to the repository bootstrap made, and creates the stack; leave out `VOICE_TOKEN_SECRET_ARN` to deploy without the Voice Screen. Accept the email the alarm topic sends. Keep the outputs it prints:
-
-| Output | Goes to |
+| Step in DEPLOY.md | What you finish with |
 |---|---|
-| `RunnerFunctionName` | `RUNNER_FUNCTION` in C8 |
-| `JudgeFunctionName` | `JUDGE_FUNCTION` in C8 |
-| `VoiceAudioBucketName` | `VOICE_AUDIO_BUCKET` in C8 |
-| `VoiceSocketUrl` | `VOICE_SOCKET_URL` in C8 |
-| `BoxInstanceProfileName` | The instance profile in C4 |
+| 0. Before you start | Everything on hand, and the running cost: about $37 a month before anyone uses it. |
+| 1. Lock the account | MFA on the root user and an admin login for the rest. |
+| 2. Turn on Claude in Bedrock | A Claude call that answers, made by you before the judge's first. |
+| 3. Deploy the stack | The Lambdas, the voice socket and the audio bucket, deployed from CloudShell. |
+| 4. Launch the web host | A t3.medium with a fixed address that the browser terminal can reach. |
+| 5. Domain and GitHub sign-in | The DNS record and the GitHub OAuth app. |
+| 6. Install and run | The site live over HTTPS, with three services. |
+| 7. Sign in and prove it | The first admin, and every live connection tested once. |
+| 8. Keep it alive | A spending alert on Marketplace billing, daily snapshots, updates and rollback. |
 
-Nothing reserves Lambda concurrency, because AWS keeps part of an account's concurrency unreserved and new accounts start with a lower quota. Set `RUNNER_RESERVED_CONCURRENCY` or `JUDGE_RESERVED_CONCURRENCY` on the deploy once your account's quota allows it.
-
-## C4: launch the web host
-
-| Setting | Value |
-|---|---|
-| Image | Ubuntu Server 24.04 LTS, which ships Python 3.12 and PostgreSQL 16 in its main archive. |
-| Type | t3.medium. `next build` starts failing near 2 GB of memory, which is a judgement from Route B rather than a measurement. |
-| Disk | 30 GB gp3. |
-| Security group | SSH on 22 from your own address only; HTTP on 80 and HTTPS on 443 from anywhere, which Caddy needs to get and serve its certificate. |
-| IAM instance profile | `BoxInstanceProfileName` from C3. It may invoke the two functions, keep learner audio and call Polly, and it holds no model permission. |
-| Metadata | IMDSv2 required, which Ubuntu 24.04 images already set. |
-
-Allocate an Elastic IP and associate it, so the address survives a stop and start.
-
-## C5: DNS and the GitHub application
-
-1. Point an A record for `prep.example.com` at the Elastic IP.
-2. Register the OAuth application under your organisation, in its Settings, Developer settings, OAuth Apps. GitHub's documentation says new organisations restrict third-party OAuth applications by default and exempt the ones the organisation owns. Homepage `https://prep.example.com`, callback `https://prep.example.com/api/auth/callback`, then generate a client secret.
-
-## C6: the toolchain on the host
-
-SSH in with `ssh -i your-key.pem ubuntu@prep.example.com`. The Caddy lines are from caddyserver.com/docs/install, with `-y` added.
-
-```bash
-sudo apt update
-sudo apt install -y python3.12-venv postgresql-16 git
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
-sudo apt install -y nodejs
-sudo apt install -y debian-keyring debian-archive-keyring apt-transport-https curl
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
-sudo chmod o+r /usr/share/keyrings/caddy-stable-archive-keyring.gpg
-sudo chmod o+r /etc/apt/sources.list.d/caddy-stable.list
-sudo apt update
-sudo apt install -y caddy
-```
-
-## C7: the code, the database and the build
-
-A private repository needs a read-only deploy key: run `ssh-keygen -t ed25519 -f ~/.ssh/fdeprep_deploy -N ""`, paste `~/.ssh/fdeprep_deploy.pub` into the repository's Settings, Deploy keys, with write access off, then:
-
-```bash
-GIT_SSH_COMMAND="ssh -i ~/.ssh/fdeprep_deploy" git clone git@github.com:fde-academy-lab/fdeprep.git
-cd fdeprep
-git config core.sshCommand "ssh -i ~/.ssh/fdeprep_deploy"
-python3.12 -m venv .venv
-.venv/bin/pip install -r requirements-dev.txt
-.venv/bin/python scripts/fetch_embedding_model.py
-sudo -u postgres createuser ubuntu
-sudo -u postgres createdb -O ubuntu fdeprep
-export DATABASE_URL="postgres://ubuntu@/fdeprep?host=/var/run/postgresql"
-cd web
-npm ci
-npm run migrate
-npm run import:content
-npm run build
-```
-
-The import prints `published 92 problems and 12 voice questions.` The database role owns the database and is not a superuser, which is all the migrations need. `DATABASE_URL` uses the socket, because node-postgres reads `postgres:///fdeprep` as a network connection, which Ubuntu's Postgres refuses without a password. Python stays on the host for panelist 2's encoder, which reads written answers and never runs learner code.
-
-## C8: the settings file
-
-```bash
-sudo mkdir -p /etc/fdeprep
-sudo tee /etc/fdeprep/env > /dev/null <<SETTINGS
-NODE_ENV=production
-APP_URL=https://prep.example.com
-DATABASE_URL=postgres://ubuntu@/fdeprep?host=/var/run/postgresql
-AUTH_SECRET=$(openssl rand -base64 32)
-GITHUB_CLIENT_ID=PASTE_CLIENT_ID
-GITHUB_CLIENT_SECRET=PASTE_CLIENT_SECRET
-GITHUB_ORG_CHECK=off
-AWS_REGION=us-east-1
-RUNNER_FUNCTION=PASTE_RunnerFunctionName
-JUDGE_FUNCTION=PASTE_JudgeFunctionName
-VOICE_AUDIO_BUCKET=PASTE_VoiceAudioBucketName
-VOICE_SOCKET_URL=PASTE_VoiceSocketUrl
-VOICE_TOKEN_SECRET=PASTE_THE_VALUE_FROM_C2
-SETTINGS
-sudo chmod 600 /etc/fdeprep/env
-sudo nano /etc/fdeprep/env
-```
-
-Replace every `PASTE_` value and the domain in the editor.
-
-| Setting | Why it is there |
-|---|---|
-| `APP_URL` | Behind Caddy, Next.js builds URLs from its own address, `https://localhost:3000`. Every redirect and the GitHub callback are built from this instead. |
-| `GITHUB_ORG_CHECK=off` | Testers are outside the organisation, so an invite is the wall. GitHub is then asked for `read:user` only. |
-| `RUNNER_FUNCTION`, `JUDGE_FUNCTION` | The worker calls the Lambdas and never runs learner code or the judge here. A production worker without `RUNNER_FUNCTION` refuses to start. |
-| `AWS_REGION` | The audio, speech and Lambda clients read it. The audio and speech code falls back to `eu-west-1` without it. |
-
-## C9: three services
-
-```bash
-unit() {
-  sudo tee /etc/systemd/system/fdeprep-$1.service > /dev/null <<UNIT
-[Unit]
-Description=FDE Prep $1
-After=network-online.target postgresql.service
-Wants=network-online.target
-
-[Service]
-User=ubuntu
-WorkingDirectory=/home/ubuntu/fdeprep/web
-EnvironmentFile=/etc/fdeprep/env
-ExecStart=$2
-Restart=always
-RestartSec=5
-
-[Install]
-WantedBy=multi-user.target
-UNIT
-}
-unit web "$(command -v npx) next start -H 127.0.0.1 -p 3000"
-unit worker "$(command -v npm) run worker"
-unit scorer "$(command -v npm) run scorevoice"
-sudo systemctl daemon-reload
-sudo systemctl enable --now fdeprep-web fdeprep-worker fdeprep-scorer
-journalctl -u fdeprep-worker -n 5 --no-pager
-```
-
-The worker's first line names the runner Lambda it will use. `fdeprep-scorer` scores finished voice answers through the judge Lambda; leave it out without voice.
-
-## C10: HTTPS
-
-```bash
-sudo tee /etc/caddy/Caddyfile > /dev/null <<'CADDY'
-prep.example.com {
-  reverse_proxy 127.0.0.1:3000
-}
-CADDY
-sudo systemctl reload caddy
-```
-
-Caddy gets the certificate itself once the A record points at the host and ports 80 and 443 are open, and it passes the app's server-sent events through immediately (Caddy documentation, read on 30 September 2026).
-
-## C11: the first admin, then everyone else
-
-With the organisation check off, nobody gets in without an invite, and invites are made on an admin screen. So the first one is minted on the host:
-
-```bash
-cd ~/fdeprep/web
-export DATABASE_URL="postgres://ubuntu@/fdeprep?host=/var/run/postgresql" APP_URL=https://prep.example.com
-npm run invite -- --login YOUR_GITHUB_LOGIN
-```
-
-It creates the cohort `pilot-1` if it does not exist and prints a link that works once, for that login, as admin. Open it, press Continue with GitHub, and you land signed in. Invite every tester from `/admin/roster`, under Invites: each link is shown once, works once, can name a GitHub login, and can be withdrawn until it is used.
-
-## C12: test each live connection once
-
-| Do this | It proves |
-|---|---|
-| Submit an Easy code problem. | The worker reaches the runner Lambda, and learner code runs there. |
-| Submit a design problem. | The judge Lambda reaches Bedrock. |
-| Answer one question at `/voice/session?mode=guided` with a real microphone. | The socket, Transcribe and the scorer work together. |
-
-Logs: `journalctl -u fdeprep-worker -f` on the host, and `aws logs tail /aws/lambda/PASTE_RunnerFunctionName --follow` from your laptop.
-
-## C13: before anyone relies on it
-
-- Create an AWS Budgets cost budget on Amazon Bedrock, alerting at 50 and 80 percent, as `docs/05` section 5 asks.
-- Postgres lives on the instance's disk, so schedule a daily snapshot of that volume in EC2's Lifecycle Manager.
-- Give a second person console access and this section. The box otherwise makes you its only operator, which `docs/05` section 8 names as the real outage risk.
-
-## C14: updating
-
-When `runner/`, `judge/`, `voice/` or `infra/` changed, redeploy from your laptop:
-
-```bash
-cd fdeprep
-git pull
-cd infra
-npx cdk deploy
-```
-
-Then, on the host:
-
-```bash
-cd ~/fdeprep
-git pull
-.venv/bin/pip install -r requirements-dev.txt
-export DATABASE_URL="postgres://ubuntu@/fdeprep?host=/var/run/postgresql"
-cd web
-npm ci
-npm run migrate
-npm run import:content
-npm run build
-sudo systemctl restart fdeprep-web fdeprep-worker fdeprep-scorer
-```
-
-Do not load `/etc/fdeprep/env` into that shell: its `NODE_ENV=production` makes `npm ci` skip the development packages, and the worker runs on two of them, `tsx` and `typescript`.
+This route has not yet run end to end against a real account. The stack synthesises and its tests pass, the proxy, sign-in and invite steps were run in a sandbox, and DEPLOY.md step 7 is there to catch what a first live run finds.
 
 ---
 
@@ -1128,6 +900,11 @@ Judge prompts are files in `judge/prompts/`, versioned as `rubric.v1.md` and so 
 | A learner lost an Extreme attempt to a platform fault. | This should be impossible, since an `error` verdict does not consume an allowance and that is tested rather than assumed. | If it happened anyway, clear the counter row for that learner, scope and window on `/admin/ops`, and log the reason. The audit trail is the point. |
 | Every design or prompt submission returns `error`. | The judge cannot reach Bedrock, or `JUDGE_MODEL_ID` is a bare model id. | Check the Lambda logs. A bare id fails at start-up with a message that names the fix. |
 | The voice cockpit shows a dead microphone. | The socket is unreachable, or the two `VOICE_TOKEN_SECRET` values differ. | Check both ends. `/voice/lab` is a bare transport check that prints transcripts to the browser console and shows them nowhere. |
+| Start says "The voice socket could not take this answer" and quotes "That session token is not signed by this application". | The web application and the socket hold different `VOICE_TOKEN_SECRET` values. | Set the same value on both and restart both. Nothing was counted against the learner. |
+| An answer says "The transcriber failed at 0:00". | The socket runs Amazon Transcribe with no AWS credentials, or Transcribe refused the stream. The socket's terminal or log names the reason. | On a laptop, start the socket with `VOICE_STT=scripted`. On AWS, read the voice Lambda's log. |
+| "Your answer did not save" with **Save again**. | The finish request failed three times: the web process restarted, or the database was unreachable. The answer is held in that browser tab. | Fix the web process or the database, then the learner presses **Save again**. Closing the tab first loses the answer. |
+| A debrief says the judge could not score it after three tries. | The scorer has no `JUDGE_MODEL_ID`, no AWS credentials, or Bedrock refused the call. Its allowance was given back. | `journalctl -u fdeprep-scorer -n 20` on AWS, or terminal 4 locally, names the reason on each try. Section 2.5 has the local fix. |
+| A page shows "This page did not load" with a reference number. | That page threw on the server. The reference is the digest Next writes about twenty lines below the error in the web log. | On AWS, `journalctl -u fdeprep-web --no-pager \| grep -B25 REFERENCE` prints the error above it. Locally, the `npm run dev` terminal shows the same. |
 | The Voice Screen serves the wrong question. | Content was never imported, so it fell back to the `docs/07` fixture. | `npm run import:content`. The fixture's prompt mentions spinning forever in production, which is how you recognise it. |
 | `next build` fails on `/_global-error` with a null `useContext`. | `NODE_ENV` is set to `development` in the shell. | `NODE_ENV=production npx next build`. |
 | A local run cannot find Python. | The runner subprocess resolves `.venv` then `python3`. | Set `RUNNER_PYTHON` to an explicit interpreter path. |

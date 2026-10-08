@@ -2,94 +2,117 @@
  * S10 Roster: cohort members, persona, enrolment state, last activity, the
  * bulk persona change from a CSV upload, and, for admins, the invites that let
  * a tester in (docs/01 section S10, amended 30 September 2026).
+ *
+ * Faculty get the table and no buttons. Both actions write, and both routes
+ * are admin only.
  */
-import Nav from "./upload";
-import { InviteForm, Withdraw } from "./invites";
+import type { Metadata } from "next";
+import { Ticket, Users } from "lucide-react";
 import { roster } from "@/lib/admin";
 import { listInvites } from "@/lib/auth/invite";
 import { currentLearner } from "@/lib/session/current";
 import { relativeDay } from "@/lib/progress/summary";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageHeading, SectionHeading } from "@/components/ui/page";
+import { Cell, Head, Row, Table } from "@/components/ui/table";
+import { PersonaUpload } from "./upload";
+import { InviteDialog, Withdraw } from "./invites";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Roster" };
+
+/** The product's one date form, 8 Oct 2026, read in UTC as the invite was written. */
+const date = (iso: string) => new Date(iso).toLocaleDateString("en-GB",
+  { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 
 export default async function RosterPage() {
   const learner = await currentLearner();
+  const admin = learner.role === "admin";
   const rows = await roster(learner.cohortId);
-  const invites = learner.role === "admin" ? await listInvites(learner.cohortId) : [];
+  const invites = admin ? await listInvites(learner.cohortId) : [];
+  // Staff are on the roster too, so "nobody enrolled" means no learner yet.
+  const learners = rows.filter((row) => row.role === "learner").length;
+  // One Invite a tester on screen: the empty state's while there is no learner,
+  // the heading row's after that. Faculty cannot invite, so they get neither.
+  const invite = admin ? <InviteDialog size={learners ? "md" : "sm"} /> : null;
 
   return (
-    <main className="px-4 py-4">
-      <h1 className="mb-3">Roster</h1>
+    <>
+      <PageHeading title="Roster" action={admin ? (
+        <div className="flex items-center gap-2">
+          <PersonaUpload />
+          {learners ? invite : null}
+        </div>
+      ) : undefined} />
 
-      {learner.role === "admin" ? <Nav /> : (
-        <p className="mb-4 text-text-dim">Faculty see the roster read-only.</p>
+      {learners === 0 ? (
+        <EmptyState icon={Users} action={invite}>
+          Nobody is enrolled in this cohort yet. Invite the first tester.
+        </EmptyState>
+      ) : (
+        <Table head={
+          <Head>
+            <Cell head>Login</Cell>
+            <Cell head>Name</Cell>
+            <Cell head>Persona</Cell>
+            <Cell head>Role</Cell>
+            <Cell head>State</Cell>
+            <Cell head>Last activity</Cell>
+          </Head>
+        }>
+          {rows.map((row) => (
+            <Row key={row.enrolmentId}>
+              <Cell className="font-medium text-text">{row.login}</Cell>
+              <Cell className="text-text-dim">{row.displayName}</Cell>
+              <Cell className="capitalize text-text-dim">{row.persona}</Cell>
+              <Cell className="capitalize text-text-dim">{row.role}</Cell>
+              <Cell className="capitalize text-text-dim">{row.state}</Cell>
+              <Cell className="whitespace-nowrap text-text-dim">
+                {row.lastActivity ? relativeDay(row.lastActivity) : "never"}
+              </Cell>
+            </Row>
+          ))}
+        </Table>
       )}
 
-      <table className="w-full text-left">
-        <thead>
-          <tr className="text-text-dim">
-            {["Login", "Name", "Persona", "Role", "State", "Last activity"].map((head) => (
-              <th key={head} scope="col" className="py-1 pr-4 font-normal">{head}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row) => (
-            <tr key={row.enrolmentId} className="border-t border-border">
-              <td className="py-2 pr-4">{row.login}</td>
-              <td className="py-2 pr-4 text-text-dim">{row.displayName}</td>
-              <td className="py-2 pr-4 capitalize">{row.persona}</td>
-              <td className="py-2 pr-4 text-text-dim">{row.role}</td>
-              <td className="py-2 pr-4 text-text-dim">{row.state}</td>
-              <td className="py-2 text-text-dim">
-                {row.lastActivity ? relativeDay(row.lastActivity) : "never"}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-      {rows.length === 0 ? (
-        <p className="py-4 text-text-dim">
-          Nobody is enrolled in this cohort yet. Invite the first tester below.
-        </p>
-      ) : null}
-
-      {learner.role === "admin" ? (
-        <section className="mt-8">
-          <h2 className="mb-3">Invites</h2>
-          <InviteForm />
-          <table className="w-full text-left">
-            <thead>
-              <tr className="text-text-dim">
-                {["For", "Login", "Role", "Persona", "State", "Expires", "Used by", ""].map((head) => (
-                  <th key={head || "action"} scope="col" className="py-1 pr-4 font-normal">{head}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
+      {admin ? (
+        <section aria-labelledby="invites">
+          <SectionHeading id="invites" title="Invites" />
+          {invites.length ? (
+            <Table className="mt-4" head={
+              <Head>
+                <Cell head>For</Cell>
+                <Cell head>Login</Cell>
+                <Cell head>Role</Cell>
+                <Cell head>Persona</Cell>
+                <Cell head>State</Cell>
+                <Cell head>Expires</Cell>
+                <Cell head>Used by</Cell>
+                <Cell head><span className="sr-only">Action</span></Cell>
+              </Head>
+            }>
               {invites.map((invite) => (
-                <tr key={invite.id} className="border-t border-border">
-                  <td className="py-2 pr-4">{invite.note ?? "no note"}</td>
-                  <td className="py-2 pr-4 text-text-dim">{invite.githubLogin ?? "anyone with the link"}</td>
-                  <td className="py-2 pr-4 text-text-dim">{invite.role}</td>
-                  <td className="py-2 pr-4 capitalize text-text-dim">{invite.persona}</td>
-                  <td className="py-2 pr-4">{invite.state}</td>
-                  <td className="py-2 pr-4 text-text-dim tnum">{invite.expiresAt.slice(0, 10)}</td>
-                  <td className="py-2 pr-4 text-text-dim">{invite.usedByLogin ?? ""}</td>
-                  <td className="py-2">
+                <Row key={invite.id}>
+                  <Cell className="text-text">{invite.note ?? "no note"}</Cell>
+                  <Cell className="text-text-dim">{invite.githubLogin ?? "anyone with the link"}</Cell>
+                  <Cell className="capitalize text-text-dim">{invite.role}</Cell>
+                  <Cell className="capitalize text-text-dim">{invite.persona}</Cell>
+                  <Cell className="capitalize text-text">{invite.state}</Cell>
+                  <Cell className="whitespace-nowrap text-text-dim">{date(invite.expiresAt)}</Cell>
+                  <Cell className="text-text-dim">{invite.usedByLogin ?? ""}</Cell>
+                  <Cell className="py-0.5! text-right">
                     {invite.state === "pending" ? <Withdraw inviteId={invite.id} /> : null}
-                  </td>
-                </tr>
+                  </Cell>
+                </Row>
               ))}
-            </tbody>
-          </table>
-          {invites.length === 0 ? (
-            <p className="py-4 text-text-dim">
-              No invites yet. Make a link above and send it to the tester yourself.
-            </p>
-          ) : null}
+            </Table>
+          ) : (
+            <EmptyState icon={Ticket} className="mt-4">
+              No invites yet. Make a link and send it to the tester yourself.
+            </EmptyState>
+          )}
         </section>
       ) : null}
-    </main>
+    </>
   );
 }

@@ -5,8 +5,9 @@
  */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "../lib/db/pool.ts";
-import { listProblems } from "../lib/problems/catalogue.ts";
+import { listProblems, nextOnPath, paletteIndex, type SolveState } from "../lib/problems/catalogue.ts";
 import { nextUp, orderFor, roadmapFor, seedTracks, SHAPES } from "../lib/policy/roadmap.ts";
+import { firstUnsolved } from "../lib/ui/palette-search.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 
 const PERSONAS = ["builder", "navigator", "accelerator"] as const;
@@ -57,11 +58,12 @@ describe("acceptance 1: three personas, three different Next Up sets", () => {
     expect(["hard", "extreme"]).toContain(first.difficulty);
   });
 
-  it("weights the navigator towards tool creation, memory and retrieval", async () => {
+  it("weights the navigator towards loops, tools, memory and context", async () => {
     const roadmap = await roadmapFor(learners["navigator"]!.enrolmentId);
     const required = roadmap.items.filter((item) => !item.isOptional).slice(0, 4);
-    expect(required.map((item) => item.track))
-      .toEqual(expect.arrayContaining(["tool-creation", "memory"]));
+    const tracks = required.map((item) => item.track);
+    expect(tracks).toEqual(expect.arrayContaining(["tools"]));
+    for (const track of tracks) expect(["loop", "tools", "memory", "context"]).toContain(track);
   });
 
   it("puts Extreme and design work at the front for the accelerator", async () => {
@@ -74,33 +76,33 @@ describe("acceptance 1: three personas, three different Next Up sets", () => {
 describe("the order inside a tier follows the journey", () => {
   // Found in the 29 September 2026 review: inside a tier every track outside
   // the persona's emphasis tied, and the slug decided, so a builder met a
-  // capstone build's first stage between two retrieval problems.
+  // end-to-end build's first stage between two retrieval problems.
   const row = (slug: string, track: string, difficulty: "easy" | "medium" = "easy") =>
     ({ id: slug.length, slug, track, difficulty, artefact_type: "code" });
 
-  it("puts the foundations tracks before a capstone build in the same tier", () => {
+  it("puts the foundations tracks before an end-to-end build in the same tier", () => {
     const order = orderFor("builder", [
-      row("a-capstone-stage-one", "builds"),
-      row("z-structured-output", "structured-output"),
+      row("an-end-to-end-stage-one", "builds"),
+      row("z-tools", "tools"),
       row("m-guardrail", "guardrails"),
     ]).map((item) => item.track);
-    expect(order).toEqual(["structured-output", "guardrails", "builds"]);
+    expect(order).toEqual(["tools", "guardrails", "builds"]);
   });
 
   it("still lets the tier decide first", () => {
     const order = orderFor("builder", [
-      row("medium-structured", "structured-output", "medium"),
-      row("easy-capstone", "builds", "easy"),
+      row("medium-structured", "tools", "medium"),
+      row("easy-end-to-end", "builds", "easy"),
     ]).map((item) => item.slug);
-    expect(order).toEqual(["easy-capstone", "medium-structured"]);
+    expect(order).toEqual(["easy-end-to-end", "medium-structured"]);
   });
 
   it("still lets the persona's emphasis beat the journey", () => {
     const order = orderFor("navigator", [
-      row("s-structured", "structured-output", "medium"),
-      row("r-retrieval", "rag", "medium"),
+      row("h-harness", "harness", "medium"),
+      row("r-retrieval", "context", "medium"),
     ]).map((item) => item.track);
-    expect(order).toEqual(["rag", "structured-output"]);
+    expect(order).toEqual(["context", "harness"]);
   });
 });
 
@@ -110,6 +112,77 @@ describe("the problems page", () => {
     const page = await listProblems({ enrolmentId: builder, perPage: 100, sort: "roadmap" });
     const roadmap = await roadmapFor(builder);
     expect(page.rows.map((r) => r.slug)).toEqual(roadmap.items.map((i) => i.slug));
+  });
+
+  // Found 1 October 2026: the search clause names its value four times and
+  // only the first placeholder was numbered, so Postgres read the rest as a
+  // dollar-quoted string and every search failed.
+  it("finds a problem by a word from its title, and by its chapter", async () => {
+    const builder = learners["builder"]!.enrolmentId;
+    const { rows } = await db().query<{ slug: string; title: string; track: string }>(
+      "select slug, title, track from problem order by slug limit 1");
+    const word = rows[0]!.title.split(" ").find((w) => w.length > 4)!;
+    const byTitle = await listProblems({ enrolmentId: builder, perPage: 100, search: word });
+    expect(byTitle.rows.map((r) => r.slug)).toContain(rows[0]!.slug);
+    const byChapter = await listProblems({ enrolmentId: builder, perPage: 100, search: rows[0]!.track });
+    expect(byChapter.rows.map((r) => r.slug)).toContain(rows[0]!.slug);
+  });
+
+  // Found 8 October 2026: an empty page is counted by a second query, which
+  // did not join the problem version the search clause reads, so a search
+  // with no match threw where the page's no-match state belongs.
+  it("returns an empty page for a search that matches nothing", async () => {
+    const page = await listProblems({ enrolmentId: learners["builder"]!.enrolmentId, search: "zzzzqq" });
+    expect(page).toMatchObject({ rows: [], total: 0, pages: 1 });
+  });
+});
+
+describe("one path order on every screen", () => {
+  // Found 8 October 2026: the palette opened on stage-four problems sorted by
+  // chapter slug, and the chapter page offered a navigator an Easy problem
+  // their path leaves for last. Home, Problems, the palette and the chapter
+  // page now all read the learner's path, so they open on the same problem.
+  it("opens Home, Problems, the palette and the chapter page on one problem", async () => {
+    const navigator = learners["navigator"]!.enrolmentId;
+    const home = await nextUp(navigator);
+    expect(home.kind).toBe("start");
+    const start = home.items[0]!;
+
+    const problems = await listProblems({ enrolmentId: navigator, sort: "roadmap" });
+    const palette = firstUnsolved(await paletteIndex(navigator), 6);
+    // The chapter page's own query, then its Next card.
+    const chapter = await listProblems({
+      enrolmentId: navigator, track: start.track, perPage: 100, sort: "difficulty",
+    });
+
+    expect({
+      problems: problems.rows[0]!.slug,
+      palette: palette[0]!.slug,
+      chapter: nextOnPath(chapter.rows)!.slug,
+    }).toEqual({ problems: start.slug, palette: start.slug, chapter: start.slug });
+  });
+
+  it("offers the palette's six unsolved problems in path order", async () => {
+    const navigator = learners["navigator"]!.enrolmentId;
+    const roadmap = await roadmapFor(navigator);
+    await markSolved(navigator, roadmap.items[0]!.problemId);
+
+    const palette = firstUnsolved(await paletteIndex(navigator), 6);
+    expect(palette.map((p) => p.slug)).toEqual(roadmap.items.slice(1, 7).map((i) => i.slug));
+  });
+
+  it("puts a row the path does not carry after every row it does, in the order it came", () => {
+    // The chapter page hands its rows over in its own tier order, which is
+    // the order a chapter with nothing on the path falls back to.
+    const row = (slug: string, ordinal: number | null, state: SolveState = "untouched",
+                 day: number | null = 1) => ({ slug, ordinal, state, day });
+    expect(nextOnPath([row("a", null), row("b", 7), row("c", 3)])?.slug).toBe("c");
+    expect(nextOnPath([row("a", null), row("b", null)])?.slug).toBe("a");
+    expect(nextOnPath([row("a", 1, "solved"), row("b", null)])?.slug).toBe("b");
+    // A drill has no day, so a problem on the path comes first even when the
+    // drill sits earlier in the learner's order.
+    expect(nextOnPath([row("d", 1, "untouched", null), row("b", 7)])?.slug).toBe("b");
+    expect(nextOnPath([row("d", 1, "untouched", null), row("b", 7, "solved")])?.slug).toBe("d");
   });
 });
 

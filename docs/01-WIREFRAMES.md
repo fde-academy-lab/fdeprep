@@ -293,6 +293,8 @@ Four screens, each a plain table with an action column.
 | Submissions | Filterable by learner, problem, verdict and date, with a link to every trace. |
 | Ops | Queue depth, runner error rate for the last hour, live-run token spend today, cap overrides. |
 
+**Amended 8 October 2026: the Overview.** An Overview at `/admin` shows one row per learner with readiness and its four counts, last activity including voice, and the stuck count, derived from Roster and Submissions. Faculty see the Overview and a learner's row, read-only, because it derives from the two screens they already see.
+
 Faculty see Roster read-only and Submissions in full. Everything else is admin only.
 
 ---

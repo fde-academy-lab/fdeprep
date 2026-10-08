@@ -1,0 +1,50 @@
+slug: run-a-langgraph-graph
+title: Run a LangGraph graph in the sandbox
+artefact_type: code
+difficulty: easy
+track: loop
+est_minutes: 5
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [langgraph, langchain_core]
+complexity: C1
+interview_evidence:
+  round: written
+  asked_as: |
+    Fixture; not asked.
+  source: |
+    Fixture for tests/test_frameworks.py.
+brief_md: |
+  Fixture. A solution builds a LangGraph graph whose nodes call the scripted
+  model and a tool, pauses at an interrupt, resumes, and validates a LangChain
+  tool's arguments. tests/test_frameworks.py runs it.
+contract_md: |
+  Implement `run_agent(question, llm, tools) -> str`.
+tests:
+  - name: graph_runs_pauses_and_validates
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "refund order A1" }
+      llm_script:
+        - { match: "*", reply: "approved refund" }
+      tools:
+        lookup: { returns: { order_id: "A1", amount_cents: 1250 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_equals, value: "approved refund|paused|ValidationError|1250" }
+        - { type: calls_tool, name: lookup }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: graph_runs_for_a_second_order
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "refund order B2" }
+      llm_script:
+        - { match: "*", reply: "approved refund" }
+      tools:
+        lookup: { returns: { order_id: "A1", amount_cents: 1250 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 3, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "^approved refund[|]paused[|]" }

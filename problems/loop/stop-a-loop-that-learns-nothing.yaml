@@ -1,0 +1,574 @@
+slug: stop-a-loop-that-learns-nothing
+title: "Stop a loop that learns nothing"
+day: 6
+skill: Tell a stuck repeat from a poll that is moving, and stop only the stuck one
+artefact_type: code
+difficulty: hard
+track: loop
+concept:
+  topic: "Loops that never end"
+  question: "How does a loop tell a stuck repeat from a poll that is still moving?"
+est_minutes: 40
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 6
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  Merchant support at a payments company the size of Razorpay runs a
+  settlement assistant. Merchants ask where their money is, and the agent
+  looks it up with three tools: `get_settlement`, `check_batch` for a payout
+  batch that is still running, and `search_settlements` for a settlement that
+  cannot be found.
+
+  Its only stop was a step limit of 200. On Tuesday a merchant asked about a
+  settlement from 14 September. The model called `search_settlements` with
+  the same merchant and the same date, got the same empty answer, and called
+  it again, 200 times. The merchant waited 14 minutes to be told the
+  assistant had run out of steps.
+
+  The first fix, stop whenever the model repeats a call, broke the one place
+  a repeat is right: polling `check_batch` until a batch pays, which takes
+  three or four calls on a normal day.
+
+  The limit is now 6. Write the loop that ends a chat when it stops learning
+  anything, and lets a poll that is moving carry on.
+
+defence_question: |
+  Your loop stops the second time a call returns the same answer. The
+  settlements team says a batch can sit at the same count for ten minutes
+  around the bank's cut-off and still pay that evening, and asks you to drop
+  the no-progress stop for `check_batch`. What do you say, and what would you
+  change about how the agent waits, rather than removing the stop?
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is a merchant's message. `llm(prompt)` returns
+  `Action: <tool>(<key>=<value>, ...)` or `Final Answer: <text>`.
+
+  | Tool | Arguments | Returns |
+  |---|---|---|
+  | `get_settlement` | `merchant`, `date` | `{"status": "settled", "utr": ...}`, or `{"status": "in_batch", "batch": ...}` while a payout batch is running |
+  | `check_batch` | `batch` | `{"state": "processing", "done": <n>, "of": <m>, "checked_at": ...}`, then `{"state": "complete", "utr": ..., "checked_at": ...}` |
+  | `search_settlements` | `merchant`, `date` | `{"found": <n>, ...}`, with the settlement when it finds one |
+
+  `checked_at` is the time the batch service answered. It changes on every
+  call and says nothing about the batch.
+
+  The loop ends in one of three ways.
+
+  1. A Final Answer: return its text.
+  2. No progress: a call returns what the same call returned at any earlier
+     step, the step before or any step further back, so two calls that take
+     turns still count. The same call is the same tool
+     with the same arguments, in whatever order the model wrote them. The
+     same result is the same once `checked_at` is left out. Run the call, see
+     the repeat, and stop without asking the model again. Return
+
+         No progress: <tool> returned the same result twice. Last result: <result>
+
+  3. The step limit: stop after the sixth model call, and do not run an
+     action from the sixth reply. Return
+
+         Step limit reached: 6 model calls without an answer. Last result: <result>
+
+  `<result>` is the last tool result as JSON, without `checked_at`, or `null`
+  when no tool ran. A call that returns something new is progress, however
+  many times the model has made it.
+
+  Budget: at most 6 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  MAX_STEPS = 6
+  ACTION = re.compile(r"^Action:\s*(\w+)\((.*)\)\s*$", re.MULTILINE)
+  FINAL = re.compile(r"^Final Answer:\s*(.*)$", re.MULTILINE | re.DOTALL)
+  VOLATILE = ("checked_at",)
+
+
+  def arguments(raw: str) -> dict:
+      """Turn 'merchant=M-1, date=2026-09-14' into {'merchant': 'M-1', 'date': '2026-09-14'}."""
+      args = {}
+      for pair in raw.split(","):
+          if "=" in pair:
+              key, value = pair.split("=", 1)
+              args[key.strip()] = value.strip()
+      return args
+
+
+  def same_call(tool: str, args: dict):
+      """A key that is equal for two calls exactly when they are the same call."""
+      return None
+
+
+  def substance(result):
+      """The result as it counts for progress: everything except checked_at."""
+      return result
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Answer the merchant, and end a chat that has stopped learning anything.
+
+      Stop on a Final Answer and return its text.
+
+      Stop when a call returns what the same call returned before, at any
+      earlier step: the same tool with the same arguments in any order, and
+      the same result once checked_at is left out. Return
+          No progress: <tool> returned the same result twice. Last result: <result>
+
+      Stop after the sixth model call, without running its action. Return
+          Step limit reached: 6 model calls without an answer. Last result: <result>
+
+      <result> is the last tool result as JSON without checked_at, or null.
+      At most 6 model calls. Allowed imports: json, re.
+      """
+      return "Step limit reached: 6 model calls without an answer. Last result: null"
+
+hints:
+  - Write down what the loop knew after each step. A step that adds nothing to
+    that list made no progress, whatever the model proposes next.
+  - A repeat is a problem only when it teaches the loop nothing, the same call
+    coming back with the same answer. A poll whose answer moves is a repeat
+    doing its job, and a new call with an old answer still taught the loop
+    something.
+  - "Keep every answer each call has given, keyed on the call as it means rather than as it was written: the tool with its arguments sorted. Compare answers without `checked_at`, and look back past the step before."
+  - Keep the step limit as well. A batch that moves a little on every poll
+    never repeats, so nothing but the limit ends that chat.
+
+scenario:
+  headline: "One merchant's chat ran the same search 200 times"
+  who: "Merchant support at a payments company the size of Razorpay"
+  situation: >-
+    The settlement assistant's only stop was a step limit of 200. On Tuesday
+    the model kept calling `search_settlements` with the same merchant and
+    date, the answer was empty every time, and the loop went round until the
+    limit.
+  stakes: >-
+    The merchant waited 14 minutes to be told the assistant had run out of
+    steps, and 200 model calls went on one empty search.
+  metrics:
+    - { label: "Same search, same answer", value: "200" }
+    - { label: Minutes the merchant waited, value: "14" }
+    - { label: Model calls allowed now, value: "6" }
+
+diagram:
+  title: Where a repeat stops being a poll
+  caption: >-
+    A poll whose answer moves is progress. The same call with the same answer
+    is not, and only the step limit stops a loop that cannot tell the two
+    apart.
+  direction: lr
+  nodes:
+    - { id: merchant, label: Merchant, sub: asks where the money is, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: proposes the next call, kind: model, tone: teal, at: [1, 0] }
+    - { id: loop, label: Agent loop, sub: remembers what each call said, kind: agent, tone: purple, at: [1, 1] }
+    - { id: batch, label: "`check_batch()`", sub: "1 of 4, then 3 of 4, then paid", kind: tool, tone: green, at: [2, 0] }
+    - { id: search, label: "`search_settlements()`", sub: the same empty answer each time, kind: tool, tone: orange, at: [2, 2] }
+    - { id: limit, label: 200 calls, sub: the limit was the only stop, kind: output, tone: pink, at: [3, 2] }
+    - { id: answer, label: No progress, sub: stopped on the second empty answer, kind: output, tone: green, at: [3, 1] }
+  edges:
+    - { from: merchant, to: loop, label: question, step: 1 }
+    - { from: loop, to: model, label: scratchpad, step: 2 }
+    - { from: loop, to: batch, label: a new answer each time, tone: success }
+    - { from: loop, to: search, label: "same call, same answer", tone: danger }
+    - { from: search, to: limit, label: until the limit, tone: danger }
+    - { from: loop, to: answer, label: second identical answer, tone: success, step: 3 }
+
+approach:
+  goal: End the chat when it stops learning, and never before
+  branches:
+    - label: Decide what counts as the same call
+      leaves: [the tool and its arguments, the order they were written in does not matter]
+    - label: Decide what counts as the same answer
+      detail: >-
+        A field that changes on every call says nothing about the batch. Leave
+        it out before comparing.
+      leaves: [everything except `checked_at`]
+    - label: Remember more than one step back
+      leaves: [two calls can take turns, a pair seen at any step counts]
+    - label: Keep the limit as a backstop
+      leaves: [new answers every time still have to end, six model calls]
+    - label: Tell the merchant what happened
+      leaves: [no progress or the limit, the last thing the tools said]
+
+coach:
+  opening: >-
+    Before you count anything, decide what progress means for this chat. Then
+    find the line in your loop that would notice when there is none.
+  signals:
+    - id: no-memory
+      when: { code_lacks: '(?i)seen|histor|visited|memor|previous|already|repeat|tried|record|known|past_' }
+      say: >-
+        Which line of your loop remembers what each call has returned? Without
+        one, the step limit is the only thing that can end a stuck chat.
+    - id: whole-result-compared
+      when: { code_lacks: 'checked_at' }
+      say: >-
+        Nothing in your loop mentions `checked_at`. Two polls of a batch that
+        has not moved differ only there. Would your loop call them the same
+        answer?
+    - id: no-step-limit
+      when: { code_lacks: 'MAX_STEPS|range\(\s*[0-9]|\b6\b' }
+      say: >-
+        Your loop has no step limit of its own. What ends a chat whose batch
+        moves a little on every poll, so that no answer ever repeats?
+    - id: hidden-same-search
+      when: { test_failed: the_same_empty_search_twice_ends_the_chat }
+      say: >-
+        In that run the model made one search, got an empty answer, and made
+        the same search again. How many calls did your loop spend before it
+        stopped, and what did it tell the merchant?
+    - id: hidden-batch-stopped
+      when: { test_failed: a_batch_that_stops_moving_is_reported_not_polled }
+      say: >-
+        In that run the batch stopped moving, and your loop kept polling.
+        Print two of the polls side by side and find the field that differs.
+    - id: hidden-taking-turns
+      when: { test_failed: two_lookups_taking_turns_still_stop }
+      say: >-
+        In that run the model alternated between two calls, and neither answer
+        ever changed. Does your loop compare each call only with the one just
+        before it?
+    - id: hidden-two-ways
+      when: { test_failed: the_same_search_written_two_ways_is_one_search }
+      say: >-
+        In that run the model wrote the same search twice with its arguments in
+        another order. What does your loop compare, the call or the text of the
+        reply?
+    - id: hidden-new-date
+      when: { test_failed: a_new_date_with_the_same_empty_answer_is_progress }
+      say: >-
+        In that run two searches for different dates both came back empty, and
+        your loop stopped. Was the second search the same call as the first?
+    - id: adversarial-never-repeats
+      when: { test_failed: adversarial_a_batch_too_big_to_finish_in_one_chat }
+      say: >-
+        In that run the batch moved on every poll and never finished. Nothing
+        repeated, so what in your loop ends the chat?
+    - id: adversarial-empty-poll
+      when: { test_failed: adversarial_one_poll_comes_back_empty }
+      say: >-
+        In that run one poll came back with nothing at all. What does your
+        `substance()` do with a result that is not a dict, and is nothing a
+        new answer for that call or an old one?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with `same_call()` and `substance()`. Once both are right, the
+        loop needs one dictionary and one check after every tool call.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The hints open after one failed run on this
+        tier, and the second one says when a repeat is a problem.
+  wrap_up: >-
+    A step limit caps the bill and cannot see that a loop is stuck. Progress
+    is a change in what the loop knows, so remember what each call said,
+    compare what matters, and keep the limit for the chat that changes
+    forever.
+
+tests:
+  - name: answers_from_one_lookup
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Merchant M-1180: where is my settlement for 2026-09-12?" }
+      llm_script:
+        - { match: { contains: "UTR4471209" },
+            reply: "Final Answer: Your settlement for 12 September was paid on 13 September, UTR UTR4471209." }
+        - { match: "*", reply: "Action: get_settlement(merchant=M-1180, date=2026-09-12)" }
+      tools:
+        get_settlement: { returns: { status: settled, utr: UTR4471209 } }
+        check_batch: { returns: { state: complete, utr: UTR4471209, checked_at: "09:00:00" } }
+        search_settlements: { returns: { found: 0 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: get_settlement }
+        - { type: returns_matches, value: "UTR4471209" }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: polls_a_batch_until_it_pays
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Merchant M-2207: has my settlement for 2026-09-13 been paid?" }
+      llm_script:
+        - { match: { contains: "UTR8812730" },
+            reply: "Final Answer: Yes. Your settlement for 13 September was paid in batch B-7781, UTR UTR8812730." }
+        - { match: { call_index: 1 }, reply: "Action: get_settlement(merchant=M-2207, date=2026-09-13)" }
+        - { match: "*", reply: "Action: check_batch(batch=B-7781)" }
+      tools:
+        get_settlement: { returns: { status: in_batch, batch: B-7781 } }
+        check_batch:
+          sequence:
+            - { state: processing, done: 1, of: 4, checked_at: "10:00:05" }
+            - { state: processing, done: 3, of: 4, checked_at: "10:00:35" }
+            - { state: complete, utr: UTR8812730, checked_at: "10:01:05" }
+        search_settlements: { returns: { found: 0 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: check_batch }
+        - { type: returns_matches, value: "UTR8812730" }
+        - { type: llm_calls_at_most, value: 6 }
+
+  - name: the_same_empty_search_twice_ends_the_chat
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Merchant M-4410: my settlement for 2026-09-14 never arrived, please find it." }
+      llm_script:
+        - { match: "*", reply: "Action: search_settlements(merchant=M-4410, date=2026-09-14)" }
+      tools:
+        get_settlement: { returns: { status: unknown } }
+        check_batch: { returns: { state: complete, utr: UTR0000001, checked_at: "09:00:00" } }
+        search_settlements: { returns: { found: 0, message: "No settlement for M-4410 on 2026-09-14" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "^No progress:" }
+        - { type: returns_matches, value: "search_settlements" }
+        - { type: returns_matches, value: "No settlement for M-4410" }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: tool_calls_at_most, value: 2 }
+
+  - name: a_batch_that_stops_moving_is_reported_not_polled
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Merchant M-3302: is my settlement for 2026-09-15 paid yet?" }
+      llm_script:
+        - { match: { contains: "UTR5550101" },
+            reply: "Final Answer: Your settlement for 15 September was paid, UTR UTR5550101." }
+        - { match: { call_index: 1 }, reply: "Action: get_settlement(merchant=M-3302, date=2026-09-15)" }
+        - { match: "*", reply: "Action: check_batch(batch=B-9020)" }
+      tools:
+        get_settlement: { returns: { status: in_batch, batch: B-9020 } }
+        check_batch:
+          sequence:
+            - { state: processing, done: 2, of: 5, checked_at: "11:00:00" }
+            - { state: processing, done: 3, of: 5, checked_at: "11:00:30" }
+            - { state: processing, done: 3, of: 5, checked_at: "11:01:00" }
+            - { state: processing, done: 3, of: 5, checked_at: "11:01:30" }
+            - { state: processing, done: 3, of: 5, checked_at: "11:02:00" }
+            - { state: processing, done: 3, of: 5, checked_at: "11:02:30" }
+        search_settlements: { returns: { found: 0 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "^No progress:" }
+        - { type: returns_matches, value: "check_batch" }
+        - { type: returns_matches, value: 'done\W{1,4}3\b' }
+        - { type: llm_calls_at_most, value: 4 }
+        - { type: returns_lacks, value: "checked_at" }
+
+  - name: two_lookups_taking_turns_still_stop
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Merchant M-5150: why has my settlement for 2026-09-16 not come?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search_settlements(merchant=M-5150, date=2026-09-16)" }
+        - { match: { call_index: 2 }, reply: "Action: get_settlement(merchant=M-5150, date=2026-09-16)" }
+        - { match: { call_index: 3 }, reply: "Action: search_settlements(merchant=M-5150, date=2026-09-16)" }
+        - { match: { call_index: 4 }, reply: "Action: get_settlement(merchant=M-5150, date=2026-09-16)" }
+        - { match: { call_index: 5 }, reply: "Action: search_settlements(merchant=M-5150, date=2026-09-16)" }
+        - { match: "*", reply: "Action: get_settlement(merchant=M-5150, date=2026-09-16)" }
+      tools:
+        get_settlement: { returns: { status: unknown, message: "No payout record for M-5150 on 2026-09-16" } }
+        check_batch: { returns: { state: complete, utr: UTR0000002, checked_at: "09:00:00" } }
+        search_settlements: { returns: { found: 0, message: "No settlement for M-5150 on 2026-09-16" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "^No progress:" }
+        - { type: llm_calls_at_most, value: 3 }
+        - { type: tool_calls_at_most, value: 3 }
+
+  - name: the_same_search_written_two_ways_is_one_search
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Merchant M-6021: please look for my settlement for 2026-09-17." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: search_settlements(merchant=M-6021, date=2026-09-17)" }
+        - { match: "*", reply: "Action: search_settlements(date=2026-09-17, merchant=M-6021)" }
+      tools:
+        get_settlement: { returns: { status: unknown } }
+        check_batch: { returns: { state: complete, utr: UTR0000003, checked_at: "09:00:00" } }
+        search_settlements: { returns: { found: 0, message: "No settlement for M-6021 on 2026-09-17" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: "^No progress:" }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: tool_calls_at_most, value: 2 }
+
+  - name: a_new_date_with_the_same_empty_answer_is_progress
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Merchant M-8090: a settlement from last week is missing. Start looking from 2026-09-14." }
+      llm_script:
+        - { match: { contains: "UTR6120044" },
+            reply: "Final Answer: Found it. Your settlement for 16 September was paid on 17 September, UTR UTR6120044." }
+        - { match: { call_index: 1 }, reply: "Action: search_settlements(merchant=M-8090, date=2026-09-14)" }
+        - { match: { call_index: 2 }, reply: "Action: search_settlements(merchant=M-8090, date=2026-09-15)" }
+        - { match: "*", reply: "Action: search_settlements(merchant=M-8090, date=2026-09-16)" }
+      tools:
+        get_settlement: { returns: { status: unknown } }
+        check_batch: { returns: { state: complete, utr: UTR0000004, checked_at: "09:00:00" } }
+        search_settlements:
+          by_arg:
+            arg: date
+            values:
+              "2026-09-16": { found: 1, utr: UTR6120044 }
+            default: { found: 0 }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: search_settlements, args: { date: "2026-09-16" } }
+        - { type: returns_matches, value: "UTR6120044" }
+
+  - name: adversarial_a_batch_too_big_to_finish_in_one_chat
+    visibility: adversarial
+    fixture: loop_bait
+    annotation_md: |
+      The model asked for the same poll over and over, and the batch, 40
+      payouts long, moved one payout further on every poll. No answer ever
+      repeated, so a no-progress check never fires, and it should not: the
+      loop learned something on every step.
+
+      A loop that dropped its step limit once it could see repeats runs until
+      the platform refuses the next call. The limit is what ends this chat,
+      after six model calls, with the merchant told where the batch had got
+      to. Detecting a stuck loop and capping a busy one are two different
+      jobs, and a loop needs both.
+    spec:
+      kind: agent_run
+      input: { question: "Merchant M-7300: is my settlement for 2026-09-18 paid?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Action: get_settlement(merchant=M-7300, date=2026-09-18)" }
+        - { match: "*", reply: "Action: check_batch(batch=B-3141)" }
+      tools:
+        get_settlement: { returns: { status: in_batch, batch: B-3141 } }
+        check_batch:
+          sequence:
+            - { state: processing, done: 1, of: 40, checked_at: "12:00:00" }
+            - { state: processing, done: 2, of: 40, checked_at: "12:00:30" }
+            - { state: processing, done: 3, of: 40, checked_at: "12:01:00" }
+            - { state: processing, done: 4, of: 40, checked_at: "12:01:30" }
+            - { state: processing, done: 5, of: 40, checked_at: "12:02:00" }
+            - { state: processing, done: 6, of: 40, checked_at: "12:02:30" }
+            - { state: processing, done: 7, of: 40, checked_at: "12:03:00" }
+            - { state: processing, done: 8, of: 40, checked_at: "12:03:30" }
+        search_settlements: { returns: { found: 0 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 6 }
+        - { type: returns_matches, value: "^Step limit reached:" }
+        - { type: tool_calls_at_most, value: 5 }
+        - { type: returns_lacks, value: "checked_at" }
+
+  - name: adversarial_one_poll_comes_back_empty
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The second poll of the batch came back with nothing at all, no state
+      and no count. The batch service's gateway does this when it times out
+      on its own side.
+
+      A `substance()` written for dicts raises on it, and the run ends with
+      the merchant told nothing. Nothing is an answer this call had not
+      given before, so the loop records it, asks the model again, and the
+      next poll says the batch has paid. Only a second empty answer to the
+      same call would be no progress.
+    spec:
+      kind: agent_run
+      input: { question: "Merchant M-9140: has my settlement for 2026-09-19 been paid?" }
+      llm_script:
+        - { match: { contains: "UTR7730918" },
+            reply: "Final Answer: Yes. Your settlement for 19 September was paid in batch B-5520, UTR UTR7730918." }
+        - { match: { call_index: 1 }, reply: "Action: get_settlement(merchant=M-9140, date=2026-09-19)" }
+        - { match: "*", reply: "Action: check_batch(batch=B-5520)" }
+      tools:
+        get_settlement: { returns: { status: in_batch, batch: B-5520 } }
+        check_batch:
+          sequence:
+            - { state: processing, done: 1, of: 3, checked_at: "14:00:00" }
+            - null
+            - { state: complete, utr: UTR7730918, checked_at: "14:01:00" }
+        search_settlements: { returns: { found: 0 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: calls_tool, name: check_batch }
+        - { type: returns_matches, value: "UTR7730918" }
+        - { type: llm_calls_at_most, value: 5 }
+
+reference_md: |
+  A step limit is a ceiling on the bill. It cannot tell a stuck chat from a
+  busy one, so it ends both at the same count, and that count has to be high
+  enough for the busiest chat that is working. LangGraph shows the trade in
+  its own default. Its recursion limit was 25 super-steps up to version
+  1.0.5, and from 1.0.6 the source sets it to 10,000 (10,007 in 1.2.12, the
+  release current on 1 October 2026; checked in `langgraph/_internal/_config.py`
+  at each tag). Raise a ceiling for long runs, and a stuck run goes on that
+  much longer before anything stops it.
+
+  What ends a stuck chat early is noticing that it has stopped learning.
+  Progress is a change in what the loop knows. A poll of a batch that moved
+  from 1 of 4 to 3 of 4 is the same call with a new answer, and that is
+  progress. A search for a new date that comes back empty is a new call, and
+  that is progress too. The one thing that is never progress is the same call
+  coming back with the same answer, because the next identical call will come
+  back with it again.
+
+  Each part of that sentence needs a decision. The same call is the tool with
+  its arguments sorted, because a model can write one call in more than one
+  order, and comparing the text of the reply sees two calls where there is
+  one. The same answer leaves out `checked_at`, because a field that changes
+  on every call makes a batch that has stopped look like it is moving.
+  Comparing only with the step before misses two calls that take turns, a
+  pattern a confused model can settle into, and remembering every answer each
+  call has given catches it on its third step.
+
+  The step limit stays. A batch that moves a little on every poll never
+  repeats, and it still has to end, so the two stops do different jobs and a
+  loop needs both. Either way the merchant hears what happened in words that
+  say why: no progress on a named tool, with the last thing it said, or the
+  limit, with how far the batch had got.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your agent is stuck calling the same tool over and over. How do you detect that, and how do you avoid stopping a loop that is legitimately polling?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: get_settlement
+    args: merchant, date
+    returns: '`{"status": "settled", "utr": ...}`, or `{"status": "in_batch", "batch": ...}` while a payout batch is
+      still running.'
+  - name: check_batch
+    args: batch
+    returns: '`{"state": "processing", "done": ..., "of": ..., "checked_at": ...}`, then `{"state": "complete", "utr":
+      ...}`. `checked_at` changes on every call.'
+  - name: search_settlements
+    args: merchant, date
+    returns: '`{"found": ..., ...}`, with the settlement when it finds one.'
+example:
+  case: polls_a_batch_until_it_pays
+  expect: '`get_settlement` says the money is in batch B-7781. Every poll of `check_batch` says something new, 1 of 4,
+    then 3 of 4, then complete, so keep going and return the answer with UTR8812730.'
+traps:
+  - Relying on the step limit alone, so a chat that settled nothing after two calls runs until the limit.
+  - Comparing whole results, so a field that changes on every call makes a batch that has stopped look like it moves.
+  - Comparing each call only with the step before, so two calls taking turns never look like a repeat.
+  - Comparing the text of the reply, so the same call with its arguments in another order looks new.

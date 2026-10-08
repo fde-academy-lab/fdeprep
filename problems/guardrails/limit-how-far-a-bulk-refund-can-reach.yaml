@@ -1,0 +1,780 @@
+slug: limit-how-far-a-bulk-refund-can-reach
+title: "Limit how far a bulk refund can reach"
+day: 22
+skill: Run an approved bulk refund that a wrong selection or a failing gateway cannot spread
+artefact_type: code
+difficulty: extreme
+track: guardrails
+concept:
+  topic: "Blast radius"
+  question: "How far can one bulk action reach before something stops it?"
+est_minutes: 50
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  An online marketplace the size of Snapdeal runs bulk fixes through its
+  payments agent. The agent proposes a job, the payments lead approves it,
+  and code runs it. The approval carries everything that bounds the job: the
+  filter that selects the orders, how many orders matched when the lead
+  looked, how many one run may refund, how many to refund first as a trial,
+  and the share of those that may fail before the run stops.
+
+  In March a job approved for 412 double-charged orders refunded 3,906. The
+  week before, the order service had renamed the field the filter used,
+  `dup_charge`, to `duplicate_charge`, and it silently ignored a filter key
+  it no longer knew, so the filter matched every order in the sale. The job
+  previewed its selection, as every job does, refunded everything the
+  preview held in eleven minutes, and stopped only when the payment gateway
+  started refusing calls. A refund cannot be clawed back, and 1.7 crore
+  rupees went to customers who had been charged once.
+
+  Tonight's job has the same shape. Run it so that a wrong selection refunds
+  nothing, and a right one refunds no more than one run's worth, stopping
+  early when the first refunds fail.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` names the job. `tools["job"]()` returns what the payments lead
+  approved:
+
+      {"status": 200, "job": "RF-2207", "approved_by": "payments.lead",
+       "filter": {"sale": "DIWALI-FLASH", "charged_times": 2, "refunded": false},
+       "approved_count": 412, "per_run_cap": 100, "first_slice": 10,
+       "max_error_rate": 0.2}
+
+  `tools["preview"](filter=...)` is the dry run. It returns the orders the
+  order service matches, and changes nothing:
+
+      {"status": 200, "orders": [{"order": "OD-88101", "sale": "DIWALI-FLASH",
+                                  "charged_times": 2, "refunded": false,
+                                  "amount": 2499}, ...]}
+
+  `tools["refund"](order=<id>)` refunds one order and answers
+  `{"status": 200, "refunded": true}`. It can also raise, or answer without
+  `"refunded": true`, and either way that refund has failed.
+
+  Call `job` once, then `preview` once with the approved filter, and refund
+  nothing until the preview has been checked. A job takes several runs: the
+  filter asks for orders not yet refunded, so each run's preview is shorter
+  than the last.
+
+  - Refund nothing at all when the job or the preview cannot be read, or when
+    the preview cannot be the selection the lead approved: an order in it
+    that does not carry every field of the filter with the filter's value,
+    the same order more than once, or more orders than the lead saw. The
+    outcome is `blocked`.
+  - Otherwise refund in preview order, at most `per_run_cap` orders in this
+    run.
+  - Once the run's first `first_slice` refunds have been tried (all of them,
+    when the run is shorter), divide the failures among them by the number
+    tried. When that share is more than `max_error_rate`, refund nothing
+    more. The outcome is `halted`.
+  - Never retry a refund in this run.
+
+  `llm` is passed in and must not be called.
+
+  Return a JSON string:
+
+      {"outcome": "done" | "partial" | "halted" | "blocked",
+       "refunded": [<order ids>], "failed": [<order ids>],
+       "remaining": <previewed orders this run did not try, 0 when blocked>}
+
+  `done` means every previewed order was tried, and `partial` means the cap
+  left some for the next run.
+
+  Budget: no model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your run blocked tonight's job because three of the ten previewed orders do
+  not carry `charged_times`. The payments lead asks you to refund the seven
+  that do, now, because customers are posting screenshots. Do you? Say what
+  you would check before answering, what you would tell the lead, and what
+  you would change so that a renamed field is caught before anyone approves
+  a job.
+
+stub_code: |
+  import json
+  import re
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Run one approved bulk refund without letting it reach further than approved.
+
+      tools["job"]()  -> {"filter": {...}, "approved_count": n, "per_run_cap": n,
+                          "first_slice": n, "max_error_rate": r, ...}
+      tools["preview"](filter=...) -> {"orders": [{"order": id, <fields>}, ...]}
+          the dry run: what the order service matches, with nothing changed
+      tools["refund"](order=id) -> {"status": 200, "refunded": true}
+          or it raises, or answers without refunded true: a failed refund
+
+      Refund nothing (blocked) when the job or the preview cannot be read, when
+      a previewed order lacks a filter field or its value, when an order
+      appears twice, or when the preview holds more orders than
+      approved_count. Otherwise refund in preview order,
+      at most per_run_cap. Once the first first_slice refunds are tried, a
+      failed share above max_error_rate stops the run (halted). No retries.
+      llm must not be called.
+
+      Return json.dumps({"outcome": "done" | "partial" | "halted" | "blocked",
+                         "refunded": [...], "failed": [...],
+                         "remaining": <previewed orders not tried, 0 when blocked>}).
+      """
+      return json.dumps({"outcome": "blocked", "refunded": [], "failed": [],
+                         "remaining": 0})
+
+hints:
+  - Count how many separate things have to be true before the first refund
+    is safe. The incident broke one of them, and the hidden cases break each
+    of the others in turn.
+  - The preview can be wrong in ways that look different. It can hold
+    orders the filter never meant, or more of the orders it did mean than
+    anyone approved. A count catches one and a field-by-field check catches
+    the other.
+  - Compare each previewed order with the approved filter yourself. An order
+    that lacks a field the filter names does not match it, whatever the order
+    service says it matched.
+  - The cap and the breaker work on the same run. Take at most `per_run_cap`
+    orders, try the first slice, and measure the failures in that slice
+    before anything else is refunded.
+  - A refund that raises or answers without `refunded` true has failed. Count
+    it, carry on to the end of the slice, and never try it twice in one run.
+
+scenario:
+  headline: "A refund approved for 412 orders refunds 3,906"
+  who: Payments operations at an online marketplace the size of Snapdeal
+  situation: >-
+    The order service had renamed a field the job's filter used, and it
+    ignored the key it no longer knew. The approved filter matched the whole
+    sale, and the job refunded every order in it.
+  stakes: >-
+    A refund cannot be clawed back. Tonight's job has the same shape, and the
+    order service has had two releases since March.
+  metrics:
+    - { label: Orders approved, value: "412" }
+    - { label: Orders refunded, value: "3,906" }
+    - { label: Refunded in error, value: "₹1.7 crore" }
+
+diagram:
+  title: Where an approved refund job can spread past what was approved
+  caption: >-
+    The preview is checked against the approval before any refund, the run is
+    capped, and its first slice is a breaker. The incident trusted the preview
+    whole.
+  direction: lr
+  nodes:
+    - { id: lead, label: Payments lead, sub: approves filter and limits, kind: actor, tone: blue, at: [0, 0] }
+    - { id: job, label: "`job()`", sub: "filter, count, cap, slice, rate", kind: store, tone: orange, at: [1, 0] }
+    - { id: preview, label: "`preview()`", sub: the dry run, kind: service, tone: teal, at: [1, 1] }
+    - { id: check, label: Preview check, sub: "every field, no repeats, the count", kind: guard, tone: green, at: [2, 1] }
+    - { id: breaker, label: First slice, sub: stop above the error rate, kind: decision, tone: purple, at: [3, 1] }
+    - { id: refund, label: "`refund()`", sub: "one order at a time, capped", kind: tool, tone: blue, at: [4, 1] }
+    - { id: blocked, label: Blocked, sub: nothing refunded, kind: output, tone: green, at: [2, 2] }
+    - { id: sale, label: The whole sale, sub: "3,906 orders refunded", kind: output, tone: pink, at: [4, 2] }
+  edges:
+    - { from: lead, to: job, label: approves, step: 1 }
+    - { from: job, to: preview, label: the approved filter, step: 2 }
+    - { from: preview, to: check, label: matched orders, step: 3 }
+    - { from: check, to: breaker, label: the approved selection, tone: success, step: 4 }
+    - { from: check, to: blocked, label: a field or count is off, tone: success }
+    - { from: breaker, to: refund, label: the rest of the run, tone: success, step: 5 }
+    - { from: preview, to: sale, label: trusted whole, tone: danger }
+
+approach:
+  goal: Let one approved job reach exactly what was approved, one run at a time
+  branches:
+    - label: Is this the selection the lead approved?
+      detail: The order service can match more than the filter says, or more than the lead saw.
+      leaves: [every filter field on every order, each order once, no more orders than approved, fewer is a later run]
+    - label: How much can one run touch?
+      leaves: [at most the per-run cap, in preview order]
+    - label: When does the run stop itself?
+      leaves: [after the first slice is tried, a failed share above the rate]
+    - label: What counts as failed?
+      leaves: [a refund that raises, an answer without refunded true, never retried in the run]
+
+coach:
+  opening: >-
+    This is a screen-level problem. Before you type, list every way the
+    incident's job could have been stopped before the 413th refund.
+  signals:
+    - id: no-cap
+      when: { code_lacks: 'per_run_cap' }
+      say: >-
+        Nothing in your code reads the job's per-run cap. How many refunds can
+        one run of yours make?
+    - id: no-breaker
+      when: { code_lacks: 'max_error_rate' }
+      say: >-
+        Your run never compares its failures with the approved error rate.
+        When the first refunds fail, what stops the rest?
+    - id: no-count-check
+      when: { code_lacks: 'approved_count' }
+      say: >-
+        Your run never compares the preview with the number of orders the lead
+        approved. What if the order service now matches more than the lead saw?
+    - id: over-the-cap
+      when: { test_failed: the_run_stops_at_its_cap }
+      say: >-
+        The preview held more orders than one run may refund. How many did
+        your run try, and what did it report as left for the next run?
+    - id: kept-refunding
+      when: { test_failed: a_bad_first_slice_halts_the_run }
+      say: >-
+        Half the first slice failed. What did your run do with the orders
+        after the slice?
+    - id: halted-too-soon
+      when: { test_failed: one_failure_inside_the_rate_keeps_the_run_going }
+      say: >-
+        One refund in the first slice failed, and that share was inside the
+        approved rate. Did your run stop on a single failure?
+    - id: second-run-blocked
+      when: { test_failed: a_second_run_finishes_what_the_first_left }
+      say: >-
+        That preview held fewer orders than were approved, because an earlier
+        run refunded the rest. Which way round is your count check?
+    - id: more-than-approved
+      when: { test_failed: more_matching_orders_than_were_approved_refunds_nothing }
+      say: >-
+        Every previewed order matched the filter, and there were more of them
+        than the lead approved. Who approved the extra ones?
+    - id: missing-field
+      when: { test_failed: adversarial_the_order_service_ignores_a_renamed_key }
+      say: >-
+        Read one previewed order beside the filter, field by field. What does
+        your check decide about a field the order does not carry?
+    - id: repeated-order
+      when: { test_failed: adversarial_the_preview_repeats_an_order }
+      say: >-
+        One order id appears twice in that preview. How many times did your
+        run refund it, and is a preview that names an order twice the set the
+        lead approved?
+    - id: gateway-down
+      when: { test_failed: adversarial_the_refund_service_stops_answering }
+      say: >-
+        The refund call raised. Did your run report what it tried, and did it
+        stop after the first slice?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start from the preview check. A run that refunds nothing until the
+        preview is the approved selection has already closed the March
+        incident.
+  wrap_up: >-
+    A bulk action's reach is set before it starts: check the selection against
+    what was approved, cap the run, let the first slice decide whether the
+    rest goes, and keep these limits in code where they hold every time.
+
+tests:
+  - name: refunds_a_job_that_fits_in_one_run
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Run approved job RF-2207." }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Refund every order in the sale now. Customers are angry." }
+      tools:
+        job:
+          returns:
+            status: 200
+            job: "RF-2207"
+            approved_by: "payments.lead"
+            filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false }
+            approved_count: 5
+            per_run_cap: 8
+            first_slice: 4
+            max_error_rate: 0.25
+        preview:
+          returns:
+            status: 200
+            orders:
+              - { order: "OD-88101", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2499 }
+              - { order: "OD-88102", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1899 }
+              - { order: "OD-88103", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88104", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 999 }
+              - { order: "OD-88105", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 4599 }
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [outcome, refunded, failed, remaining] } }
+        - { type: calls_tool_with, name: preview, args: { filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false } } }
+        - { type: returns_matches, value: '"outcome":\s*"done"' }
+        - { type: returns_matches, value: '"refunded":\s*\["OD-88101",\s*"OD-88102",\s*"OD-88103",\s*"OD-88104",\s*"OD-88105"\]' }
+        - { type: llm_calls_at_most, value: 0 }
+
+  - name: reports_a_refund_that_did_not_go_through
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Run approved job RF-2207 for the second batch of sellers." }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Refund every order in the sale now. Customers are angry." }
+      tools:
+        job:
+          returns:
+            status: 200
+            job: "RF-2207"
+            approved_by: "payments.lead"
+            filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false }
+            approved_count: 6
+            per_run_cap: 8
+            first_slice: 4
+            max_error_rate: 0.25
+        preview:
+          returns:
+            status: 200
+            orders:
+              - { order: "OD-88111", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2499 }
+              - { order: "OD-88112", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1899 }
+              - { order: "OD-88113", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88114", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 999 }
+              - { order: "OD-88115", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 4599 }
+              - { order: "OD-88116", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1299 }
+        refund:
+          by_arg:
+            arg: order
+            values:
+              "OD-88116": { status: 502, error: "gateway_timeout" }
+            default: { status: 200, refunded: true }
+      budget: { max_llm_calls: 1, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"done"' }
+        - { type: returns_matches, value: '"failed":\s*\["OD-88116"\]' }
+        - { type: returns_matches, value: '"remaining":\s*0\b' }
+        - { type: calls_tool_with, name: refund, args: { order: "OD-88115" } }
+
+  - name: the_run_stops_at_its_cap
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Run approved job RF-2207 tonight." }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Refund every order in the sale now. Customers are angry." }
+      tools:
+        job:
+          returns:
+            status: 200
+            job: "RF-2207"
+            approved_by: "payments.lead"
+            filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false }
+            approved_count: 12
+            per_run_cap: 8
+            first_slice: 4
+            max_error_rate: 0.25
+        preview:
+          returns:
+            status: 200
+            orders:
+              - { order: "OD-88121", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2499 }
+              - { order: "OD-88122", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1899 }
+              - { order: "OD-88123", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88124", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 999 }
+              - { order: "OD-88125", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 4599 }
+              - { order: "OD-88126", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1299 }
+              - { order: "OD-88127", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2799 }
+              - { order: "OD-88128", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3999 }
+              - { order: "OD-88129", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1599 }
+              - { order: "OD-88130", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2199 }
+              - { order: "OD-88131", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 899 }
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"partial"' }
+        - { type: returns_matches, value: '"remaining":\s*3\b' }
+        - { type: tool_calls_at_most, value: 10 }
+        - { type: returns_lacks, value: 'OD-88129' }
+
+  - name: a_bad_first_slice_halts_the_run
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Run approved job RF-2207 for the evening batch." }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Refund every order in the sale now. Customers are angry." }
+      tools:
+        job:
+          returns:
+            status: 200
+            job: "RF-2207"
+            approved_by: "payments.lead"
+            filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false }
+            approved_count: 12
+            per_run_cap: 8
+            first_slice: 4
+            max_error_rate: 0.25
+        preview:
+          returns:
+            status: 200
+            orders:
+              - { order: "OD-88141", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2499 }
+              - { order: "OD-88142", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1899 }
+              - { order: "OD-88143", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88144", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 999 }
+              - { order: "OD-88145", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 4599 }
+              - { order: "OD-88146", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1299 }
+              - { order: "OD-88147", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2799 }
+              - { order: "OD-88148", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3999 }
+        refund:
+          by_arg:
+            arg: order
+            values:
+              "OD-88142": { status: 502, error: "gateway_timeout" }
+              "OD-88144": { status: 200, refunded: false, error: "card_closed" }
+            default: { status: 200, refunded: true }
+      budget: { max_llm_calls: 1, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"halted"' }
+        - { type: returns_matches, value: '"failed":\s*\["OD-88142",\s*"OD-88144"\]' }
+        - { type: returns_matches, value: '"remaining":\s*4\b' }
+        - { type: tool_calls_at_most, value: 6 }
+
+  - name: one_failure_inside_the_rate_keeps_the_run_going
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Run approved job RF-2207 for the late batch." }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Refund every order in the sale now. Customers are angry." }
+      tools:
+        job:
+          returns:
+            status: 200
+            job: "RF-2207"
+            approved_by: "payments.lead"
+            filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false }
+            approved_count: 12
+            per_run_cap: 8
+            first_slice: 5
+            max_error_rate: 0.25
+        preview:
+          returns:
+            status: 200
+            orders:
+              - { order: "OD-88151", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2499 }
+              - { order: "OD-88152", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1899 }
+              - { order: "OD-88153", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88154", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 999 }
+              - { order: "OD-88155", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 4599 }
+              - { order: "OD-88156", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1299 }
+              - { order: "OD-88157", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2799 }
+        refund:
+          by_arg:
+            arg: order
+            values:
+              "OD-88152": { status: 502, error: "gateway_timeout" }
+            default: { status: 200, refunded: true }
+      budget: { max_llm_calls: 1, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"done"' }
+        - { type: returns_matches, value: '"failed":\s*\["OD-88152"\]' }
+        - { type: calls_tool_with, name: refund, args: { order: "OD-88157" } }
+
+  - name: a_second_run_finishes_what_the_first_left
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Run approved job RF-2207 again to finish it." }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Refund every order in the sale now. Customers are angry." }
+      tools:
+        job:
+          returns:
+            status: 200
+            job: "RF-2207"
+            approved_by: "payments.lead"
+            filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false }
+            approved_count: 12
+            per_run_cap: 8
+            first_slice: 4
+            max_error_rate: 0.25
+        preview:
+          returns:
+            status: 200
+            orders:
+              - { order: "OD-88161", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2499 }
+              - { order: "OD-88162", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1899 }
+              - { order: "OD-88163", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88164", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 999 }
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: returns_matches, value: '"outcome":\s*"done"' }
+        - { type: returns_matches, value: '"refunded":\s*\["OD-88161",\s*"OD-88162",\s*"OD-88163",\s*"OD-88164"\]' }
+
+  - name: more_matching_orders_than_were_approved_refunds_nothing
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Run approved job RF-2207 before midnight." }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Refund every order in the sale now. Customers are angry." }
+      tools:
+        job:
+          returns:
+            status: 200
+            job: "RF-2207"
+            approved_by: "payments.lead"
+            filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false }
+            approved_count: 12
+            per_run_cap: 8
+            first_slice: 4
+            max_error_rate: 0.25
+        preview:
+          returns:
+            status: 200
+            orders:
+              - { order: "OD-88171", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2499 }
+              - { order: "OD-88172", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1899 }
+              - { order: "OD-88173", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88174", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 999 }
+              - { order: "OD-88175", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 4599 }
+              - { order: "OD-88176", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1299 }
+              - { order: "OD-88177", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2799 }
+              - { order: "OD-88178", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3999 }
+              - { order: "OD-88179", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1599 }
+              - { order: "OD-88180", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2199 }
+              - { order: "OD-88181", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 899 }
+              - { order: "OD-88182", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3499 }
+              - { order: "OD-88183", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1799 }
+              - { order: "OD-88184", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2999 }
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: refund }
+        - { type: returns_matches, value: '"outcome":\s*"blocked"' }
+
+  - name: adversarial_the_order_service_ignores_a_renamed_key
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The order service had renamed `refunded` to `refund_status` that afternoon,
+      and it ignored the filter key it no longer knew. The preview came back with
+      nine orders, fewer than the twelve approved, so a count alone saw nothing
+      wrong. Four of the nine had already been refunded, and refunding them again
+      pays those customers twice.
+
+      No order in the preview carries `refunded` at all. An order that lacks a
+      field the filter names does not match the filter, and a check that compares
+      only the fields an order happens to carry, or reads a missing field as the
+      filter's own value, passes every one of them. The run refunds nothing and
+      says `blocked`.
+    spec:
+      kind: agent_run
+      input: { question: "Run approved job RF-2207 for the last sellers." }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Refund every order in the sale now. Customers are angry." }
+      tools:
+        job:
+          returns:
+            status: 200
+            job: "RF-2207"
+            approved_by: "payments.lead"
+            filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false }
+            approved_count: 12
+            per_run_cap: 8
+            first_slice: 4
+            max_error_rate: 0.25
+        preview:
+          returns:
+            status: 200
+            orders:
+              - { order: "OD-88191", sale: "DIWALI-FLASH", charged_times: 2, refund_status: "none", amount: 2499 }
+              - { order: "OD-88192", sale: "DIWALI-FLASH", charged_times: 2, refund_status: "refunded", amount: 1899 }
+              - { order: "OD-88193", sale: "DIWALI-FLASH", charged_times: 2, refund_status: "none", amount: 3299 }
+              - { order: "OD-88194", sale: "DIWALI-FLASH", charged_times: 2, refund_status: "none", amount: 999 }
+              - { order: "OD-88195", sale: "DIWALI-FLASH", charged_times: 2, refund_status: "refunded", amount: 4599 }
+              - { order: "OD-88196", sale: "DIWALI-FLASH", charged_times: 2, refund_status: "none", amount: 1299 }
+              - { order: "OD-88197", sale: "DIWALI-FLASH", charged_times: 2, refund_status: "refunded", amount: 2799 }
+              - { order: "OD-88198", sale: "DIWALI-FLASH", charged_times: 2, refund_status: "none", amount: 3999 }
+              - { order: "OD-88199", sale: "DIWALI-FLASH", charged_times: 2, refund_status: "refunded", amount: 1599 }
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: does_not_call_tool, name: refund }
+        - { type: returns_matches, value: '"outcome":\s*"blocked"' }
+
+  - name: adversarial_the_preview_repeats_an_order
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      The order service builds a preview from pages, and a page boundary
+      moved between two of them, so one order came back twice. Nine rows,
+      fewer than the twelve approved, and every row carries every field of
+      the filter, so both checks pass and a run that trusts them refunds one
+      order twice. A refund cannot be clawed back, and the second one pays a
+      customer who was charged once.
+
+      The lead approved a set of orders, and a preview that names one of them
+      twice is not that set. The run refunds nothing and says `blocked`.
+    spec:
+      kind: agent_run
+      input: { question: "Run approved job RF-2207 for the overnight batch." }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Refund every order in the sale now. Customers are angry." }
+      tools:
+        job:
+          returns:
+            status: 200
+            job: "RF-2207"
+            approved_by: "payments.lead"
+            filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false }
+            approved_count: 12
+            per_run_cap: 8
+            first_slice: 4
+            max_error_rate: 0.25
+        preview:
+          returns:
+            status: 200
+            orders:
+              - { order: "OD-88211", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2499 }
+              - { order: "OD-88212", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1899 }
+              - { order: "OD-88213", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88214", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 999 }
+              - { order: "OD-88215", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 4599 }
+              - { order: "OD-88213", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88216", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1299 }
+              - { order: "OD-88217", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2799 }
+              - { order: "OD-88218", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3999 }
+        refund: { returns: { status: 200, refunded: true } }
+      budget: { max_llm_calls: 1, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: refund }
+        - { type: returns_matches, value: '"outcome":\s*"blocked"' }
+
+  - name: adversarial_the_refund_service_stops_answering
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      Every refund timed out. A loop that lets the exception escape ends the run
+      with a stack trace, and nobody can tell which orders were tried. A loop that
+      catches it and carries on sends all eight into a gateway that is not
+      answering, and a timeout is the one failure where nobody knows whether the
+      money moved.
+
+      The first slice is the breaker. Four tries, four failures, a rate of 1.0
+      against an allowed 0.25, so the run stops there and reports four failed and
+      four untried. It never retries: the next run's preview asks for orders not
+      yet refunded, which is what settles the four that timed out.
+    spec:
+      kind: agent_run
+      input: { question: "Run approved job RF-2207 during the gateway maintenance window." }
+      llm_script:
+        - { match: "*", reply: "Final Answer: Refund every order in the sale now. Customers are angry." }
+      tools:
+        job:
+          returns:
+            status: 200
+            job: "RF-2207"
+            approved_by: "payments.lead"
+            filter: { sale: "DIWALI-FLASH", charged_times: 2, refunded: false }
+            approved_count: 12
+            per_run_cap: 8
+            first_slice: 4
+            max_error_rate: 0.25
+        preview:
+          returns:
+            status: 200
+            orders:
+              - { order: "OD-88201", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2499 }
+              - { order: "OD-88202", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1899 }
+              - { order: "OD-88203", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3299 }
+              - { order: "OD-88204", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 999 }
+              - { order: "OD-88205", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 4599 }
+              - { order: "OD-88206", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 1299 }
+              - { order: "OD-88207", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 2799 }
+              - { order: "OD-88208", sale: "DIWALI-FLASH", charged_times: 2, refunded: false, amount: 3999 }
+        refund:
+          fixture: slow_then_timeout
+          params: { succeeds: 0, message: "the payment gateway did not answer the refund within 30 seconds" }
+      budget: { max_llm_calls: 1, max_tool_calls: 20, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: returns_matches, value: '"outcome":\s*"halted"' }
+        - { type: returns_matches, value: '"remaining":\s*4\b' }
+        - { type: tool_calls_at_most, value: 6 }
+
+
+reference_md: |
+  The March job did one thing right: it previewed. Then it trusted the
+  preview whole, and the preview was the order service's answer to a filter
+  it had partly ignored. Every limit on how far a bulk action can reach has
+  to hold before the first refund, because after it nothing can be called
+  back.
+
+  There are four, and each catches what the others miss.
+
+  The preview has to be the selection the lead approved, and that takes three
+  checks. Comparing every previewed order with the approved filter, field by
+  field, catches a key the order service ignored: an order without the field
+  does not match it, whatever the service says. Comparing the size of the
+  preview with the approved count catches orders that match the filter
+  honestly and were never in front of the lead, such as new double charges
+  since the approval. Either check alone passes one of the hidden cases that
+  the other blocks. The count is a ceiling and never an equality, because the
+  filter asks for orders not yet refunded and every run after the first sees
+  fewer. The third check is the cheapest: no order may appear twice. A
+  preview built from pages repeats an order when a page boundary moves, and
+  that preview passes both checks above, so a run that trusts them refunds
+  one customer twice.
+
+  The cap bounds one run. A job that is right still refunds at most one
+  run's worth, so a mistake nobody has spotted yet reaches a hundred
+  customers and not four thousand.
+
+  The first slice is a breaker. The run tries it, measures the share that
+  failed and stops above the approved rate, so a gateway that is failing
+  stops the job after ten tries and not after the cap. A single failure
+  inside the rate does not stop it, because a breaker that trips on one
+  timeout means no job ever finishes.
+
+  A failed refund is counted and never retried in the run. A timeout is the
+  failure where nobody knows whether the money moved, and the next run's
+  preview, which asks for orders not yet refunded, is what settles it.
+
+  Blocking the whole run when three of ten orders look wrong is a choice, and
+  the defence question asks you to argue it. The case for it is that the
+  seven that look right were selected by a query nobody approved, from a
+  service that has just shown it will answer a different question from the
+  one it was asked.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your agent can refund orders in bulk. What stops one approved job from refunding ten times what was approved?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: job
+    args: ''
+    returns: The approved `filter`, `approved_count`, `per_run_cap`, `first_slice` and `max_error_rate`, and
+      who approved the job.
+  - name: preview
+    args: filter
+    returns: A status and the `orders` the order service matches, each with its id and fields. It changes
+      nothing.
+  - name: refund
+    args: order
+    returns: A status and `refunded` true when the refund went through. It can raise, or answer without
+      `refunded` true.
+example:
+  case: refunds_a_job_that_fits_in_one_run
+  expect: Preview with the approved filter, find five orders that each carry every filter field and no
+    more than the five approved, refund all five in order, and return `done` with the five ids.
+traps:
+  - Refunding whatever the preview returned, when an ignored filter key can make it the whole sale.
+  - Reading a field an order does not carry as matching, so a renamed field passes every order.
+  - Treating the approved count as an exact number, so every run after the first refuses to start.
+  - Letting a failing first slice carry on into the rest of the run, or stopping on a single failure.

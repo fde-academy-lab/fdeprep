@@ -158,8 +158,8 @@ describe("the pipeline, from a finished session to a debrief", () => {
     await closeDb();
   });
 
-  async function finishedSession() {
-    const learner = await seedLearner();
+  async function finishedSession(githubId = 1) {
+    const learner = await seedLearner({ githubId });
     await grantConsent(learner.enrolmentId);
     const questionId = await fixtureQuestionId();
     const started = await startVoiceSession({
@@ -267,6 +267,21 @@ describe("the pipeline, from a finished session to a debrief", () => {
     const judge = scriptedJudge([true, false, false, false, false], [10, 0, 5, 0]);
     expect(await scoreVoiceOnce({ invoke: judge })).toBe(1);
     expect(await scoreVoiceOnce({ invoke: judge })).toBe(0);
+  });
+
+  test("scores only the session it is asked for, and leaves an older one waiting", async () => {
+    const older = await finishedSession();
+    const newer = await finishedSession(2);
+    const judge = scriptedJudge([true, false, false, false, false], [10, 0, 5, 0]);
+    expect(await scoreVoiceOnce({ sessionId: newer.sessionId, invoke: judge })).toBe(1);
+
+    const { rows } = await db().query<{ id: string; scored: boolean; attempts: number }>(
+      `select id, scored_at is not null as scored, judge_attempts as attempts
+         from voice_session order by id`);
+    expect(rows.map((row) => [Number(row.id), row.scored, row.attempts])).toEqual([
+      [older.sessionId, false, 0],
+      [newer.sessionId, true, 1],
+    ]);
   });
 
   test("a judge that fails leaves the session unscored rather than guessing", async () => {

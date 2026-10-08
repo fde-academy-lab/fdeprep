@@ -1,10 +1,13 @@
 slug: match-results-to-their-requests
-title: A customer is told their order arrived when another one did
-day: 11
+title: "Keep each result tied to its own request"
+day: 8
 skill: Keep each result attached to the thing it was asked about
 artefact_type: code
 difficulty: easy
 track: memory
+concept:
+  topic: "Short-term and long-term"
+  question: "How do you keep each result tied to the request that asked for it?"
 est_minutes: 20
 competencies:
   - { slug: state-and-memory, weight: 1.0 }
@@ -186,6 +189,7 @@ hints:
     the missing one still has to exist.
 
 scenario:
+  headline: "A customer is told their order arrived when another one did"
   who: The fulfilment team behind an order-status agent
   situation: >-
     A customer chasing order 9 was told it had been delivered. Order 12 had

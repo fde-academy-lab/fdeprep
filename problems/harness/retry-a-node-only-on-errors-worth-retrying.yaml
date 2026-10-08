@@ -1,0 +1,635 @@
+slug: retry-a-node-only-on-errors-worth-retrying
+title: "Retry a node only on errors worth retrying"
+day: 7
+skill: Retry a LangGraph node only on errors that can clear, and keep side effects out of it
+artefact_type: code
+difficulty: hard
+track: harness
+concept:
+  topic: "Retries and fallbacks"
+  question: "Which failures earn a retry, and what does a retried node run twice?"
+est_minutes: 45
+competencies:
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: system-design, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re, typing, langgraph]
+
+brief_md: |
+  Freight pricing at a trucking marketplace the size of BlackBuck runs a
+  rate-quote agent. A shipper asks for a truck, the model reads the lane,
+  one node looks up the carrier's rate and holds the truck, and the model
+  words the answer. Last month the team moved the agent to LangGraph and
+  put `retry_policy=RetryPolicy()` on that node, expecting flaky carriers
+  to stop costing them quotes.
+
+  The first week went badly in three ways. Carrier timeouts were never
+  retried, because LangGraph's default `retry_on`, the rule that decides
+  which exceptions get another attempt, does not retry a `TimeoutError`,
+  and one quote in nine was lost to a timeout a second try would have
+  cleared. The node raised every carrier error as one class of its own,
+  `CarrierError`, which the default `retry_on` does retry, so each request
+  for a lane the carrier does not serve, `400 unknown lane`, went out three
+  times. And when a hold came back busy, the retry ran the whole
+  node again: a second lookup, a new quote and a second hold. Some of the
+  first holds had gone through anyway, and 41 loads ended up with two
+  trucks.
+
+  Write the graph again. Retry the lookup only on errors that can clear,
+  hold the truck once, and fall back to the rate card only when the
+  carrier's attempts are spent: an estimate for a lane the carrier refused
+  is a price for a truck that will never come.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is a shipper's request, starting with its id:
+  `RQ-40211: 32 ft truck from Bengaluru to Delhi, 12 tonnes, loading 14 October.`
+  `tools["limits"]()` returns `{"max_attempts": <n>}`.
+
+  Build a `StateGraph` with these nodes:
+
+  | Node | What it does |
+  |---|---|
+  | `parse` | Asks `llm(parse_prompt(question))`, which replies `Lane: BLR-DEL`. |
+  | `lookup` | Calls `tools["carrier_rates"](lane=...)`. One call is one attempt. |
+  | `reserve` | After a quote, in a node of its own: `tools["reserve"](quote_id=..., key="<request id>/reserve")`, such as `RQ-40211/reserve`. |
+  | `fallback` | Only when the lookup's attempts are spent: `tools["rate_card"](lane=...)`. |
+  | `answer` | Asks `llm(answer_prompt(question, outcome, quote, reserved))` for the shipper's message. |
+
+  Every carrier, hold and rate card reply is one of these:
+
+  | Reply | What it is |
+  |---|---|
+  | `{"status": 200, ...}` with no `error` | a success |
+  | The call raises `TimeoutError` | worth retrying |
+  | `{"status": 200, "error": {"code": ..., "retryable": true}}` | worth retrying |
+  | A status from 400 to 499, or an `error` with `"retryable": false` | a refusal, never retried |
+
+  Retry `lookup` and `reserve` with
+  `add_node(..., retry_policy=RetryPolicy(...))`, on the errors worth
+  retrying and nothing else, up to `max_attempts` attempts. `RetryPolicy`
+  only sees exceptions, so a retryable error inside a 200 body has to be
+  raised as an exception of your own. Pass `retry_on` yourself, with
+  `initial_interval=0` and `jitter=False`: in langgraph 1.2.12 the default
+  `retry_on` does not retry `TimeoutError`, and it imports `requests` the
+  first time it runs, which the sandbox does not have.
+
+  A node whose attempts are spent raises out of the graph unless it has an
+  error handler. In langgraph 1.2.12, `add_node(..., error_handler=fn)`
+  calls `fn(state)` once the retry policy gives up, and `fn` returns
+  `Command(goto=<node>, update={...})` to say where the run goes next.
+
+  | What happened | `outcome` | `reserved` |
+  |---|---|---|
+  | The carrier quoted | `quoted` | true once `reserve` succeeds, false when it refuses or its attempts are spent |
+  | The lookup's attempts were spent and the rate card answered | `degraded` | false |
+  | The carrier refused, or the rate card failed as well | `failed` | false |
+
+  The fallback never runs when the lookup succeeded, however late.
+
+  Return
+
+      json.dumps({"outcome": ..., "quote": <the carrier's quote, the rate card's, or null>,
+                  "attempts": <carrier_rates calls>, "reserved": true | false,
+                  "message": <the answer node's text>})
+
+  The work takes two model calls, and the budget is 3. Allowed imports:
+  json, re, typing and langgraph, version 1.2.12.
+
+defence_question: |
+  Ops wants the lookup retried on every error, because "most of them are
+  transient". What would you measure for a week before agreeing, and which
+  kind of error would you still never retry, whatever the week showed?
+
+stub_code: |
+  import json
+  import re
+  from typing import TypedDict
+
+  from langgraph.graph import END, START, StateGraph
+  from langgraph.types import Command, RetryPolicy
+
+  LANE = re.compile(r"Lane:\s*([A-Z]{3}-[A-Z]{3})")
+
+
+  def parse_prompt(question: str) -> str:
+      return (f"Shipper: {question}\n"
+              "Reply with the lane as 'Lane: <FROM>-<TO>', using three-letter city codes.")
+
+
+  def answer_prompt(question: str, outcome: str, quote, reserved: bool) -> str:
+      return "\n".join([
+          f"Shipper: {question}",
+          f"Outcome: {outcome}",
+          f"Quote: {json.dumps(quote, sort_keys=True)}",
+          f"Reserved: {'yes' if reserved else 'no'}",
+          "Write one or two sentences for the shipper. Say plainly when the price "
+          "is an estimate, and when there is no price.",
+      ])
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Quote the shipper's truck: parse, lookup, reserve or fallback, answer.
+
+      tools["limits"]() gives max_attempts.
+      lookup calls tools["carrier_rates"](lane=...); each call is an attempt.
+      reserve runs in its own node after a quote, with
+      tools["reserve"](quote_id=..., key="<request id>/reserve").
+      fallback calls tools["rate_card"](lane=...) only when lookup's
+      attempts are spent, never after a late success.
+
+      Retry on TimeoutError and on a 200 whose error says "retryable": true,
+      raised as your own exception. Never retry a 4xx or a non-retryable
+      error. An error handler on a node runs once its attempts are spent and
+      returns Command(goto=..., update=...).
+
+      Return json.dumps({"outcome": "quoted" | "degraded" | "failed",
+                         "quote", "attempts", "reserved", "message"}).
+      Two model calls; the budget is 3. Allowed imports: json, re, typing,
+      langgraph.
+      """
+      return json.dumps({"outcome": "failed", "quote": None, "attempts": 0,
+                         "reserved": False, "message": ""})
+
+hints:
+  - List what can come back from `carrier_rates`, and decide for each one
+    whether asking again could change the answer. A lane the carrier does
+    not serve will be just as unknown on the third try.
+  - A retry policy re-runs a node when the node raises an exception the
+    policy matches. A 200 with an error inside it is a normal return as far
+    as LangGraph can tell, and a timeout matches only if `retry_on` names
+    it.
+  - A retried node runs again from its first line, side effects included.
+    Put the hold in a node of its own after the lookup, with a key that is
+    the same on every attempt.
+  - "Give `lookup` an `error_handler` that returns `Command(goto=\"fallback\")`,
+    because a handler that returns a plain dict ends the run. Count attempts
+    in a variable outside the graph: a failed attempt writes nothing to
+    state."
+
+scenario:
+  headline: "A retry policy skipped every timeout and held one truck twice"
+  who: "Freight pricing at a trucking marketplace the size of BlackBuck"
+  situation: >-
+    The rate-quote agent moved to LangGraph with `RetryPolicy()` on the node
+    that looks up a carrier's rate and holds the truck. Timeouts were never
+    retried, unknown lanes were sent three times, and a busy hold ran the
+    whole node again.
+  stakes: >-
+    A truck held twice for one load costs a cancellation fee and a carrier's
+    goodwill. A timeout nobody retried sends the shipper to whoever answered
+    first.
+  metrics:
+    - { label: Quotes lost to timeouts, value: "1 in 9" }
+    - { label: Sends per unknown lane, value: "3" }
+    - { label: Trucks held twice, value: "41" }
+
+diagram:
+  title: What gets retried, and what runs only once
+  caption: >-
+    The lookup is retried on timeouts and busy replies. The hold has its own
+    node and one key, and the rate card runs only once the lookup's attempts
+    are spent.
+  direction: lr
+  nodes:
+    - { id: shipper, label: Shipper, sub: asks for a truck on a lane, kind: actor, tone: blue, at: [0, 1] }
+    - { id: parse, label: "`parse`", sub: the model reads the lane, kind: model, tone: teal, at: [1, 1] }
+    - { id: lookup, label: "`lookup`", sub: "retried on timeouts, busy replies", kind: tool, tone: green, at: [2, 1] }
+    - { id: reserve, label: "`reserve`", sub: "its own node, one key", kind: tool, tone: green, at: [3, 0] }
+    - { id: handler, label: Error handler, sub: runs once the attempts are spent, kind: guard, tone: purple, at: [2, 2] }
+    - { id: card, label: "`fallback`", sub: the rate card's estimate, kind: service, tone: orange, at: [3, 2] }
+    - { id: answer, label: "`answer`", sub: "quoted, degraded or failed", kind: output, tone: green, at: [4, 1] }
+    - { id: twice, label: Second truck held, sub: a hold inside the retried node, kind: output, tone: pink, at: [3, 1] }
+  edges:
+    - { from: shipper, to: parse, label: request, step: 1 }
+    - { from: parse, to: lookup, label: lane, step: 2 }
+    - { from: lookup, to: reserve, label: a quote, step: 3, tone: success }
+    - { from: lookup, to: handler, label: attempts spent, tone: default }
+    - { from: handler, to: card, label: "`Command(goto=fallback)`", tone: success }
+    - { from: reserve, to: answer, label: held once }
+    - { from: card, to: answer, label: an estimate }
+    - { from: lookup, to: answer, label: "a 400, no retry" }
+    - { from: lookup, to: twice, label: hold retried with lookup, tone: danger }
+
+approach:
+  goal: Retry only what can change, and run each side effect once
+  branches:
+    - label: Sort the failures
+      leaves: [a timeout can clear, a busy reply can clear, a 400 never will]
+    - label: Make the policy see them
+      detail: A retry policy acts on exceptions. A retryable error inside a 200 has to be raised.
+      leaves: [an exception of your own, a `retry_on` you wrote]
+    - label: Keep side effects out of retried code
+      leaves: [the hold in its own node, the same key on every attempt]
+    - label: Fall back only when the attempts are spent
+      leaves: [an error handler that says where to go, never after a late success]
+
+coach:
+  opening: >-
+    Before you configure anything, list every reply the carrier can give and
+    mark the ones a second try could change. Then find every call in your
+    lookup that should run only once.
+  signals:
+    - id: retries-everything
+      when: { code_matches: 'retry_on\s*=\s*(Exception|BaseException)\b' }
+      say: >-
+        Your policy retries every exception. Which of the carrier's replies
+        will be exactly the same on the third attempt, and what does each
+        extra attempt cost?
+    - id: hold-inside-lookup
+      when: { code_lacks: 'add_node\(\s*["'']reserve' }
+      say: >-
+        Where does the hold run? Everything in a retried node runs again on
+        every attempt, the hold included.
+    - id: no-error-handler
+      when: { code_lacks: 'error_handler' }
+      say: >-
+        When the lookup's last attempt fails, what sends the run to the rate
+        card instead of raising out of the graph?
+    - id: no-retry-on
+      when: { code_lacks: 'retry_on' }
+      say: >-
+        Your retry policy has no `retry_on`. LangGraph's default does not
+        retry a timeout, and in the sandbox it fails outright, because it
+        imports `requests` the first time it runs.
+    - id: attempts-in-state
+      when:
+        test_failed: falls_back_to_the_rate_card_when_the_carrier_times_out
+        code_matches: '\[\s*["'']attempts["'']\s*\]|\.get\(\s*["'']attempts["'']'
+      say: >-
+        Compare the carrier calls in that run's trace with the attempts your
+        return reported. An attempt that raises never returns, so nothing it
+        wrote reaches state.
+    - id: hidden-unknown-lane
+      when: { test_failed: an_unknown_lane_is_asked_once }
+      say: >-
+        The carrier refused that lane. How many times did your code ask, and
+        did the shipper get a rate card price for a lane nobody serves?
+    - id: hidden-late-quote
+      when: { test_failed: a_late_quote_is_held_once_and_never_doubled }
+      say: >-
+        The carrier was busy once and then quoted. Count the calls to
+        `rate_card` and `reserve` in that run.
+    - id: hidden-limit
+      when: { test_failed: the_attempt_limit_comes_from_limits }
+      say: >-
+        That run allowed two attempts. Where does your code get the number
+        it retries up to?
+    - id: adversarial-busy-hold
+      when: { test_failed: adversarial_a_busy_hold_keeps_its_quote }
+      say: >-
+        The hold was busy once in that run. When it was tried again, did the
+        lookup run again too, and which quote ended up held?
+    - id: adversarial-card-fails
+      when: { test_failed: adversarial_the_rate_card_fails_too }
+      say: >-
+        The carrier and the rate card both timed out in that run. What did
+        the shipper read, and did anything raise?
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The second hint is about what a retry policy
+        can see, and it is where most of these graphs go wrong.
+  wrap_up: >-
+    A retry is worth it only when the next attempt can get a different
+    answer. Raise the soft errors so the policy sees them, keep side
+    effects in nodes of their own with a stable key, and fall back only
+    when the attempts are spent.
+
+tests:
+  - name: quotes_and_reserves_on_the_first_attempt
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "RQ-40211: 32 ft truck from Bengaluru to Delhi, 12 tonnes, loading 14 October." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Lane: BLR-DEL" }
+        - { match: { contains: "Outcome: quoted" }, reply: "CR-118 will move your 12 tonnes from Bengaluru to Delhi for ₹41,500, and the truck is held for you." }
+        - { match: { contains: "Outcome: degraded" }, reply: "The carrier did not answer in time, so ₹38,000 is a rate card estimate, not a booked price." }
+        - { match: "*", reply: "We could not get a price for this lane today. Our pricing desk will call you within the hour." }
+      tools:
+        limits: { returns: { max_attempts: 3 } }
+        carrier_rates: { returns: { status: 200, quote_id: Q-BLR-DEL-5512, carrier: CR-118, rate: 41500 } }
+        reserve: { returns: { status: 200, reserved: true, hold_id: H-7781 } }
+        rate_card: { returns: { status: 200, card_id: RC-BLR-DEL, rate: 38000 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, quote, attempts, reserved, message]
+            properties:
+              outcome: { const: quoted }
+              attempts: { const: 1 }
+              reserved: { const: true }
+              quote:
+                type: object
+                properties:
+                  quote_id: { const: Q-BLR-DEL-5512 }
+        - { type: calls_tool_with, name: reserve, args: { quote_id: Q-BLR-DEL-5512, key: RQ-40211/reserve } }
+        - { type: returns_matches, value: "held for you" }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: falls_back_to_the_rate_card_when_the_carrier_times_out
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "RQ-40377: 20 ft truck from Pune to Hyderabad, 6 tonnes, loading 16 October." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Lane: PNQ-HYD" }
+        - { match: { contains: "Outcome: quoted" }, reply: "Your truck from Pune to Hyderabad is quoted and held." }
+        - { match: { contains: "Outcome: degraded" }, reply: "The carrier did not answer in time, so ₹21,000 is a rate card estimate for Pune to Hyderabad, not a booked price." }
+        - { match: "*", reply: "We could not get a price for this lane today. Our pricing desk will call you within the hour." }
+      tools:
+        limits: { returns: { max_attempts: 3 } }
+        carrier_rates: { fixture: slow_then_timeout, params: { succeeds: 0, message: "carrier_rates timed out after 8 seconds" } }
+        reserve: { returns: { status: 200, reserved: true, hold_id: H-7790 } }
+        rate_card: { returns: { status: 200, card_id: RC-PNQ-HYD, rate: 21000 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, quote, attempts, reserved, message]
+            properties:
+              outcome: { const: degraded }
+              attempts: { const: 3 }
+              reserved: { const: false }
+              quote:
+                type: object
+                properties:
+                  card_id: { const: RC-PNQ-HYD }
+        - { type: does_not_call_tool, name: reserve }
+        - { type: returns_matches, value: "estimate" }
+        - { type: tool_calls_at_most, value: 5 }
+
+  - name: an_unknown_lane_is_asked_once
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "RQ-40452: 32 ft truck from Kochi to Shillong, 10 tonnes, loading 20 October." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Lane: COK-SHL" }
+        - { match: { contains: "Outcome: quoted" }, reply: "Your truck from Kochi to Shillong is quoted and held." }
+        - { match: { contains: "Outcome: degraded" }, reply: "The carrier did not answer in time, so ₹96,000 is a rate card estimate, not a booked price." }
+        - { match: "*", reply: "We could not get a price for this lane today. Our pricing desk will call you within the hour." }
+      tools:
+        limits: { returns: { max_attempts: 3 } }
+        carrier_rates: { returns: { status: 400, error: { code: unknown_lane, retryable: false } } }
+        reserve: { returns: { status: 200, reserved: true, hold_id: H-7802 } }
+        rate_card: { returns: { status: 200, card_id: RC-COK-SHL, rate: 96000 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, quote, attempts, reserved, message]
+            properties:
+              outcome: { const: failed }
+              attempts: { const: 1 }
+              reserved: { const: false }
+              quote: { type: "null" }
+        - { type: does_not_call_tool, name: rate_card }
+        - { type: does_not_call_tool, name: reserve }
+        - { type: returns_matches, value: "could not get a price" }
+
+  - name: a_late_quote_is_held_once_and_never_doubled
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "RQ-40518: 32 ft truck from Chennai to Kolkata, 14 tonnes, loading 15 October." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Lane: MAA-CCU" }
+        - { match: { contains: "Outcome: quoted" }, reply: "CR-207 will move your 14 tonnes from Chennai to Kolkata for ₹52,800, and the truck is held for you." }
+        - { match: { contains: "Outcome: degraded" }, reply: "The carrier did not answer in time, so ₹49,000 is a rate card estimate, not a booked price." }
+        - { match: "*", reply: "We could not get a price for this lane today. Our pricing desk will call you within the hour." }
+      tools:
+        limits: { returns: { max_attempts: 3 } }
+        carrier_rates:
+          sequence:
+            - { status: 200, error: { code: carrier_busy, retryable: true } }
+            - { status: 200, quote_id: Q-MAA-CCU-2290, carrier: CR-207, rate: 52800 }
+        reserve: { returns: { status: 200, reserved: true, hold_id: H-7815 } }
+        rate_card: { returns: { status: 200, card_id: RC-MAA-CCU, rate: 49000 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, quote, attempts, reserved, message]
+            properties:
+              outcome: { const: quoted }
+              attempts: { const: 2 }
+              reserved: { const: true }
+              quote:
+                type: object
+                properties:
+                  quote_id: { const: Q-MAA-CCU-2290 }
+        - { type: does_not_call_tool, name: rate_card }
+        - { type: calls_tool_with, name: reserve, args: { quote_id: Q-MAA-CCU-2290, key: RQ-40518/reserve } }
+        - { type: tool_calls_at_most, value: 4 }
+
+  - name: the_attempt_limit_comes_from_limits
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "RQ-40603: 20 ft truck from Ahmedabad to Mumbai, 5 tonnes, loading 17 October." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Lane: AMD-BOM" }
+        - { match: { contains: "Outcome: quoted" }, reply: "Your truck from Ahmedabad to Mumbai is quoted at ₹16,200 and held." }
+        - { match: { contains: "Outcome: degraded" }, reply: "The carrier was busy, so ₹15,500 is a rate card estimate for Ahmedabad to Mumbai, not a booked price." }
+        - { match: "*", reply: "We could not get a price for this lane today. Our pricing desk will call you within the hour." }
+      tools:
+        limits: { returns: { max_attempts: 2 } }
+        carrier_rates:
+          sequence:
+            - { status: 200, error: { code: carrier_busy, retryable: true } }
+            - { status: 200, error: { code: carrier_busy, retryable: true } }
+            - { status: 200, quote_id: Q-AMD-BOM-1180, carrier: CR-311, rate: 16200 }
+        reserve: { returns: { status: 200, reserved: true, hold_id: H-7826 } }
+        rate_card: { returns: { status: 200, card_id: RC-AMD-BOM, rate: 15500 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, quote, attempts, reserved, message]
+            properties:
+              outcome: { const: degraded }
+              attempts: { const: 2 }
+              reserved: { const: false }
+        - { type: does_not_call_tool, name: reserve }
+        - { type: returns_matches, value: "RC-AMD-BOM" }
+
+  - name: adversarial_a_busy_hold_keeps_its_quote
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      The carrier quoted on the first attempt, and the hold came back busy:
+      a 200 whose error said to try again. Retried in a node of its own, the
+      hold goes again with the same quote and the same key, and the carrier
+      keeps one hold for quote Q-BLR-MAA-3301 at ₹18,900.
+
+      With the hold inside the lookup node, the busy reply re-runs the whole
+      node. The lookup asks the carrier again and gets a new quote, 3302 at
+      ₹19,400, and the hold is placed on that one. The shipper pays ₹500
+      more, and if the first hold had in fact gone through, the carrier now
+      holds two trucks for one load. That is the incident in the brief.
+    spec:
+      kind: agent_run
+      input: { question: "RQ-40688: 32 ft truck from Bengaluru to Chennai, 11 tonnes, loading 18 October." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Lane: BLR-MAA" }
+        - { match: { contains: "Outcome: quoted" }, reply: "CR-118 will move your 11 tonnes from Bengaluru to Chennai, and the truck is held for you." }
+        - { match: { contains: "Outcome: degraded" }, reply: "The carrier did not answer in time, so ₹17,500 is a rate card estimate, not a booked price." }
+        - { match: "*", reply: "We could not get a price for this lane today. Our pricing desk will call you within the hour." }
+      tools:
+        limits: { returns: { max_attempts: 3 } }
+        carrier_rates:
+          sequence:
+            - { status: 200, quote_id: Q-BLR-MAA-3301, carrier: CR-118, rate: 18900 }
+            - { status: 200, quote_id: Q-BLR-MAA-3302, carrier: CR-118, rate: 19400 }
+        reserve:
+          sequence:
+            - { status: 200, error: { code: carrier_busy, retryable: true } }
+            - { status: 200, reserved: true, hold_id: H-7840 }
+        rate_card: { returns: { status: 200, card_id: RC-BLR-MAA, rate: 17500 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, quote, attempts, reserved, message]
+            properties:
+              outcome: { const: quoted }
+              attempts: { const: 1 }
+              reserved: { const: true }
+              quote:
+                type: object
+                properties:
+                  quote_id: { const: Q-BLR-MAA-3301 }
+        - { type: returns_lacks, value: "Q-BLR-MAA-3302" }
+        - { type: calls_tool_with, name: reserve, args: { quote_id: Q-BLR-MAA-3301, key: RQ-40688/reserve } }
+        - { type: does_not_call_tool, name: rate_card }
+
+  - name: adversarial_the_rate_card_fails_too
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      The carrier timed out on all three attempts, and then the rate card
+      timed out as well. Nothing in this run produced a price, so the only
+      honest answer is that there is none: `failed`, no quote, and a message
+      that says a person will call.
+
+      A fallback is a second dependency, and it can fail the same way the
+      first did. Code that calls the rate card from inside an `except` block
+      around the graph raises out of `run_agent` here, and the shipper gets
+      nothing. Code that treats any reply from the fallback as a price would
+      quote a number nobody gave.
+    spec:
+      kind: agent_run
+      input: { question: "RQ-40731: 32 ft truck from Jaipur to Guwahati, 9 tonnes, loading 21 October." }
+      llm_script:
+        - { match: { call_index: 1 }, reply: "Lane: JAI-GAU" }
+        - { match: { contains: "Outcome: quoted" }, reply: "Your truck from Jaipur to Guwahati is quoted and held." }
+        - { match: { contains: "Outcome: degraded" }, reply: "The carrier did not answer in time, so this is a rate card estimate, not a booked price." }
+        - { match: "*", reply: "We could not get a price for this lane today. Our pricing desk will call you within the hour." }
+      tools:
+        limits: { returns: { max_attempts: 3 } }
+        carrier_rates: { fixture: slow_then_timeout, params: { succeeds: 0, message: "carrier_rates timed out after 8 seconds" } }
+        reserve: { returns: { status: 200, reserved: true, hold_id: H-7851 } }
+        rate_card: { fixture: slow_then_timeout, params: { succeeds: 0, message: "rate_card timed out after 8 seconds" } }
+      budget: { max_llm_calls: 3, max_tool_calls: 10, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [outcome, quote, attempts, reserved, message]
+            properties:
+              outcome: { const: failed }
+              attempts: { const: 3 }
+              reserved: { const: false }
+              quote: { type: "null" }
+        - { type: returns_matches, value: "could not get a price" }
+
+reference_md: |
+  A retry is worth its cost only when the next attempt can get a different
+  answer. A timeout can clear, and so can a carrier that says it is busy. A
+  lane the carrier does not serve will be just as unknown on the third
+  try, so a 400, or any error that says it is not retryable, is answered
+  once and reported.
+
+  The policy decides with the exception it is handed, and nothing else.
+  In langgraph 1.2.12, `default_retry_on` in `langgraph/_internal/_retry.py`
+  returns True for a `ConnectionError` and False for any other `OSError`.
+  `TimeoutError` is an `OSError`, which is why the first week's timeouts
+  were never retried. It returns True for any
+  exception class it does not recognise, which is how the old node's
+  `CarrierError` gave a 400 three attempts. It also imports `httpx` and
+  `requests` on its first call, so in this sandbox the default fails with
+  `ImportError` before it decides anything. A `retry_on` you write yourself
+  settles all three, provided a refusal never arrives as one of the classes
+  it names. A busy reply inside a 200 is a normal return as far as
+  LangGraph can tell, so the node raises it as an exception of its own,
+  and only then can the policy see it.
+
+  A retried node runs again from its first line. The policy's own code
+  clears the writes a failed attempt staged, but it cannot take back a call
+  that reached the carrier. That is why the hold lives in a node of its own
+  after the lookup: a retry of the hold sends the same quote with the same
+  key, and the carrier can keep one hold however many attempts it takes. It
+  is also why the attempt count lives outside the graph. A failed attempt
+  raises before it returns, so it writes nothing to state.
+
+  The fallback is a decision about the whole lookup, and the error handler
+  is the one place that knows the lookup has given up. LangGraph 1.2.12
+  runs `error_handler` after the last attempt, and a handler that returns a
+  plain update ends the run there, so it returns `Command(goto="fallback")`.
+  A lookup that succeeds on its second attempt never reaches the handler,
+  so the shipper never gets a carrier quote and a rate card estimate for
+  the same truck.
+
+  Three of these failures have a problem of their own in this chapter: the
+  200 that carried an error, the 401 no retry could fix, and the refund
+  that went out twice. A retry policy on a node is where they meet,
+  because the policy sees exceptions only, retries whatever it is told to,
+  and re-runs every line of the node.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your LangGraph node calls a flaky carrier API. How do you configure its retries, which errors do you retry, and how do you make sure a retry never books the truck twice?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: limits
+    args: ""
+    returns: '`{"max_attempts": 3}`, the most attempts any one call may have.'
+  - name: carrier_rates
+    args: lane
+    returns: '`{"status": 200, "quote_id", "carrier", "rate"}`, a 200 with a retryable `error`, a 400 refusal, or a raised `TimeoutError`.'
+  - name: reserve
+    args: quote_id, key
+    returns: '`{"status": 200, "reserved": true, "hold_id"}`, or a 200 with a retryable `error` when the carrier is busy.'
+  - name: rate_card
+    args: lane
+    returns: '`{"status": 200, "card_id", "rate"}`, a published estimate for the lane.'
+example:
+  case: quotes_and_reserves_on_the_first_attempt
+  expect: The carrier quotes Q-BLR-DEL-5512 on the first attempt, the hold runs once with key `RQ-40211/reserve`, and the run ends `quoted` with 1 attempt and the truck held.
+traps:
+  - Retrying every exception, so a lane the carrier refused is asked again until the attempts run out.
+  - Treating a 200 with a retryable error inside it as a success, because the retry policy only ever sees exceptions.
+  - Holding the truck inside the retried lookup, so a failed hold runs the lookup again and holds a different quote.
+  - Sending the run to the rate card whenever an attempt failed, even after a later attempt quoted.
