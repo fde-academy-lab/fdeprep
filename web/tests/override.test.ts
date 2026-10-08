@@ -23,7 +23,7 @@ import { disagreementQueue, recordReview } from "../lib/eval/review.ts";
 import {
   NoteRequired, NotOverridable, UnknownBand, overrideBand,
 } from "../lib/eval/override.ts";
-import { bestStates, heatmapFor, type State } from "../lib/competency/score.ts";
+import { bestStates, heatmapFor, type State } from "../lib/eval/competency.ts";
 import { publicView } from "../lib/submissions/view.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 

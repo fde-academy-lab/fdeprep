@@ -12,7 +12,7 @@ import { createSubmission, DuplicateSubmissionError, GateRefused, RateLimitError
 import { dispatchOnce } from "../lib/queue/dispatcher.ts";
 import { receive } from "../lib/queue/shim.ts";
 import { writeResult } from "../lib/queue/result-writer.ts";
-import { stateForSubmission, isUpgrade } from "../lib/competency/score.ts";
+import { stateForSubmission, isUpgrade } from "../lib/eval/competency.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 
 let learner: Awaited<ReturnType<typeof seedLearner>>;

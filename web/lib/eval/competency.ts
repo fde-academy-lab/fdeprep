@@ -1,5 +1,15 @@
 /**
- * Competency state transitions from docs/02 section 7.
+ * Competency state transitions from docs/02 section 7, and the one place that
+ * writes competency_score.
+ *
+ * eval/ is the only writer of a competency state (CLAUDE.md, docs/10 section
+ * 13), so the write lives here. It used to be lib/competency/score.ts, outside
+ * eval/, and moved for story S15.7. Two callers set it off: writeResult in
+ * lib/queue/result-writer.ts, inside the transaction that commits a verdict
+ * with the compare-and-set on the runner's lease, and the faculty override in
+ * ./override.ts. progress/ reads the cells and never computes one, and
+ * tests/writer-boundary.test.ts fails if anything outside lib/eval/ writes
+ * this table.
  *
  * Transitions are one-way and computed on every finished submission.
  *
@@ -150,8 +160,8 @@ export function bestStates(facts: readonly SubmissionFact[]): Map<string, State>
  * raise a maximum. What changes is that removing the basis for a state now
  * removes the state, which is the whole point of an override.
  *
- * docs/10 section 13 still holds: this is `eval/` and `competency/` writing
- * `competency_score`, and nothing in `progress/` or `analytics/` computes it.
+ * docs/10 section 13 still holds: this is `eval/` writing `competency_score`,
+ * and nothing in `progress/` or `analytics/` computes it.
  */
 export async function recomputeForEnrolment(
   client: PoolClient, enrolmentId: number,
