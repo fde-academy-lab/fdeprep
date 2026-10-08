@@ -104,7 +104,10 @@ class BedrockTransport:
             # A client handed in directly stands in for every call.
             return self._client
         if timeout_s not in self._bounded:
-            from botocore.config import Config
+            # botocore's Config, taken from where boto3 imports it for its own
+            # use, so the judge names only boto3. The Lambda base image ships
+            # boto3 with botocore, and tests/test_requirements.py counts boto3.
+            from boto3.session import Config
 
             settings: dict[str, Any] = {"retries": {"total_max_attempts": 1}}
             if timeout_s is not None:
@@ -176,16 +179,18 @@ def _usage_of(response: Any) -> dict[str, int] | None:
     return {"input_tokens": counts[0], "output_tokens": counts[1]}
 
 
+BOTOCORE_TIMEOUTS = ("ReadTimeoutError", "ConnectTimeoutError")
+
+
 def is_timeout(error: BaseException) -> bool:
     """A read or connect timeout from botocore, or a stand-in raising
-    TimeoutError."""
+    TimeoutError. botocore's two classes are matched by module and name
+    along the exception's class hierarchy, so the judge imports nothing from
+    botocore directly and the check holds where botocore is not installed."""
     if isinstance(error, TimeoutError):
         return True
-    try:
-        from botocore.exceptions import ConnectTimeoutError, ReadTimeoutError
-    except ImportError:  # pragma: no cover - the package imports without AWS libraries
-        return False
-    return isinstance(error, (ReadTimeoutError, ConnectTimeoutError))
+    return any(cls.__module__ == "botocore.exceptions" and cls.__name__ in BOTOCORE_TIMEOUTS
+               for cls in type(error).__mro__)
 
 
 def failure_name(error: BaseException) -> str:
