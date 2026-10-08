@@ -16,6 +16,7 @@ from .bedrock import ScriptedTransport, Transport, failure_name
 from .defence import judge_defence
 from .follow_up import failed, judge_follow_up_event
 from .probes import ProbeDisagreement, run_probes
+from .resume import judge_resume_claims_event
 from .rubric import judge_rubric, with_ids
 from .schema import JudgeOutputRejected
 from .voice import judge_voice_event
@@ -136,9 +137,12 @@ def _judge(event: dict[str, Any], transport: Transport) -> dict[str, Any]:
     # verdict.
     if artefact == "voice":
         return judge_voice_event(event, transport)
-    # Plan section 4.1: the voice interviewer's follow-up between turns.
+    # Plan section 4.1: the voice interviewer's follow-up between turns, and
+    # the claims drawn from a pasted resume when an interview session opens.
     if artefact == "voice_follow_up":
         return judge_follow_up_event(event, transport)
+    if artefact == "voice_resume_claims":
+        return judge_resume_claims_event(event, transport)
 
     problem = event.get("problem") or {}
     body = event.get("body") or ""
