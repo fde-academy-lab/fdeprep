@@ -14,6 +14,7 @@ import { History as HistoryIcon, Grid2x2, Mic } from "lucide-react";
 import { permits } from "@/lib/admin/guard";
 import { latestTraces, learnerFacts } from "@/lib/admin/overview";
 import { attemptHistory, heatmap } from "@/lib/progress";
+import { coverageFor } from "@/lib/progress/coverage";
 import { readinessFor } from "@/lib/progress/readiness";
 import { relativeDay } from "@/lib/progress/summary";
 import { currentLearner } from "@/lib/session/current";
@@ -65,8 +66,9 @@ export default async function LearnerPage(props: Props) {
   if (!learner) notFound();
   const id = learner.enrolmentId;
 
-  const [readiness, grid, history, traces, answers] = await Promise.all([
-    readinessFor(id), heatmap(id), attemptHistory(id), latestTraces(id), pastSessions(id),
+  const [readiness, coverage, grid, history, traces, answers] = await Promise.all([
+    readinessFor(id), coverageFor(id), heatmap(id), attemptHistory(id), latestTraces(id),
+    pastSessions(id),
   ]);
   const now = new Date();
 
@@ -81,7 +83,7 @@ export default async function LearnerPage(props: Props) {
           : [{ label: "State", value: learner.state.charAt(0).toUpperCase() + learner.state.slice(1) }]),
       ]} />
 
-      <ReadinessLine readiness={readiness} heatmapLink={false} />
+      <ReadinessLine readiness={readiness} coverage={coverage} heatmapLink={false} />
 
       <CompetencyHeatmap grid={grid}>
         {untouched(grid) ? (

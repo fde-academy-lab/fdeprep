@@ -11,6 +11,7 @@
 import type { Metadata } from "next";
 import { nextUp } from "@/lib/policy/roadmap";
 import { heatmap } from "@/lib/progress";
+import { coverageFor } from "@/lib/progress/coverage";
 import { continueItem } from "@/lib/progress/journey";
 import { readinessFor } from "@/lib/progress/readiness";
 import { recentActivity, topAndBottom } from "@/lib/progress/summary";
@@ -26,11 +27,12 @@ export const metadata: Metadata = { title: "Home" };
 
 export default async function HomePage() {
   const learner = await currentLearner();
-  const [view, resume, grid, readiness, recent] = await Promise.all([
+  const [view, resume, grid, readiness, coverage, recent] = await Promise.all([
     nextUp(learner.enrolmentId),
     continueItem(learner.enrolmentId),
     heatmap(learner.enrolmentId),
     readinessFor(learner.enrolmentId),
+    coverageFor(learner.enrolmentId),
     recentActivity(learner.enrolmentId),
   ]);
 
@@ -49,7 +51,7 @@ export default async function HomePage() {
         : view.kind === "done" ? <PathComplete />
         : <NextUp items={cards} resumed={resumed?.slug ?? null} />}
       {view.kind === "next_up" && bars.length ? <CompetencyBars bars={bars} /> : null}
-      <ReadinessLine readiness={readiness} />
+      <ReadinessLine readiness={readiness} coverage={coverage} />
       {view.kind === "start" ? null : <RecentActivity rows={recent} />}
     </Page>
   );
