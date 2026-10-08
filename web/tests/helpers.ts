@@ -45,7 +45,7 @@ export async function resetDatabase(client: Pool | PoolClient = db()): Promise<v
              step_check, problem_test, hint, problem_competency, problem_version,
              problem, rate_limit_counter, enrolment, cohort, app_user, audit_log,
              voice_nudge, voice_beat_result, voice_session, voice_consent,
-             voice_beat, voice_question, embedding, evaluation_review, invite
+             voice_beat, voice_question, embedding, evaluation_review, invite, report_card
     restart identity cascade`);
 
   // truncate cohort cascade takes rate_limit_policy with it, so put the seed

@@ -278,10 +278,23 @@ describe("only eval/ writes a grade, a band or a competency state", () => {
     expect([...found].sort()).toEqual(Object.keys(COMPUTED).sort());
   });
 
-  it("finds no write of any kind under lib/progress/ or lib/analytics/", async () => {
-    for (const write of (await sources()).flatMap(({ file, text }) => writes(file, text))) {
-      expect(write.file, `${write.file}: ${write.verb} ${write.table}`)
-        .not.toMatch(/^lib\/(progress|analytics)\//);
+  it("finds no write under lib/progress/, and under lib/analytics/ only a report card appended", async () => {
+    const all = (await sources()).flatMap(({ file, text }) => writes(file, text));
+    for (const write of all) {
+      const where = `${write.file}: ${write.verb} ${write.table}`;
+      expect(write.file, where).not.toMatch(/^lib\/progress\//);
+      if (!write.file.startsWith("lib/analytics/")) continue;
+      expect({ file: write.file, verb: write.verb, table: write.table }, where)
+        .toEqual({ file: "lib/analytics/report-card.ts", verb: "insert into", table: "report_card" });
+    }
+  });
+
+  it("never updates or deletes a report card once it is issued", async () => {
+    const all = (await sources()).flatMap(({ file, text }) => writes(file, text));
+    const cards = all.filter((write) => write.table === "report_card");
+    expect(cards.length).toBeGreaterThan(0);
+    for (const write of cards) {
+      expect(write.verb, `${write.file}: ${write.verb} report_card`).toBe("insert into");
     }
   });
 
