@@ -14,7 +14,6 @@ import { allowanceFor, voiceScope } from "@/lib/policy/caps";
 import { currentLearner } from "@/lib/session/current";
 import { logOnce } from "@/lib/log-once";
 import { clock } from "@/lib/voice/clock";
-import { consentState } from "@/lib/voice/consent";
 import { publishedQuestions } from "@/lib/voice/question";
 import { logVoiceNotSetUp, voiceReadiness } from "@/lib/voice/start";
 import { ButtonLink } from "@/components/ui/button";
@@ -34,9 +33,8 @@ function heading(track: string): string {
 
 export default async function VoicePage() {
   const learner = await currentLearner();
-  const [questions, consent, pressure] = await Promise.all([
+  const [questions, pressure] = await Promise.all([
     publishedQuestions(),
-    consentState(learner.enrolmentId),
     allowanceFor({ enrolmentId: learner.enrolmentId, scope: voiceScope("pressure") }),
   ]);
   const readiness = voiceReadiness();
@@ -55,23 +53,13 @@ export default async function VoicePage() {
         {!readiness.ready ? (
           <p className="mt-2 max-w-[70ch] text-text-dim">
             Spoken answers are not switched on for this cohort yet, so a spoken run is timed practice
-            that records nothing. A typed answer is scored now.
+            and only a typed answer is scored.
           </p>
-        ) : (
-          <>
-            {pressure.max !== null ? (
-              <p className="tnum mt-2 text-text-dim">
-                Pressure answers left this week: {pressure.remaining} of {pressure.max}, shared with rehearsals.
-              </p>
-            ) : null}
-            {!consent.granted ? (
-              <p className="mt-1 text-text-dim">
-                A spoken answer is recorded, so it needs your consent once. A typed answer does not.{" "}
-                <Link href="/voice/consent" className="text-text underline underline-offset-2">Read what is recorded</Link>
-              </p>
-            ) : null}
-          </>
-        )}
+        ) : pressure.max !== null ? (
+          <p className="tnum mt-2 text-text-dim">
+            Pressure answers left this week: {pressure.remaining} of {pressure.max}, shared with rehearsals.
+          </p>
+        ) : null}
       </div>
 
       {questions.length === 0 ? (

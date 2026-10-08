@@ -23,15 +23,19 @@ import { cn } from "@/components/ui/cn";
 const problemHref = (slug: string) => `/problems/${slug}` as Route;
 
 /**
- * Where the learner stands: the track, the persona, the day on the 30-day
- * storyline of the first required problem still unsolved, and how much of
+ * Where the learner stands: the track, the persona, the earliest day on the
+ * 30-day storyline with a required problem still unsolved, and how much of
  * the path is solved.
  */
 export function PositionStrip({ roadmap }: { roadmap: Roadmap }) {
-  const next = roadmap.items.find((item) => !item.solved && !item.isOptional);
-  // A problem published before the storyline has no day, and the strip says
-  // nothing rather than guess one.
-  const day = !next ? "Path complete" : next.day ? `Day ${next.day} of ${STORYLINE_DAYS}` : null;
+  const unsolved = roadmap.items.filter((item) => !item.solved && !item.isOptional);
+  // The earliest day, not the next problem's, because the path's order and the
+  // storyline's can disagree and the day should never step back. A problem
+  // published before the storyline has no day, and the strip says nothing
+  // rather than guess one.
+  const days = unsolved.flatMap((item) => (item.day === null ? [] : [item.day]));
+  const day = !unsolved.length ? "Path complete"
+    : days.length ? `Day ${Math.min(...days)} of ${STORYLINE_DAYS}` : null;
   const cells = [
     { label: "Track", value: roadmap.trackName },
     { label: "Persona", value: roadmap.persona.charAt(0).toUpperCase() + roadmap.persona.slice(1) },
@@ -114,7 +118,7 @@ export function PathComplete() {
   return (
     <section aria-labelledby="path-complete" className="rounded-panel border border-border bg-surface p-6">
       <h2 id="path-complete" className="text-title font-semibold tracking-[-0.01em] text-text">
-        Every problem on your path is passed.
+        Every problem on your path is passed
       </h2>
       <ButtonLink href="/rehearsal" variant="primary" size="lg" className="mt-6">
         Sit a rehearsal <ArrowRight aria-hidden />
@@ -128,7 +132,7 @@ export function CompetencyBars({ bars }: { bars: CompetencyBar[] }) {
   return (
     <section aria-labelledby="competencies">
       <SectionHeading id="competencies" title="Your competencies"
-                      action={<Link href="/progress" className="hover:text-text">See the full heatmap</Link>} />
+                      action={<Link href="/progress" className="hover:text-text">Full heatmap</Link>} />
       <ul className="mt-4 divide-y divide-border rounded-panel border border-border bg-surface">
         {bars.map((bar) => (
           <li key={bar.slug} className="grid h-9 grid-cols-[14rem_minmax(0,1fr)_8rem] items-center gap-4 px-3">
@@ -152,7 +156,7 @@ export function RecentActivity({ rows }: { rows: ActivityRow[] }) {
   return (
     <section aria-labelledby="recent">
       <SectionHeading id="recent" title="Recent activity"
-                      action={<Link href="/progress" className="hover:text-text">Full history</Link>} />
+                      action={<Link href="/progress#history" className="hover:text-text">Full history</Link>} />
       {rows.length ? (
         <Table className="mt-4" widths={[128, null, 128, 96]} head={
           <Head>

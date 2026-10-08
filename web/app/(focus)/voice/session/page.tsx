@@ -185,10 +185,6 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
           <>
             {start}
             <h2 className="mt-10 text-lead font-semibold text-text">Answer it out loud against the clock</h2>
-            <p className="mt-1 text-text-dim">
-              This run records nothing and scores nothing. The clock and the beats are the same ones a
-              graded session uses.
-            </p>
             <div className="mt-4 rounded-panel border border-border bg-surface p-5 sm:p-6">
               <VoicePractice key={question.slug} prompt={question.promptText} totalSeconds={question.totalSeconds}
                              beats={question.beats.map((b) => ({ key: b.key, label: b.label, seconds: b.seconds }))} />

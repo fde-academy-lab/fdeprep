@@ -21,10 +21,11 @@ vi.mock("next/navigation", async (original) => ({
 import { closeDb, db } from "../lib/db/pool.ts";
 import { createInvite } from "../lib/auth/invite.ts";
 import { listProblems, nearestWithProblems } from "../lib/problems/catalogue.ts";
-import { seedTracks } from "../lib/policy/roadmap.ts";
+import { seedTracks, type RoadmapItem } from "../lib/policy/roadmap.ts";
 import { DURATION_MINUTES, PROBLEM_COUNT } from "../lib/rehearsal/index.ts";
 import { audioState, scoreState } from "../lib/voice/debrief.ts";
 import { AttemptsPanel } from "../components/workspace/panels.tsx";
+import { PositionStrip } from "../components/home/sections.tsx";
 import SignInPage from "../app/signin/page.tsx";
 import InvitePage from "../app/invite/[token]/page.tsx";
 import HomePage from "../app/(shell)/page.tsx";
@@ -174,9 +175,30 @@ describe("S2: Home", () => {
     const markup = await html(HomePage());
 
     expect(text(markup)).toContain("Day Path complete");
-    expect(text(markup)).toContain("Every problem on your path is passed. Sit a rehearsal");
+    expect(text(markup)).toContain("Every problem on your path is passed Sit a rehearsal");
     expect(markup).toContain('href="/rehearsal"');
     expect(text(markup)).toContain("Readiness");
+  });
+
+  it("names the earliest storyline day still open, so solving a later day never steps it back", () => {
+    const item = (day: number | null, solved = false, isOptional = false): RoadmapItem => ({
+      problemId: 0, slug: "a-problem", title: "A problem", difficulty: "easy", track: "loop",
+      artefactType: "code", estMinutes: 15, competencyCount: 1, day, topic: null, ordinal: 0,
+      isOptional, solved, attempted: solved,
+    });
+    const strip = (items: RoadmapItem[]) => text(renderToStaticMarkup(createElement(PositionStrip, {
+      roadmap: { persona: "builder", trackName: "Foundations for FDEs", items, solved: 0,
+                 total: items.length, optionalUnlocked: false },
+    })));
+
+    // The builder path opens on a day 2 problem ahead of the day 1 problems.
+    expect(strip([item(2), item(1), item(1)])).toContain("Day Day 1 of 30");
+    expect(strip([item(2, true), item(1), item(1)])).toContain("Day Day 1 of 30");
+    expect(strip([item(2), item(1, true), item(1, true)])).toContain("Day Day 2 of 30");
+    // An optional problem does not hold the day back, and a required one with no day names none.
+    expect(strip([item(1, false, true), item(3)])).toContain("Day Day 3 of 30");
+    expect(strip([item(null), item(2, true)])).not.toContain("Day");
+    expect(strip([item(1, true), item(4, false, true)])).toContain("Day Path complete");
   });
 });
 
@@ -245,7 +267,7 @@ describe("Voice", () => {
     const markup = await html(VoicePage());
 
     expect(text(markup)).toContain("Spoken answers are not switched on for this cohort yet, so a spoken " +
-      "run is timed practice that records nothing. A typed answer is scored now.");
+      "run is timed practice and only a typed answer is scored.");
     expect(text(markup)).toContain(
       "No interview questions are published yet. Ask your faculty to run the content import.");
     expect(markup).not.toMatch(ENV_NAMES);
@@ -299,10 +321,11 @@ describe("Past answers", () => {
     expect(audioState({ ...answer, audioDeletedAt: "2026-09-02T10:00:00Z" })).toBe("deleted");
   });
 
-  it("keeps its empty state and button", async () => {
+  it("keeps its empty state, whose button is the page's one way to Voice", async () => {
     const markup = await html(PastSessionsPage());
     expect(text(markup)).toContain("You have not finished an answer yet. Pick a question; each one runs " +
-      "two to three minutes. Pick a question");
+      "two to three minutes. Answer a question");
+    expect(markup.match(/href="\/voice"/g)).toHaveLength(1);
   });
 });
 

@@ -42,14 +42,20 @@ export default async function PastSessionsPage() {
 
   return (
     <Page>
+      {/* With no answers the empty state's button is the page's one action. */}
       <PageHeading title="Past answers" line="Every answer you finished, spoken or typed, with its debrief."
-                   action={<ButtonLink href="/voice" variant="primary"><Mic aria-hidden /> Answer a question</ButtonLink>} />
+                   action={sessions.length ? (
+                     <ButtonLink href="/voice" variant="primary"><Mic aria-hidden /> Answer a question</ButtonLink>
+                   ) : undefined} />
 
       {sessions.length === 0 ? (
-        <EmptyState icon={Mic} action={<ButtonLink href="/voice" size="sm">Pick a question</ButtonLink>}>
+        <EmptyState icon={Mic}
+                    action={<ButtonLink href="/voice" size="sm" variant="primary">Answer a question</ButtonLink>}>
           You have not finished an answer yet. Pick a question; each one runs two to three minutes.
         </EmptyState>
       ) : (
+        /* The date and the recording state hold one line and the title takes what is left.
+           Fixed widths, measured in Geist, put every title on two lines; this keeps most on one. */
         <Table head={
           <Head>
             <Cell head>Question</Cell>
@@ -67,12 +73,14 @@ export default async function PastSessionsPage() {
                 </Link>
               </Cell>
               <Cell className="capitalize text-text-dim">{session.mode}</Cell>
-              <Cell className="text-text-dim">{new Date(session.startedAt).toLocaleDateString()}</Cell>
+              <Cell className="whitespace-nowrap text-text-dim">
+                {new Date(session.startedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              </Cell>
               {/* Left-aligned: a score shares this column with a sentence saying why there is none. */}
               <Cell className={session.score === null ? "text-text-dim" : "tnum text-text"}>
                 {score(session, now)}
               </Cell>
-              <Cell className="text-right text-text-dim">{AUDIO[audioState(session)]}</Cell>
+              <Cell className="whitespace-nowrap text-right text-text-dim">{AUDIO[audioState(session)]}</Cell>
             </Row>
           ))}
         </Table>
