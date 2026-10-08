@@ -59,6 +59,35 @@ export interface OpsSnapshot {
   stuck: StuckRow[];
   stuckVoice: StuckVoiceRow[];
   degraded: DegradedMode;
+  /** S14.5: interview mode's follow-up rounds asked today. */
+  interviewToday: InterviewToday;
+}
+
+/**
+ * docs/07 section 5a: the gap a learner waits between turns, budgeted at six
+ * seconds at the 95th percentile, and how often the model was too late or
+ * failed and the authored bank asked instead.
+ */
+export interface InterviewToday {
+  rounds: number;
+  /** Nearest-rank, over today's rounds. Null with none. */
+  p95GapMs: number | null;
+  /** Fraction of today's rounds the authored bank asked, 0 to 1. */
+  fallbackShare: number;
+}
+
+export async function interviewToday(client: Pool | PoolClient = db()): Promise<InterviewToday> {
+  const { rows } = await client.query<{ rounds: string; p95: number | null; fallbacks: string }>(
+    `select count(*) as rounds,
+            percentile_disc(0.95) within group (order by gap_ms) as p95,
+            count(*) filter (where source <> 'generated') as fallbacks
+       from voice_turn where asked_at >= date_trunc('day', now())`);
+  const rounds = Number(rows[0]?.rounds ?? 0);
+  return {
+    rounds,
+    p95GapMs: rows[0]?.p95 ?? null,
+    fallbackShare: rounds === 0 ? 0 : Number(rows[0]!.fallbacks) / rounds,
+  };
 }
 
 /**
@@ -193,5 +222,6 @@ export async function opsSnapshot(client: Pool | PoolClient = db()): Promise<Ops
       why: row.gave_up ? "judge_gave_up" : "scorer_not_running",
     })),
     degraded: await readDegradedMode(client),
+    interviewToday: await interviewToday(client),
   };
 }
