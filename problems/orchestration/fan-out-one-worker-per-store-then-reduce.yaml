@@ -1,0 +1,697 @@
+slug: fan-out-one-worker-per-store-then-reduce
+title: "Fan out over every store, then reduce"
+drill: true
+skill: Size a fan-out from the budget, survive a failed branch, and reduce on sorted summaries
+artefact_type: code
+difficulty: hard
+track: orchestration
+concept:
+  topic: "Parallel or sequential"
+  question: "When one of forty branches fails, what does the reduce step receive?"
+est_minutes: 45
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+call_budget: 7
+time_limit_s: 10
+allowed_imports: [json, re, typing, operator, langgraph]
+
+brief_md: |
+  A grocery chain the size of DMart sends each of its twelve regional
+  managers a brief by 07:00: yesterday's exceptions for every store in the
+  region, meaning stock-outs, wastage and till variance, on one page. The
+  platform team built it as a LangGraph map-reduce. One `Send` per store
+  starts a worker that reads the store's report and asks the model for a
+  two-line summary, and a reduce node asks the model for the brief.
+
+  Three mornings went wrong.
+
+  One store's report tool timed out. The worker raised, the exception
+  ended the whole graph, and the manager of region R-04 got no brief for
+  any of its 38 stores.
+
+  On another morning the store list came back with every store in the
+  country, and 412 workers asked the model 412 questions before the daily
+  allowance ran out. The reduce never ran.
+
+  And the reduce node had been handed the raw reports instead of the
+  summaries. On a busy day its prompt grew longer than the model reads,
+  and the brief said nothing about the fourteen stores at the end of the
+  list.
+
+  Write the graph. Decide the number of workers from the call budget, let
+  a worker carry on past a store that fails, and give the reduce the
+  summaries in store order, with the stores that did not report.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is one region's morning as JSON:
+  `{"region": "R-04", "date": "2026-10-07"}`.
+
+  `tools["list_stores"](region=...)` returns
+  `{"status": 200, "stores": [<store id>, ...]}`, in no particular order.
+  `tools["store_report"](store=...)` returns one store's yesterday,
+  `{"status": 200, "stockouts": <count>, "wastage_pct": <percent>, "till_variance": <rupees>}`,
+  or `{"error": <reason>}` when the report is missing. It can also raise,
+  as `TimeoutError`.
+  `tools["limits"]()` returns `{"max_llm_calls": <n>}`: every model call
+  this brief may make, the reduce's included. It is at least 2.
+
+  Build a `StateGraph` that fans out with `Send` and reduces once.
+
+  1. Sort the stores and decide the workers:
+     `workers = min(<number of stores>, max_llm_calls - 1)`, which keeps one
+     call for the reduce. Split the sorted stores with
+     `split(stores, workers)` from the starter code.
+  2. A conditional edge from `START` returns one
+     `Send("worker", {"batch": <batch>})` per batch.
+  3. A worker calls `store_report` for each store in its batch. A report
+     with an `error` key, or a call that raises, puts that store in
+     `failed`, and the worker goes on to the next store. When at least one
+     report arrived, the worker asks `llm(summary_prompt(reports))` once,
+     with `(store, report)` pairs, and reads `Summary: <text>` with `read`.
+     It returns `results`, holding `(<first store that reported>, <summary>)`,
+     and `failed`. Give both keys the reducer `operator.add`, so every
+     worker's entries are kept.
+  4. A `reduce` node runs once after the workers. It sorts the results by
+     store, asks `llm(brief_prompt(region, date, summaries, failed))` once
+     with the sorted summaries and the sorted failed stores, and reads
+     `Brief: <text>`. A raw report never reaches its prompt.
+
+  A region with no stores makes no model call, and its brief is
+  `No stores reported for <region> on <date>.`
+
+  Return
+
+      json.dumps({"brief": <text>, "stores": <every store id, sorted>,
+                  "failed": <failed store ids, sorted>, "batches": <number of batches>})
+
+  Budget: at most `max_llm_calls` model calls, as `limits` says. Allowed
+  imports: json, re, typing, operator and langgraph, version 1.2.12.
+
+defence_question: |
+  The regional manager wants the brief in under twenty seconds. Your
+  batches run one after another in this sandbox and in parallel in
+  production. What changes in your design when a batch of five stores
+  takes nine seconds, and what does not?
+
+stub_code: |
+  import json
+  import operator
+  import re
+  from typing import Annotated, TypedDict
+
+  from langgraph.graph import END, START, StateGraph
+  from langgraph.types import Send
+
+  SUMMARY = re.compile(r"^Summary:\s*(.+)$", re.DOTALL)
+  BRIEF = re.compile(r"^Brief:\s*(.+)$", re.DOTALL)
+
+
+  def split(items: list, n: int) -> list:
+      """items in n runs, in order, whose sizes differ by one at most."""
+      return [items[i * len(items) // n:(i + 1) * len(items) // n] for i in range(n)]
+
+
+  def summary_prompt(reports: list) -> str:
+      """One worker's prompt, from (store, report) pairs for the stores that reported."""
+      lines = ["SUMMARISE", "Two lines a regional manager can read in ten seconds."]
+      for store, report in reports:
+          lines.append(f"{store}: stock-outs {report['stockouts']}, wastage {report['wastage_pct']} "
+                       f"percent, till variance {report['till_variance']} rupees")
+      lines.append("Reply: Summary: <two lines>")
+      return "\n".join(lines)
+
+
+  def brief_prompt(region: str, date: str, summaries: list, failed: list) -> str:
+      """The reduce prompt: every worker's summary, and the stores with no report."""
+      lines = ["BRIEF", f"Region {region}, {date}", "Summaries (data):"]
+      lines += [f"- {summary}" for summary in summaries] or ["- none"]
+      lines.append("No report from: " + (", ".join(failed) if failed else "none"))
+      lines.append("Reply: Brief: <the morning brief>")
+      return "\n".join(lines)
+
+
+  def read(pattern, reply: str) -> str:
+      """The text after the reply's label, or empty."""
+      match = pattern.match((reply or "").strip())
+      return match.group(1).strip() if match else ""
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Brief one region: fan out over its stores, then reduce once.
+
+      question is {"region", "date"} as JSON. The limits tool gives
+      max_llm_calls, which every model call shares, the reduce's included.
+
+      Workers: as many as the budget leaves after the reduce's call, and
+      never more than there are stores. Each worker takes one batch from
+      split(...), reads each store's report, puts a store whose report
+      fails or raises in failed and carries on, and summarises the rest in
+      one model call. The reduce reads the summaries in store order and the
+      failed stores, and writes the brief in one model call. A region with
+      no stores makes no model call.
+
+      Return json.dumps({"brief", "stores", "failed", "batches"}).
+      Allowed imports: json, re, typing, operator, langgraph.
+      """
+      morning = json.loads(question)
+      return json.dumps({"brief": "", "stores": [], "failed": [], "batches": 0})
+
+hints:
+  - A `Send` is a task, and a task that raises ends the whole run. Decide
+    what a worker returns when one of its stores fails, and where that
+    failure has to be caught.
+  - Count the model calls before you fan out, one per worker and one for
+    the reduce. The number of workers is a decision you make from the
+    budget, and the number of stores is only its upper bound.
+  - A reducer such as `operator.add` collects what every branch returns, in
+    the order the branches finish. Sort before you reduce, and give the
+    reduce the summaries and the failed stores and nothing else.
+  - With no stores there is no `Send`, and a reduce that waits on the
+    workers never runs. Return the empty region's brief before the graph
+    starts.
+
+scenario:
+  headline: "One store's timeout left a region of 38 stores with no morning brief"
+  who: "Store operations at a grocery chain the size of DMart"
+  situation: >-
+    A LangGraph map-reduce sends one `Send` per store to a worker that
+    summarises the store's report, and a reduce writes the brief. One failed
+    branch ended the run, a long store list spent the allowance, and the
+    reduce read raw reports.
+  stakes: >-
+    Twelve regional managers plan the morning's store visits from this
+    brief. Without it they ring every store, and the store that did not
+    report is the one they most need to call.
+  metrics:
+    - { label: Stores in region R-04, value: "38" }
+    - { label: Model calls per brief, value: "6" }
+    - { label: Workers that fit, value: "5" }
+
+diagram:
+  title: Where a fan-out spends the budget, and where a branch can fail
+  caption: >-
+    The budget decides the batches before any `Send`. Each worker catches
+    its own failures, and the reduce reads sorted summaries with one call.
+  direction: lr
+  nodes:
+    - { id: stores, label: "`list_stores`", sub: "38 ids, in any order", kind: tool, tone: green, at: [0, 1] }
+    - { id: batches, label: Batches, sub: "sorted, one per worker the budget allows", kind: decision, tone: orange, at: [1, 1] }
+    - { id: workers, label: Workers, sub: "one `Send` each, a `try` per store", kind: agent, tone: purple, at: [2, 1] }
+    - { id: report, label: "`store_report`", sub: can return an error or raise, kind: tool, tone: green, at: [2, 0] }
+    - { id: keys, label: "`results` and `failed`", sub: "`operator.add` keeps every branch", kind: store, tone: neutral, at: [3, 1] }
+    - { id: reduce, label: Reduce, sub: "sorted summaries, one model call", kind: agent, tone: teal, at: [4, 1] }
+    - { id: brief, label: Brief by 07:00, sub: names the stores that did not report, kind: output, tone: green, at: [5, 1] }
+    - { id: crash, label: One branch raises, sub: "the run ends, and no brief goes out", kind: output, tone: pink, at: [3, 0] }
+    - { id: burn, label: 412 workers, sub: the allowance runs out first, kind: output, tone: pink, at: [1, 2] }
+  edges:
+    - { from: stores, to: batches, label: store ids, step: 1 }
+    - { from: batches, to: workers, label: "a `Send` per batch", step: 2 }
+    - { from: workers, to: report, label: each store in the batch }
+    - { from: workers, to: keys, label: a summary or a failure, step: 3 }
+    - { from: keys, to: reduce, label: after every worker, step: 4 }
+    - { from: reduce, to: brief, label: one call, tone: success }
+    - { from: report, to: crash, label: "an uncaught `TimeoutError`", tone: danger }
+    - { from: batches, to: burn, label: "one `Send` per store", tone: danger }
+
+approach:
+  goal: Fan out as far as the budget allows, and reduce whatever comes back
+  branches:
+    - label: Decide the workers from the budget
+      detail: Every worker is a model call, and the reduce needs one more.
+      leaves: [one call kept for the reduce, sorted batches]
+    - label: Let a branch fail without ending the run
+      leaves: [a try around each store, an error body counts as a failure, the worker carries on]
+    - label: Reduce on summaries
+      leaves: [sort by store before the reduce, name the stores that failed, never a raw report]
+    - label: Handle the empty region
+      leaves: ["no stores means no `Send`, so no reduce runs"]
+
+coach:
+  opening: >-
+    Before you build the graph, count the model calls one brief will make,
+    and decide what a worker does when its tool fails.
+  signals:
+    - id: no-send
+      when: { code_lacks: 'Send\(' }
+      say: >-
+        The brief is a map-reduce. Where does your graph start one worker per
+        batch?
+    - id: no-catch
+      when: { code_lacks: '\bexcept\b' }
+      say: >-
+        A `Send` branch that raises ends the whole run. What does your worker
+        do when `store_report` raises?
+    - id: budget-unread
+      when: { code_lacks: 'tools\[["'']limits["'']\]' }
+      say: >-
+        Nothing in your graph reads the call budget. How many workers would
+        it start for a region of 412 stores?
+    - id: no-sort
+      when: { code_lacks: 'sorted\(|\.sort\(' }
+      say: >-
+        A reducer collects entries in the order the branches finish. In what
+        order do the stores and their summaries reach your reduce?
+    - id: hidden-batching
+      when: { test_failed: fourteen_stores_share_five_workers }
+      say: >-
+        That region had fourteen stores and six model calls. How many workers
+        did your graph start, and did the reduce get its call?
+    - id: hidden-order
+      when: { test_failed: summaries_reach_the_reduce_in_store_order }
+      say: >-
+        In that region the store list came back out of order. In what order
+        did the summaries reach the reduce's prompt?
+    - id: hidden-raw
+      when: { test_failed: the_reduce_reads_summaries_and_never_a_report }
+      say: >-
+        In that region a raw report field reached a prompt. What did your
+        reduce read?
+    - id: hidden-empty
+      when: { test_failed: a_region_with_no_stores_needs_no_model_call }
+      say: >-
+        That region had no stores. What did your graph return, and did the
+        reduce run at all?
+    - id: adversarial-down
+      when: { test_failed: adversarial_the_report_service_goes_down }
+      say: >-
+        The report service timed out on every call in that region. Did the
+        run end, and which stores did your brief name?
+    - id: adversarial-squeeze
+      when: { test_failed: adversarial_two_calls_for_nine_stores }
+      say: >-
+        That region allowed two model calls for nine stores. How many did
+        your graph ask for?
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The second hint counts the calls one brief
+        makes, and it is where most fan-outs go wrong.
+  wrap_up: >-
+    Size a fan-out from the budget, with one call kept for the reduce.
+    Catch failures inside the worker so no branch can end the run, and
+    reduce on sorted summaries that name what did not arrive.
+
+tests:
+  - name: three_stores_three_workers_one_brief
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"region": "R-02", "date": "2026-10-07"}' }
+      llm_script:
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-201:" } ] }
+          reply: "Summary: S-201 ran out of milk and bread four times. Wastage 2.1 percent, tills ₹340 over."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-204:" } ] }
+          reply: "Summary: S-204 had a clean day."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-209:" } ] }
+          reply: "Summary: S-209 had seven stock-outs and the tills were ₹1,200 short."
+        - { match: { regex: "^BRIEF" }, reply: "Brief: Call S-209 first: seven stock-outs and ₹1,200 short at the tills. S-201 ran out of milk and bread four times. S-204 had a clean day." }
+        - { match: "*", reply: "Summary: Nothing worth a manager's time." }
+      tools:
+        list_stores: { returns: { status: 200, stores: [S-201, S-204, S-209] } }
+        store_report:
+          by_arg:
+            arg: store
+            values:
+              S-201: { status: 200, stockouts: 4, wastage_pct: 2.1, till_variance: 340 }
+              S-204: { status: 200, stockouts: 0, wastage_pct: 0.8, till_variance: 0 }
+              S-209: { status: 200, stockouts: 7, wastage_pct: 3.4, till_variance: -1200 }
+            default: { error: not_found }
+        limits: { returns: { max_llm_calls: 6 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [brief, stores, failed, batches]
+            properties:
+              stores: { const: [S-201, S-204, S-209] }
+              failed: { const: [] }
+              batches: { const: 3 }
+        - { type: returns_matches, value: "Call S-209 first" }
+        - { type: llm_calls_at_most, value: 4 }
+
+  - name: a_missing_report_is_named_in_the_brief
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"region": "R-03", "date": "2026-10-07"}' }
+      llm_script:
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-110:" } ] }
+          reply: "Summary: S-110 ran out of eggs twice. Wastage 1.2 percent."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-114:" } ] }
+          reply: "Summary: S-114 had a clean day."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-121:" } ] }
+          reply: "Summary: S-121 is ₹2,400 short at the tills, with three stock-outs."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-125:" } ] }
+          reply: "Summary: S-125 ran out of one line. Tills ₹60 over."
+        - match: { all: [ { regex: "^BRIEF" }, { contains: "No report from: S-118" } ] }
+          reply: "Brief: No report arrived from S-118, so call the store before 08:00. S-121 is ₹2,400 short at the tills. S-110 and S-125 had small stock-outs, and S-114 had a clean day."
+        - { match: { regex: "^BRIEF" }, reply: "Brief: S-121 is ₹2,400 short at the tills. S-110 and S-125 had small stock-outs, and S-114 had a clean day." }
+        - { match: "*", reply: "Summary: Nothing worth a manager's time." }
+      tools:
+        list_stores: { returns: { status: 200, stores: [S-110, S-114, S-118, S-121, S-125] } }
+        store_report:
+          by_arg:
+            arg: store
+            values:
+              S-110: { status: 200, stockouts: 2, wastage_pct: 1.2, till_variance: 150 }
+              S-114: { status: 200, stockouts: 0, wastage_pct: 0.9, till_variance: 0 }
+              S-118: { error: timeout }
+              S-121: { status: 200, stockouts: 3, wastage_pct: 1.8, till_variance: -2400 }
+              S-125: { status: 200, stockouts: 1, wastage_pct: 1.1, till_variance: 60 }
+            default: { error: not_found }
+        limits: { returns: { max_llm_calls: 6 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [brief, stores, failed, batches]
+            properties:
+              stores: { const: [S-110, S-114, S-118, S-121, S-125] }
+              failed: { const: [S-118] }
+              batches: { const: 5 }
+        - { type: returns_matches, value: "No report arrived from S-118" }
+        - { type: llm_calls_at_most, value: 5 }
+
+  - name: fourteen_stores_share_five_workers
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"region": "R-04", "date": "2026-10-07"}' }
+      llm_script:
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-401:" } ] }
+          reply: "Summary: S-401 and S-403 had a quiet day between them."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-406:" } ] }
+          reply: "Summary: S-406, S-408 and S-411 ran short of milk, and S-411 wasted 3.9 percent."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-415:" } ] }
+          reply: "Summary: S-415 and S-420 had five stock-outs between them."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-422:" } ] }
+          reply: "Summary: S-422, S-426 and S-429 were clean apart from ₹800 short at S-426."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-431:" } ] }
+          reply: "Summary: S-431, S-434 and S-438 had a clean day."
+        - match: { all: [ { regex: "^BRIEF" }, { contains: "No report from: S-417" } ] }
+          reply: "Brief: No report from S-417, so call it first. S-411 wasted 3.9 percent and S-426 was ₹800 short. The other eleven stores had a quiet day."
+        - { match: { regex: "^BRIEF" }, reply: "Brief: S-411 wasted 3.9 percent and S-426 was ₹800 short. The other stores had a quiet day." }
+        - { match: "*", reply: "Summary: Nothing worth a manager's time." }
+      tools:
+        list_stores: { returns: { status: 200, stores: [S-401, S-403, S-406, S-408, S-411, S-415, S-417, S-420, S-422, S-426, S-429, S-431, S-434, S-438] } }
+        store_report:
+          by_arg:
+            arg: store
+            values:
+              S-401: { status: 200, stockouts: 0, wastage_pct: 0.7, till_variance: 0 }
+              S-403: { status: 200, stockouts: 1, wastage_pct: 1.0, till_variance: 20 }
+              S-406: { status: 200, stockouts: 2, wastage_pct: 1.4, till_variance: 0 }
+              S-408: { status: 200, stockouts: 2, wastage_pct: 1.6, till_variance: -40 }
+              S-411: { status: 200, stockouts: 3, wastage_pct: 3.9, till_variance: 0 }
+              S-415: { status: 200, stockouts: 2, wastage_pct: 1.2, till_variance: 0 }
+              S-417: { error: timeout }
+              S-420: { status: 200, stockouts: 3, wastage_pct: 1.3, till_variance: 10 }
+              S-422: { status: 200, stockouts: 0, wastage_pct: 0.9, till_variance: 0 }
+              S-426: { status: 200, stockouts: 1, wastage_pct: 1.1, till_variance: -800 }
+              S-429: { status: 200, stockouts: 0, wastage_pct: 0.6, till_variance: 0 }
+              S-431: { status: 200, stockouts: 0, wastage_pct: 0.8, till_variance: 0 }
+              S-434: { status: 200, stockouts: 0, wastage_pct: 0.7, till_variance: 30 }
+              S-438: { status: 200, stockouts: 0, wastage_pct: 0.9, till_variance: 0 }
+            default: { error: not_found }
+        limits: { returns: { max_llm_calls: 6 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 6 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [brief, stores, failed, batches]
+            properties:
+              stores: { const: [S-401, S-403, S-406, S-408, S-411, S-415, S-417, S-420, S-422, S-426, S-429, S-431, S-434, S-438] }
+              failed: { const: [S-417] }
+              batches: { const: 5 }
+        - { type: prompt_contains, value: "S-420: stock-outs 3" }
+        - { type: prompt_contains, in: last, value: "S-415 and S-420 had five stock-outs" }
+        - { type: returns_matches, value: "No report from S-417" }
+
+  - name: summaries_reach_the_reduce_in_store_order
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"region": "R-05", "date": "2026-10-07"}' }
+      llm_script:
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-503:" } ] }
+          reply: "Summary: S-503 ran out of one line."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-507:" } ] }
+          reply: "Summary: S-507 had four stock-outs and was ₹300 short."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-512:" } ] }
+          reply: "Summary: S-512 had a clean day."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-520:" } ] }
+          reply: "Summary: S-520 had two stock-outs and was ₹120 over."
+        - { match: { regex: "^BRIEF" }, reply: "Brief: Call S-507 about four stock-outs and ₹300 short. S-503 and S-520 had small stock-outs, and S-512 had a clean day." }
+        - { match: "*", reply: "Summary: Nothing worth a manager's time." }
+      tools:
+        list_stores: { returns: { status: 200, stores: [S-512, S-503, S-520, S-507] } }
+        store_report:
+          by_arg:
+            arg: store
+            values:
+              S-503: { status: 200, stockouts: 1, wastage_pct: 1.5, till_variance: 0 }
+              S-507: { status: 200, stockouts: 4, wastage_pct: 2.2, till_variance: -300 }
+              S-512: { status: 200, stockouts: 0, wastage_pct: 0.6, till_variance: 0 }
+              S-520: { status: 200, stockouts: 2, wastage_pct: 1.9, till_variance: 120 }
+            default: { error: not_found }
+        limits: { returns: { max_llm_calls: 6 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [brief, stores, failed, batches]
+            properties:
+              stores: { const: [S-503, S-507, S-512, S-520] }
+              batches: { const: 4 }
+        - { type: prompt_contains, in: last, value: "(?s)S-503.*S-507.*S-512.*S-520" }
+        - { type: returns_matches, value: "Call S-507" }
+
+  - name: the_reduce_reads_summaries_and_never_a_report
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"region": "R-06", "date": "2026-10-07"}' }
+      llm_script:
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-601:" } ] }
+          reply: "Summary: S-601 had six stock-outs, wasted 4.2 percent and was ₹950 short."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-604:" } ] }
+          reply: "Summary: S-604 had a clean day."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-607:" } ] }
+          reply: "Summary: S-607 ran out of one line."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-610:" } ] }
+          reply: "Summary: S-610 wasted 2.6 percent, mostly fruit."
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-615:" } ] }
+          reply: "Summary: S-615 had a clean day."
+        - { match: { regex: "^BRIEF" }, reply: "Brief: Call S-601 first: six stock-outs, 4.2 percent wastage and ₹950 short. S-610 wasted 2.6 percent. The other three stores had a quiet day." }
+        - { match: "*", reply: "Summary: Nothing worth a manager's time." }
+      tools:
+        list_stores: { returns: { status: 200, stores: [S-601, S-604, S-607, S-610, S-615] } }
+        store_report:
+          by_arg:
+            arg: store
+            values:
+              S-601: { status: 200, stockouts: 6, wastage_pct: 4.2, till_variance: -950 }
+              S-604: { status: 200, stockouts: 0, wastage_pct: 0.5, till_variance: 0 }
+              S-607: { status: 200, stockouts: 1, wastage_pct: 1.0, till_variance: 0 }
+              S-610: { status: 200, stockouts: 2, wastage_pct: 2.6, till_variance: 75 }
+              S-615: { status: 200, stockouts: 0, wastage_pct: 0.8, till_variance: 0 }
+            default: { error: not_found }
+        limits: { returns: { max_llm_calls: 6 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_lacks, value: "wastage_pct" }
+        - { type: prompt_lacks, value: "stockouts" }
+        - { type: prompt_contains, in: last, value: "Summaries \\(data\\):\\n- S-601" }
+        - { type: returns_matches, value: "Call S-601 first" }
+
+  - name: a_region_with_no_stores_needs_no_model_call
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"region": "R-07", "date": "2026-10-07"}' }
+      llm_script:
+        - { match: { regex: "^BRIEF" }, reply: "Brief: Every store in R-07 had a quiet day." }
+        - { match: "*", reply: "Summary: Nothing worth a manager's time." }
+      tools:
+        list_stores: { returns: { status: 200, stores: [] } }
+        store_report: { returns: { error: not_found } }
+        limits: { returns: { max_llm_calls: 6 } }
+      budget: { max_llm_calls: 6, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [brief, stores, failed, batches]
+            properties:
+              brief: { const: "No stores reported for R-07 on 2026-10-07." }
+              stores: { const: [] }
+              failed: { const: [] }
+              batches: { const: 0 }
+
+  - name: adversarial_the_report_service_goes_down
+    visibility: adversarial
+    fixture: slow_then_timeout
+    annotation_md: |
+      The report service went down before the brief ran, and every call to
+      `store_report` raised `TimeoutError`. In langgraph 1.2.12 an exception
+      inside one `Send` branch comes out of `invoke` as that exception, and
+      every other branch's work goes with it. That is how region R-04
+      went a whole morning with no brief.
+
+      The worker is the only place that can catch it, and it catches per
+      store, so the store beside the one that failed is still read. Here
+      nothing came back, so no worker spends a model call, and the reduce
+      writes a brief that names all four stores for the managers to ring.
+    spec:
+      kind: agent_run
+      input: { question: '{"region": "R-08", "date": "2026-10-07"}' }
+      llm_script:
+        - match: { all: [ { regex: "^BRIEF" }, { contains: "No report from: S-801, S-805, S-809, S-812" } ] }
+          reply: "Brief: No store in R-08 has reported this morning. S-801, S-805, S-809 and S-812 all timed out, so call each store manager before 08:00."
+        - { match: { regex: "^BRIEF" }, reply: "Brief: Some stores in R-08 sent no report this morning." }
+        - { match: "*", reply: "Summary: Nothing worth a manager's time." }
+      tools:
+        list_stores: { returns: { status: 200, stores: [S-809, S-801, S-812, S-805] } }
+        store_report: { fixture: slow_then_timeout, params: { succeeds: 0, message: "store_report timed out after 20 seconds" } }
+        limits: { returns: { max_llm_calls: 3 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [brief, stores, failed, batches]
+            properties:
+              failed: { const: [S-801, S-805, S-809, S-812] }
+              batches: { const: 2 }
+        - { type: returns_matches, value: "No store in R-08 has reported" }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: adversarial_two_calls_for_nine_stores
+    visibility: adversarial
+    fixture: budget_squeeze
+    annotation_md: |
+      The limits allowed two model calls for nine stores, and one worker per
+      store needs ten. A graph that sends a worker per store has its third
+      call refused, the refusal raises inside a branch, and the run ends
+      with no brief.
+
+      The number of workers is a decision, and the budget is the input to
+      it. One call is kept for the reduce, so one worker reads all nine
+      reports and summarises them in the other call. A batch of nine makes
+      a longer worker prompt, which is the price of a brief that goes out.
+    spec:
+      kind: agent_run
+      input: { question: '{"region": "R-09", "date": "2026-10-07"}' }
+      llm_script:
+        - match: { all: [ { regex: "^SUMMARISE" }, { contains: "S-901:" } ] }
+          reply: "Summary: All nine stores reported. S-907 had six stock-outs, and the rest were quiet."
+        - { match: { regex: "^BRIEF" }, reply: "Brief: All nine stores in R-09 reported. Call S-907 about six stock-outs, and the other eight had a quiet day." }
+        - { match: "*", reply: "Summary: Nothing worth a manager's time." }
+      tools:
+        list_stores: { returns: { status: 200, stores: [S-901, S-902, S-904, S-905, S-907, S-908, S-910, S-911, S-913] } }
+        store_report:
+          by_arg:
+            arg: store
+            values:
+              S-907: { status: 200, stockouts: 6, wastage_pct: 2.4, till_variance: 0 }
+            default: { status: 200, stockouts: 0, wastage_pct: 0.7, till_variance: 0 }
+        limits: { returns: { max_llm_calls: 2 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 24, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: returns_nonempty }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [brief, stores, failed, batches]
+            properties:
+              failed: { const: [] }
+              batches: { const: 1 }
+        - { type: returns_matches, value: "Call S-907" }
+        - { type: llm_calls_at_most, value: 2 }
+
+reference_md: |
+  `Send` is LangGraph's map step. Its docstring in langgraph 1.2.12
+  describes this use, a "map-reduce" workflow where the graph "invokes the
+  same node multiple times in parallel with different states, before
+  aggregating the results back into the main graph's state". Each `Send`
+  becomes a task of its own, and each bad morning came from a property of
+  those tasks.
+
+  A task that raises ends the run. In langgraph 1.2.12 an exception inside
+  one `Send` branch comes out of `invoke` as that exception, and every
+  other branch's work is lost with it. A model call refused by the budget
+  is no different, because `BudgetExceeded` is a `RuntimeError`. The
+  worker is the only place that can catch it, and it catches per store: a
+  `try` around the whole batch would lose the stores that reported
+  alongside the one that failed. The failure becomes data, a store id in
+  `failed` that the reduce can name.
+
+  A fan-out is as wide as the list it is given unless you decide
+  otherwise. Here the width comes from the budget: one call is kept for
+  the reduce, so there are at most `max_llm_calls - 1` workers, and a
+  region with more stores than that puts several stores in each worker's
+  prompt. Batching costs a longer worker prompt and saves the reduce,
+  which is the call the managers read.
+
+  A reducer key collects what every branch returns, in the order the
+  branches finish. In this sandbox LangGraph's thread pool runs inline, so
+  branches finish in the order they were sent. In production they run in
+  parallel and finish in any order. Sorting by store before the reduce
+  makes the brief read the same every morning, whichever way the branches
+  ran.
+
+  The reduce reads summaries because producing them was the workers' job.
+  A raw report puts every field of every store into one prompt, which
+  grows with the region and hands field names such as `wastage_pct` to a
+  model that writes for a manager.
+
+  An empty region shows one more property of the pattern. With no `Send`
+  no worker runs, and the reduce, which waits on the workers, never runs
+  either: in langgraph 1.2.12 the run ends with the state it started with.
+  So the empty region's brief is returned before the graph starts.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    You fan out forty workers and one fails. What does the reduce step see, and what did you do about the cost of forty model calls?
+  source: |
+    Author judgement. The interview bank's I012, on when more agents make a workflow worse, is adjacent, and the bank
+    labels it original interview-style practice with employer frequency unverified.
+
+tools:
+  - name: list_stores
+    args: region
+    returns: '`{"status": 200, "stores": [<store id>, ...]}`, in no particular order.'
+  - name: store_report
+    args: store
+    returns: '`{"status": 200, "stockouts": ..., "wastage_pct": ..., "till_variance": ...}`, or `{"error": <reason>}`. It can also raise.'
+  - name: limits
+    args: ""
+    returns: '`{"max_llm_calls": <n>}`, every model call one brief may make, the reduce''s included.'
+example:
+  case: three_stores_three_workers_one_brief
+  expect: "Three stores and six calls allowed, so three workers each summarise one store and the reduce writes the brief: four model calls, and `batches` is 3."
+traps:
+  - Letting one store's tool failure escape its branch, which ends the whole run and every manager's brief with it.
+  - Starting one worker per store whatever the call budget, so the reduce has no call left.
+  - Handing the reduce the raw reports, so its prompt grows with every store and carries every field.
+  - Relying on the order the branches finish in, which changes from run to run once branches run in parallel.
