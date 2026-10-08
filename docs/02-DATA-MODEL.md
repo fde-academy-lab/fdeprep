@@ -292,6 +292,8 @@ create table learner_test (
 
 `body_sha256` exists so an identical resubmission can be detected and, on Extreme, rejected without spending the daily allowance.
 
+Amended 8 October 2026. A submission of kind `run` executes the public cases only (`03-RUNNER-AND-GRADING.md` section 1.2), so its row stores null in `hidden_passed`, `hidden_total`, `adv_passed`, `adv_total` and `score`. A Run is for code problems only. `attempt.solved_at` is set by the first passing `submit` or `rehearsal_submit`. Until this amendment only a `submit` set it, a line written before rehearsals existed. A rehearsal submit runs the same full battery under screen conditions, which show the traps once the attempt is solved (`00-PRD.md` section 3.2) and carry a defence step that opens on a solved attempt (`web/lib/policy/tiers.ts`), and a rehearsal pass could reach neither. A Run's pass is a pass of the public cases and never sets it, and neither does a defence.
+
 ---
 
 ## 5. Tracks and roadmaps
