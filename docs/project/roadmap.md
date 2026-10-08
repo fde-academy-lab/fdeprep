@@ -30,7 +30,7 @@ The order you will see built is the one the product owner set on 30 September: t
 
 | Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
 |---|---|---|---|---|---|---|
-| S15 First cohort | The platform exists to produce one signal a placement team trusts. | 73 | 42 (28 to 58) | 136 | 8 Oct to 30 Nov 2026 | Medium |
+| S15 First cohort | The platform exists to produce one signal a placement team trusts. | 82 | 42 (28 to 58) | 136 | 8 Oct to 30 Nov 2026 | Medium |
 | S16 Second version | Each item answers a need the first cohort is expected to expose, and none of them is worth building before that cohort confirms it. | 50 | 58 (35 to 82) | 62 | 1 Dec to 31 Mar 2027 | Medium |
 <!-- /generated:roadmap -->
 
@@ -114,6 +114,9 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S15.7 | Move the competency write into eval/, and make progress a pure reader | Task | 5 | Done | Only eval/ writes evaluation, evaluation_review and competency_score, writeResult and scoreVoiceOnce are the two named writers outside it and keep only their grade columns, and a scan of web/lib, web/app and web/scripts fails if any other file writes a grade. |
 | S15.8 | Compute the readiness signal with its four counts and three bands | Feature | 8 | Done | Each learner has a readiness band computed in lib/progress/readiness.ts from clean cells over the cells the persona's track requires, with the four counts in docs/12, shown on Home and Progress to the learner and on the admin Overview and learner page to faculty, with tests that hold it equal across the three screens. |
 | S15.9 | Write more content where the cohort actually fails | Task | 13 | Planned | New problems target the three topics with the lowest pass rate in the first cohort. |
+| S15.10 | Make a Run execute the public cases only, as the spec always said | Bug | 5 | Done | A Run executes the static gate, the public cases and the step checks, and never stages, executes or reports a hidden or adversarial case.<br>A Run of code that passes public and fails hidden reports the public result, with no hidden or adversarial count, case name, message, trace or score.<br>A Submit and a rehearsal submit still run the full battery, and a defence still goes to the judge.<br>The result writer turns a Run result in which a hidden case ran into an error that consumes nothing, and a Run on a prompt or design problem is refused.<br>A Run inside a rehearsal neither uses up the sitting's one submit nor reads as its result.<br>A passing rehearsal submit marks the attempt solved, as a passing submit does. |
+| S15.11 | Read the judge's own score field, so real evaluations stop going partial | Bug | 2 | Done | Panelist 3 takes its band from the field the judge writes for the rubric and for a defence, and a test feeds it the judge's own result shapes. |
+| S15.12 | Let only a submit earn a passed or clean competency cell | Bug | 2 | Done | A passing Run, live run or defence leaves a cell at attempted at most, and a passing submit or rehearsal submit still earns its state, tested through the real write path. |
 | S16.1 | A problem family where the agent drives a real browser | Feature | 21 | Planned | A learner's agent fills a form or extracts data in a real browser, graded deterministically. |
 | S16.2 | An export built for placement instead of a CSV | Feature | 8 | Planned | A placement team reads a learner's readiness without re-interpreting a spreadsheet. |
 | S16.3 | Run several cohorts and tracks at once | Feature | 8 | Planned | Two cohorts on different tracks run at the same time without either seeing the other. |

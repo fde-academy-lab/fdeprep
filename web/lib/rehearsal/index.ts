@@ -161,7 +161,13 @@ export async function loadRehearsal(
   };
 }
 
-/** The report, computed from the sitting's own submissions. */
+/**
+ * The report, computed from the sitting's own submissions.
+ *
+ * Its rehearsal submits only. A Run inside the sitting executes the public
+ * cases alone, so its verdict is no result for the problem, and a Run stored
+ * with the sitting's id before 8 October 2026 is left out with it.
+ */
 export async function reportFor(
   rehearsalId: number, client: Pool | PoolClient = db(),
 ): Promise<Report> {
@@ -173,7 +179,7 @@ export async function reportFor(
     `select v.problem_id, s.verdict::text, s.score, s.llm_calls
        from submission s
        join problem_version v on v.id = s.problem_version_id
-      where s.rehearsal_id = $1
+      where s.rehearsal_id = $1 and s.kind = 'rehearsal_submit'
       order by s.id`, [rehearsalId]);
 
   const byProblem = new Map<number, typeof rows[number]>();

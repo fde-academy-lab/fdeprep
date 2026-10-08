@@ -264,6 +264,12 @@ interface LearnerState {
   person: Person;
   persona: Persona;
   solved: Set<string>;
+  /**
+   * Problems passed in a rehearsal. A passing rehearsal submit sets solved_at
+   * as a passing submit does, so the next rehearsal's draw skips them. The
+   * plan still lets a learner practise one afterwards, which is allowed.
+   */
+  solvedInRehearsal: Set<string>;
   pending: Map<string, Pending>;
   abandoned: Set<string>;
   /** Every problem with a submission against it, rehearsals included. */
@@ -329,7 +335,8 @@ export function plan(options: PlanOptions): SeedPlan {
 
     const archetype = person.archetype as Exclude<Archetype, "new">;
     const state: LearnerState = {
-      person, persona: person.persona, solved: new Set(), pending: new Map(),
+      person, persona: person.persona, solved: new Set(), solvedInRehearsal: new Set(),
+      pending: new Map(),
       abandoned: new Set(), touched: new Set(), testWritten: new Set(), stuckOn: null,
       stallAfter: scale === "test" ? random.int(2, 3) : random.int(1, 3), sittings: 0,
     };
@@ -609,13 +616,14 @@ function rehearsalAction(
   finished: boolean, random: Random,
 ): RehearsalAction {
   const path = catalogue.paths[state.persona];
-  const unsolved = path.filter((slug) => !state.solved.has(slug));
+  const unsolved = path.filter((slug) => !state.solved.has(slug) && !state.solvedInRehearsal.has(slug));
   const drawn = (unsolved.length >= 3 ? unsolved : [...path]).slice(0, 3);
   const count = finished ? random.int(2, 3) : 1;
   const submits = drawn.slice(0, count).map((slug) => {
     const outcome: "clean" | "fail" = random.chance(0.75) ? "clean" : "fail";
     const problem = problems.get(slug)!;
     state.touched.add(slug);
+    if (outcome === "clean") state.solvedInRehearsal.add(slug);
     return problem.artefactType === "design"
       ? { slug, outcome, band: (outcome === "clean" ? "strong" : "weak") as Band }
       : { slug, outcome };

@@ -5,8 +5,14 @@
  * the learner has already passed the problem. That trimming happens here, on
  * the server, so a hidden case name cannot reach the browser and be read out
  * of the network tab.
+ *
+ * A Run shows the static and public gates and no score, whether or not the
+ * problem is passed, because a Run executes the public cases only (docs/00
+ * section 4). A Run row written before 8 October 2026 carries the whole
+ * battery, and this is where it stops.
  */
 import { db } from "../db/pool.ts";
+import { withheldGate } from "./run-contract.ts";
 
 export interface GateView {
   status: "pass" | "fail" | "skipped";
@@ -140,20 +146,21 @@ export async function publicView(submissionId: number): Promise<SubmissionView> 
 
   const alreadyPassed = row.solved_at !== null;
   const gates = (row.result?.["gates"] ?? {}) as Record<string, any>;
+  const run = row.kind === "run";
 
   return {
     id: Number(row.id),
     status: row.status,
     verdict: row.verdict,
-    score: row.score === null ? null : Number(row.score),
+    score: run || row.score === null ? null : Number(row.score),
     kind: row.kind,
     queuedAt: row.queued_at.toISOString(),
     finishedAt: row.finished_at?.toISOString() ?? null,
     gates: {
       static: trim(gates["static"], true),
       public: trim(gates["public"], true),
-      hidden: trim(gates["hidden"], alreadyPassed),
-      adversarial: trim(gates["adversarial"], alreadyPassed),
+      hidden: run ? withheldGate() : trim(gates["hidden"], alreadyPassed),
+      adversarial: run ? withheldGate() : trim(gates["adversarial"], alreadyPassed),
     },
     checks: trimChecks(gates["static"]),
     probes: trimProbes(gates["probes"], alreadyPassed),

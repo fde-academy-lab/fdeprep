@@ -44,9 +44,14 @@ async function attemptFor(problemId: number): Promise<number> {
   return Number(rows[0]!.id);
 }
 
-/** A graded run, written the way the result writer leaves it. */
+/**
+ * A graded run or submit, written the way the result writer leaves it. A
+ * failed hidden or adversarial case arrives on a submit, since a Run never
+ * runs one (docs/00 section 4).
+ */
 async function gradedRun(problemId: number, verdict: "pass" | "fail",
-                         failed: { gate: string; name: string }[] = []): Promise<void> {
+                         failed: { gate: string; name: string }[] = [],
+                         kind: "run" | "submit" = "run"): Promise<void> {
   const attemptId = await attemptFor(problemId);
   const gates: Record<string, { cases: Array<{ name: string; status: string }> }> = {};
   for (const { gate, name } of failed) {
@@ -55,10 +60,10 @@ async function gradedRun(problemId: number, verdict: "pass" | "fail",
   await db().query(
     `insert into submission (attempt_id, problem_version_id, kind, body, body_sha256, status,
                              verdict, result, finished_at)
-     select $1, v.id, 'run', 'x', md5(random()::text), 'terminal', $3::verdict, $4, now()
+     select $1, v.id, $5::run_kind, 'x', md5(random()::text), 'terminal', $3::verdict, $4, now()
        from problem p join problem_version v on v.problem_id = p.id and v.version = p.current_version
       where p.id = $2`,
-    [attemptId, problemId, verdict, JSON.stringify({ gates })]);
+    [attemptId, problemId, verdict, JSON.stringify({ gates }), kind]);
 }
 
 const ask = (problemId: number, code: string, extra: Partial<{
@@ -122,10 +127,22 @@ describe("on an Easy problem", () => {
 
   it("names what a failed hidden test was about without naming the test", async () => {
     const id = await publish(EASY);
-    await gradedRun(id, "fail", [{ gate: "hidden", name: "an_invented_tool_is_refused_not_raised" }]);
+    await gradedRun(id, "fail", [{ gate: "hidden", name: "an_invented_tool_is_refused_not_raised" }],
+      "submit");
     const reply = await ask(id, await solution(EASY, "reference"));
     expect(reply.nudge?.id).toBe("hidden-invented-tool");
     expect(JSON.stringify(reply)).not.toContain("an_invented_tool_is_refused_not_raised");
+  });
+
+  it("never reads a hidden or adversarial result from a Run", async () => {
+    // A Run row written before 8 October 2026 could carry the whole battery,
+    // because the runner was never told it was a Run. What a Run says about
+    // a case the learner cannot see is not something the coach repeats.
+    const id = await publish(EASY);
+    await gradedRun(id, "fail", [
+      { gate: "hidden", name: "an_invented_tool_is_refused_not_raised" },
+      { gate: "adversarial", name: "an_invented_tool_is_refused_not_raised" }], "run");
+    expect((await ask(id, await solution(EASY, "reference"))).nudge).toBeNull();
   });
 
   it("nudges a learner who has sat idle", async () => {
@@ -159,7 +176,8 @@ describe("on an Extreme problem", () => {
   it("still speaks about a failed test before the code nudges open", async () => {
     const id = await publish(EXTREME);
     await gradedRun(id, "fail", [
-      { gate: "hidden", name: "a_page_that_went_out_before_the_crash_is_not_sent_again" }]);
+      { gate: "hidden", name: "a_page_that_went_out_before_the_crash_is_not_sent_again" }],
+      "submit");
     const reply = await ask(id, await solution(EXTREME, "naive"));
     expect(reply.nudge?.id).toBe("paged-twice");
   });

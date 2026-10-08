@@ -1831,6 +1831,66 @@ stages:
         finish: 2026-11-30
         acceptance:
           - New problems target the three topics with the lowest pass rate in the first cohort.
+      - id: S15.10
+        title: Make a Run execute the public cases only, as the spec always said
+        type: Bug
+        status: done
+        pr: 47
+        points: 5
+        area: Grading and judge
+        priority: P0
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The worker built the runner's event without the submission kind and
+          the handler never read one, so every Run executed the public, hidden
+          and adversarial cases and reported pass only when all three passed.
+          At the Run allowance of 30 an hour that told a learner whether the
+          hidden battery passed, which made Run an oracle for unpublished cases
+          and stepped round the Extreme tier's one submit a day. The judge had
+          the same gap: a Run on a prompt or design problem bought the probes
+          and the rubric at the Run allowance.
+        acceptance:
+          - A Run executes the static gate, the public cases and the step checks, and never stages, executes or reports a hidden or adversarial case.
+          - A Run of code that passes public and fails hidden reports the public result, with no hidden or adversarial count, case name, message, trace or score.
+          - A Submit and a rehearsal submit still run the full battery, and a defence still goes to the judge.
+          - The result writer turns a Run result in which a hidden case ran into an error that consumes nothing, and a Run on a prompt or design problem is refused.
+          - A Run inside a rehearsal neither uses up the sitting's one submit nor reads as its result.
+          - A passing rehearsal submit marks the attempt solved, as a passing submit does.
+      - id: S15.11
+        title: Read the judge's own score field, so real evaluations stop going partial
+        type: Bug
+        status: done
+        pr: 47
+        points: 2
+        area: Evaluation panel
+        priority: P0
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          Panelist 3 read the rubric gate's score field, and the judge writes
+          percent there and puts a defence's score at the top of its result.
+          So every real design, prompt and defence evaluation recorded the
+          model's panelist as unavailable and went partial, and the free
+          re-run each one was owed had no drain to pay it.
+        acceptance:
+          - Panelist 3 takes its band from the field the judge writes for the rubric and for a defence, and a test feeds it the judge's own result shapes.
+      - id: S15.12
+        title: Let only a submit earn a passed or clean competency cell
+        type: Bug
+        status: done
+        pr: 47
+        points: 2
+        area: Evaluation panel
+        priority: P0
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The competency write applied every finished submission, so a passing
+          Run raised a cell to clean at the Run allowance, and a defence pass
+          could turn passed into clean, both feeding the readiness signal.
+        acceptance:
+          - A passing Run, live run or defence leaves a cell at attempted at most, and a passing submit or rehearsal submit still earns its state, tested through the real write path.
 
   - id: S16
     name: Second version

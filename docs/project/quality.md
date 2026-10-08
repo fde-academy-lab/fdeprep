@@ -59,6 +59,9 @@ The column counts come from the stories in [backlog.yaml](backlog.yaml), and the
 | S13.8 | Fix the eight defects that made the voice screen unreliable | Reading | S13 Voice interviewer v2, step 1 | #44 | P1 High |
 | S13.9 | Keep the debrief up, and say what failed when an answer does not save | Running it | S13 Voice interviewer v2, step 1 | #45 | P1 High |
 | S14.7 | Fill every judge prompt in one pass, so a learner cannot close the data delimiter | Reading | S14 Voice interviewer v2, step 2 | #46 | P2 Medium |
+| S15.10 | Make a Run execute the public cases only, as the spec always said | Reading | S15 First cohort | #47 | P0 Critical |
+| S15.11 | Read the judge's own score field, so real evaluations stop going partial | Reading | S15 First cohort | #47 | P0 Critical |
+| S15.12 | Let only a submit earn a passed or clean competency cell | Reading | S15 First cohort | #47 | P0 Critical |
 <!-- /generated:bugs -->
 
 ## What the pattern says

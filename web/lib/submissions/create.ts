@@ -84,6 +84,17 @@ export async function createSubmission(input: CreateInput): Promise<CreatedSubmi
     const problem = rows[0];
     if (!problem) throw new Error(`problem ${input.problemId} has no current version`);
 
+    // docs/00 section 4: a Run executes public tests, and only a code problem
+    // has any. A prompt or design answer is graded by the judge, whose probes
+    // and rubric are its Submit battery, so a Run there would buy that
+    // battery, and the model calls behind it, at the Run allowance. No screen
+    // offers one; this refuses the request that names one anyway.
+    if (input.kind === "run" && problem.artefact_type !== "code") {
+      throw new GateRefused(
+        "Run sends code through its public tests, and a prompt or design answer has none. " +
+        "Submit it when it is ready.");
+    }
+
     // A build stage runs nothing until the stage before it passes. Checked
     // before the attempt row exists, so a refused request leaves no trace.
     if (input.kind !== "rehearsal_submit") {
@@ -122,11 +133,15 @@ export async function createSubmission(input: CreateInput): Promise<CreatedSubmi
 
       // docs/00 section 7.4: one submit each. A sitting where a learner can
       // resubmit until something passes measures persistence, not judgement.
+      // Only a rehearsal submit uses it up: a Run inside the sitting checks
+      // the public cases, and one stored with the sitting's id before 8
+      // October 2026 refused the submit that followed it.
       if (input.rehearsalId) {
         const already = await client.query(
           `select 1 from submission s
              join problem_version v on v.id = s.problem_version_id
-            where s.rehearsal_id = $1 and v.problem_id = $2 limit 1`,
+            where s.rehearsal_id = $1 and v.problem_id = $2
+              and s.kind = 'rehearsal_submit' limit 1`,
           [input.rehearsalId, input.problemId]);
         if (already.rows.length) {
           throw new GateRefused(
@@ -178,12 +193,15 @@ export async function createSubmission(input: CreateInput): Promise<CreatedSubmi
       });
     }
 
+    // A sitting's record is its rehearsal submits. A Run sent from inside one
+    // is practice against the public cases and carries no sitting id, so it
+    // neither uses up the sitting's submit nor reads as the sitting's result.
     const { rows: created } = await client.query<{ id: string }>(
       `insert into submission (attempt_id, problem_version_id, kind, body, body_sha256,
                                rehearsal_id)
        values ($1, $2, $3::run_kind, $4, $5, $6) returning id`,
       [attemptId, problem.version_id, input.kind, input.body, bodySha256,
-       input.rehearsalId ?? null]);
+       input.kind === "rehearsal_submit" ? input.rehearsalId ?? null : null]);
     const submissionId = Number(created[0]!.id);
 
     if (input.kind === "submit") {

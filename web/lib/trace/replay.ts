@@ -59,13 +59,19 @@ export async function replayFor(
   submissionId: number, client: Pool | PoolClient = db(),
 ): Promise<Replay> {
   const { rows } = await client.query<{
-    solved_at: Date | null; gave_up_at: Date | null; problem_version_id: string;
+    solved_at: Date | null; gave_up_at: Date | null; problem_version_id: string; kind: string;
   }>(
-    `select a.solved_at, a.gave_up_at, s.problem_version_id
+    `select a.solved_at, a.gave_up_at, s.problem_version_id, s.kind::text as kind
        from submission s join attempt a on a.id = s.attempt_id
       where s.id = $1`, [submissionId]);
   const row = rows[0];
   if (!row) return { submissionId, ...EMPTY };
+
+  // A Run executes the public cases only (docs/00 section 4), so its replay
+  // holds those and nothing else. A Run written before 8 October 2026 ran
+  // the whole battery and stored every case's trace, hidden ones included.
+  const publicOnly = row.kind === "run"
+    ? await publicCaseNames(client, Number(row.problem_version_id)) : null;
 
   // docs/01 S7: on a failed Extreme submission the trace is available, because
   // the learning happens there even though the attempt is spent. The trace is
@@ -79,8 +85,9 @@ export async function replayFor(
     ? await fixtureAnnotations(client, Number(row.problem_version_id))
     : new Map<string, string>();
 
-  const cases = Array.isArray(stored.body["cases"])
-    ? (stored.body["cases"] as Array<Record<string, unknown>>) : [];
+  const cases = (Array.isArray(stored.body["cases"])
+    ? (stored.body["cases"] as Array<Record<string, unknown>>) : [])
+    .filter((entry) => !publicOnly || publicOnly.has(String(entry["name"] ?? "")));
 
   const steps: ReplayStep[] = [];
   for (const entry of cases) {
@@ -102,18 +109,32 @@ export async function replayFor(
     }
   }
 
+  // The stored flags and truncation cover every case in the trace, so a Run
+  // reads them back from the cases it kept.
+  const kept = cases.map((entry) => (entry["trace"] ?? {}) as Record<string, unknown>);
   return {
     submissionId,
     steps,
-    flags: stored.flags,
+    flags: publicOnly
+      ? [...new Set(kept.flatMap((t) => (Array.isArray(t["flags"]) ? t["flags"] as string[] : [])))].sort()
+      : stored.flags,
     llmCalls: steps.filter((s) => s.type === "llm_call").length,
     toolCalls: steps.filter((s) => s.type === "tool_call").length,
     refusedCalls: steps.filter((s) => s.type === "refused")
       .reduce((total, s) => total + 1 + Number(s.detail["repeats"] ?? 0), 0),
-    truncated: stored.truncated,
+    truncated: publicOnly ? kept.some((t) => t["truncated"] === true) : stored.truncated,
     attemptClosed,
     available: steps.length > 0,
   };
+}
+
+async function publicCaseNames(
+  client: Pool | PoolClient, problemVersionId: number,
+): Promise<Set<string>> {
+  const { rows } = await client.query<{ name: string }>(
+    `select name from problem_test
+      where problem_version_id = $1 and visibility = 'public'`, [problemVersionId]);
+  return new Set(rows.map((r) => r.name));
 }
 
 async function fixtureAnnotations(

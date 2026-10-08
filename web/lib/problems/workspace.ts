@@ -184,9 +184,16 @@ export async function attemptHistory(
       where r.attempt_id = $1
       order by h.ordinal`, [row.id]);
 
+  // A Run lists its public count and nothing about hidden, and no score, since
+  // it executes the public cases only (docs/00 section 4). Run rows written
+  // before 8 October 2026 hold the whole battery's counts and a score, and
+  // they stop here.
   const submissions = await db().query<Record<string, any>>(
-    `select id, kind::text as kind, verdict::text as verdict, score, queued_at,
-            public_passed, public_total, hidden_passed, hidden_total, llm_calls
+    `select id, kind::text as kind, verdict::text as verdict,
+            case when kind = 'run' then null else score end as score, queued_at,
+            public_passed, public_total,
+            case when kind = 'run' then null else hidden_passed end as hidden_passed,
+            case when kind = 'run' then null else hidden_total end as hidden_total, llm_calls
        from submission where attempt_id = $1
       order by queued_at desc, id desc limit 20`, [row.id]);
 

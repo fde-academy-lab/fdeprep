@@ -103,12 +103,19 @@ export async function coachReply(options: {
  * Read from the stored result rather than from anything the browser sends,
  * and only ever used to pick a nudge on the server. A hidden test's name does
  * not travel back: the reply carries the author's sentence, not the name.
+ *
+ * From a Run it reads the public gate alone. A Run executes the public cases
+ * only (docs/00 section 4), and a Run row written before 8 October 2026,
+ * which ran the whole battery, is no source for a nudge about a case the
+ * learner has not yet submitted against.
  */
 async function latestRun(attemptId: number): Promise<{
   id: number; failed: string[]; publicFailed: number; publicTotal: number;
 } | null> {
-  const { rows } = await db().query<{ id: string; result: Record<string, any> | null }>(
-    `select id, result from submission
+  const { rows } = await db().query<{
+    id: string; kind: string; result: Record<string, any> | null;
+  }>(
+    `select id, kind::text as kind, result from submission
       where attempt_id = $1 and verdict is not null and kind in ('run', 'submit', 'live')
       order by coalesce(finished_at, queued_at) desc, id desc
       limit 1`, [attemptId]);
@@ -116,7 +123,8 @@ async function latestRun(attemptId: number): Promise<{
   if (!row) return null;
   const gates = (row.result?.["gates"] ?? {}) as Record<string, any>;
   const failed: string[] = [];
-  for (const key of ["public", "hidden", "adversarial", "probes"]) {
+  const readable = row.kind === "run" ? ["public"] : ["public", "hidden", "adversarial", "probes"];
+  for (const key of readable) {
     for (const testCase of (gates[key]?.["cases"] ?? []) as Array<Record<string, unknown>>) {
       if (testCase["status"] !== "pass" && typeof testCase["name"] === "string") {
         failed.push(testCase["name"]);
