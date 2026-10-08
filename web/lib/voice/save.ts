@@ -45,7 +45,9 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 
 export async function openSession(
   fetcher: Fetcher,
-  ask: { mode: VoiceMode; question: string },
+  /** The interviewer is a slug the server resolves, or absent for the
+   *  question's first. */
+  ask: { mode: VoiceMode; question: string; interviewer?: string },
 ): Promise<{ ok: true; started: StartedSession } | { ok: false; message: string }> {
   let response: Response;
   try {

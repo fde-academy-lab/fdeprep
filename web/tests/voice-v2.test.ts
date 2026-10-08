@@ -413,7 +413,9 @@ describe("the cockpit", () => {
 
   test("opens the session on the question on screen", async () => {
     // The request moved to lib/voice/save.ts, which sends what it is given.
-    expect(await source()).toMatch(/openSession\(send, \{ mode, question: question\.slug \}\)/);
+    // Since S13.4 it also names the interviewer, a slug the route resolves.
+    expect(await source()).toMatch(
+      /openSession\(send, \{ mode, question: question\.slug, interviewer: interviewer\?\.slug \}\)/);
     const save = await readFile(path.join(WEB, "lib", "voice", "save.ts"), "utf8");
     expect(save).toMatch(/fetcher\("\/api\/voice\/sessions", \{[\s\S]{0,120}body: JSON\.stringify\(ask\)/);
   });

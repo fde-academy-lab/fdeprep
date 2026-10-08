@@ -14,7 +14,7 @@
  * no recording, and the page says so rather than showing zeros.
  */
 import Link from "next/link";
-import type { Metadata } from "next";
+import type { Metadata, Route } from "next";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db/pool";
 import { clock } from "@/lib/voice/clock";
@@ -78,6 +78,10 @@ export default async function DebriefPage({ params }: { params: Promise<{ id: st
     const authored = debrief.question.beats.find((candidate) => candidate.key === beat.key);
     return { ...beat, anchors: authored?.anchors ?? [], seconds: authored?.seconds ?? 60 };
   });
+  // Answer it again with the same interviewer. A slug the lobby no longer
+  // knows falls back there to the question's first.
+  const again = new URLSearchParams({ q: debrief.question.slug, mode: debrief.mode });
+  if (debrief.interviewer) again.set("interviewer", debrief.interviewer.slug);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-8">
@@ -89,8 +93,13 @@ export default async function DebriefPage({ params }: { params: Promise<{ id: st
         <span className="capitalize">{debrief.mode}</span>
         {typed ? " · typed, so there is no clock, pace or recording" : ` · ${clock(debrief.durationMs)}`}
       </p>
+      {debrief.interviewer ? (
+        <p className="mt-1 text-text-dim">
+          Asked by {debrief.interviewer.name}, {debrief.interviewer.title}.
+        </p>
+      ) : null}
       <div className="mt-4 flex flex-wrap gap-2.5">
-        <ButtonLink href={`/voice/session?q=${debrief.question.slug}&mode=${debrief.mode}`} size="sm">
+        <ButtonLink href={`/voice/session?${again.toString()}` as Route} size="sm">
           Answer it again
         </ButtonLink>
         {next && next !== debrief.question.slug ? (
