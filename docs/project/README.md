@@ -44,7 +44,7 @@ gantt
   S10 Delivery board :active, s10, 2026-09-30, 2d
   S11 Beta launch :active, s11, 2026-10-01, 9d
   S12 Problem pages v2 :s12, 2026-09-30, 9d
-  S13 Voice interviewer v2, step 1 :active, s13, 2026-09-30, 8d
+  S13 Voice interviewer v2, step 1 :s13, 2026-09-30, 9d
   S14 Voice interviewer v2, step 2 :s14, 2026-10-07, 6d
   S15 First cohort :s15, 2026-10-12, 50d
   S16 Second version :s16, 2026-12-01, 121d

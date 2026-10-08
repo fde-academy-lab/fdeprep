@@ -1437,7 +1437,7 @@ stages:
     kind: roadmap
     horizon: next
     start: 2026-09-30
-    finish: 2026-10-07
+    finish: 2026-10-08
     area: Voice
     priority: P1
     risk: Medium
@@ -1484,10 +1484,20 @@ stages:
       - id: S13.4
         title: "Choose who interviews you: nine interviewer personas"
         type: Feature
-        status: todo
+        status: done
         points: 8
         area: Voice
-        finish: 2026-10-06
+        finish: 2026-10-08
+        outcome: >-
+          Nine interviewers live in voice-interviewers/, each with a name, a
+          role at a company of a named scale, what they listen for, an opening
+          line, a follow-up style, stress probes and a neural Polly voice of
+          their own, and the panel seats three with the chair first. The
+          browser names a slug and the server resolves it. The picker filters
+          by interviewer and by competency, the lobby offers the question's
+          interviewers and reads the question in the chosen voice, pressure
+          mode interrupts in that voice, and the debrief and Past answers say
+          who asked.
         acceptance:
           - A learner picks an engineering lead, a CTO, a CEO, a solution architect, a senior AI engineer, a hiring manager, a client, a panel or a bar raiser.
           - Each persona has its own focus, questions, follow-up style and voice.
@@ -1495,19 +1505,34 @@ stages:
       - id: S13.5
         title: Rewrite the question bank around real FDE interview loops
         type: Task
-        status: todo
+        status: done
         points: 13
         area: Content
-        finish: 2026-10-07
+        finish: 2026-10-08
+        outcome: >-
+          Every question names its round of the loop from a closed list of
+          six, what it tests in one sentence, the interviewers who ask it and
+          the problems it builds on, and every prompt now sets the scenario
+          at a company of a named scale. The validator checks each field in
+          CI, checks the interviewers and the problems against the files that
+          exist, and keeps the writing rules with no em or en dash, in
+          TypeScript at import and in Python with the content tests.
         acceptance:
           - Every question names the scenario, the competency it tests and what a strong answer contains, and validates in CI.
       - id: S13.6
         title: Teach a framework and the tips people miss on every question
         type: Task
-        status: todo
+        status: done
         points: 8
         area: Content
-        finish: 2026-10-07
+        finish: 2026-10-08
+        outcome: >-
+          Every question carries a four-line framework card, answer first,
+          evidence with a number, the trade-off to name and what to say when
+          you do not know, written for that question so it is also the
+          worked example, and two to four tips people overlook. The lobby
+          shows both above the modes table while no answer runs, with the
+          problems the question builds on linked by chapter.
         acceptance:
           - Every question shows a framework to answer with, a worked example, and the tips people overlook, including how to handle a question you cannot answer.
       - id: S13.7
