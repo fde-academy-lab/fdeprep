@@ -246,6 +246,19 @@ Three behaviours to write for:
 
 Quote any value that holds a comma, a colon or a question mark. The runner parses problems with PyYAML, which implements YAML 1.1 and rejects an unquoted `?` inside a flow mapping that the web validator's YAML 1.2 parser accepts, and both parsers read `{ sub: fix, rerun }` as `sub: fix` plus an empty key `rerun`. The validator rejects the unknown key, which is how the split gets caught.
 
+### 2.2 What each tier asks for
+
+Added 8 October 2026, after an audit moved 24 problems to the tier their work earns. The `difficulty` field sets how much support a learner gets (docs/00 section 3.2), so a tier has to describe the work and never the topic. A problem earns the lowest tier whose row it meets.
+
+| Tier | Code problem | Design problem |
+|---|---|---|
+| Easy | One failure mode, which the brief names and one change fixes. | One decision with its trade-off stated in the brief. |
+| Medium | Two failure modes that do not interact, or one small data structure. A table of rules turned into code is Medium however many rows it has. The reference is under about 40 lines. | Two decisions, each with numbers the learner has to use. |
+| Hard | Three or more failure modes that interact, so fixing one in the obvious way breaks another, and at least one adversarial case. The reference runs about 40 to 100 lines. A Hard problem that one `if` fixes is a Medium problem. | Numbers that pull against each other, and a brief that describes symptoms rather than handing over the diagnosis. |
+| Extreme | Everything Hard asks, plus an open decision the learner defends, several adversarial cases, and a failure the public cases cannot show. | Everything Hard asks, plus a decision where both answers are defensible and the rubric grades the defence. |
+
+Complexity (C1 to C4) is a separate axis and stays one (docs/10). A C1 problem can be Extreme when its checks are deterministic and its failure modes interact.
+
 ---
 
 ## 3. Worked seed problem: code, Medium
