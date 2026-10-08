@@ -70,6 +70,7 @@ Until this amendment the worker built the event without the kind and the handler
 | The result writer refuses a Run result in which a hidden or adversarial case ran, and stores any other Run result with no hidden or adversarial count and no score | A runner image older than the kind runs the whole battery, and rolling the runner image back is the documented response to a failing runner (`05-DEPLOY-AND-OPS.md`). The refused result becomes an `error` that consumes nothing, with no trace stored, because its verdict, budget and timing carry what the hidden cases did |
 | A Run is for code only, and `createSubmission` refuses one on a prompt or design problem | Neither has public tests, and their probes and rubric are their Submit battery, which a Run would otherwise buy at the Run allowance with the model calls behind it |
 | The results pane, the Attempts tab, the coach and the replay viewer read only the static and public gates and the public cases' trace from a Run | A Run row written before this amendment holds the whole battery's result and trace, and it should show a learner no more than a new one does |
+| A Run sent from inside a rehearsal carries no sitting id, and the sitting's one submit and its report count rehearsal submits only | A Run stored with the sitting's id used to count as the sitting's submit, so the rehearsal submit after it was refused and the report read the Run's verdict as the problem's |
 
 
 ---

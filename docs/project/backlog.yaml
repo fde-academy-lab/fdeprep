@@ -1815,6 +1815,7 @@ stages:
           - A Run of code that passes public and fails hidden reports the public result, with no hidden or adversarial count, case name, message, trace or score.
           - A Submit and a rehearsal submit still run the full battery, and a defence still goes to the judge.
           - The result writer turns a Run result in which a hidden case ran into an error that consumes nothing, and a Run on a prompt or design problem is refused.
+          - A Run inside a rehearsal neither uses up the sitting's one submit nor reads as its result.
           - A passing rehearsal submit marks the attempt solved, as a passing submit does.
 
   - id: S16
