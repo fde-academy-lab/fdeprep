@@ -19,7 +19,7 @@ import { learnerOrNull } from "@/lib/session/current";
 
 export const dynamic = "force-dynamic";
 
-const MODES: VoiceMode[] = ["guided", "unguided", "pressure"];
+const MODES: VoiceMode[] = ["guided", "unguided", "pressure", "interview"];
 
 export async function POST(request: Request) {
   try {

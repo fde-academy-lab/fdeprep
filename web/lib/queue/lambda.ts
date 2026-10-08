@@ -24,14 +24,25 @@ export class LambdaFailed extends Error {
   }
 }
 
-/** What the workers call. A test passes its own. */
+/** What the workers call. A test passes its own. The signal, when given,
+ *  abandons the call: the voice follow-up uses it to stop waiting on a reply
+ *  long past its deadline. */
 export type Invoker = (
-  functionName: string, event: Record<string, unknown>,
+  functionName: string, event: Record<string, unknown>, options?: { abortSignal?: AbortSignal },
 ) => Promise<Record<string, unknown>>;
 
-/** The one method of LambdaClient this uses, so a test can stand in for it. */
+/**
+ * The one method of LambdaClient this uses, so a test can stand in for it.
+ *
+ * The second argument is the SDK's HttpHandlerOptions, of which only the
+ * abort signal is used. Checked on 8 October 2026 against
+ * @aws-sdk/client-lambda 3.1132.0: Client.send(command, options) in
+ * @smithy/core 3.34.1, and @smithy/node-http-handler 4.12.1 rejects the
+ * request when abortSignal fires.
+ */
 export interface LambdaSender {
-  send(command: InvokeCommand): Promise<Pick<InvokeCommandOutput, "FunctionError" | "Payload">>;
+  send(command: InvokeCommand, options?: { abortSignal?: AbortSignal }):
+    Promise<Pick<InvokeCommandOutput, "FunctionError" | "Payload">>;
 }
 
 /**
@@ -59,13 +70,16 @@ function defaultClient(): LambdaClient {
 const decoder = new TextDecoder();
 
 export function lambdaInvoker(client?: LambdaSender): Invoker {
-  return async (functionName, event) => {
+  return async (functionName, event, options) => {
     const sender = client ?? defaultClient();
-    const response = await sender.send(new InvokeCommand({
+    const command = new InvokeCommand({
       FunctionName: functionName,
       InvocationType: "RequestResponse",
       Payload: new TextEncoder().encode(JSON.stringify(event)),
-    }));
+    });
+    const response = options?.abortSignal
+      ? await sender.send(command, { abortSignal: options.abortSignal })
+      : await sender.send(command);
     const text = response.Payload ? decoder.decode(response.Payload) : "";
 
     // A function that raised, ran out of time or ran out of memory still
@@ -103,5 +117,5 @@ function describe(text: string): string {
   return text.slice(0, 500);
 }
 
-export const invokeLambda: Invoker = (functionName, event) =>
-  lambdaInvoker()(functionName, event);
+export const invokeLambda: Invoker = (functionName, event, options) =>
+  lambdaInvoker()(functionName, event, options);

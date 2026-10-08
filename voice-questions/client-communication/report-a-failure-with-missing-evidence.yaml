@@ -5,11 +5,27 @@ difficulty: extreme
 total_seconds: 145
 competencies: [client-communication, failure-mode-analysis, system-design]
 
+round: judgement-call
+tests: Whether you keep what you saw apart from what you believe, lead with containment, and hold a hypothesis as a hypothesis when a senior person asks twice.
+interviewers: [cto, panel, bar-raiser]
+builds_on: [explain-an-incident-from-half-the-traces, find-the-first-failing-transition]
+
 prompt_text: |
-  Something failed at two in the morning and roughly four hundred customers
-  got a wrong answer. Half the traces are missing because the logging sampler
-  was turned up last week. Their chief technology officer is on the call and
+  At an electronics retailer the size of Croma, something failed at two in
+  the morning and roughly four hundred customers got a wrong answer on the
+  returns path. Half the traces are missing because the logging sampler was
+  turned up last week. Their chief technology officer is on the call and
   wants the root cause. Go.
+
+framework:
+  answer_first: What we know. Four hundred wrong responses between 1:50 and 2:20, on returns only, confirmed from the unsampled response log. It stopped at 2:20 with the deploy.
+  evidence: Half the traces are gone, so for half the requests I cannot see what the agent did. The response log is the evidence that is whole, and every confirmed sentence comes from it.
+  trade_off: Two explanations fit, a stale cache or a superseded document in retrieval. The cache is more likely because the wrong answers are identical and tightly clustered, and I would label that a judgement from partial evidence.
+  if_you_do_not_know: If asked for the root cause now, give the likely cause labelled as likely, the check that would confirm it, and the time you will be back. The second ask does not turn a hypothesis into a finding.
+tips:
+  - Say whether it is still happening before you say anything about cause. That is the first thing a CTO needs and the thing most answers reach last.
+  - Name the missing traces early and say what they cost the investigation. Hoping nobody asks is how it comes out later.
+  - Separate observed from inferred out loud, with those words. The whole competency is in that sentence.
 
 beats:
   - id: b1

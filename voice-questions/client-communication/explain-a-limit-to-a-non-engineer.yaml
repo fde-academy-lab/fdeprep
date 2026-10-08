@@ -5,10 +5,26 @@ difficulty: medium
 total_seconds: 140
 competencies: [client-communication, retrieval, evaluation-design]
 
+round: client-role-play
+tests: Whether you can explain why the assistant goes quiet without technical vocabulary, and hand her a decision instead of an explanation.
+interviewers: [client, hiring-manager, panel]
+builds_on: [abstain-when-evidence-is-too-weak, distinguish-refusal-from-missing-evidence, complete-the-evidence-only-prompt]
+
 prompt_text: |
-  Their head of customer service has noticed the assistant sometimes says it
-  cannot find an answer, on questions where one of her team would have known.
-  She thinks it is broken. Explain it to her.
+  The head of customer service at a broadband provider the size of ACT
+  Fibernet has noticed the assistant sometimes says it cannot find an
+  answer, on questions where one of her team would have known. She thinks
+  it is broken. Explain it to her.
+
+framework:
+  answer_first: You are right, it does that, and it does it on purpose. It answers from what is written down, and your team answer from three years in their heads.
+  evidence: Count the questions it declined last fortnight and show her the top ten. That is the content gap, measured, and it is hers to close or to accept.
+  trade_off: Silence costs a follow-up. A confident wrong policy costs a complaint, and she only hears about the ones that complain. The choice is hers, and you would widen it on purpose, never by accident.
+  if_you_do_not_know: If you do not know why a particular question was declined, say you would read that one with her before you say why, because the two causes look the same from outside.
+tips:
+  - Agree with what she saw in your first sentence. Arguing about whether she is right turns the meeting into that argument.
+  - Say the words retrieval, grounding or threshold and you have lost her. Use the distinction she already uses, what is written down and what is in someone's head.
+  - Leave her with a list and a lever. The questions it could not answer, and the setting she can ask you to change.
 
 beats:
   - id: b1

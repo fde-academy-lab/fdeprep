@@ -5,10 +5,26 @@ difficulty: hard
 total_seconds: 130
 competencies: [tool-schema-design, tool-error-handling, failure-mode-analysis]
 
+round: technical-deep-dive
+tests: Whether you separate failed from unknown, tie the retry decision to the cost of repeating, and name a mechanism with a fallback when the provider will not help.
+interviewers: [senior-ai-engineer, engineering-lead, panel]
+builds_on: [resume-without-repeating-an-effect, retry-a-node-only-on-errors-worth-retrying, reply-once-to-a-retried-webhook]
+
 prompt_text: |
-  Their ticketing tool timed out after eleven seconds. It may have created the
-  ticket and it may not. The agent has to decide what to do next, right now.
-  Talk me through it.
+  At a ride-hailing company the size of Ola, the agent that raises lost-item
+  tickets calls their ticketing tool, and the call timed out after eleven
+  seconds. It may have created the ticket and it may not. The agent has to
+  decide what to do next, right now. Talk me through it.
+
+framework:
+  answer_first: A timeout is not a failure. Connection refused means it did not happen and you can retry all day. A timeout means you do not know, and that wants the opposite behaviour.
+  evidence: A read costs nothing to repeat. A ticket created twice is a duplicate somebody in support closes and wonders about. The cost of being wrong is what decides it, so say the cost.
+  trade_off: An idempotency key makes the retry safe and needs a small change on their side. A read-back against your own reference needs their search to be honest about recent writes, so ask about consistency before relying on it.
+  if_you_do_not_know: If neither mechanism exists, say you would not retry. Leave the run uncertain, say what happened, and put it in front of a person with the timestamp and your reference.
+tips:
+  - Say the difference between failed and unknown first. Every later decision depends on which one you are in, and most retry code treats them the same because they arrive as the same exception.
+  - Give a mechanism with what it needs from the provider. A principle about at-least-once delivery is something the engineer cannot build.
+  - When both mechanisms are gone, stopping and escalating is the only option that does not quietly create a duplicate. Leaning towards retry because a missing ticket is worse is a guess dressed as a policy.
 
 beats:
   - id: b1

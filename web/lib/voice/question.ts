@@ -23,6 +23,15 @@ export type FollowUp = {
   ordinal: number;
 };
 
+/** docs/07 section 2, amended 9 October 2026: the four-line card the lobby
+ *  shows before the answer starts. */
+export type Framework = {
+  answerFirst: string;
+  evidence: string;
+  tradeOff: string;
+  ifYouDoNotKnow: string;
+};
+
 export type VoiceQuestion = {
   id: number;
   slug: string;
@@ -32,7 +41,34 @@ export type VoiceQuestion = {
   promptText: string;
   beats: Beat[];
   followUps: FollowUp[];
+  /** The round of the loop it comes from, lib/voice/rounds.ts. Null on a row
+   *  imported before the field existed. */
+  round: string | null;
+  /** The competency it tests, in one sentence. */
+  tests: string | null;
+  /** Interviewer slugs that ask it, the lobby's default first. */
+  interviewers: string[];
+  /** Problem slugs it builds on. */
+  buildsOn: string[];
+  framework: Framework | null;
+  tips: string[];
+  /** The authored cap on follow-up rounds, or null for the policy default. */
+  interviewRounds: number | null;
 };
+
+/** The picker's two filters. Next question keeps the same ones, so it stays
+ *  inside the list the learner chose from. */
+export type QuestionFilters = { track?: string | null; interviewer?: string | null };
+
+function frameworkFrom(stored: Record<string, string> | null): Framework | null {
+  if (!stored) return null;
+  return {
+    answerFirst: stored["answer_first"] ?? "",
+    evidence: stored["evidence"] ?? "",
+    tradeOff: stored["trade_off"] ?? "",
+    ifYouDoNotKnow: stored["if_you_do_not_know"] ?? "",
+  };
+}
 
 export class QuestionNotFound extends Error {
   readonly status = 404;
@@ -43,9 +79,12 @@ export async function loadQuestion(id: number): Promise<VoiceQuestion> {
 
   const { rows } = await pool.query<{
     id: string; slug: string; title: string; track: string;
-    total_seconds: number; prompt_text: string;
+    total_seconds: number; prompt_text: string; round: string | null; tests: string | null;
+    interviewers: string[]; builds_on: string[]; framework: Record<string, string> | null;
+    tips: string[]; interview_rounds: number | null;
   }>(
-    `select id, slug, title, track, total_seconds, prompt_text
+    `select id, slug, title, track, total_seconds, prompt_text, round, tests, interviewers,
+            builds_on, framework, tips, interview_rounds
        from voice_question where id = $1`,
     [id],
   );
@@ -99,7 +138,35 @@ export async function loadQuestion(id: number): Promise<VoiceQuestion> {
       audioUrl: speaks ? `/api/voice/questions/${id}/follow-ups/${followUp.id}/audio` : null,
       ordinal: followUp.ordinal,
     })),
+    round: row.round,
+    tests: row.tests,
+    interviewers: row.interviewers,
+    buildsOn: row.builds_on,
+    framework: frameworkFrom(row.framework),
+    tips: row.tips,
+    interviewRounds: row.interview_rounds,
   };
+}
+
+/** A problem a question builds on, as the lobby links it. */
+export type BuiltOn = { slug: string; title: string; track: string | null; published: boolean };
+
+/**
+ * The problems a question builds on, in the order the question names them,
+ * with their titles and chapters. A problem the catalogue has not published
+ * is still named, and the lobby writes it without a link, because a link to
+ * a page that answers 404 is worse than the name.
+ */
+export async function problemsBuiltOn(slugs: readonly string[]): Promise<BuiltOn[]> {
+  if (slugs.length === 0) return [];
+  const { rows } = await db().query<{ slug: string; title: string; track: string }>(
+    "select slug, title, track from problem where slug = any($1::text[]) and is_published",
+    [slugs]);
+  return slugs.map((slug) => {
+    const row = rows.find((candidate) => candidate.slug === slug);
+    return { slug, title: row?.title ?? slug.replace(/-/g, " "), track: row?.track ?? null,
+             published: row !== undefined };
+  });
 }
 
 /** docs/07 section 2: "four to six beats. Three is not a pathway, seven is a
@@ -134,6 +201,8 @@ export type PublishedQuestion = {
   difficulty: Difficulty;
   totalSeconds: number;
   followUps: number;
+  round: string | null;
+  interviewers: string[];
 };
 
 /**
@@ -152,33 +221,43 @@ export const VOICE_TRACK_ORDER = [
  * Never by id, so an import that renumbers rows does not reorder the list,
  * and Next question walks the same sequence every time. The development
  * fixture and the transport check are unpublished, so neither appears.
+ *
+ * Filtered by track, by the interviewer who asks it, or both. Each filter is
+ * a value the server compares, never a fragment of the query.
  */
-export async function publishedQuestions(): Promise<PublishedQuestion[]> {
+export async function publishedQuestions(filters: QuestionFilters = {}): Promise<PublishedQuestion[]> {
   const { rows } = await db().query<{
     id: string; slug: string; title: string; track: string; difficulty: Difficulty;
-    total_seconds: number; follow_ups: string;
+    total_seconds: number; follow_ups: string; round: string | null; interviewers: string[];
   }>(
-    `select q.id, q.slug, q.title, q.track, q.difficulty, q.total_seconds,
+    `select q.id, q.slug, q.title, q.track, q.difficulty, q.total_seconds, q.round,
+            q.interviewers,
             (select count(*) from voice_follow_up f
               where f.voice_question_id = q.id and f.retired_at is null) as follow_ups
        from voice_question q
       where q.is_published
+        and ($2::text is null or q.track = $2)
+        and ($3::text is null or $3 = any(q.interviewers))
       order by array_position($1::text[], q.track) nulls last, q.slug`,
-    [VOICE_TRACK_ORDER]);
+    [VOICE_TRACK_ORDER, filters.track || null, filters.interviewer || null]);
   return rows.map((r) => ({
     id: Number(r.id), slug: r.slug, title: r.title, track: r.track, difficulty: r.difficulty,
-    totalSeconds: r.total_seconds, followUps: Number(r.follow_ups),
+    totalSeconds: r.total_seconds, followUps: Number(r.follow_ups), round: r.round,
+    interviewers: r.interviewers,
   }));
 }
 
 /**
  * The slug after this one in the picker's order, wrapping at the end, or null
- * when nothing is published. A slug that is no longer published starts the
- * list again rather than failing, since Next question should always go
- * somewhere.
+ * when nothing is published. A slug that is no longer published, or outside
+ * the filters, starts the list again rather than failing, since Next question
+ * should always go somewhere. The filters are the picker's, so Next question
+ * stays inside the list the learner chose from.
  */
-export async function nextQuestionSlug(slug: string): Promise<string | null> {
-  const slugs = (await publishedQuestions()).map((q) => q.slug);
+export async function nextQuestionSlug(
+  slug: string, filters: QuestionFilters = {},
+): Promise<string | null> {
+  const slugs = (await publishedQuestions(filters)).map((q) => q.slug);
   if (slugs.length === 0) return null;
   const at = slugs.indexOf(slug);
   return slugs[(at + 1) % slugs.length]!;

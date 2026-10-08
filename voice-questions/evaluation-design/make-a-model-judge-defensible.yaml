@@ -5,10 +5,26 @@ difficulty: extreme
 total_seconds: 155
 competencies: [evaluation-design, failure-mode-analysis, system-design]
 
+round: technical-deep-dive
+tests: Whether you treat a model judge as an instrument with a known error, name the biases you would test for, and keep deterministic checks off it entirely.
+interviewers: [senior-ai-engineer, cto, solution-architect]
+builds_on: [make-the-judge-resist-answer-instructions, catch-a-judge-swayed-by-order-or-length, score-outcome-and-behaviour-separately]
+
 prompt_text: |
-  They want to use a model to grade the agent's answers, and they want that
-  grade to be what decides whether a change ships. Tell them what has to be
-  true before you would let that gate a release.
+  An insurer the size of ICICI Lombard wants to use a model to grade the
+  claims agent's answers, and they want that grade to be what decides
+  whether a change ships. Tell them what has to be true before you would let
+  it gate a release.
+
+framework:
+  answer_first: Today it is an opinion. To gate a release it has to be a measurement, which means we know its error against human labels and can say what it is.
+  evidence: A couple of hundred human-labelled cases and the agreement rate, then the disagreements read one by one. Fifty held out and re-checked monthly and after every model change.
+  trade_off: The judge decides the semantic question of whether an answer was good. Authorisation, budget and schema validity stay in code as hard gates, because a model turns an exact check into a probabilistic one.
+  if_you_do_not_know: If you do not know what agreement rate is enough, say that the pattern of disagreement matters more than the rate, and that a judge wrong in one direction moves every release decision.
+tips:
+  - Name the experiments. A verbose wrong version of each correct answer tests length bias, swapping the order tests position, and the same answer twice tests stability.
+  - Say what the judge must never decide, and say it as set membership over recorded events. That is the part interviewers listen for.
+  - The judge sits behind an endpoint you do not control. Calibrating once is a plan for one month.
 
 beats:
   - id: b1

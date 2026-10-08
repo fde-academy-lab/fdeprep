@@ -295,7 +295,11 @@ describe("Voice", () => {
     expect(markup.match(/<table/g)).toHaveLength(1);
     expect(markup.match(/aria-label="Answer [^"]+"/g)).toHaveLength(count);
     expect(markup).not.toContain("<button");
-    expect(outsideTables(markup).split(" ").length).toBeLessThan(40);
+    // S13.4 added two filter rows, by interviewer and by competency. They are
+    // navigation, links only, so the prose budget is counted without them.
+    const filters = markup.match(/<nav aria-label="Filter the questions"[\s\S]*?<\/nav>/)?.[0] ?? "";
+    expect(filters.match(/<a /g)?.length ?? 0).toBeGreaterThan(0);
+    expect(outsideTables(markup.replace(filters, "")).split(" ").length).toBeLessThan(40);
   });
 });
 

@@ -2,7 +2,7 @@
 
 A spoken interview simulator. The learner hears or reads a question, answers out loud into a microphone under a clock, and gets a debrief that scores what they said and shows how they said it.
 
-Three modes. Guided is an instrumented cockpit. Unguided is a microphone and a clock. Pressure adds an interviewer who interrupts.
+Three modes. Guided is an instrumented cockpit. Unguided is a microphone and a clock. Pressure adds an interviewer who interrupts. Amended 11 October 2026: a fourth, interview, follows the answer with rounds of questions drawn from it, section 5a.
 
 ---
 
@@ -73,6 +73,41 @@ exemplars:
 Beats are the answer pathway. Anchors are cheap string matches used for live cues only. The rubric judge does the real scoring afterwards, and never sees the anchors.
 
 Authoring rule: four to six beats. Three is not a pathway, seven is a script.
+
+Amended 9 October 2026. A question also names the loop it comes from and
+teaches how to answer it. `round` is one of six: hiring-manager-screen,
+technical-deep-dive, system-design, client-role-play, decomposition-case
+and judgement-call. `tests` is one sentence naming the competency in plain
+words. `interviewers` lists the personas that ask it, from
+`voice-interviewers/`, and the picker filters on them. `builds_on` lists
+catalogue problem slugs the question builds on, and the validator refuses
+one that is not a file under `problems/`. `framework` is a four-line card,
+answer first, evidence with a number, the trade-off to name, and what to
+say when you do not know part of it, written for this question so it is
+also the worked example. `tips` are two to four sentences people overlook.
+`interview_rounds`, optional, caps the follow-up rounds in interview mode
+at one to five; absent, the policy module sets it by difficulty. The
+scenario names a company of a named scale, in the catalogue's convention,
+never a real incident at a real company.
+
+---
+
+## 2a. The interviewers
+
+Added 9 October 2026. Nine personas live in `voice-interviewers/`, one YAML
+file each: an engineering lead, a CTO, a CEO, a solution architect, a
+senior AI engineer, a hiring manager, a client sponsor, a panel of three
+and a bar raiser. Each has a name, a role at a company of a named scale,
+what they listen for, an opening line, a follow-up style, two or three
+stress probes and an Amazon Polly voice, distinct per person and verified
+against the available voices table on 30 September 2026. The panel names
+three members, chair first. The files validate in CI and import with the
+questions into `voice_interviewer`. The learner picks an interviewer on the
+lobby; the browser sends a slug and the server resolves it, defaulting to
+the question's first. The interviewer reads the question and the opening
+line in their voice, interrupts in pressure mode in their voice, and asks
+the follow-up rounds of interview mode. Speech said more than once is
+cached once per voice and text in `voice_spoken_line`.
 
 ---
 
@@ -231,6 +266,30 @@ the learner's session before anything reaches Polly. A re-import keeps each
 follow-up's row and its cached audio while the words are unchanged, clears the
 audio when they change, and retires a follow-up the file drops rather than
 deleting it, because a past interruption points at it.
+
+---
+
+## 5a. Interview mode: follow-up rounds
+
+Added 11 October 2026. A fourth spoken mode. The learner answers the
+question in the guided cockpit, and when the answer ends the interviewer
+follows up, out loud, from what was just said. Each follow-up gets a sixty
+second reply on its own clock, and the rounds continue up to the question's
+cap, one to five, or until the learner presses Stop. Pressure mode is
+unchanged: its authored follow-ups still interrupt mid-answer.
+
+| Rule | Detail |
+|---|---|
+| No model call while the learner speaks | The follow-up is generated between turns, after a reply has ended and before the next begins. Section 12 item 4 holds for every reply, and the test stubs the network for the whole reply. |
+| The kind of each round is policy | The persona's `cadence` names each round as a why, a stress probe or a resume question. The level of a why climbs a five-step ladder: specify, evidence, mechanism, alternative, limit. A stress probe or a resume question does not advance it. The server plans the round before it calls the judge, so the model supplies the words and never the pattern. |
+| One model call per round, under a deadline | The judge Lambda's `voice_follow_up` event, prompt `judge/prompts/voice-follow-up.v1.md`, with a 4,000 ms deadline, no retries, and the learner's words and resume claims inside nonced delimiters labelled data. The reply is parsed against a schema and refused when it does not conform. |
+| The authored bank is the fallback | When the model is late, fails or is refused, the question's next unused authored follow-up is asked instead, then the persona's own probes. Their audio is synthesised when the session opens, so the fallback plays at once. A fallback never lowers a score and never touches an allowance. |
+| Never shown as text while the learner speaks | The follow-up plays as audio in a listening phase. Its text appears on screen only when no speech is configured, and only in that phase; the reply phase shows the clock, the microphone level and a Done button. The debrief shows every question afterwards. |
+| The latency budget | Six seconds at p95 from the reply ending to the next question being sent, of which four for the model. Each round records its generation, synthesis and gap times. |
+| A panel takes turns | The chair reads the question, and rounds rotate through the other members and back to the chair, each in their own style and voice. The debrief names who asked what. |
+| Scoring | Beats are judged on the main answer alone. The rubric judge reads the main answer and every round except resume rounds, each labelled. Structure, pace and delivery come from the main answer's timeline. |
+| Allowance | Interview mode spends the rehearsal allowance, as pressure does. The main answer's thirty-second rule from section 10 applies; an answer that did not count closes the session with no rounds. |
+| Ending early | Stop and debrief during a reply ends that round and closes the session. A tab closed mid-round sends the beacon, and the scorer closes any interview session whose last round was asked more than fifteen minutes ago. |
 
 ---
 
@@ -470,6 +529,25 @@ Added 30 September 2026, in migration 021, all additive:
 | `voice_session.input` | `spoken` or `typed`, so the scorer, the debrief and the history treat a typed answer as one. |
 | `voice_session.spent_allowance` | Whether the session holds one unit of its mode's allowance. Set when it opens, cleared when an answer that said nothing gives the unit back. |
 
+Added 9 October 2026, in migration 022, all additive:
+
+| Table or column | Why |
+|---|---|
+| `voice_interviewer` | The nine interviewers from `voice-interviewers/`, one row each, retired rather than deleted when a file is dropped, because a past session names one. |
+| `voice_question.round`, `tests`, `interviewers`, `builds_on`, `framework`, `tips`, `interview_rounds` | What a question says about the loop it comes from and how to answer it, section 2. |
+| `voice_session.interviewer_slug` | Who asked, resolved on the server. Null on every session from before the interviewers. |
+| `voice_spoken_line` | Speech said more than once, cached once per voice and text, keyed on the hash of the words. |
+
+Added 11 October 2026, in migration 023, all additive:
+
+| Table or column | Why |
+|---|---|
+| `voice_mode` value `interview` | Section 5a's fourth spoken mode. The previous release never writes it. |
+| `voice_turn` | One row per follow-up round: who asked, the kind and the level of why, where the question came from (`generated`, `authored` or `probe`), its words and audio, the reply, and the measurements S14.5 reads: `generation_ms`, `synthesis_ms`, `gap_ms`, `late_generation_ms`, `model_calls`, the tokens and `fallback_reason`. `targets`, the model's note of what it pulled on, is for faculty. |
+| `voice_session.resume_claims`, `resume_claims_at` | The claims drawn from a pasted resume, held while the session runs and nulled when it closes or a day after it started. The text itself is never written. |
+| `voice_session.interview_rounds` | The cap resolved when the session opened, so a content change never changes a running session. |
+| `voice_session.answer_finished_at` | Where the main answer ended. In interview mode `finished_at` is the close of the whole interview, after its rounds, and pace, the replay and the debrief's clock are about the main answer alone. |
+
 ---
 
 ## 9. Audio privacy
@@ -481,6 +559,9 @@ Added 30 September 2026, in migration 021, all additive:
 | Learner can delete their own audio at any time | A button on every past session. Deletion is immediate and irreversible, and the score stays. |
 | Faculty access is not automatic | Faculty see transcripts and scores. Audio requires the learner to share that session explicitly. |
 | No audio leaves the account | Audio goes to S3 in the same account. The STT adapter streams it to the provider and nothing else does. |
+| A resume is pasted, never stored | The text is sent once, turned into at most twelve claims by the judge inside nonced delimiters, and discarded. The claims live on the session row while the session runs and are deleted when it closes or after twenty-four hours, whichever is first. Nothing from the resume reaches a score, the heatmap or the placement export. |
+| What the interviewer says is kept thirty days | A generated follow-up's audio sits under `voice/generated/` with the same lifecycle rule as the learner's recordings. Lines said more than once, the question and the authored follow-ups in each voice, are cached without expiry; they hold no learner data. |
+| Faculty see provenance, the learner sees the interviewer | The debrief shows the learner who asked each question and what. Faculty also see whether the model or the authored bank asked it and how long it took. |
 
 Say all of this on the consent screen in plain words. A learner who is unsure who is listening will not speak freely, and an interview simulator where nobody speaks freely measures nothing.
 
@@ -493,6 +574,7 @@ Say all of this on the consent screen in plain words. A learner who is unsure wh
 | Guided sessions | 6 per day |
 | Unguided sessions | 6 per day |
 | Pressure sessions | 2 per week, shared with the rehearsal allowance |
+| Interview sessions | Shares the rehearsal allowance with pressure. A follow-up round spends no allowance and a round that falls back costs the learner nothing. |
 
 STT and TTS are metered services, so these are rows in `rate_limit_policy` like every other cap and adjustable without a deploy.
 
@@ -528,6 +610,8 @@ The client-communication questions matter most and are the ones no coding platfo
 
 Amended 8 October 2026: the PDLC and SDLC simulations (docs/04 section 2.0) each close on a client-communication question, explaining to the sponsor why the POC's number for the board is 58 and not 81, and defending the bolt 2 plan to a sponsor who wants dates. The set is fourteen questions, and client-communication holds five.
 
+Amended 9 October 2026: every question names its round, its competency in one sentence, the interviewers who ask it, the problems it builds on, a framework card and the tips people overlook. The table above is unchanged.
+
 ---
 
 ## 12. Acceptance
@@ -542,3 +626,13 @@ Amended 8 October 2026: the PDLC and SDLC simulations (docs/04 section 2.0) each
 8. Delivery metrics appear in the debrief and nowhere in the score, the heatmap, or the CSV export used for placement.
 9. A session abandoned mid-answer closes its socket, saves the partial transcript, and does not consume the daily allowance. Read, from 30 September 2026, as an answer that ends before it has run 30 seconds or said 40 words, which is the only abandonment the server can verify. Section 10 has the rule.
 10. Deleting audio removes the S3 object and leaves the score intact.
+11. No model call is made while the learner is replying to a follow-up.
+    Assert the count is zero across every reply window.
+12. A follow-up's text never appears on screen during a reply, in any
+    configuration. When speech is off, it appears in the listening phase
+    only.
+13. A resume's text is never written to any table or log. A sentinel
+    string in a pasted resume is found nowhere after the session opens.
+14. With the judge failing on every call, a five-round interview still
+    asks five questions, each inside the latency budget, and the debrief
+    says which were authored.

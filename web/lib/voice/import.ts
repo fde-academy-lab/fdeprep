@@ -34,6 +34,15 @@ interface Question {
   difficulty: string;
   total_seconds: number;
   prompt_text: string;
+  // docs/07 section 2, amended 9 October 2026. The validator requires all but
+  // interview_rounds, which is optional and defers to the policy default.
+  round: string;
+  tests: string;
+  interviewers: string[];
+  builds_on: string[];
+  framework: Record<string, string>;
+  tips: string[];
+  interview_rounds?: number;
   beats: Beat[];
   follow_ups?: Array<{ trigger_after_beat: string; text: string }>;
   rubric?: Array<{ criterion_key: string; label: string; weight: number; descriptor_md?: string }>;
@@ -57,15 +66,21 @@ export async function importVoiceQuestion(source: string, file: string): Promise
   return await inTransaction(async (client) => {
     const { rows } = await client.query<{ id: string }>(
       `insert into voice_question
-         (slug, title, track, difficulty, total_seconds, prompt_text, source_yaml, is_published)
-       values ($1, $2, $3, $4, $5, $6, $7, true)
+         (slug, title, track, difficulty, total_seconds, prompt_text, source_yaml, is_published,
+          round, tests, interviewers, builds_on, framework, tips, interview_rounds)
+       values ($1, $2, $3, $4, $5, $6, $7, true, $8, $9, $10, $11, $12, $13, $14)
        on conflict (slug) do update
          set title = excluded.title, track = excluded.track,
              difficulty = excluded.difficulty, total_seconds = excluded.total_seconds,
              prompt_text = excluded.prompt_text, source_yaml = excluded.source_yaml,
-             is_published = true
+             is_published = true, round = excluded.round, tests = excluded.tests,
+             interviewers = excluded.interviewers, builds_on = excluded.builds_on,
+             framework = excluded.framework, tips = excluded.tips,
+             interview_rounds = excluded.interview_rounds
        returning id`,
-      [q.slug, q.title, q.track, q.difficulty, q.total_seconds, q.prompt_text.trim(), source]);
+      [q.slug, q.title, q.track, q.difficulty, q.total_seconds, q.prompt_text.trim(), source,
+       q.round, q.tests.trim(), q.interviewers, q.builds_on, JSON.stringify(q.framework),
+       q.tips.map((tip) => tip.trim()), q.interview_rounds ?? null]);
     const id = Number(rows[0]!.id);
 
     // Delete then insert, rather than upsert and leave the rest. A beat the

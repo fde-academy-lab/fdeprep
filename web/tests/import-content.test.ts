@@ -104,8 +104,20 @@ track: agent-loop
 difficulty: medium
 total_seconds: 100
 competencies: [agent-loop]
+round: technical-deep-dive
+tests: Whether you can name the mechanism that stops a loop.
+interviewers: [engineering-lead]
+builds_on: [stop-when-the-model-will-not]
 prompt_text: |
   Say something.
+framework:
+  answer_first: Name the ceiling first.
+  evidence: Give the number it would have cut.
+  trade_off: Say what the ceiling costs.
+  if_you_do_not_know: Say what you would measure first.
+tips:
+  - Say the mechanism before the monitoring.
+  - Name the case the ceiling misses.
 beats:
   - { id: b1, label: One, seconds: 25, anchors: ["step budget"] }
   - { id: b2, label: Two, seconds: 25, anchors: ["degrade"] }

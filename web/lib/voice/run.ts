@@ -13,7 +13,9 @@
 import { advance, initialState, type Beat, type BeatProgress, type BeatState } from "./cues.ts";
 import { firedKey, nextNudge, type Nudge } from "./nudges.ts";
 
-export type VoiceMode = "guided" | "unguided" | "pressure";
+/** Interview is guided for the main answer, then follow-up rounds after it
+ *  (docs/07 section 5a), so the cockpit runs it with the guided instruments. */
+export type VoiceMode = "guided" | "unguided" | "pressure" | "interview";
 
 export type RecordedNudge = Nudge & { beatKey: string | null; wasShown: boolean };
 

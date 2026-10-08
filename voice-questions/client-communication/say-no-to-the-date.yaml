@@ -5,10 +5,26 @@ difficulty: hard
 total_seconds: 150
 competencies: [client-communication, evaluation-design, system-design]
 
+round: client-role-play
+tests: Whether you can keep a date and move the scope, commit to a number that can be checked, and give her a sentence for the board that is true.
+interviewers: [ceo, client, hiring-manager]
+builds_on: [turn-a-vague-request-into-an-outcome, fund-the-agent-4-answer-the-sponsor-who-widens-scope, decide-where-a-person-sits-for-each-action]
+
 prompt_text: |
-  Their chief operating officer wants the claims queue fully automated in four
-  weeks. She has told the board it is happening. You have seen the queue and
-  four weeks is not the problem. Full is. Answer her.
+  The chief operating officer of a general insurer the size of HDFC ERGO
+  wants the claims queue fully automated in four weeks. She has told the
+  board it is happening. You have seen the queue, and four weeks is not the
+  problem. Full is. Answer her.
+
+framework:
+  answer_first: The date is fine. The word I am stuck on is full. On your date, around sixty percent of the queue goes straight through, and the rest reaches a person with the work already done.
+  evidence: Sixty percent is the simple category, and you agree what counts before you start. The hard ten percent is where a wrong answer is a payment to the wrong person, and automating it is months of evidence.
+  trade_off: She gets a majority of the queue running without a person on her date, measured, and a plan for the rest with dates. A promise of a hundred percent gets her a slide and a failure in week three.
+  if_you_do_not_know: If you do not know the queue well enough to name the fraction, say the number you would commit to after a week with the data, and commit to the week.
+tips:
+  - Start from what she needs, which is a position she can hold in front of the board. Starting from why four weeks was unrealistic makes her the problem.
+  - Say the number and what it covers. A solid first version is a phrase nobody can check.
+  - A person staying in the loop on the hard cases is the design, so say so before she hears it as failure.
 
 beats:
   - id: b1

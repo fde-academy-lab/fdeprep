@@ -1,9 +1,15 @@
-""".claude/rules/02-writing.md, checked on the text a learner reads in problems/.
+""".claude/rules/02-writing.md, checked on the text a learner reads in problems/,
+voice-questions/ and voice-interviewers/.
 
 Seven content authors wrote the catalogue in parallel, and on 30 September
 2026 a scan found "unlocked" in three coach lines, "elevated" in a brief and a
 hidden case dated Friday 10 October 2026, which is a Saturday. Nothing
 checked either, so this does.
+
+The voice files joined the walk on 9 October 2026, with a third check: no em
+dash and no en dash in anything a learner reads. web/lib/voice/prose.ts runs
+the same two rules when a question or an interviewer is validated, so a file
+edited after this test ran still cannot reach a learner with them.
 
 What is written badly on purpose is left alone: a weak or adequate exemplar,
 a prompt the learner is asked to fix, a pattern or matcher, and anything in
@@ -20,7 +26,14 @@ import pytest
 import yaml
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
-FILES = sorted(p for p in (ROOT / "problems").rglob("*.yaml") if "_fixtures" not in p.parts)
+FILES = sorted(
+    p
+    for directory in ("problems", "voice-questions", "voice-interviewers")
+    for p in (ROOT / directory).rglob("*.yaml")
+    if "_fixtures" not in p.parts
+)
+# An em dash or an en dash, written as escapes so this file holds neither.
+DASH = re.compile("[\u2013\u2014]")
 
 # The rule's own list, as word forms. "Leverage" is banned as a verb only,
 # which a pattern cannot tell, so it is left to review.
@@ -63,6 +76,16 @@ def test_no_word_the_writing_rules_ban(path):
         f"{where}: {match.group(0)}"
         for where, text in _read(yaml.safe_load(path.read_text()))
         for match in BANNED.finditer(QUOTED.sub("", text))
+    ]
+    assert not found, found
+
+
+@pytest.mark.parametrize("path", FILES, ids=[p.stem for p in FILES])
+def test_no_em_or_en_dash(path):
+    found = [
+        f"{where}: {text.strip()[:60]}"
+        for where, text in _read(yaml.safe_load(path.read_text()))
+        if DASH.search(QUOTED.sub("", text))
     ]
     assert not found, found
 

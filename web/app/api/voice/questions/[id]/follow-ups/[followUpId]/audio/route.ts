@@ -8,15 +8,36 @@
  *
  * Synthesis happens here on the first request and never again, which is what
  * "generate once per question and cache" means in practice.
+ *
+ * With ?interviewer=slug the follow-up is spoken in that interviewer's voice,
+ * so the interviewer the learner chose is the one who interrupts. That line is
+ * cached once per voice and text in voice_spoken_line. Without it the
+ * deployment's own voice speaks it, as before, cached on the follow-up row.
+ * The slug picks a voice from the server's own list and nothing more.
  */
 import { NextResponse } from "next/server";
+import { db } from "@/lib/db/pool";
 import { learnerOrNull } from "@/lib/session/current";
-import { ensureFollowUpAudio, followUpAudio } from "@/lib/voice/tts";
+import { InterviewerNotFound, resolveInterviewer, speakingVoice } from "@/lib/voice/interviewers";
+import { ensureFollowUpAudio, followUpAudio, spokenLineAudio } from "@/lib/voice/tts";
 
 export const dynamic = "force-dynamic";
 
+/** The follow-up in the chosen interviewer's voice, or null when there is no
+ *  such follow-up or no speech is configured. */
+async function inInterviewersVoice(questionId: number, followUpId: number, slug: string) {
+  const interviewer = await resolveInterviewer(slug);
+  const { rows } = await db().query<{ text: string }>(
+    `select text from voice_follow_up
+      where id = $1 and voice_question_id = $2 and retired_at is null`,
+    [followUpId, questionId]);
+  const voice = await speakingVoice(interviewer);
+  if (!rows[0] || !voice) return null;
+  return spokenLineAudio(rows[0].text, voice);
+}
+
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ id: string; followUpId: string }> },
 ) {
   // The proxy only checks that a cookie is present. This is the check that
@@ -27,12 +48,22 @@ export async function GET(
   }
   const { id, followUpId } = await params;
   const questionId = Number(id);
+  const interviewer = new URL(request.url).searchParams.get("interviewer");
 
   let audio: Awaited<ReturnType<typeof followUpAudio>>;
   try {
-    await ensureFollowUpAudio(questionId);
-    audio = await followUpAudio(questionId, Number(followUpId));
+    if (interviewer) {
+      audio = await inInterviewersVoice(questionId, Number(followUpId), interviewer);
+    } else {
+      await ensureFollowUpAudio(questionId);
+      audio = await followUpAudio(questionId, Number(followUpId));
+    }
   } catch (error) {
+    if (error instanceof InterviewerNotFound) {
+      return NextResponse.json(
+        { message: "That interviewer is not available any more, so the follow-up is shown as text." },
+        { status: 404 });
+    }
     // Polly or the bucket failed. The cockpit shows the follow-up as text
     // whatever this answers, so the interruption still lands.
     console.error(`follow-up audio for question ${questionId} failed:`, error);
