@@ -162,7 +162,9 @@ The web application rolls back by checking out the previous commit on the web ho
 
 ### Restoring the database
 
-Point-in-time restore to a new branch, verify against a known submission id, then repoint the application. Practise this once before the cohort starts. A restore procedure that has never been run is not a restore procedure.
+On the beta host the backup is the daily EBS snapshot of the server's disk, and DEPLOY.md section 8.2 has both procedures. The drill copies the newest snapshot to a new volume beside the live disk, starts a second Postgres on it at port 5433 and compares its row counts with the live database, while the site keeps serving. A real restore puts the whole server back to a snapshot with EC2's root volume replacement, and loses whatever was written after that snapshot. Run the drill once before the cohort starts and write down how long it took. A restore procedure that has never been run is not a restore procedure.
+
+Point-in-time restore arrives with managed Postgres before the cohort (section 2), and this entry changes with it.
 
 ### Before each cohort starts
 
