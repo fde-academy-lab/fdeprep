@@ -1,0 +1,628 @@
+slug: turn-a-schema-rejection-into-a-fixable-error
+title: "Turn a schema rejection into a fixable error"
+day: 5
+skill: Pass the model what a schema's rejection says, and check what the schema lets through
+artefact_type: code
+difficulty: medium
+track: tools
+concept:
+  topic: "Frameworks"
+  question: "What does a tool schema catch for you, and what is still yours to check?"
+est_minutes: 30
+competencies:
+  - { slug: tool-schema-design, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 3
+time_limit_s: 10
+allowed_imports: [json, re, typing, langchain_core, pydantic]
+
+brief_md: |
+  Customer support at a grocery delivery app the size of Blinkit runs a
+  refunds agent. Last month the team moved its tools to LangChain's `@tool`,
+  so each tool now carries a schema built from its signature, and a call that
+  breaks the schema is rejected before it reaches the payments service.
+
+  The agent's handler catches the rejection as `Exception` and tells the model
+  `invalid input`, which is what it told the model before the framework. On
+  Sunday the model sent the reason `rotten` for a bag of spinach, heard
+  `invalid input`, and sent `rotten` again until the ticket's three model
+  calls ran out. 900 tickets went to a person that day. Each rejection had
+  named the field, the value sent and the three reasons the tool takes, and
+  none of that reached the model.
+
+  The same week a call the schema accepted refunded one paisa to a customer
+  who was owed 240 rupees, and another customer was refunded twice for one
+  order after the model asked again.
+
+  Write the agent that passes the model what each rejection says, and checks
+  what the schema does not.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is a customer's message. `llm(prompt)` replies with one line,
+  either
+
+      Call: {"tool": "refund", "args": {"order_id": "G-58213", "amount_paise": 8400, "reason": "damaged"}}
+
+  or `Done: <the reply to the customer>`, whose text you return. The prompt
+  starts `Customer: <question>`, and each reply and each line below is added
+  to the end of it.
+
+  `build_tools(tools)` in the stub returns the registry, the tools the model
+  can call by name. It holds one, `refund`, made with `@tool` from
+  langchain-core 1.6.6, whose schema is a pydantic 2.13.5 model built from
+  the signature:
+
+      @tool
+      def refund(order_id: str, amount_paise: int,
+                 reason: Literal["damaged", "late", "missing"]) -> dict:
+
+  Its body calls two of the tools in `tools`, which the model cannot call by
+  name. `tools["order"](order_id=...)` answers
+  `{"order_id": ..., "paid_paise": ..., "max_refund_paise": ...}`, the most
+  this order can still refund. `tools["refund"](order_id=...,
+  amount_paise=..., reason=...)` is the payments service, which answers
+  `{"status": 200, "refund_id": ...}` and refunds whatever amount it is sent.
+
+  Run each call with the tool's `invoke(args)` and add `Result: <its answer
+  as JSON>`. When a call cannot run, add `Error: <a JSON list>` instead, with
+  one entry `{"field": ..., "sent": ..., "accepted": ...}` per problem:
+
+  | Problem | `field` | `sent` | `accepted` |
+  |---|---|---|---|
+  | A tool name the registry lacks | `"tool"` | the name | the registry's names, as a list |
+  | `amount_paise` sent as `true` or `false` | `"amount_paise"` | the value | `"integer"` |
+  | `invoke` raised `ValidationError`: one entry per item of `exc.errors()` | the field the item's `loc` names | the item's `input`, or `null` when the field is missing | from the tool's `args`: the field's `enum` when it has one, otherwise its `type` |
+
+  A field the tool does not take is dropped by the schema, and the call goes
+  ahead without it.
+
+  Inside `refund`, two more checks run before the payments service. It looks
+  the order up with `tools["order"]`, and an amount below 1 or above
+  `max_refund_paise` answers `{"error": [{"field": "amount_paise", "sent":
+  <amount>, "accepted": "integer from 1 to <max_refund_paise>"}]}`. And it
+  calls the payments service at most once per ticket, whatever the service
+  answered: a second `refund` answers `{"error": "refund_already_sent",
+  "first_answer": <the first answer>}`.
+
+  Budget: at most 3 model calls. Allowed imports: `json`, `re`, `typing`,
+  `langchain_core` and `pydantic`.
+
+stub_code: |
+  import json
+  from typing import Literal
+
+  from langchain_core.tools import tool
+  from pydantic import ValidationError
+
+  MAX_CALLS = 3
+  FALLBACK = "I could not finish this refund. A person will pick up your ticket."
+
+
+  def build_tools(tools: dict) -> dict:
+      """The tools the model may call, by name. refund's body calls tools["order"] and tools["refund"]."""
+
+      @tool
+      def refund(order_id: str, amount_paise: int,
+                 reason: Literal["damaged", "late", "missing"]) -> dict:
+          """Refund part or all of a grocery order to the customer's original payment method."""
+          # TODO 3: look the order up with tools["order"], and answer an amount
+          #         below 1 or above max_refund_paise without paying
+          # TODO 4: call the payments service at most once per ticket
+          return tools["refund"](order_id=order_id, amount_paise=amount_paise, reason=reason)
+
+      return {"refund": refund}
+
+
+  def problems(chosen, exc: ValidationError) -> list:
+      """One {"field": ..., "sent": ..., "accepted": ...} entry per item of
+      exc.errors(). accepted comes from chosen.args: the field's enum when it
+      has one, otherwise its type."""
+      return []
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Refund what the customer is owed, and tell the model what to fix.
+
+      llm(prompt) replies Call: {"tool": ..., "args": {...}} or Done: <text>.
+      Return the text after Done:. At most 3 model calls.
+      """
+      registry = build_tools(tools)
+      prompt = f"Customer: {question}\n"
+      for _ in range(MAX_CALLS):
+          reply = llm(prompt).strip()
+          prompt += reply + "\n"
+          # TODO 1: return the text after Done:. For a Call, run the tool with
+          #         registry[name].invoke(args) and add Result: <answer as JSON>
+          # TODO 2: before invoke, refuse what the contract's table refuses;
+          #         after, turn a ValidationError into Error: <entries>
+      return FALLBACK
+
+steps:
+  - id: s1
+    text: Return the text after `Done:`, and run each call through the tool's `invoke`, adding a `Result:` line.
+    check_id: s1
+  - id: s2
+    text: Turn a `ValidationError` into one `Error:` line built from `exc.errors()` and the tool's `args`.
+    check_id: s2
+  - id: s3
+    text: Inside `refund`, answer an amount above the order's `max_refund_paise` with the limit, without paying.
+    check_id: s3
+  - id: s4
+    text: Inside `refund`, call the payments service at most once per ticket.
+    check_id: s4
+
+step_checks:
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { order_id: G-58213, amount_paise: 8400, reason: damaged } }
+        - { type: returns_matches, value: "RF-58213" }
+  # The public cases send nothing the schema rejects, so s2 carries its own
+  # case: an amount in rupees with a fraction, which the schema rejects as
+  # int_from_float. The scripted model corrects it only when the error names
+  # the field, the value it sent and the type the field takes.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Order G-30551: the tomatoes were squashed. Refund 23 rupees 50 paise." }
+      llm_script:
+        - { match: { contains: "RF-30551" },
+            reply: "Done: I have refunded 23.50 rupees for the squashed tomatoes. Your refund is RF-30551." }
+        - match:
+            all:
+              - { regex: '"field":\s*"amount_paise"' }
+              - { regex: '"sent":\s*23\.5\b' }
+              - { regex: '"accepted":\s*"integer"' }
+          reply: 'Call: {"tool": "refund", "args": {"order_id": "G-30551", "amount_paise": 2350, "reason": "damaged"}}'
+        - { match: "*", reply: 'Call: {"tool": "refund", "args": {"order_id": "G-30551", "amount_paise": 23.5, "reason": "damaged"}}' }
+      tools:
+        order: { returns: { order_id: G-30551, paid_paise: 9800, max_refund_paise: 9800 } }
+        refund: { returns: { status: 200, refund_id: RF-30551 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_contains, value: '"sent":\s*23\.5\b' }
+        - { type: calls_tool_with, name: refund, args: { order_id: G-30551, amount_paise: 2350 } }
+        - { type: returns_matches, value: "RF-30551" }
+  # No public case asks for more than the order can refund. The step holds
+  # when the first amount never reached the payments service and the
+  # corrected one did.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Order G-44120: four of the six mangoes were rotten. Refund 320 rupees." }
+      llm_script:
+        - { match: { contains: "RF-44120" },
+            reply: "Done: This order had 240 rupees left to refund, and I have refunded all of it. Your refund is RF-44120." }
+        - match:
+            all:
+              - { regex: '"field":\s*"amount_paise"' }
+              - { regex: '"sent":\s*32000\b' }
+              - { contains: "24000" }
+          reply: 'Call: {"tool": "refund", "args": {"order_id": "G-44120", "amount_paise": 24000, "reason": "damaged"}}'
+        - { match: "*", reply: 'Call: {"tool": "refund", "args": {"order_id": "G-44120", "amount_paise": 32000, "reason": "damaged"}}' }
+      tools:
+        order: { returns: { order_id: G-44120, paid_paise: 48000, max_refund_paise: 24000 } }
+        refund: { returns: { status: 200, refund_id: RF-44120 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_contains, value: '"sent":\s*32000\b' }
+        - { type: calls_tool_with, name: refund, args: { order_id: G-44120, amount_paise: 24000 } }
+        - { type: tool_calls_at_most, value: 3 }
+  # The model asks for the same refund again after it went through. The step
+  # holds when the second call never reached the payments service.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input: { question: "Order G-52208: the curd had split. Refund 45 rupees." }
+      llm_script:
+        - { match: { call_index: 3 }, reply: "Done: I have refunded 45 rupees for the curd. Your refund is RF-52208." }
+        - { match: "*", reply: 'Call: {"tool": "refund", "args": {"order_id": "G-52208", "amount_paise": 4500, "reason": "damaged"}}' }
+      tools:
+        order: { returns: { order_id: G-52208, paid_paise: 20400, max_refund_paise: 20400 } }
+        refund: { returns: { status: 200, refund_id: RF-52208 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_contains, value: "refund_already_sent" }
+        - { type: no_repeated_identical_tool_call }
+        - { type: tool_calls_at_most, value: 2 }
+
+hints:
+  - Read the error your agent sends with nothing else to go on. Which field was wrong, what was sent, and what would have been taken?
+  - "`exc.errors()` already holds each problem: the field in `loc` and the value sent in `input`. What a field accepts is in the tool's `args`, the JSON schema built from the signature, where `reason` carries its `enum`."
+  - "The schema converts before it checks. An amount of `\"2350\"` reaches the body as 2350, `2350.0` as 2350, and `true` as 1. One of the three is not what the model meant, so look at the raw arguments before `invoke` does."
+  - "Checks that need the order's own numbers go inside `refund`, after the schema has converted the amount and before the payments service is called. Keep the service's first answer there too, so a second call can be answered without it."
+
+scenario:
+  headline: "The model heard invalid input three times, and 900 customers waited"
+  who: "Customer support at a grocery delivery app the size of Blinkit"
+  situation: >-
+    The refunds agent moved its tools to LangChain's `@tool`. The schema now
+    rejects a bad call, and the handler turns every rejection into the words
+    invalid input, so the model sends the same call again.
+  stakes: >-
+    On Sunday 900 tickets went to a person. The same week a call the schema
+    accepted paid one paisa on 240 rupees owed, and one customer was refunded
+    twice for one order.
+  metrics:
+    - { label: Tickets sent to a person, value: "900" }
+    - { label: Refund paid on ₹240 owed, value: "1 paisa" }
+    - { label: Model calls per ticket, value: "3" }
+
+diagram:
+  title: What the schema catches, and what reaches the payments service
+  caption: >-
+    A rejection carries what the model needs to fix the call. Some values are
+    converted before the check, and the order's limit comes after it.
+  direction: lr
+  nodes:
+    - { id: customer, label: Customer, sub: asks for a refund, kind: actor, tone: blue, at: [0, 1] }
+    - { id: model, label: Model, sub: writes the tool call, kind: model, tone: teal, at: [1, 1] }
+    - { id: schema, label: "@tool schema", sub: "types, enum, required fields", kind: guard, tone: purple, at: [2, 1] }
+    - { id: checks, label: Checks in refund, sub: "the order's limit, once per ticket", kind: guard, tone: green, at: [3, 1] }
+    - { id: payments, label: Payments service, sub: moves real money, kind: service, tone: orange, at: [4, 1] }
+    - { id: fixable, label: An error to fix, sub: "field, value sent, accepted", kind: doc, tone: green, at: [2, 0] }
+    - { id: vague, label: "invalid input", sub: the same call comes back, kind: output, tone: pink, at: [2, 2] }
+  edges:
+    - { from: customer, to: model, label: refund request, step: 1 }
+    - { from: model, to: schema, label: "Call: refund", step: 2 }
+    - { from: schema, to: checks, label: "\"2350\" to 2350, true to 1", step: 3 }
+    - { from: checks, to: payments, label: at most once, tone: success, step: 4 }
+    - { from: schema, to: fixable, label: "`ValidationError`", tone: success }
+    - { from: fixable, to: model, label: one corrected call, tone: success }
+    - { from: schema, to: vague, label: "caught as `Exception`", tone: danger }
+    - { from: vague, to: model, label: nothing to change, tone: danger }
+
+approach:
+  goal: Use the schema for what it checks, and check the rest yourself
+  branches:
+    - label: Pass on what the schema already knows
+      leaves: ["`exc.errors()`: the field and the value sent", "the tool's `args`: what each field takes"]
+    - label: Find what the schema lets through
+      detail: >-
+        Pydantic's lax mode converts a value before it checks it. Some
+        conversions are what the model meant.
+      leaves: [an amount sent as text, true and false, an amount of zero, a field the tool does not take]
+    - label: Check what only the order knows
+      leaves: [the most this order can still refund, looked up when the call is made]
+    - label: Decide what a second refund costs
+      leaves: ["does an answer with an error mean no money moved?", "who sorts out the first one?"]
+
+coach:
+  opening: >-
+    Read the error your agent sends the model as if it were all you had.
+    Could you fix the next call from it?
+  signals:
+    - id: invalid-input
+      when: { code_matches: '(?i)invalid input' }
+      say: >-
+        Your agent tells the model its call was invalid and nothing else. The
+        `ValidationError` names the field and the value sent, and the tool's
+        `args` say what the field takes. What can the model change with two
+        words?
+    - id: no-errors
+      when: { code_lacks: '\.errors\(\)' }
+      say: >-
+        Nothing reads `exc.errors()` yet. Each item names a field in `loc` and
+        the value the model sent in `input`, which is most of an error the
+        model can act on.
+    - id: no-bool
+      when: { code_lacks: '\bbool\b' }
+      say: >-
+        The schema says `amount_paise` is an integer. What does the body of
+        `refund` receive when the model sends `true` as the amount, and is
+        that what the model meant?
+    - id: no-limit
+      when: { code_lacks: 'max_refund_paise' }
+      say: >-
+        Nothing compares the amount with the order. The schema knows the
+        amount is an integer. What tells you it is more than this order can
+        refund?
+    - id: no-once
+      when: { code_lacks: 'refund_already_sent' }
+      say: >-
+        Nothing stops a second refund in one ticket. What happens when the
+        model asks for the same refund twice?
+    - id: hidden-true
+      when: { test_failed: true_is_refused_before_the_schema_turns_it_into_1 }
+      say: >-
+        In that run the model sent `true` as the amount. Your schema accepted
+        it. What amount reached the payments service?
+    - id: hidden-reason
+      when: { test_failed: a_rejected_reason_comes_back_with_the_reasons_refund_takes }
+      say: >-
+        In that run the schema rejected a reason and the model sent it again.
+        Did your error name the field, the reason sent and the three the tool
+        takes?
+    - id: hidden-unknown-tool
+      when: { test_failed: an_unknown_tool_comes_back_with_the_registered_names }
+      say: >-
+        In that run the model called a tool the registry does not have. What
+        did your agent tell it, and did that name the tools it does have?
+    - id: hidden-extra-field
+      when: { test_failed: a_field_refund_does_not_take_is_dropped }
+      say: >-
+        In that run the call carried a field `refund` does not take. The
+        schema drops it. Did your agent refuse a call the contract lets
+        through?
+    - id: adversarial-second-refund
+      when: { test_failed: adversarial_the_payments_service_answers_200_with_an_error }
+      say: >-
+        In that run the payments service answered with an error and the model
+        asked again. Did a second refund reach the service, and what does your
+        agent count as sent?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 and the first public case. Once a clean call comes
+        back as a `Result:` line, the errors are one `except` away.
+    - id: hints
+      when: { failed_runs_at_least: 1 }
+      say: >-
+        A run has failed, so the hints are open. The second one says where
+        each part of an error the model can fix already sits.
+  wrap_up: >-
+    A schema checks shape, and its rejection names the field, the value and
+    what is allowed, so pass that on. Then check what it converts, what only
+    the order knows, and what must happen once. The chapter's Hard code
+    problem takes the schema away, and you write the whole error.
+
+tests:
+  - name: refunds_a_damaged_item
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Order G-58213: all six eggs came cracked. Please refund the 84 rupees." }
+      llm_script:
+        - { match: { contains: "RF-58213" },
+            reply: "Done: I have refunded 84 rupees for the cracked eggs. Your refund is RF-58213." }
+        - { match: "*", reply: 'Call: {"tool": "refund", "args": {"order_id": "G-58213", "amount_paise": 8400, "reason": "damaged"}}' }
+      tools:
+        order: { returns: { order_id: G-58213, paid_paise: 61200, max_refund_paise: 61200 } }
+        refund: { returns: { status: 200, refund_id: RF-58213 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { order_id: G-58213, amount_paise: 8400, reason: damaged } }
+        - { type: returns_matches, value: "RF-58213" }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: an_amount_sent_as_text_is_refunded_as_a_number
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Order G-60477 came 50 minutes late and the ice cream had melted. Can I get the 64 rupees back for it?" }
+      llm_script:
+        - { match: { contains: "RF-60477" },
+            reply: "Done: I have refunded 64 rupees for the melted ice cream. Your refund is RF-60477." }
+        - { match: "*", reply: 'Call: {"tool": "refund", "args": {"order_id": "G-60477", "amount_paise": "6400", "reason": "late"}}' }
+      tools:
+        order: { returns: { order_id: G-60477, paid_paise: 38900, max_refund_paise: 38900 } }
+        refund: { returns: { status: 200, refund_id: RF-60477 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { order_id: G-60477, amount_paise: 6400, reason: late } }
+        - { type: returns_matches, value: "RF-60477" }
+
+  - name: true_is_refused_before_the_schema_turns_it_into_1
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order G-71904: the coriander was rotten and the bread was mouldy. Refund the full 180 rupees please." }
+      llm_script:
+        - { match: { contains: "RF-71904" },
+            reply: "Done: I have refunded 180 rupees for the coriander and the bread. Your refund is RF-71904." }
+        - match:
+            all:
+              - { regex: '"field":\s*"amount_paise"' }
+              - { regex: '"sent":\s*true' }
+          reply: 'Call: {"tool": "refund", "args": {"order_id": "G-71904", "amount_paise": 18000, "reason": "damaged"}}'
+        - { match: "*", reply: 'Call: {"tool": "refund", "args": {"order_id": "G-71904", "amount_paise": true, "reason": "damaged"}}' }
+      tools:
+        order: { returns: { order_id: G-71904, paid_paise: 52600, max_refund_paise: 52600 } }
+        refund: { returns: { status: 200, refund_id: RF-71904 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { order_id: G-71904, amount_paise: 18000 } }
+        - { type: tool_calls_at_most, value: 2 }
+        - { type: returns_matches, value: "RF-71904" }
+
+  - name: a_rejected_reason_comes_back_with_the_reasons_refund_takes
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order G-80316: the bag of spinach came rotten. Refund it please, 34 rupees." }
+      llm_script:
+        - { match: { contains: "RF-80316" },
+            reply: "Done: I have refunded 34 rupees for the rotten spinach. Your refund is RF-80316." }
+        - match:
+            all:
+              - { regex: '"field":\s*"reason"' }
+              - { regex: '"sent":\s*"rotten"' }
+              - { regex: '\[\s*"damaged",\s*"late",\s*"missing"\s*\]' }
+          reply: 'Call: {"tool": "refund", "args": {"order_id": "G-80316", "amount_paise": 3400, "reason": "damaged"}}'
+        - { match: "*", reply: 'Call: {"tool": "refund", "args": {"order_id": "G-80316", "amount_paise": 3400, "reason": "rotten"}}' }
+      tools:
+        order: { returns: { order_id: G-80316, paid_paise: 15600, max_refund_paise: 15600 } }
+        refund: { returns: { status: 200, refund_id: RF-80316 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_contains, value: '"sent":\s*"rotten"' }
+        - { type: prompt_contains, value: '\[\s*"damaged",\s*"late",\s*"missing"\s*\]' }
+        - { type: calls_tool_with, name: refund, args: { order_id: G-80316, amount_paise: 3400, reason: damaged } }
+        - { type: returns_matches, value: "RF-80316" }
+
+  - name: an_unknown_tool_comes_back_with_the_registered_names
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order G-81552: two of the five bananas were black inside. Refund 24 rupees for those." }
+      llm_script:
+        - { match: { contains: "RF-81552" },
+            reply: "Done: I have refunded 24 rupees for the two bananas. Your refund is RF-81552." }
+        - match:
+            all:
+              - { regex: '"sent":\s*"issue_refund"' }
+              - { regex: '"accepted":\s*\[\s*"refund"\s*\]' }
+          reply: 'Call: {"tool": "refund", "args": {"order_id": "G-81552", "amount_paise": 2400, "reason": "damaged"}}'
+        - { match: "*", reply: 'Call: {"tool": "issue_refund", "args": {"order_id": "G-81552", "amount_paise": 2400, "reason": "damaged"}}' }
+      tools:
+        order: { returns: { order_id: G-81552, paid_paise: 17300, max_refund_paise: 17300 } }
+        refund: { returns: { status: 200, refund_id: RF-81552 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_contains, value: '"field":\s*"tool"' }
+        - { type: prompt_contains, value: '"accepted":\s*\[\s*"refund"\s*\]' }
+        - { type: calls_tool_with, name: refund, args: { order_id: G-81552, amount_paise: 2400 } }
+        - { type: returns_matches, value: "RF-81552" }
+
+  - name: a_field_refund_does_not_take_is_dropped
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Order G-90118 came an hour late and the frozen peas had thawed. Please refund the 95 rupees." }
+      llm_script:
+        - { match: { contains: "RF-90118" },
+            reply: "Done: I have refunded 95 rupees for the thawed peas. Your refund is RF-90118." }
+        - { match: "*", reply: 'Call: {"tool": "refund", "args": {"order_id": "G-90118", "amount_paise": 9500, "reason": "late", "note": "rider took 62 minutes"}}' }
+      tools:
+        order: { returns: { order_id: G-90118, paid_paise: 27700, max_refund_paise: 27700 } }
+        refund: { returns: { status: 200, refund_id: RF-90118 } }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: refund, args: { order_id: G-90118, amount_paise: 9500, reason: late } }
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: returns_matches, value: "RF-90118" }
+
+  - name: adversarial_the_payments_service_answers_200_with_an_error
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      The schema passed the call, and the payments service answered HTTP 200
+      with `"error": "settlement_timeout"` in the body: the bank had not
+      confirmed in time, and the refund might still complete. The model asked
+      for the same refund again, as models do after an error.
+
+      An agent that sends every call the model makes pays this customer
+      twice whenever the first refund lands late. An agent that counts only a
+      success as sent does the same, because an answer with an error in it
+      cannot say whether money moved. Counting the call itself, whatever came
+      back, is what keeps it to one. The model hears the first answer as it
+      came and tells the customer, and a person sorts out the first refund.
+    spec:
+      kind: agent_run
+      input: { question: "Order G-93307: the paneer was past its date. Refund the 110 rupees." }
+      llm_script:
+        - { match: { call_index: 3 },
+            reply: "Done: The payments service did not confirm your refund of 110 rupees for order G-93307, so I have not sent it again. Our payments team will confirm it within one working day." }
+        - { match: "*", reply: 'Call: {"tool": "refund", "args": {"order_id": "G-93307", "amount_paise": 11000, "reason": "damaged"}}' }
+      tools:
+        order: { returns: { order_id: G-93307, paid_paise: 41000, max_refund_paise: 41000 } }
+        refund:
+          fixture: tool_soft_error
+          params:
+            status: 200
+            body: { error: settlement_timeout, detail: "the bank did not confirm within 8000 ms; the refund may still complete" }
+      budget: { max_llm_calls: 3, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: prompt_contains, value: "settlement_timeout" }
+        - { type: no_repeated_identical_tool_call }
+        - { type: tool_calls_at_most, value: 3 }
+        - { type: returns_nonempty }
+
+reference_md: |
+  On Sunday the schema did its part. It rejected `"reason": "rotten"`, and its
+  `ValidationError` held what the model needed to fix the call: the field in
+  `loc`, the value in `input`, and the three reasons the field takes in
+  `ctx`. The handler caught it as `Exception` and sent two words, so nothing
+  the framework knew reached the model.
+
+  Here is the same tool written twice, once as a dict check and once with
+  `@tool`, as langchain-core 1.6.6 and pydantic 2.13.5 behave (read from the
+  installed source and run on 8 October 2026):
+
+  ```python
+  REASONS = ("damaged", "late", "missing")
+
+  def check(args: dict) -> list:
+      found = []
+      if not isinstance(args.get("order_id"), str):
+          found.append(entry("order_id", args.get("order_id"), "string"))
+      amount = args.get("amount_paise")
+      if not isinstance(amount, int) or isinstance(amount, bool):
+          found.append(entry("amount_paise", amount, "integer"))
+      if args.get("reason") not in REASONS:
+          found.append(entry("reason", args.get("reason"), list(REASONS)))
+      return found
+  ```
+
+  ```python
+  @tool
+  def refund(order_id: str, amount_paise: int,
+             reason: Literal["damaged", "late", "missing"]) -> dict:
+      """Refund part or all of a grocery order to the customer's original payment method."""
+  ```
+
+  | The model sends | The dict check | The `@tool` schema |
+  |---|---|---|
+  | `"amount_paise": 23.5` | rejects it | rejects it, `int_from_float` |
+  | `"reason": "rotten"` | rejects it | rejects it, `literal_error`, listing the three it takes |
+  | no `reason` | rejects it | rejects it, `missing` |
+  | `"amount_paise": "2350"` or `2350.0` | rejects it | converts it to 2350 |
+  | `"amount_paise": true` | rejects it, because of the `bool` test | converts it to 1 |
+  | a `note` field neither one takes | lets it through | drops it |
+  | `"amount_paise": 0`, or more than the order can refund | lets it through | lets it through |
+
+  The schema saves the typing and keeps the accepted values in one place,
+  `refund.args`, built from the same `tool_call_schema` a chat model is given
+  when the tool is bound to it. It runs in pydantic's lax mode, which converts
+  a value before checking it. A string of digits and a float with nothing
+  after the point are what the model meant. `true` as 1 is the conversion
+  nobody meant, and it is how a customer owed 240 rupees was refunded one
+  paisa. Python counts `True` as an `int` too, which is why the dict check
+  needs its `bool` test.
+
+  Tightening the schema moves the line without removing it.
+  `Annotated[int, Field(ge=1)]` rejects 0 and still converts `true` to 1,
+  which passes `ge=1`. `StrictInt` rejects `true`, and rejects `"2350"` and
+  `2350.0` along with it. An `args_schema` whose `ConfigDict` sets
+  `extra="forbid"` rejects the `note` field; the schema `@tool` builds from
+  a signature carries no `extra` setting, so pydantic's default, ignore,
+  applies. What no schema can hold is the order's own limit, because it is a
+  fact about this order, looked up when the call is made. That check, and the
+  once-per-ticket rule, live in the tool's body, after the schema has
+  converted the amount and before the payments service is called.
+
+  The once-per-ticket rule counts calls, not successes. A payments answer
+  with an error in its body, after the schema passed the call, cannot say
+  whether money moved, and a second refund could pay the customer twice. The
+  model reads the first answer as it came, and a person sorts it out.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your team moved its tools to a framework that validates arguments with a schema. What does the schema catch, what does it let through, and what does the model see when it rejects a call?
+  source: |
+    Author judgement. The schema behaviour was read from langchain-core 1.6.6 (`langchain_core/tools/base.py`) and pydantic 2.13.5, the versions the runner installs, and run on 8 October 2026. No employer frequency data stands behind it.
+
+tools:
+  - name: order
+    args: order_id
+    returns: '`{"order_id": ..., "paid_paise": ..., "max_refund_paise": ...}`, where `max_refund_paise` is the most this order can still refund.'
+  - name: refund
+    args: order_id, amount_paise, reason
+    returns: '`{"status": 200, "refund_id": ...}` from the payments service, which refunds whatever amount it is sent.'
+example:
+  case: refunds_a_damaged_item
+  expect: The call passes the schema and the order's limit, so `refund` pays once, its answer goes in as a `Result:` line, and the agent returns the model's reply with refund RF-58213.
+traps:
+  - An error that says only that the call was invalid, when the schema's rejection names the field, the value sent and what the field takes.
+  - Trusting the schema's conversions, which turn true into an amount of 1 before any check of yours runs.
+  - Refusing a call for a field the tool does not take, when the schema drops it and the contract lets the call go ahead.
+  - Counting only a successful refund as sent, so an answer with an error in it lets a second refund through.
