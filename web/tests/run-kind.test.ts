@@ -37,6 +37,7 @@ import { validateProblemYaml } from "../lib/problems/validate.ts";
 import { resolvePolicy } from "../lib/policy/index.ts";
 import { loadTrace, storeTrace } from "../lib/trace/store.ts";
 import { replayFor } from "../lib/trace/replay.ts";
+import { reportFor } from "../lib/rehearsal/index.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 
 const PROBLEMS = path.join(import.meta.dirname, "..", "..", "problems");
@@ -395,23 +396,24 @@ describe("a defence", () => {
   });
 });
 
-describe("which kinds mark the attempt solved", () => {
-  const PASS = {
-    verdict: "pass", score: 100,
-    gates: {
-      static: { status: "pass", reasons: [] },
-      public: { status: "pass", passed: 2, total: 2, cases: [] },
-      hidden: { status: "pass", passed: 4, total: 4, cases: [] },
-      adversarial: { status: "pass", passed: 1, total: 1, cases: [] },
-    },
-    steps: [], budget: { llm_calls: 3, tool_calls: 2, wall_ms: 40, max_llm_calls: 3, within_budget: true },
-    runner: { image_tag: "runner:test", duration_ms: 50 },
-  };
-  const RUN_PASS = {
-    ...PASS, score: null,
-    gates: { ...PASS.gates, hidden: NOTHING, adversarial: NOTHING },
-  };
+/** A Submit's pass as the runner returns one, and a Run's, which reports the public gate alone. */
+const PASS = {
+  verdict: "pass", score: 100,
+  gates: {
+    static: { status: "pass", reasons: [] },
+    public: { status: "pass", passed: 2, total: 2, cases: [] },
+    hidden: { status: "pass", passed: 4, total: 4, cases: [] },
+    adversarial: { status: "pass", passed: 1, total: 1, cases: [] },
+  },
+  steps: [], budget: { llm_calls: 3, tool_calls: 2, wall_ms: 40, max_llm_calls: 3, within_budget: true },
+  runner: { image_tag: "runner:test", duration_ms: 50 },
+};
+const RUN_PASS = {
+  ...PASS, score: null,
+  gates: { ...PASS.gates, hidden: NOTHING, adversarial: NOTHING },
+};
 
+describe("which kinds mark the attempt solved", () => {
   async function solved(problemId: number): Promise<boolean> {
     const { rows } = await db().query<{ solved: boolean }>(
       "select solved_at is not null as solved from attempt where enrolment_id = $1 and problem_id = $2",
@@ -436,5 +438,34 @@ describe("which kinds mark the attempt solved", () => {
     await grade((await create(id, "rehearsal_submit", "a", await sitting(id))).id,
       { ...PASS, verdict: "fail", score: 61 });
     expect(await solved(id)).toBe(false);
+  });
+});
+
+describe("a Run inside a rehearsal", () => {
+  // The workspace inside a sitting sends a Run with the sitting's id. The Run
+  // carried that id onto its row, so the one-submit rule read it as the
+  // sitting's submit and refused the real one, and the report read the Run's
+  // verdict, now a public result alone, as the problem's.
+  it("leaves the sitting's one submit open, and the report reads the submit", async () => {
+    const { id } = await publish(WORKED);
+    const rehearsalId = await sitting(id);
+    await grade((await create(id, "run", "a", rehearsalId)).id, RUN_PASS);
+
+    const submit = await create(id, "rehearsal_submit", "b", rehearsalId);
+    await grade(submit.id, { ...PASS, verdict: "fail", score: 61 });
+
+    const report = await reportFor(rehearsalId);
+    expect(report.problems.map((p) => [p.verdict, p.score])).toEqual([["fail", 61]]);
+  });
+
+  it("ignores a Run stored with the sitting's id before the fix", async () => {
+    const { id } = await publish(WORKED);
+    const rehearsalId = await sitting(id);
+    const run = await create(id, "run", "a");
+    await grade(run.id, RUN_PASS);
+    await db().query("update submission set rehearsal_id = $1 where id = $2", [rehearsalId, run.id]);
+
+    expect((await reportFor(rehearsalId)).problems.map((p) => p.verdict)).toEqual([null]);
+    expect((await create(id, "rehearsal_submit", "b", rehearsalId)).id).toBeGreaterThan(run.id);
   });
 });
