@@ -23,7 +23,11 @@ import {
 import type { PaceState } from "./cues.ts";
 import type { VoiceMode } from "./start.ts";
 
-export type ScoreOptions = JudgeOptions & { limit?: number };
+export type ScoreOptions = JudgeOptions & {
+  limit?: number;
+  /** This session and no other. The seed scores the answer it just finished this way. */
+  sessionId?: number;
+};
 
 type SessionRow = {
   id: string;
@@ -41,9 +45,10 @@ export async function scoreVoiceOnce(options: ScoreOptions = {}): Promise<number
             finished_at
        from voice_session
       where finished_at is not null and scored_at is null and judge_attempts < $2
+        and ($3::bigint is null or id = $3)
       order by finished_at
       limit $1`,
-    [options.limit ?? 5, MAX_JUDGE_ATTEMPTS],
+    [options.limit ?? 5, MAX_JUDGE_ATTEMPTS, options.sessionId ?? null],
   );
 
   for (const row of rows) {
