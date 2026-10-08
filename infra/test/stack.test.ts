@@ -500,13 +500,19 @@ describe("learner audio", () => {
     const rules = (buckets[0]![1] as {
       Properties: { LifecycleConfiguration: { Rules: Array<Record<string, unknown>> } };
     }).Properties.LifecycleConfiguration.Rules;
-    const expiry = rules.find((rule) => rule.ExpirationInDays !== undefined);
+    const expiring = rules.filter((rule) => rule.ExpirationInDays !== undefined);
+    const expiry = expiring.find((rule) => rule.Prefix === "voice/answers/");
     assert.ok(expiry, "the audio bucket expires its objects");
     assert.equal(expiry.ExpirationInDays, 30);
     assert.equal(expiry.Status, "Enabled");
-    // Learner answers only, so the cached follow-up speech survives the rule.
-    assert.equal(expiry.Prefix, "voice/answers/");
-    assert.equal(rules.filter((rule) => rule.ExpirationInDays !== undefined).length, 1);
+    // Learner answers, and the follow-ups generated for one session's rounds
+    // (docs/07 section 5a), so the cached speech under voice/follow-ups/ and
+    // voice/lines/ survives the rules.
+    const generated = expiring.find((rule) => rule.Prefix === "voice/generated/");
+    assert.ok(generated, "a generated follow-up is kept no longer than a recording");
+    assert.equal(generated.ExpirationInDays, 30);
+    assert.equal(generated.Status, "Enabled");
+    assert.deepEqual(expiring.map((rule) => rule.Prefix).sort(), ["voice/answers/", "voice/generated/"]);
   });
 
   test("nothing versions a recording, because a deleted one has to be gone", () => {
