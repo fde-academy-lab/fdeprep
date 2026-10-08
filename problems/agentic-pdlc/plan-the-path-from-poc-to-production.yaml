@@ -1,0 +1,575 @@
+slug: plan-the-path-from-poc-to-production
+title: "Plan the path from POC to production"
+day: 27
+skill: Say what the POC, the MVP and production each have to prove, and who signs it
+artefact_type: design
+difficulty: hard
+track: agentic-pdlc
+concept:
+  topic: "POC, MVP, production"
+  question: "What does each step have to prove before the next one is paid for?"
+est_minutes: 45
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+  - { slug: client-communication, weight: 0.5 }
+
+brief_md: |
+  A general insurer the size of HDFC ERGO handles about 1.1 million motor
+  own-damage claims a year. Each claim arrives as a bundle: the surveyor's
+  report, photos of the damage, the repair invoice and the FIR when there is
+  one. A claims handler checks the bundle against the policy and decides to
+  settle, reduce or reject.
+
+  The CTO has told the board "straight-through processing of 40 percent of
+  claims by Q4", meaning claims settled with no handler. A six-week POC has
+  built an agent that reads the bundle, extracts six fields (policy number,
+  vehicle registration, date of loss, cause of loss, the surveyor's assessed
+  amount and the invoice total), checks them against the policy and
+  recommends settle, reduce or reject. It ran on 2,000 claims from last
+  year. The head of claims has asked you for the plan from here to
+  production.
+
+  | What the head of claims has | Where it comes from |
+  |---|---|
+  | 1.1 million motor claims a year, about 3,000 a day | Claims system, last financial year |
+  | The average settled claim is ₹41,000, and 36 percent of claims are for less than ₹15,000 | Claims ledger, last financial year |
+  | A handler's time costs ₹580 a claim, and a handler decides 14 claims a day | Finance's cost model |
+  | 320 claims handlers | Claims operations |
+  | 72 percent of claims are decided within the insurer's own 7-day promise | Claims system, last quarter |
+  | A decision wrong in the customer's favour costs the claim amount, and money paid is not clawed back | Head of claims |
+  | A wrong rejection costs ₹1,900 to reopen, and brings a complaint | Complaints team, last year |
+  | Field extraction is right on 94 percent of fields, across the six fields | POC, 2,000 claims with fields labelled by hand |
+  | The recommendation agrees with the handler's decision on 81 percent of claims, and on 91 percent of claims under ₹15,000 | POC, the same 2,000 claims |
+  | Model calls cost ₹11 a claim | POC billing |
+  | Handlers who saw the output said it is faster to check than to do | Six handlers at the POC review |
+  | What handlers do when they disagree with a recommendation | Nobody has measured it |
+
+  Write the plan.
+
+contract_md: |
+  Write the plan the head of claims will take to the CTO. It has four parts,
+  each under its own heading, written exactly as `## POC`, `## MVP`,
+  `## Production` and `## What each step throws away`.
+
+  Under POC, say what the POC has shown, what it has not, and what it must
+  still show before an MVP is paid for. For every step, give its exit
+  criteria as numbers, its owner by role, and the evaluation that gates it:
+  the set it is judged on, the metric, and who signs. Say how much
+  straight-through processing the evidence supports, on which claims and by
+  when. Under the last heading, say what each step leaves behind on the way
+  out, and why.
+
+  Between 500 and 800 words.
+
+word_range: [500, 800]
+required_headings: [POC, MVP, Production, What each step throws away]
+
+rubric:
+  - label: Sizes straight-through by claim value, with the leakage arithmetic shown
+    weight: 25
+    descriptor_md: |
+      A claim settled straight through saves the ₹580 a handler costs, and a
+      false approval, a settlement wrong in the customer's favour, loses the
+      claim amount. Strong answers set leakage, the false-approval rate times
+      the claim value, against ₹580 and find the line it sets: at 1.5
+      percent it falls near ₹39,000, just under the ₹41,000 average, so a
+      flat share drawn from all claims loses money at that rate. They see
+      that the POC's 9 percent disagreement under ₹15,000 is not split by
+      direction, so it cannot rule out a rate above the 3.9 percent at which
+      even a ₹15,000 claim breaks even. They keep reductions and rejections
+      with a handler, since a wrong rejection costs ₹1,900 and a complaint,
+      and start straight-through under a value line with a rule for moving
+      it.
+  - label: Separates reading the claim from deciding it
+    weight: 20
+    descriptor_md: |
+      94 percent is per field, and a claim is decided on all six. If errors
+      are independent, 0.94 to the sixth power is about 0.69, so roughly
+      three claims in ten carry a wrong field into the decision. 81 percent
+      is agreement with the handler who decided the claim, and the handler is
+      the label: the 19 percent mixes the agent's errors with the handler's,
+      and agreement does not say which way any disagreement went. Strong
+      answers measure extraction per claim and decisions against adjudicated
+      outcomes, split into false approvals and wrong rejections, and say who
+      adjudicates.
+  - label: Gates each step, and makes the MVP produce production labels
+    weight: 20
+    descriptor_md: |
+      Each step has exit criteria as numbers, an owner by role, and an
+      evaluation that names the set, the metric and who signs. The MVP runs
+      live, in one region on one product, with the handler deciding every
+      claim and the recommendation logged before the decision, which
+      measures what closed claims could not: what handlers do when they
+      disagree, and how long checking takes. Strong answers keep a blind
+      sample decided by handlers who never see the recommendation, because a
+      handler who has seen it is no longer an independent label, and make
+      the MVP's adjudicated claims the production evaluation set.
+  - label: Says what each step throws away, and why
+    weight: 15
+    descriptor_md: |
+      The POC's prompt harness goes, and its 2,000 hand-labelled claims stop
+      being the test: six weeks of tuning against them make them a training
+      set, worth keeping only as a regression check. The MVP's
+      region-specific rules go before a second region. Anything that cannot
+      be re-run goes: an unpinned model, a prompt edited outside version
+      control, a label stored without the recommendation it sat beside.
+      Strong answers give the reason for each.
+  - label: Holds the CTO's 40 percent to the evidence, with a number to defend
+    weight: 20
+    descriptor_md: |
+      The POC's best evidence covers claims under ₹15,000, which are 36
+      percent of claims, so 40 percent already reaches into claims where
+      agreement is lower and each error costs more. With about three claims
+      in ten carrying a field that does not reconcile, a defensible figure is
+      nearer a quarter of claims, all under the line, starting in the MVP
+      region inside Q4 and spreading as each region passes. Strong answers
+      give the CTO that number, the claims it covers and the date, and say
+      what evidence would raise it. Answers that keep 40 percent, or refuse
+      any number, leave the CTO with nothing true to tell the board.
+
+exemplars:
+  - band: strong
+    score: 91
+    body_md: |
+      ## POC
+
+      The POC shows the agent can read a claim bundle. It has yet to show
+      that the agent decides claims correctly, and two numbers need
+      re-reading before an MVP is paid for.
+
+      Extraction is 94 percent per field, and a claim needs all six fields
+      right. If errors are independent, 0.94 to the sixth power is about
+      0.69, so three claims in ten carry a wrong field into the decision. The
+      81 percent is agreement with the handler who decided the claim. The
+      handler is the label, labels are sometimes wrong, and agreement says
+      nothing about which way the 19 percent went. Direction matters most: a
+      false approval costs the claim amount, a wrong rejection ₹1,900 and a
+      complaint.
+
+      A claim settled straight through saves ₹580 of handler time. At a 1.5
+      percent false-approval rate, expected leakage is 0.015 times the claim
+      value, and it outweighs the ₹580 once a claim passes about ₹39,000.
+      The average claim is ₹41,000, so a flat 40 percent drawn from all
+      claims loses money at that rate. Under ₹15,000, leakage is at most ₹225
+      a claim. But the 9 percent disagreement there is not split by
+      direction, and if it were all false approvals, even a ₹7,000 claim
+      would leak more than a handler costs. Next to this, ₹11 a claim in
+      model calls is noise.
+
+      Exit: two senior handlers adjudicate all 380 disagreements and 200
+      agreements, since a handler and the agent can be wrong together. The
+      MVP is funded if adjudicated false approvals under ₹15,000 are at or
+      below 1.5 percent, and cross-checks between fields, such as invoice
+      against survey amount and date of loss against the policy period,
+      catch nine wrong fields in ten. The data science lead runs it; the head
+      of claims and the finance controller sign.
+
+      ## MVP
+
+      Ten weeks, live, in one region, on private-car own-damage only. The
+      handler decides every claim. The recommendation is logged before the
+      decision, with its fields and the model and prompt versions. One claim
+      in five is decided blind, by a handler who never sees the
+      recommendation, because a handler who has seen it is no longer an
+      independent label. Senior handlers adjudicate every disagreement.
+
+      This measures what closed claims could not: what handlers do when they
+      disagree, whether they follow a wrong recommendation, and how long
+      checking takes against deciding.
+
+      Exit, on at least 1,000 adjudicated claims under ₹15,000: false
+      approvals at or below 1.5 percent; handlers following a wrong
+      recommendation on fewer than one claim in four; and checking fast
+      enough to lift a handler from 14 claims a day to 18. The regional
+      claims manager runs it, the head of claims signs, and finance signs the
+      leakage line. The adjudicated claims become the production evaluation
+      set.
+
+      ## Production
+
+      Straight-through settlement covers only claims under ₹15,000 where all
+      six fields reconcile and the agent recommends settling in full.
+      Reductions and rejections stay with a handler: a wrong rejection costs
+      ₹1,900 and a complaint, and a path that can only approve has one kind
+      of error to watch. Every other claim reaches a handler with the
+      recommendation attached.
+
+      Money paid stays paid, so a random 5 percent of straight-through claims
+      are audited after payment, and that audit is the gate. Straight-through
+      pauses in any month the audited false-approval rate passes 1.5 percent.
+      The line rises to ₹25,000 only when adjudicated false approvals between
+      ₹15,000 and ₹25,000, measured on logged recommendations, stay under 2.3
+      percent. Each new region logs for two weeks before it settles anything
+      itself. The head of claims owns the line, finance the leakage budget,
+      engineering the monitoring.
+
+      For the board, the number I would defend is at most a quarter of
+      claims: the 36 percent under ₹15,000, less the three in ten with a
+      field that does not reconcile. It starts in the MVP region in Q4 and
+      spreads as each region passes, and every claim it takes off a desk is
+      handler time for the 28 percent that now miss the 7-day promise. Forty
+      percent reaches into claims where agreement falls and each error costs
+      more, and nothing in the POC carries it.
+
+      ## What each step throws away
+
+      The POC's prompt harness goes. It is a notebook with an unpinned model,
+      and nobody can rebuild its numbers. Its 2,000 hand-labelled claims stop
+      being a test: six weeks of tuning against them make them a training
+      set, kept only as a regression check.
+
+      The MVP's region-specific rules go before the second region, or one
+      region's garage rates and surveyors quietly become everyone's policy.
+
+      Production keeps nothing that cannot be re-run: no prompt edited
+      outside version control, no model without a pinned version, no label
+      stored apart from the recommendation it was decided beside.
+  - band: adequate
+    score: 60
+    body_md: |
+      ## POC
+
+      The POC was a success. On 2,000 historical claims the agent extracted
+      fields with 94 percent accuracy, and its recommendation matched the
+      handler's decision on 81 percent of claims, rising to 91 percent for
+      claims under ₹15,000. Handlers who reviewed the output found it faster
+      to check than to decide from scratch, and model costs of ₹11 a claim
+      are small against ₹580 of handler time.
+
+      Before moving on, the POC team should review the 19 percent of claims
+      where the agent and the handler disagreed, group them into error
+      types, and fix the prompts for the largest groups. The exit criterion
+      for the POC is agreement of at least 85 percent on a fresh sample of
+      500 historical claims, run by the data science lead and signed off by
+      the head of claims.
+
+      ## MVP
+
+      The MVP runs for eight weeks in one region, on private-car claims only.
+      Every claim gets an agent recommendation that the handler sees beside
+      the bundle, and the handler still makes the decision. We log the
+      recommendation, the handler's decision and the time taken.
+
+      Owner: the regional claims manager, with the data science lead
+      responsible for the evaluation. The evaluation set is every claim
+      decided in the region during the eight weeks. Metrics: agreement with
+      the handler, handling time per claim, and handler satisfaction with the
+      tool. Exit criteria: agreement of 88 percent or more, handling time
+      down by 25 percent, and handlers rating the tool at least 4 out of 5.
+      The head of claims signs off before production.
+
+      ## Production
+
+      Production starts in the MVP region, with straight-through processing
+      for the 20 percent of claims where the agent is most confident.
+      Confidence comes from the model's own score for its recommendation.
+      These claims are settled without a handler, and the rest go to
+      handlers with the recommendation attached.
+
+      After a month, if agreement on handled claims stays above 88 percent,
+      we raise straight-through to 30 percent and roll out to two more
+      regions. By Q4 we reach 40 percent nationally, which meets the CTO's
+      commitment to the board. Engineering owns the pipeline and the
+      monitoring, and the head of claims owns the straight-through
+      percentage.
+
+      We will watch complaints and reopened claims every week. A wrong
+      rejection costs ₹1,900 and a complaint, so if reopened claims rise
+      above last year's level, we will lower the straight-through percentage
+      until the cause is fixed. Settlements wrong in the customer's favour
+      are harder to see, so finance should review a sample of them each
+      quarter.
+
+      ## What each step throws away
+
+      The POC's prompt harness was built quickly and is not production code,
+      so the engineering team will rebuild it with proper logging, tests and
+      version control. The 2,000 historical claims stay as the main test
+      set, because they are already labelled and give us a baseline to
+      compare every new prompt against.
+
+      The MVP's region-specific settings, such as local garage rates, are
+      replaced with national rules before the wider rollout. Anything manual
+      in the MVP, such as tracking handler feedback in a spreadsheet, moves
+      into the claims system.
+
+      In production we keep everything, because the logs from
+      straight-through claims are the evidence we will need when the board
+      asks how the agent is performing.
+  - band: weak
+    score: 29
+    body_md: |
+      ## POC
+
+      The POC proved the agent works. It was 81 percent accurate on 2,000
+      real claims and 94 percent accurate at reading documents, which is
+      better than many handlers manage on a busy day. Handlers who saw it
+      agreed it is faster to check than to do, so adoption will not be a
+      problem. At ₹11 a claim against ₹580 for a handler, the business case
+      is clear from day one.
+
+      The 19 percent of claims where the agent and the handler differed are
+      mostly edge cases, such as unusual garages, missing photos or very
+      large repairs. These are exactly the claims handlers will keep, so they
+      do not affect the business case, and the agent will learn them over
+      time as it sees more claims.
+
+      The POC is complete and there is no reason to repeat it. The next step
+      is to harden the prompts and move to the MVP straight away, so that we
+      keep momentum and meet the Q4 date the CTO has given the board.
+
+      ## MVP
+
+      The MVP will take the agent to production quality. We will connect it
+      to the claims system, add the policy database, and build a simple
+      screen where handlers can see the recommendation and accept it with
+      one click. We will start with a group of handlers across three regions
+      so that we get a broad mix of claims.
+
+      During the MVP the agent will settle claims directly when handlers
+      accept its recommendation, so handlers get used to working with it. We
+      expect accuracy to climb above 90 percent as the prompts are tuned on
+      the MVP claims, since the POC already reached 91 percent on smaller
+      claims.
+
+      ## Production
+
+      In production the agent processes every motor own-damage claim. It
+      settles 40 percent of claims straight through by Q4, as the CTO has
+      promised, and the remaining 60 percent go to handlers with a
+      recommendation attached. This frees around 130 handlers, who can move
+      to fraud investigation and customer calls.
+
+      At 40 percent of 1.1 million claims, that is 440,000 claims a year with
+      no handler time, a saving of about ₹25 crore a year at ₹580 a claim,
+      against model costs of about ₹1.2 crore. Customers will also get faster
+      decisions, and we expect the 72 percent of claims decided within seven
+      days to rise above 90 percent.
+
+      The agent will choose which claims to settle straight through based on
+      how confident it is, and it will use the same rules in every region
+      from the first day, so there is nothing to tune locally. As accuracy
+      improves, the straight-through share can rise further, towards 60
+      percent in the following year.
+
+      ## What each step throws away
+
+      Very little needs to be thrown away. The POC prompts are a good base
+      and will be improved rather than replaced, and the 2,000 labelled
+      claims become our permanent test set, so we can show the board that
+      accuracy keeps going up.
+
+      The MVP's integration work becomes the production system. The
+      handlers' feedback screen stays in place so we keep learning from their
+      corrections.
+
+      The main thing to throw away is the old manual process. Once the agent
+      is live, handlers no longer need to check every document by hand, and
+      the claims team can be reorganised around exceptions.
+
+hints:
+  - Before you plan a step, turn the POC's two headline numbers into what
+    they mean for one claim. How many claims have every field right, and
+    whose decision is the 81 percent measured against?
+  - Price one wrong settlement sent straight through, and set it against
+    what straight-through saves. Write both as a sum for one claim, then ask
+    which claims the sum favours.
+  - The POC ran on closed claims, so nobody saw a handler with a
+    recommendation in front of them. Design the step that does, and make its
+    decisions the labels production will be judged on.
+  - For each step, write one line each for the set it is judged on, the
+    metric, the number that ends it and the role that signs.
+  - Give the CTO a number you would defend in front of the board, with the
+    claims it covers and the date, in place of a reply that only says 40
+    percent is too high.
+
+scenario:
+  headline: "The CTO promised the board 40 percent straight-through by Q4"
+  who: The head of claims at a general insurer the size of HDFC ERGO
+  situation: >-
+    A six-week POC ran a claims agent on 2,000 closed motor claims, and its
+    recommendations agree with handlers on 81 percent of them. The CTO has
+    told the board that 40 percent of claims will settle with no handler by
+    Q4.
+  stakes: >-
+    A settlement wrong in the customer's favour costs the claim amount and is
+    never clawed back. A wrong rejection costs ₹1,900 to reopen, and a
+    complaint.
+  metrics:
+    - { label: Motor claims a year, value: 1.1 million }
+    - { label: Handler cost per claim, value: ₹580 }
+    - { label: Average settled claim, value: "₹41,000" }
+
+diagram:
+  title: Where a claim goes, and what a wrong settlement costs
+  caption: >-
+    A claim settled straight through saves a handler's time. A wrong one
+    costs the claim amount, and money paid stays paid.
+  direction: lr
+  nodes:
+    - { id: bundle, label: Claim bundle, sub: "survey, photos, invoice, FIR", kind: doc, tone: neutral, at: [0, 1] }
+    - { id: agent, label: Claims agent, sub: reads six fields from the bundle, kind: agent, tone: purple, at: [1, 1] }
+    - { id: rec, label: Recommendation, sub: "settle, reduce or reject", kind: decision, tone: orange, at: [2, 1] }
+    - { id: handler, label: Claims handler, sub: "₹580 a claim, 14 a day", kind: actor, tone: blue, at: [3, 0] }
+    - { id: stp, label: Straight through, sub: no handler looks at it, kind: service, tone: teal, at: [3, 2] }
+    - { id: paid, label: Settlement paid, sub: never clawed back, kind: output, tone: pink, at: [4, 1] }
+  edges:
+    - { from: bundle, to: agent, label: read, step: 1 }
+    - { from: agent, to: rec, label: checked against the policy, step: 2 }
+    - { from: rec, to: handler, label: "81% agree with the handler", tone: muted }
+    - { from: rec, to: stp, label: "the CTO's 40%", tone: danger, step: 3 }
+    - { from: handler, to: paid, label: decides }
+    - { from: stp, to: paid, label: a wrong one costs the claim, tone: danger }
+
+approach:
+  goal: A plan where each step proves what the next one is paid to rely on
+  branches:
+    - label: Read the POC per claim
+      leaves: ["how many claims have every field right?", "whose decision is the 81 percent measured against?"]
+    - label: Price each kind of wrong decision
+      detail: A settlement wrong in the customer's favour and a wrong rejection cost different amounts.
+      leaves: ["what does one cost against a handler's time?", "does the answer change with the claim's value?"]
+    - label: Find what history cannot show
+      leaves: ["what changes once a handler sees a recommendation?", "where will production's labels come from?"]
+    - label: Gate every step
+      leaves: [a set and a metric, a number that ends the step, a role that signs]
+    - label: Decide what each step leaves behind
+      leaves: ["what was built to be thrown away?", "what could nobody re-run?"]
+
+coach:
+  opening: >-
+    Before you plan a step, turn the POC's two headline numbers into what they
+    mean for one claim, and price what a wrong decision on that claim costs.
+  signals:
+    - id: agreement-read-as-accuracy
+      when:
+        code_matches: '(?i)\b81\s*(percent|%)'
+        code_lacks: '(?i)agree(s|d|ment)?\s+with\s+(the\s+)?handlers?|handlers?\s+(is|are)\s+the\s+label|\blabels?\b|adjudicat|\bblind\b|who\s+was\s+right'
+      say: >-
+        Your plan reads the 81 percent as accuracy. Whose decisions is it
+        measured against, and how would you find the claims where the handler
+        was the one who was wrong?
+    - id: fields-not-compounded
+      when:
+        code_matches: '(?i)\b94\s*(percent|%)'
+        code_lacks: '(?i)0?\.69\b|\b69\s*(percent|%)|sixth\s+power|\^\s*6|all\s+six\s+fields|every\s+field|three\s+(claims\s+)?in\s+ten|per\s+claim|compound'
+      say: >-
+        94 percent is per field, and the decision needs all six fields right
+        on the same claim. How many claims reach the decision with every field
+        right?
+    - id: no-leakage
+      when: { code_lacks: '(?i)leak|expected\s+loss|break[-\s]?even|false[-\s]approvals?|wrong\s+settlements?\s+(cost|lose)' }
+      say: >-
+        Your plan sends claims straight through without pricing a wrong
+        settlement. What does one cost against the ₹580 a handler costs, and
+        does the answer change with the claim's value?
+    - id: forty-percent-kept
+      when:
+        code_matches: '(?i)\b40\s*(percent|%)'
+        code_lacks: '(?i)(under|below|up\s+to)\s+₹\s?\d|quarter\s+of\s+(all\s+)?(the\s+)?claims|nothing\s+in\s+the\s+poc|evidence\s+(does\s+not|cannot|can''t)'
+      say: >-
+        Your plan keeps the CTO's 40 percent. Which claims does the POC's
+        evidence cover, and what share of all claims are they?
+    - id: no-exit-numbers
+      when: { code_lacks: '(?i)\bexit\b|\bsigns?\b|sign[-\s]off|signed' }
+      say: >-
+        None of your steps says what ends it. Name the number that lets each
+        step stop, and the role that signs.
+    - id: history-not-live
+      when: { code_lacks: '(?i)\blive\b|\blogged\b|\blogs?\s+(the|every|each)|\bblind\b|shadow' }
+      say: >-
+        The POC ran on closed claims. What can only be measured once handlers
+        see a recommendation on claims that are still open?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with one line per step: what it has to prove, the number that
+        proves it, and the role that signs.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three tries without a pass. Open the hints; the second one prices a
+        wrong settlement against a handler's time.
+  wrap_up: >-
+    A step is paid for by what it proves. A handler's decision is a label that
+    can be wrong, a per-field score compounds across a claim, and
+    straight-through is sized by what a false approval costs at each claim
+    value.
+
+reference_md: |
+  The POC answered a narrower question than the one the CTO answered for it.
+  It showed that an agent can read a claim bundle and usually reach the
+  decision a handler reached. Straight-through processing needs more: that
+  the agent is right often enough, on the claims it settles alone, for the
+  handler time it saves to outweigh the money it pays out wrongly.
+
+  Two numbers carry most of the misreading. Ninety-four percent is per field,
+  and a claim is decided on all six at once. If errors are independent, 0.94
+  to the sixth power is about 0.69, so roughly three claims in ten reach the
+  decision with a wrong field. Errors are rarely independent, since a blurred
+  invoice spoils two fields together, which is why the MVP measures the
+  per-claim figure directly. Eighty-one percent is agreement with the handler
+  who decided the claim. The handler is the label, and labels are sometimes
+  wrong, so agreement cannot say whether the agent or the handler was right
+  in the 19 percent, or which way the agent erred. Direction decides the
+  cost: a false approval costs the claim amount, and a wrong rejection costs
+  ₹1,900 and a complaint.
+
+  The economics follow from that asymmetry. A claim settled straight through
+  saves ₹580 of handler time. If a share p of those claims are false
+  approvals, expected leakage is p times the claim value, so straight-through
+  pays only below a claim value of 580 divided by p. At 1.5 percent that line
+  sits near ₹39,000, just under the ₹41,000 average, which is why a flat
+  percentage of all claims can lose money while every number in the POC looks
+  good. The POC cannot even place p. The 9 percent disagreement under ₹15,000
+  is not split by direction, and at 9 percent the line would fall to about
+  ₹6,400. Splitting and adjudicating those disagreements is cheap, uses
+  claims the insurer already holds, and is the POC's real exit test.
+
+  History could never show the other unknown, which is what handlers do with
+  a recommendation in front of them. That needs a live MVP where the handler
+  still decides, the recommendation is logged first, and a sample is decided
+  blind, because a handler who has read the recommendation is anchored by it
+  and stops being an independent label. Built that way, the MVP is also the
+  start of production's evaluation set, and its blind sample is the best
+  estimate of p the insurer will have before any money moves without a
+  handler.
+
+  So the offer to the board is a line in rupees with a measured error rate
+  behind it. Under ₹15,000 sit 36 percent of claims, and once the claims
+  whose fields do not reconcile go to a handler, about a quarter of all
+  claims remain. That can start in one region inside Q4. Raising the line
+  waits on an audit result, and the audit has to exist because money paid is
+  not clawed back.
+
+  AWS's AI-DLC workflows draw the same boundary between the first two steps.
+  Their proof-of-concept profile is "evidence for a later decision; it is
+  not the production-readiness profile", and their MVP profile is for
+  "shipping a real first product increment, not merely testing whether an
+  idea is possible" (the Workflow Profiles guide in
+  [aidlc-workflows](https://github.com/awslabs/aidlc-workflows), version
+  2.10.0, read 8 October 2026). The insurer's numbers are invented for this
+  problem, and so are the 1.5 percent rate, the ₹15,000 line, the one claim
+  in five decided blind and the 5 percent audit after payment.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your POC agrees with human decisions 81 percent of the time, and the CTO has promised the board 40 percent automation. Walk me through the plan from POC to production: what each step proves, who signs it, and what you tell the board.
+  source: |
+    Author judgement. No employer frequency data stands behind it. The boundary between a
+    proof of concept and an MVP follows the Workflow Profiles guide in awslabs/aidlc-workflows,
+    version 2.10.0, read 8 October 2026.
+
+traps:
+  - Reading 81 percent agreement with handlers as accuracy, when the handler is the label and nobody knows
+    which way the errors went.
+  - Quoting 94 percent extraction for a decision that needs all six fields right on the same claim.
+  - Sending a flat share of claims straight through, when what a false approval costs grows with the claim's
+    value.
+  - An MVP whose handlers see every recommendation, so no decision in it is an independent label for
+    production.

@@ -121,10 +121,10 @@ def test_every_slug_is_unique():
 # 1 October 2026.
 CHAPTERS = {"loop", "tools", "harness", "context", "memory", "orchestration", "guardrails",
             "human-in-the-loop", "evals", "observability"}
-CLOSING = {"agentic-pdlc", "builds", "fde-practice"}
+CLOSING = {"agentic-pdlc", "agentic-sdlc", "builds", "fde-practice"}
 # Chapters whose first problems are still being written. Each leaves this set
-# the day it has one.
-UNWRITTEN = {"agentic-sdlc"}
+# the day it has one. Agentic SDLC left it on 8 October 2026.
+UNWRITTEN: set[str] = set()
 
 
 def test_every_chapter_is_represented_and_no_other_track_is_invented():

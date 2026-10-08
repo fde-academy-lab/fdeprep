@@ -1,0 +1,635 @@
+slug: choose-a-planning-path-for-three-requests
+title: "Choose a planning path for three requests"
+day: 25
+skill: Give each request the least planning that fits, and place one reviewer's checkpoints
+artefact_type: design
+difficulty: extreme
+track: agentic-sdlc
+concept:
+  topic: "Planning paths in BMAD"
+  question: "How much planning does each request need, and where do the people sit?"
+est_minutes: 55
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: client-communication, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+  - { slug: cost-and-latency, weight: 0.5 }
+
+brief_md: |
+  A payments company the size of Razorpay runs its delivery with BMAD for
+  planning and AI-DLC for running the work. Three requests reach the head
+  of engineering in the same week:
+
+  - Request A changes the wording of the refund-reason codes in the
+    customer email template. The same codes feed the monthly complaints
+    report the company sends to the regulator.
+  - Request B adds a chargeback-dispute flow to the existing support agent.
+    A card network's rule change takes effect at the end of week 5, and the
+    flow has to be live by then.
+  - Request C is a new merchant-onboarding agent that reads KYC documents.
+    No PRD exists.
+
+  | Constraint | Where it comes from |
+  |---|---|
+  | One release train every two weeks, the first leaving at the end of week 2 | Platform team |
+  | One compliance reviewer for all three requests, with one day a week to give them | Head of compliance |
+  | The onboarding agent needs roughly 30 implementation sessions, and three engineers will build it in parallel | Engineering estimate |
+
+  The methods, in their own words:
+
+  | Part | What its source says |
+  |---|---|
+  | Sizing | "One coherent outcome that needs several sessions is an epic. Work that spans several epics, or likely needs roughly 20 or more sessions, is a project. Scope is only one signal: use more planning when the work has high risk, unclear requirements, broad architectural reach, cross-system effects, or coordination between people or teams." |
+  | Trivial | "You don't need BMad for an obvious, low-risk edit." The Build a Change page adds: "For a trivial edit you are willing to review yourself, skip the process and ask the agent to make it directly. But if a bug could escape into production, `bmad-build` is likely worth it." |
+  | One session | "A spec that fits one Build session goes straight to `bmad-build`". A typical session is "about 500 lines of code added or changed (not counting tests) in a small handful of files." |
+  | Epic-sized | A spec from `bmad-spec`, then `bmad-ticket`, which "records the stories in build order". "Review the proposed order and decide which stories need a checkpoint." "Implement important, risky, or foundational stories with `bmad-build`", and give the decisions they settle "human attention before automating repetitions of them" with `bmad-build-auto`. "Verify the stories together, then run `bmad-retrospective`". |
+  | Project-sized | "Use the full BMad flow for a greenfield product, a multi-epic initiative, or work likely to need roughly 20 or more implementation sessions": shared contracts from `bmad-prd`, `bmad-ux` and `bmad-architecture`, then `bmad-spec` per epic. "Independent epic streams can proceed in parallel when their boundaries are explicit. Each stream needs an owner". "Run integration checks and a retrospective at each epic boundary." |
+  | Sign-off | Five moments where a person decides: the PRFAQ verdict, PRD validate, the architecture spine review, ticket-breakdown approval and the retrospective verdict. "Put approvals there rather than inventing new gates." |
+  | AI-DLC profiles | The README lists "11 workflow profiles" and names two, which its Workflow Profiles guide describes. Classic is "Inception and Construction with one human approval per stage", 18 of 33 stages; "Do not choose Classic when the problem itself is still unclear and would benefit from market research, feasibility analysis, or explicit scope discovery". Express is "The lightest requirements-to-code-and-test path", 10 of 33 stages, for when "the requirements are already understood"; it "skips Ideation, the design pass, Unit decomposition, Delivery Planning, and CI Pipeline", and "Do not choose Express for ambiguous, cross-team, regulated, or architecture-heavy work." |
+
+  Every source was read on 8 October 2026: BMAD's
+  [Choose a Planning Path](https://docs.bmad-method.org/plan/choose-a-planning-path/),
+  [Build a Change](https://docs.bmad-method.org/build/build-a-change/) and
+  [Plan Inside an Organization](https://docs.bmad-method.org/plan/plan-inside-an-organization/)
+  pages, when the current BMAD release was 6.12.1, and the
+  [aidlc-workflows README](https://github.com/awslabs/aidlc-workflows),
+  version 2.10.0, with its Workflow Profiles guide.
+
+  Decide how much planning each request gets, and where the people sit.
+
+contract_md: |
+  Write the plan you would take to the head of engineering, under four
+  headings written exactly as `## Request A`, `## Request B`, `## Request C`
+  and `## The reviewer's week`.
+
+  For each request, give its BMAD planning path and its AI-DLC profile,
+  Classic, Express or none, with the reason; the first artefact it
+  produces; where its human checkpoints sit, by BMAD's own names for them;
+  and what goes wrong if it gets one path too many or one too few. Under the
+  last heading, lay the checkpoints of all three requests on the compliance
+  reviewer's calendar against the release trains, and show the arithmetic.
+
+  Three calls have more than one defensible answer: whether request A needs
+  BMAD at all, which AI-DLC profile request B runs, and how request C's
+  parallel streams get owners and boundaries when one person reviews all
+  three requests. For each, give the case for the option you turn down,
+  then settle it.
+
+  Attribute every fact about BMAD or AI-DLC to its page and the date you
+  read it. Between 600 and 900 words.
+
+word_range: [600, 900]
+required_headings: [Request A, Request B, Request C, "The reviewer's week"]
+
+rubric:
+  - label: Names the paths and profiles correctly, with what each produces, dated
+    weight: 20
+    descriptor_md: |
+      Strong answers use the page's four paths by name, Trivial, One
+      session, Epic-sized and Project-sized, and say what each produces:
+      the verified edit and nothing else; one `bmad-build` plan and its
+      code; a `bmad-spec` spec, stories in build order from `bmad-ticket`, a
+      Build per story and a `bmad-retrospective` verdict; or shared
+      contracts from `bmad-prd`, `bmad-ux` and `bmad-architecture` followed
+      by the epic path once per epic. They map each request to Classic,
+      Express or neither with the guide's own reasons, and attribute every
+      fact to its page with the date read. An answer that sends every
+      request down the project path, or names personas, paths or profiles
+      its sources do not show, has not read the page.
+  - label: Places checkpoints against one reviewer and the trains, with the arithmetic
+    weight: 25
+    descriptor_md: |
+      Trains leave at the end of weeks 2, 4 and 6, so only two trains land
+      before B's deadline and the week-4 train is its last. The reviewer has
+      one day a week, four days before that train, for all three requests.
+      Strong answers place every checkpoint by BMAD's name on her calendar:
+      B's story-order review in week 1, checkpoints on its risky stories in
+      weeks 2 and 3, and "Verify the stories together" before the week-4
+      cut; C's PRD validate and architecture spine review fitted around
+      them; and C's epic boundaries staggered so the retrospectives that
+      need her arrive one or two a week. They count the checkpoints against
+      the days and say what moves when she loses one. An answer that books
+      her into every story, or into all three streams' boundaries at once,
+      has booked days that do not exist.
+  - label: Makes the no-BMAD call on request A and defends it with its risk
+    weight: 20
+    descriptor_md: |
+      Request A looks like the "obvious, low-risk edit" BMAD says needs no
+      BMAD, and the regulator's complaints report reads the same codes.
+      Strong answers decide whether A is Trivial or One session and name
+      the risk their choice carries. Trivial holds only if the wording
+      lives in the template alone, and it carries the risk of a mislabelled
+      line in a report the regulator reads. One session costs a
+      `bmad-build` run and an hour of the reviewer's week, and buys a review
+      of exactly that risk, which the Build a Change page's "if a bug could
+      escape into production" describes. The strongest answers settle it
+      with a check run before deciding, such as finding where the wording
+      is stored, and say who sees the report before it goes out. Calling A
+      trivial with no word about the report, or making it an epic, misses
+      this row.
+  - label: Names each request's first artefact and what over-planning costs
+    weight: 15
+    descriptor_md: |
+      Strong answers name the first artefact for each request: nothing, or
+      a `bmad-build` plan, for A; a `bmad-spec` spec for B, handed to
+      `bmad-ticket`; a PRD from `bmad-prd` for C, followed by the UX and
+      architecture contracts. They say what one path too many costs and
+      what one too few risks: an epic for A spends the reviewer's day on a
+      sentence; a project for B puts a PRD and an architecture between the
+      team and a five-week deadline; a single session for B runs far past
+      what one session holds and skips the story checkpoints; epics with no
+      PRD for C let three engineers settle the same KYC rules three ways.
+  - label: Argues the three open calls both ways, then settles each
+    weight: 20
+    descriptor_md: |
+      This row rewards the argument over the pick. For A, Trivial against
+      One session, as in the third row. For B, Express is the shortest path
+      and the network's notice is a written requirement; Classic keeps user
+      stories, units and delivery planning, which a flow split across two
+      trains needs, and the guide warns against Express for regulated or
+      cross-team work. An answer that takes Express names that warning and
+      says what puts the lost decision surface back, such as the reviewer's
+      approval at requirements and at build and test; one that takes
+      Classic names the cost of 18 stages in four weeks. For C, each stream
+      needs an owner and explicit boundaries in the architecture spine, and
+      the KYC rules either sit in one stream, which gives the reviewer one
+      place to look and creates a critical path, or spread across all
+      three, which is faster and makes every stream need her at its
+      boundaries. Classic itself waits for the PRD, by the guide's own
+      warning. Strong answers state the case for the option they reject and
+      settle each call with a fact from the brief.
+
+exemplars:
+  - band: strong
+    score: 92
+    body_md: |
+      ## Request A
+
+      BMAD's Choose a Planning Path page (read 8 October 2026, release
+      6.12.1) says "You don't need BMad for an obvious, low-risk edit", and a
+      wording change in an email template looks like one. The regulator's
+      complaints report reads the same codes, though, and the page lists
+      "cross-system effects" as a reason to plan more.
+
+      The case for Trivial: the codes do not change, the edit is a few
+      lines, and an engineer can review it. The case for One session: the
+      Build a Change page says "if a bug could escape into production,
+      `bmad-build` is likely worth it", and a relabelled line in the
+      regulator's report is that bug.
+
+      I settle it with a check before choosing. If the wording lives only in
+      the template, A is Trivial: the agent makes the edit, an engineer
+      reviews the rendered email, and it rides the week-2 train with no BMAD
+      artefact. If the report reads the wording from the same code table, A
+      is One session: `bmad-build` writes the plan, and the reviewer spends
+      an hour of her week-1 day on last month's report before and after.
+      The risk I carry is a wrong check, so the search goes into the change.
+
+      AI-DLC profile: none. Express's 10 stages would cost more than the
+      edit, so I give up its audit trail on a change one engineer reviews. One path too many, an epic, spends a spec, a retrospective and
+      the reviewer's morning on a sentence.
+
+      ## Request B
+
+      B is one coherent outcome that needs several sessions, so it is
+      Epic-sized. The first artefact is a spec from `bmad-spec`, handed to
+      `bmad-ticket`, which "records the stories in build order".
+
+      Trains leave at the end of weeks 2, 4 and 6, and the network's change
+      takes effect at the end of week 5, so two trains count and the week-4
+      train is the last. Opening a dispute and computing the network's
+      deadline ride the week-2 train behind a flag; evidence submission and
+      the cardholder's messages ride week 4.
+
+      Express or Classic? The aidlc-workflows Workflow Profiles guide, read
+      the same day, offers Express when "the requirements are already
+      understood", and the network's notice is a written rule, so its 10
+      stages would save days. Against it, the guide says "Do not choose
+      Express for ambiguous, cross-team, regulated, or architecture-heavy
+      work", and Express skips Unit decomposition and Delivery Planning,
+      which is the split across two trains that B needs. I run Classic and
+      pay for 18 stages, each with a human approval. The engineers give the
+      routine approvals, and the reviewer takes two: requirements, and
+      build and test.
+
+      One path too many, a project, puts a PRD and an architecture in front
+      of a five-week deadline. One too few, a single session, runs far past
+      the 500 or so lines of a typical session and skips every story
+      checkpoint.
+
+      ## Request C
+
+      C is greenfield and needs about 30 sessions, so it is Project-sized.
+      Classic is premature: the guide says not to choose it when "the
+      problem itself is still unclear", and with no PRD it is. The first
+      artefact is the PRD from `bmad-prd`, then the UX contract from
+      `bmad-ux` and the architecture spine from `bmad-architecture`. Classic
+      runs per epic once those exist.
+
+      The Plan Inside an Organization page calls an epic "a handful of Build
+      sessions, usually a day's work for one person", so 30 sessions make
+      about six epics, two for each engineer. "Each stream needs an owner":
+      one engineer owns document reading, one the KYC decision, one merchant
+      messages. Spreading the KYC rules across all three streams would be
+      faster, since nobody waits on the decision stream. I keep them in one,
+      so the reviewer has one place to look, and the spine names the owner
+      of the merchant record so the other streams never decide KYC.
+
+      One path too few, epics without a PRD, lets three engineers write the
+      same KYC rules three ways.
+
+      ## The reviewer's week
+
+      She has one day a week, four days before the week-4 train, for all
+      three requests. The Build a Change page calls human attention "the
+      productivity bottleneck in AI-backed software development", and her
+      calendar is where that shows.
+
+      - Week 1: B's story-order review, to "decide which stories need a
+        checkpoint", B's requirements approval, and A's report check.
+      - Week 2: B's checkpoint on the deadline story, and C's PRD validate.
+      - Week 3: B's checkpoint on evidence submission, and C's architecture
+        spine review.
+      - Week 4, before the cut: "Verify the stories together" for B with its
+        build-and-test approval, and C's first ticket-breakdown approval.
+      - Week 5 onwards: C's integration checks and retrospective at each
+        epic boundary, staggered so no more than two reach her in a week.
+        The decision stream's boundaries always do; the others only when
+        they touch KYC data.
+
+      That is ten checkpoints in four days. If she loses a day, C's spine
+      review moves and B's gates stay where they are.
+  - band: adequate
+    score: 62
+    body_md: |
+      ## Request A
+
+      Changing the wording of the refund-reason codes in the email template
+      is a small, well-understood edit. BMAD's Choose a Planning Path page
+      (October 2026) puts this kind of change on the Trivial path: "You
+      don't need BMad for an obvious, low-risk edit." An engineer asks the
+      coding agent to make the change directly, reviews the rendered email
+      in staging, and ships it on the next release train. No spec, stories
+      or retrospective are needed.
+
+      No AI-DLC profile is needed either. Even Express, the lightest
+      profile, would add requirements and test stages to a change that
+      takes minutes.
+
+      If we over-planned this as an epic, we would spend a spec, a ticket
+      breakdown and a retrospective on a few lines of text, and the change
+      would wait for a later train.
+
+      ## Request B
+
+      The dispute flow is one coherent outcome that needs several sessions,
+      so it is Epic-sized. We start with `bmad-spec` to write the spec from
+      the card network's notice, then `bmad-ticket` to break it into
+      stories in build order. We review the proposed order and decide which
+      stories need a checkpoint, build the risky stories, such as the
+      deadline calculation and the evidence submission, with `bmad-build`,
+      and let `bmad-build-auto` take the simpler ones once the patterns are
+      settled. When every story is built we verify the stories together and
+      run `bmad-retrospective`. Each story is small enough for one session,
+      and the order puts the deadline calculation first because the other
+      stories depend on it.
+
+      For AI-DLC we would use Classic. The dispute rules come from a card
+      network and affect money, and the Workflow Profiles guide says Express
+      is not meant for regulated work. Classic gives us an approval at each
+      stage, and the compliance reviewer approves the requirements before
+      the build starts.
+
+      Treating B as a project would add a PRD, a UX document and an
+      architecture document that the team has no time for in five weeks.
+      Treating it as a single session would be too much for one session and
+      would skip the story checkpoints.
+
+      ## Request C
+
+      The onboarding agent is a greenfield product that needs about 30
+      sessions, so it is Project-sized. We start with `bmad-prd` to write
+      the PRD, then `bmad-ux` and `bmad-architecture` for the shared
+      contracts, and run `bmad-spec` once per epic. The three engineers each
+      own an epic stream, the boundaries between the streams are written
+      into the architecture spine, and we run integration checks and a
+      retrospective at each epic boundary. Classic is the profile for each
+      epic.
+
+      The streams are document reading, KYC checks and merchant
+      communication. Each engineer owns one, so there is always one person
+      accountable for each part of the product. The PRD also gives the
+      compliance reviewer one document to read before any stream starts.
+
+      Running C as a set of epics without a PRD would let the three streams
+      drift apart, and nobody would have agreed what the product is before
+      building it.
+
+      ## The reviewer's week
+
+      The compliance reviewer is the main constraint across the three
+      requests, so we will use her time carefully. She reviews B's
+      requirements and story order first, since B has a hard deadline, and
+      then the PRD for C. She checks the risky stories in B as they are
+      built, and verifies B's stories together before release. For C, she
+      attends the retrospectives at the epic boundaries that touch KYC
+      decisions, and the engineers handle the rest. If she becomes
+      overloaded, B takes priority over C, because the card network's
+      deadline cannot move. We will review the plan with her each week and
+      move C's reviews later if B needs more of her time, and the head of
+      engineering will hear about any slip in C before it happens.
+  - band: weak
+    score: 28
+    body_md: |
+      ## Request A
+
+      All three requests should follow the full BMAD method, because a
+      payments company is closely watched and every change deserves the same
+      rigour. Request A changes customer-facing text, so it starts with the
+      Analyst persona producing a project brief. The Product Manager persona
+      then writes a PRD for the new wording, and the Architect persona
+      reviews the impact on the email system. The Scrum Master breaks the
+      PRD into stories, the Developer implements them, and the QA agent
+      tests the result. The Product Owner signs off before release.
+
+      This may seem like a lot for a wording change, but consistency matters
+      more than speed in payments, and the full method gives us an audit
+      trail for every change, which the business will appreciate if anything
+      is ever questioned later.
+
+      ## Request B
+
+      The dispute flow follows the same full project path: a project brief,
+      a PRD, a UX design and an architecture document, then epics and
+      stories. Because the deadline is tight, we will use the Express profile
+      from AI-DLC, which is the fastest way to get from requirements to
+      code. Express lets the AI generate most of the code in one pass, and
+      the team can review everything together at the end.
+
+      The Scrum Master will plan two-week sprints, and the Developer persona
+      will work through the stories in order. The QA agent will test each
+      story before it is merged. We expect to finish in the third sprint,
+      which gives the team a comfortable buffer before the card network's
+      change takes effect. The Developer persona will also write
+      documentation for the support team, so that the people handling
+      disputes know what the new flow does and can explain it to merchants.
+
+      ## Request C
+
+      The onboarding agent is the largest of the three requests and also
+      follows the full project path. The Analyst persona will research KYC
+      requirements, the Product Manager persona will write the PRD, and the
+      Architect persona will design the document-reading pipeline. We will
+      use Express for this request as well, since the team will already know
+      it from request B, and running one profile for everything keeps the
+      process simple for everyone involved.
+
+      The three engineers will work in parallel on whatever stories are
+      ready, picking them from a shared backlog. This keeps everyone busy and
+      means no engineer is ever blocked waiting for another. The Scrum
+      Master will coordinate the work in a daily stand-up, and any conflicts
+      between engineers will be resolved there. Once the PRD is approved, the
+      Architect persona hands the design to the Scrum Master, who turns it
+      into stories for the shared backlog.
+
+      ## The reviewer's week
+
+      The compliance reviewer will join the sprint reviews for all three
+      requests and review every story before it is merged, so nothing
+      reaches production without her approval. She will also sign off the
+      PRD for each request and attend every retrospective, so she always
+      has the full picture.
+
+      Because every request goes through the same process, the reviewer
+      always knows what to expect, and the team does not need to make
+      different decisions for different requests. If the reviewer cannot
+      keep up, the team will ask the head of compliance for a second
+      reviewer, or the reviews can be done in a batch at the end of each
+      sprint, when all the stories are ready.
+
+      This approach keeps all three requests on one consistent method, uses
+      the BMAD personas as the method intends, and lets AI-DLC's Express
+      profile make up the time that the extra planning takes. It also means
+      new engineers can learn one process and apply it everywhere, which
+      will help the company as the team grows.
+
+hints:
+  - Size each request with the page's own tests before you size it by
+    effort. How many sessions does it need, is its intent defined, and what
+    else reads what it changes?
+  - Request A's change is small. Ask what else reads the thing it changes,
+    what a mistake there would cost, and who would find it.
+  - Trains leave every two weeks. Work out which train is the last one that
+    lands before the dispute flow's deadline, then work backwards from it.
+  - Count the reviewer's days before that train, then list every checkpoint
+    that needs her by BMAD's name for it. When the list is longer than her
+    days, something moves, and the deadline decides what.
+  - For each open call, write the best case for the option you will not
+    take, then settle it with a fact about this company from the brief.
+
+scenario:
+  headline: "Three requests in one week, one compliance reviewer and a train every two weeks"
+  who: "The head of engineering at a payments company the size of Razorpay"
+  situation: >-
+    A wording change whose codes also feed a regulator's report, a dispute
+    flow due in five weeks for a card network's rule change, and a KYC
+    onboarding agent with no PRD land in the same week, with one compliance
+    reviewer between them.
+  stakes: >-
+    Plan the dispute flow as a project and it misses the network's date.
+    Plan the onboarding agent as loose epics and three engineers write the
+    KYC rules three ways.
+  metrics:
+    - { label: Release trains, value: every 2 weeks }
+    - { label: Compliance reviewer, value: 1 day a week }
+    - { label: Dispute flow due, value: end of week 5 }
+
+diagram:
+  title: Three requests, one reviewer, a train every two weeks
+  caption: >-
+    Each request gets a planning path and a profile. The reviewer's one day
+    a week and the train schedule decide where its checkpoints can sit.
+  direction: lr
+  nodes:
+    - { id: reqa, label: Request A, sub: a wording change, kind: doc, tone: blue, at: [0, 0] }
+    - { id: reqb, label: Request B, sub: "a dispute flow, due in five weeks", kind: doc, tone: blue, at: [0, 1] }
+    - { id: reqc, label: Request C, sub: a KYC agent with no PRD, kind: doc, tone: blue, at: [0, 2] }
+    - { id: report, label: Regulator's report, sub: reads the same codes, kind: output, tone: neutral, at: [1, 0] }
+    - { id: path, label: BMAD planning path, sub: Trivial to Project-sized, kind: decision, tone: purple, at: [2, 1] }
+    - { id: profile, label: AI-DLC profile, sub: "Classic, Express or none", kind: decision, tone: teal, at: [3, 1] }
+    - { id: reviewer, label: Compliance reviewer, sub: one day a week for all three, kind: actor, tone: pink, at: [3, 2] }
+    - { id: trains, label: Release trains, sub: every two weeks, kind: queue, tone: orange, at: [4, 1] }
+  edges:
+    - { from: reqa, to: path, label: how much planning, step: 1 }
+    - { from: reqb, to: path, step: 1 }
+    - { from: reqc, to: path, step: 1 }
+    - { from: reqa, to: report, label: the same codes, tone: danger }
+    - { from: path, to: profile, label: then how it runs, step: 2 }
+    - { from: profile, to: trains, label: ships on a train, step: 3 }
+    - { from: reviewer, to: profile, label: approves at gates, tone: muted }
+    - { from: reviewer, to: trains, label: signs before it leaves, tone: muted }
+
+approach:
+  goal: Give each request the least planning that safely fits, and put people where they count
+  branches:
+    - label: Size each request by the page's own tests
+      detail: Sessions are one test. Risk, unclear requirements and what else reads the change are others.
+      leaves: ["how many sessions?", "is the intent defined?", "what else reads it?"]
+    - label: Count the trains
+      leaves: ["which train is the last in time?", "what must be signed before it?"]
+    - label: Count the reviewer's days
+      leaves: [one day a week for three requests, "which checkpoints need her?"]
+    - label: Name the checkpoints as BMAD does
+      leaves: [the story order, the stories verified together, each epic boundary]
+    - label: Argue each open call both ways
+      leaves: [the case for the option you reject, a fact from the brief that settles it]
+
+coach:
+  opening: >-
+    Before you pick a path for anything, write down what else reads each
+    request's change, and which train each one has to catch.
+  signals:
+    - id: personas
+      when: { code_matches: '(?i)scrum\s+master|product\s+owner|\bpersonas?\b|\bQA\s+agent' }
+      say: >-
+        Your plan leans on BMAD personas. Which page shows them, in which
+        release, and on what date did you read it?
+    - id: one-size
+      when: { code_lacks: '(?i)\btrivial\b|one[\s-]session' }
+      say: >-
+        Every request in your plan gets the same path. Which is the
+        smallest, and what is the least planning that safely fits it?
+    - id: no-report
+      when: { code_lacks: '(?i)regulator|complaints\s+report|\breport\b' }
+      say: >-
+        Request A's codes also feed a report the regulator receives. Does
+        your path for A account for that, and who looks at it?
+    - id: no-train-arithmetic
+      when: { code_lacks: '(?i)week[\s-]?4\s+train|two\s+trains|weeks\s+2,\s*4|end\s+of\s+week\s+4|last\s+train' }
+      say: >-
+        Trains leave every two weeks and the dispute flow is due at the end
+        of week 5. Which train is the last one in time, and what has to be
+        signed before it leaves?
+    - id: reviewer-days
+      when: { code_lacks: '(?i)one\s+day\s+a\s+week|four\s+days|\b\d\s+days\s+before' }
+      say: >-
+        The reviewer has one day a week for all three requests. How many
+        days is that before the dispute flow's last train, and which
+        checkpoints fill them?
+    - id: checkpoint-names
+      when: { code_lacks: '(?i)verify\s+the\s+stories\s+together|story[\s-]order|proposed\s+order|epic\s+boundar|spine\s+review|prd\s+validate' }
+      say: >-
+        Name your checkpoints the way BMAD does. Where does a person review
+        the story order, verify the stories together, or judge an epic at
+        its boundary?
+    - id: one-sided
+      when: { code_lacks: '(?i)the\s+case\s+for|against\s+(it|that|this)|on\s+the\s+other\s+hand|i\s+reject|at\s+the\s+cost' }
+      say: >-
+        Each open call has a case for the option you did not pick. Write it,
+        then say which fact in the brief settles the call.
+    - id: undated
+      when: { code_matches: '(?i)bmad|ai-dlc|aidlc', code_lacks: '(?i)\b20\d\d\b' }
+      say: >-
+        Which BMAD and AI-DLC pages did these facts come from, and on what
+        date did you read them?
+    - id: stuck
+      when: { idle_minutes: 6 }
+      say: >-
+        Start with request A. Write the case that it needs no BMAD at all,
+        then the case that it does, and see which fact in the brief decides
+        between them.
+  wrap_up: >-
+    A planning path is a cost paid in people's attention. Size each request
+    by what else it touches as well as by its sessions, count the trains and
+    the reviewer's days before you place a checkpoint, and give the smallest
+    path that keeps the risky decisions in front of a person.
+
+reference_md: |
+  The page's first sentence is the whole problem: decide how much planning
+  a change needs. Each request tests a different edge of that decision, and
+  the one reviewer and the train schedule turn the three decisions into one.
+
+  Request A tests the bottom edge. A wording change in a template is the
+  page's example of work that needs no BMAD, and the regulator's report is
+  the fact that might move it up. BMAD's own sizing says scope is only one
+  signal and lists "cross-system effects" among the reasons to plan more,
+  and the Build a Change page says `bmad-build` is likely worth it "if a bug
+  could escape into production". Either path is defensible. What decides it
+  is a fact the brief does not give, where the wording is stored, and the
+  strong move is to find that out before choosing and to say which risk
+  the choice carries. An answer that calls A trivial and never mentions the
+  report has not looked at what else reads the change.
+
+  Request B is the deadline. Trains leave at the end of weeks 2, 4 and 6,
+  and the network's change takes effect at the end of week 5, so five weeks
+  hold two trains, and every checkpoint B needs has to land before the
+  week-4 cut. B is one outcome that needs several sessions, which is the
+  page's definition of an epic. A project would spend most of five weeks on
+  contracts nobody asked for, and a single session cannot hold it. The
+  profile is the open call. Express fits "requirements are already
+  understood", and the notice is a written rule. The guide also warns
+  against Express for regulated or cross-team work, and Express drops Unit
+  decomposition and Delivery Planning, which is the split across two
+  trains. Classic keeps both, at the cost of 18 stages with an approval
+  at each. An answer that takes Express and puts the reviewer's approval
+  back at requirements and at build and test can be argued. One that takes
+  Express for speed and never mentions the warning cannot.
+
+  Request C is the top edge. It is greenfield and passes BMAD's "roughly 20
+  or more implementation sessions", so the shared contracts come first,
+  through `bmad-prd`, `bmad-ux` and `bmad-architecture`. The Classic
+  profile's own guide says not to start it while "the problem itself is
+  still unclear", which is what having no PRD means, so the profile choice
+  waits for the PRD. Three engineers in parallel is where BMAD's "Each
+  stream needs an owner" and its explicit boundaries matter, and the one
+  reviewer decides how the KYC rules are split. Rules held in one stream
+  give her one place to look and put that stream on the critical path.
+  Rules spread across three streams run faster and need her at every
+  boundary.
+
+  The reviewer's week is where the three meet. One day a week is four days
+  before B's last train, and BMAD's checkpoints for B alone, the story-order
+  review, checkpoints on the risky stories and "Verify the stories
+  together", take three of them before C's PRD validate and spine review
+  are counted. The Build a Change page names this: "Human attention is by
+  far the most expensive resource, and the productivity bottleneck in
+  AI-backed software development." BMAD's sign-off moments, PRFAQ verdict,
+  PRD validate, architecture spine review, ticket-breakdown approval and
+  retrospective verdict, are where the reviewer's time belongs, and the
+  page says to put approvals there "rather than inventing new gates".
+
+  Sources, each read on 8 October 2026: BMAD's
+  [Choose a Planning Path](https://docs.bmad-method.org/plan/choose-a-planning-path/),
+  [Build a Change](https://docs.bmad-method.org/build/build-a-change/),
+  [Plan Inside an Organization](https://docs.bmad-method.org/plan/plan-inside-an-organization/)
+  and [Skills and Agents](https://docs.bmad-method.org/reference/skills-and-agents/)
+  pages, when the current BMAD release was 6.12.1; the
+  [aidlc-workflows README](https://github.com/awslabs/aidlc-workflows),
+  version 2.10.0, and its Workflow Profiles guide. The Skills and Agents
+  page lists five named agents, the Analyst, the Product Manager, the
+  Architect, the Developer and the UX Designer, and no Scrum Master or
+  Product Owner, so an answer built on those personas is reading an older
+  BMAD. The Workflow Profiles guide names all 11 AI-DLC profiles, among
+  them one for regulated work, and an answer that cites another profile
+  with its source is accurate; this problem asks for Classic or Express
+  because those are the two the README names. The company, the three
+  requests, the reviewer's one day a week and the train dates are this
+  problem's own construction.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Three requests land in one week: a wording change, a five-week feature on an existing agent, and a new product with no PRD. How much planning does each get, and where do your reviewers sit?
+  source: |
+    Author judgement. No employer frequency data stands behind it. Method facts from BMAD's
+    Choose a Planning Path, Build a Change, Plan Inside an Organization and Skills and Agents
+    pages, release 6.12.1, and the aidlc-workflows README, version 2.10.0, with its Workflow
+    Profiles guide, all read 8 October 2026.
+
+traps:
+  - Calling the wording change trivial without asking what else reads the codes, or making it an epic that spends the reviewer's day on a sentence.
+  - Treating five weeks as two and a half trains, when the third train leaves after the deadline and the week-4 train is the last that counts.
+  - Booking the one reviewer into every story and every stream boundary, when she has one day a week for all three requests.
+  - Naming personas, paths or profiles from memory or an older release, without the page and the date they were read.

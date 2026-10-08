@@ -1,0 +1,710 @@
+slug: find-criteria-with-no-spec-or-test
+title: "Find criteria with no spec or test"
+day: 28
+skill: Trace every acceptance criterion to a spec section and a test, and report each gap
+artefact_type: code
+difficulty: medium
+track: agentic-sdlc
+concept:
+  topic: "Specs before code"
+  question: "How do you know a spec covers what was asked, before code is written?"
+est_minutes: 30
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 1
+time_limit_s: 10
+allowed_imports: [json]
+
+brief_md: |
+  A software company the size of Zoho builds each feature from a spec, and a
+  delivery lead checks the spec before build starts. The team writes specs
+  with BMAD's `bmad-spec` skill. BMAD's docs put it this way: "Run
+  `bmad-spec` to turn an intent into a short contract that Build reads." The
+  same page is plain about the limit: "The spec writes the contract; it does
+  not help you figure out what you want." What the client wants is in the
+  client's acceptance criteria, so before anyone builds, someone has to check
+  that the contract covers every one of them.
+
+  The refunds feature went to build with a spec of nine sections and a suite
+  of 31 tests. Criterion AC-6, "a refund over ₹10,000 needs a second
+  approver", had neither a section nor a test. Everyone read the counts and
+  nobody read the trace. The suite also had a test that named AC-61, a
+  criterion that never existed, and the coverage script counted it as
+  coverage.
+
+  Write the check that runs before build. Trace every criterion to the
+  sections and tests that name it, report every gap, and count a reference to
+  a criterion that does not exist as nothing.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is the delivery lead's request. `tools["spec"]()` returns the
+  client's acceptance criteria, the spec's sections and the test suite. Each
+  section and each test names, by id, the criteria it covers:
+
+      {"criteria": [{"id": "AC-1", "text": "A customer can ask for a refund."}, ...],
+       "sections": [{"id": "S-1", "covers": ["AC-1", "AC-3"]}, ...],
+       "tests":    [{"id": "T-1", "criteria": ["AC-1"]}, ...]}
+
+  Report every criterion, in the order the spec lists them, with the sections
+  whose `covers` names its id and the tests whose `criteria` name it, each in
+  spec order. Two ids match only when they are the same id, character for
+  character. Then give each criterion its gaps, in this order:
+
+  | Gap | When |
+  |---|---|
+  | `no_section` | No section names the criterion |
+  | `no_test` | No test names it |
+  | `duplicate_id` | Another criterion in the list has the same id. Both entries stay in the report, because nobody can tell which of the two a reference meant |
+
+  A reference to an id that is no criterion's goes to `unknown_refs` as
+  `{"from": "T-9", "id": "AC-61"}`, the sections' references first and then
+  the tests', in spec order. It covers nothing.
+
+  Return a JSON string:
+
+      {"criteria": [{"id": "AC-1", "sections": ["S-1"], "tests": ["T-1", "T-4"], "gaps": []}, ...],
+       "unknown_refs": [],
+       "complete": true}
+
+  `complete` is true only when no criterion has a gap and no reference is
+  unknown.
+
+  Budget: one call to `spec` and no model calls. `llm` is passed in and must
+  not be called. Allowed imports: json.
+
+stub_code: |
+  import json
+
+  GAPS = ("no_section", "no_test", "duplicate_id")
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      spec = tools["spec"]()
+      criteria, sections, tests = spec["criteria"], spec["sections"], spec["tests"]
+      report = [{"id": c["id"], "sections": [], "tests": [], "gaps": []} for c in criteria]
+      unknown_refs = []
+
+      # TODO 1: fill each entry's sections and tests with the ids of every
+      #         section whose covers names the criterion's id and every test
+      #         whose criteria name it, in spec order
+      # TODO 2: give each entry its gaps, in the order of GAPS: no_section when
+      #         no section names it, no_test when no test does, duplicate_id
+      #         when another criterion in the list has the same id
+      # TODO 3: every id a section or a test names that is no criterion's id
+      #         goes to unknown_refs as {"from": <section or test id>, "id": <id>},
+      #         sections first, and covers nothing
+      # TODO 4: complete is true only when no entry has a gap and no reference
+      #         is unknown
+
+      return json.dumps({"criteria": report, "unknown_refs": unknown_refs, "complete": False})
+
+steps:
+  - id: s1
+    text: List every criterion in spec order with the sections and the tests that name its id.
+    check_id: s1
+  - id: s2
+    text: Give each criterion its own gaps, `no_section` when no section names it and `no_test` when no test does.
+    check_id: s2
+  - id: s3
+    text: Send every reference to an id that is no criterion's to `unknown_refs`, covering nothing.
+    check_id: s3
+  - id: s4
+    text: Set `complete` only when no criterion has a gap and no reference is unknown.
+    check_id: s4
+
+step_checks:
+  # Every criterion in the first public spec has a section and a test, so the
+  # trace alone turns this green.
+  - step_id: s1
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              criteria:
+                const:
+                  - { id: "AC-1", sections: ["S-1"], tests: ["T-1", "T-5"], gaps: [] }
+                  - { id: "AC-2", sections: ["S-2"], tests: ["T-2"], gaps: [] }
+                  - { id: "AC-3", sections: ["S-3"], tests: ["T-3"], gaps: [] }
+                  - { id: "AC-4", sections: ["S-2"], tests: ["T-4"], gaps: [] }
+  # No public spec has a criterion with only one of the two, so this step
+  # runs its own: one of each, and one with neither.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input: { question: "Check the delivery slots spec before build." }
+      llm_script:
+        - { match: "*", reply: "Every criterion is covered. Thirty-one tests is plenty." }
+      tools:
+        spec:
+          returns:
+            criteria:
+              - { id: "AC-1", text: "A customer can pick a delivery slot at checkout." }
+              - { id: "AC-2", text: "A slot that is full cannot be picked." }
+              - { id: "AC-3", text: "A slot can be changed until the day before delivery." }
+              - { id: "AC-4", text: "The driver sees the slot on the route sheet." }
+              - { id: "AC-5", text: "A customer is told when their slot changes." }
+            sections:
+              - { id: "S-1", covers: ["AC-1", "AC-2"] }
+              - { id: "S-2", covers: ["AC-4"] }
+            tests:
+              - { id: "T-1", criteria: ["AC-1"] }
+              - { id: "T-2", criteria: ["AC-3"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              criteria:
+                const:
+                  - { id: "AC-1", sections: ["S-1"], tests: ["T-1"], gaps: [] }
+                  - { id: "AC-2", sections: ["S-1"], tests: [], gaps: ["no_test"] }
+                  - { id: "AC-3", sections: [], tests: ["T-2"], gaps: ["no_section"] }
+                  - { id: "AC-4", sections: ["S-2"], tests: [], gaps: ["no_test"] }
+                  - { id: "AC-5", sections: [], tests: [], gaps: ["no_section", "no_test"] }
+  # No public spec names a criterion that does not exist.
+  - step_id: s3
+    spec:
+      kind: agent_run
+      input: { question: "Check the gift cards spec before build." }
+      llm_script:
+        - { match: "*", reply: "Every criterion is covered. Thirty-one tests is plenty." }
+      tools:
+        spec:
+          returns:
+            criteria:
+              - { id: "AC-1", text: "A customer can buy a gift card in fixed amounts." }
+              - { id: "AC-2", text: "A gift card can be spent across several orders." }
+              - { id: "AC-3", text: "The gift card balance is shown on every receipt." }
+            sections:
+              - { id: "S-1", covers: ["AC-1", "AC-7"] }
+              - { id: "S-2", covers: ["AC-2", "AC-3"] }
+            tests:
+              - { id: "T-1", criteria: ["AC-1"] }
+              - { id: "T-2", criteria: ["AC-2"] }
+              - { id: "T-3", criteria: ["AC-3", "AC-9"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              unknown_refs:
+                const:
+                  - { from: "S-1", id: "AC-7" }
+                  - { from: "T-3", id: "AC-9" }
+              criteria: { type: array, maxItems: 3 }
+  # Two specs of its own: one with nothing missing, and one whose only
+  # problem is a test naming a criterion that does not exist.
+  - step_id: s4
+    spec:
+      cases:
+        - kind: agent_run
+          input: { question: "Check the two-factor login spec before build." }
+          llm_script:
+            - { match: "*", reply: "Every criterion is covered. Thirty-one tests is plenty." }
+          tools:
+            spec:
+              returns:
+                criteria:
+                  - { id: "AC-1", text: "A user can turn on two-factor login." }
+                  - { id: "AC-2", text: "A login code expires after five minutes." }
+                sections:
+                  - { id: "S-1", covers: ["AC-1", "AC-2"] }
+                tests:
+                  - { id: "T-1", criteria: ["AC-1"] }
+                  - { id: "T-2", criteria: ["AC-2"] }
+          budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+          assertions:
+            - { type: returns_matches, value: '"complete":\s*true' }
+        - kind: agent_run
+          input: { question: "Check the password reset spec before build." }
+          llm_script:
+            - { match: "*", reply: "Every criterion is covered. Thirty-one tests is plenty." }
+          tools:
+            spec:
+              returns:
+                criteria:
+                  - { id: "AC-1", text: "A reset link works once." }
+                  - { id: "AC-2", text: "A reset link expires after an hour." }
+                sections:
+                  - { id: "S-1", covers: ["AC-1"] }
+                  - { id: "S-2", covers: ["AC-2"] }
+                tests:
+                  - { id: "T-1", criteria: ["AC-1"] }
+                  - { id: "T-2", criteria: ["AC-2"] }
+                  - { id: "T-3", criteria: ["AC-5"] }
+          budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+          assertions:
+            - { type: returns_matches, value: '"complete":\s*false' }
+
+hints:
+  - Pick one criterion and write down what has to be true for it to be
+    covered. There are two separate facts, and each comes from a different
+    list.
+  - A set of every id mentioned anywhere answers one question, whether an id
+    was named at all. It cannot say whether a section or a test named it, or
+    whether a name points at a real criterion.
+  - For each criterion, collect the sections that name its id and,
+    separately, the tests that name it. Each empty list is its own gap.
+  - Then walk the references the other way, from each section and test to the
+    ids it names, and keep any id that is no criterion's. Compare whole ids,
+    so that `AC-61` never counts as `AC-6`.
+
+scenario:
+  headline: "A criterion with no section and no test went to build behind 31 tests"
+  who: The delivery lead for a product team at a software company the size of Zoho
+  situation: >-
+    The refunds feature went to build with a spec of nine sections and a
+    suite of 31 tests. Criterion AC-6, a second approver for refunds over
+    ₹10,000, had neither. Everyone read the counts, and nobody read the trace.
+  stakes: >-
+    A refund rule nobody built reaches customers' money. The suite also had a
+    test naming AC-61, which does not exist, and the coverage script counted
+    it.
+  metrics:
+    - { label: Spec sections, value: "9" }
+    - { label: Tests in the suite, value: "31" }
+    - { label: Criteria with neither, value: "1" }
+
+diagram:
+  title: Where a count passes and a trace does not
+  caption: >-
+    Each criterion is traced by its exact id to the sections and tests that
+    name it. A reference to a criterion that does not exist covers nothing.
+  direction: lr
+  nodes:
+    - { id: criteria, label: Acceptance criteria, sub: what the client asked for, kind: doc, tone: blue, at: [0, 0] }
+    - { id: sections, label: Spec sections, sub: the contract Build reads, kind: doc, tone: purple, at: [0, 1] }
+    - { id: tests, label: Test suite, sub: each test names criteria by id, kind: store, tone: teal, at: [0, 2] }
+    - { id: trace, label: Trace, sub: exact ids in both directions, kind: guard, tone: green, at: [1, 1] }
+    - { id: gaps, label: Gap report, sub: "`no_section`, `no_test`, `duplicate_id`", kind: output, tone: orange, at: [2, 0] }
+    - { id: unknown, label: Unknown references, sub: they cover nothing, kind: output, tone: orange, at: [2, 2] }
+    - { id: lead, label: Delivery lead, sub: decides whether build starts, kind: actor, tone: blue, at: [3, 1] }
+    - { id: count, label: Coverage count, sub: "9 sections, 31 tests, AC-61 counted", kind: output, tone: pink, at: [1, 3] }
+  edges:
+    - { from: criteria, to: trace, label: every criterion, step: 1 }
+    - { from: sections, to: trace, label: what each section covers, step: 2 }
+    - { from: tests, to: trace, label: what each test names, step: 2 }
+    - { from: trace, to: gaps, label: gaps for each criterion, tone: success, step: 3 }
+    - { from: trace, to: unknown, label: "ids that are no criterion's", step: 3 }
+    - { from: gaps, to: lead, label: complete or not, step: 4 }
+    - { from: unknown, to: lead, label: to fix or remove, step: 4 }
+    - { from: tests, to: count, label: count the tests, tone: danger }
+
+approach:
+  goal: Know before build which criteria the spec and the tests leave uncovered
+  branches:
+    - label: Trace each criterion by its exact id
+      leaves: [the sections that name it, the tests that name it, "`AC-61` is never `AC-6`"]
+    - label: Keep the two kinds of coverage apart
+      detail: A section says what will be built and a test says how anyone will know. A criterion needs both.
+      leaves: [a missing section is one gap, a missing test is another]
+    - label: Count what points nowhere as nothing
+      leaves: ["a reference to no criterion goes to `unknown_refs`", two criteria sharing an id are both flagged]
+    - label: Leave the model out
+      leaves: [the trace is a lookup anyone can rerun]
+
+coach:
+  opening: >-
+    Before you count anything, decide what has to be true of one criterion
+    for it to be covered, and which list each of those facts comes from.
+  signals:
+    - id: both-gaps-or-neither
+      when: { code_matches: '\[\s*["'']no_section["'']\s*,\s*["'']no_test["'']\s*\]' }
+      say: >-
+        Your code gives a criterion both gaps or neither. What should a
+        criterion report when a section names it and no test does?
+    - id: no-unknown-refs
+      when: { code_lacks: 'unknown_refs\s*(\.\s*(append|extend)|\+=|=\s*\[\s*\{)' }
+      say: >-
+        Nothing in your trace collects `unknown_refs` yet. What happens to a
+        test that names a criterion the list does not have?
+    - id: one-string
+      when: { code_matches: '\.join\(' }
+      say: >-
+        Joining ids into one string and searching it makes `AC-6` match
+        `AC-61`. Compare each id as a whole value.
+    - id: keyed-by-id
+      when: { code_matches: '\{\s*\w+\[\s*["'']id["'']\s*\]\s*:' }
+      say: >-
+        A dict keyed by criterion id keeps one entry per id. What happens to
+        the report when the list holds the same id twice?
+    - id: calls-model
+      when: { code_matches: '\bllm\s*\(' }
+      say: >-
+        The trace is a lookup over ids the spec already holds. What would a
+        model call add, and could the delivery lead rerun it and get the same
+        answer?
+    - id: hidden-section-only
+      when: { test_failed: a_criterion_in_two_sections_with_no_test_is_a_gap }
+      say: >-
+        In that run one criterion was named by two sections and by no test.
+        What gaps did your report give it?
+    - id: hidden-two-criteria
+      when: { test_failed: one_test_can_cover_two_criteria }
+      say: >-
+        In that run one test named two criteria. Did your trace give that test
+        to both of them?
+    - id: hidden-duplicate
+      when: { test_failed: a_repeated_criterion_id_is_flagged_on_both_entries }
+      say: >-
+        In that run two criteria shared one id. How many entries did your
+        report hold for that id, and what did each one say?
+    - id: missing-criterion
+      when: { test_failed: adversarial_a_reference_to_a_missing_criterion_fills_no_gap }
+      say: >-
+        One test named a criterion that does not exist, next to a criterion
+        with no test. Read how your code decides that a test names a
+        criterion.
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1 on the first public case. Every criterion there has
+        a section and a test, so the trace alone passes it.
+    - id: hints-ready
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint narrows where to look, and the
+        later ones get closer to the fix.
+  wrap_up: >-
+    A count says how much was written. A trace says what each criterion has:
+    a section, a test, and an id that means one thing. Compare whole ids,
+    count a reference to nothing as nothing, and call the spec complete only
+    when nothing is missing.
+
+tests:
+  - name: traces_a_spec_that_covers_every_criterion
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Check the saved cards spec before build." }
+      llm_script:
+        - { match: "*", reply: "Every criterion is covered. Thirty-one tests is plenty." }
+      tools:
+        spec:
+          returns:
+            criteria:
+              - { id: "AC-1", text: "A customer can save a card at checkout." }
+              - { id: "AC-2", text: "A saved card shows only its last four digits." }
+              - { id: "AC-3", text: "A customer can delete a saved card." }
+              - { id: "AC-4", text: "A card that has expired is never offered at checkout." }
+            sections:
+              - { id: "S-1", covers: ["AC-1"] }
+              - { id: "S-2", covers: ["AC-2", "AC-4"] }
+              - { id: "S-3", covers: ["AC-3"] }
+            tests:
+              - { id: "T-1", criteria: ["AC-1"] }
+              - { id: "T-2", criteria: ["AC-2"] }
+              - { id: "T-3", criteria: ["AC-3"] }
+              - { id: "T-4", criteria: ["AC-4"] }
+              - { id: "T-5", criteria: ["AC-1"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool, name: spec }
+        - { type: tool_calls_at_most, value: 1 }
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [criteria, unknown_refs, complete]
+            properties:
+              criteria:
+                const:
+                  - { id: "AC-1", sections: ["S-1"], tests: ["T-1", "T-5"], gaps: [] }
+                  - { id: "AC-2", sections: ["S-2"], tests: ["T-2"], gaps: [] }
+                  - { id: "AC-3", sections: ["S-3"], tests: ["T-3"], gaps: [] }
+                  - { id: "AC-4", sections: ["S-2"], tests: ["T-4"], gaps: [] }
+              unknown_refs: { const: [] }
+              complete: { const: true }
+
+  - name: reports_a_criterion_with_no_section_and_no_test
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "Check the refunds spec before build." }
+      llm_script:
+        - { match: "*", reply: "Every criterion is covered. Thirty-one tests is plenty." }
+      tools:
+        spec:
+          returns:
+            criteria:
+              - { id: "AC-1", text: "A customer can ask for a refund from the invoice page." }
+              - { id: "AC-2", text: "The refund request records the reason the customer gives." }
+              - { id: "AC-3", text: "Finance sees every open refund request in one queue." }
+              - { id: "AC-4", text: "An approved refund goes back to the original payment method." }
+              - { id: "AC-5", text: "The customer gets an email when the refund is paid." }
+              - { id: "AC-6", text: "A refund over ₹10,000 needs a second approver." }
+            sections:
+              - { id: "S-1", covers: ["AC-1", "AC-2"] }
+              - { id: "S-2", covers: ["AC-3"] }
+              - { id: "S-3", covers: ["AC-4"] }
+              - { id: "S-4", covers: ["AC-5"] }
+            tests:
+              - { id: "T-1", criteria: ["AC-1"] }
+              - { id: "T-2", criteria: ["AC-2"] }
+              - { id: "T-3", criteria: ["AC-3"] }
+              - { id: "T-4", criteria: ["AC-4"] }
+              - { id: "T-5", criteria: ["AC-5"] }
+              - { id: "T-6", criteria: ["AC-1"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [criteria, unknown_refs, complete]
+            properties:
+              criteria:
+                const:
+                  - { id: "AC-1", sections: ["S-1"], tests: ["T-1", "T-6"], gaps: [] }
+                  - { id: "AC-2", sections: ["S-1"], tests: ["T-2"], gaps: [] }
+                  - { id: "AC-3", sections: ["S-2"], tests: ["T-3"], gaps: [] }
+                  - { id: "AC-4", sections: ["S-3"], tests: ["T-4"], gaps: [] }
+                  - { id: "AC-5", sections: ["S-4"], tests: ["T-5"], gaps: [] }
+                  - { id: "AC-6", sections: [], tests: [], gaps: ["no_section", "no_test"] }
+              unknown_refs: { const: [] }
+              complete: { const: false }
+
+  - name: a_criterion_in_two_sections_with_no_test_is_a_gap
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Check the team invitations spec before build." }
+      llm_script:
+        - { match: "*", reply: "Every criterion is covered. Thirty-one tests is plenty." }
+      tools:
+        spec:
+          returns:
+            criteria:
+              - { id: "AC-1", text: "An admin can invite a teammate by email." }
+              - { id: "AC-2", text: "An invitation expires after seven days." }
+              - { id: "AC-3", text: "A teammate who accepts joins with the role the admin chose." }
+              - { id: "AC-4", text: "An admin can cancel an invitation nobody has accepted." }
+            sections:
+              - { id: "S-1", covers: ["AC-1", "AC-2"] }
+              - { id: "S-2", covers: ["AC-2", "AC-3"] }
+              - { id: "S-3", covers: ["AC-4"] }
+            tests:
+              - { id: "T-1", criteria: ["AC-1"] }
+              - { id: "T-2", criteria: ["AC-3"] }
+              - { id: "T-3", criteria: ["AC-4"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [criteria, unknown_refs, complete]
+            properties:
+              criteria:
+                const:
+                  - { id: "AC-1", sections: ["S-1"], tests: ["T-1"], gaps: [] }
+                  - { id: "AC-2", sections: ["S-1", "S-2"], tests: [], gaps: ["no_test"] }
+                  - { id: "AC-3", sections: ["S-2"], tests: ["T-2"], gaps: [] }
+                  - { id: "AC-4", sections: ["S-3"], tests: ["T-3"], gaps: [] }
+              complete: { const: false }
+
+  - name: one_test_can_cover_two_criteria
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Check the order export spec before build." }
+      llm_script:
+        - { match: "*", reply: "Every criterion is covered. Thirty-one tests is plenty." }
+      tools:
+        spec:
+          returns:
+            criteria:
+              - { id: "AC-1", text: "Finance can export a month of orders as a spreadsheet." }
+              - { id: "AC-2", text: "The export shows the GST on each order." }
+              - { id: "AC-3", text: "An export of more than 50,000 orders arrives by email." }
+            sections:
+              - { id: "S-1", covers: ["AC-1", "AC-2"] }
+              - { id: "S-2", covers: ["AC-3"] }
+            tests:
+              - { id: "T-1", criteria: ["AC-2", "AC-3"] }
+              - { id: "T-2", criteria: ["AC-1"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [criteria, unknown_refs, complete]
+            properties:
+              criteria:
+                const:
+                  - { id: "AC-1", sections: ["S-1"], tests: ["T-2"], gaps: [] }
+                  - { id: "AC-2", sections: ["S-1"], tests: ["T-1"], gaps: [] }
+                  - { id: "AC-3", sections: ["S-2"], tests: ["T-1"], gaps: [] }
+              unknown_refs: { const: [] }
+              complete: { const: true }
+
+  - name: a_repeated_criterion_id_is_flagged_on_both_entries
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "Check the store credit spec before build." }
+      llm_script:
+        - { match: "*", reply: "Every criterion is covered. Thirty-one tests is plenty." }
+      tools:
+        spec:
+          returns:
+            criteria:
+              - { id: "AC-1", text: "A refund can be paid as store credit." }
+              - { id: "AC-2", text: "Store credit never expires." }
+              - { id: "AC-3", text: "Store credit can pay for part of an order." }
+              - { id: "AC-3", text: "A customer sees their store credit balance at checkout." }
+              - { id: "AC-4", text: "Support can add store credit, with a reason." }
+            sections:
+              - { id: "S-1", covers: ["AC-1", "AC-2"] }
+              - { id: "S-2", covers: ["AC-3"] }
+              - { id: "S-3", covers: ["AC-4"] }
+            tests:
+              - { id: "T-1", criteria: ["AC-1"] }
+              - { id: "T-2", criteria: ["AC-2"] }
+              - { id: "T-3", criteria: ["AC-3"] }
+              - { id: "T-4", criteria: ["AC-4"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [criteria, unknown_refs, complete]
+            properties:
+              criteria:
+                const:
+                  - { id: "AC-1", sections: ["S-1"], tests: ["T-1"], gaps: [] }
+                  - { id: "AC-2", sections: ["S-1"], tests: ["T-2"], gaps: [] }
+                  - { id: "AC-3", sections: ["S-2"], tests: ["T-3"], gaps: ["duplicate_id"] }
+                  - { id: "AC-3", sections: ["S-2"], tests: ["T-3"], gaps: ["duplicate_id"] }
+                  - { id: "AC-4", sections: ["S-3"], tests: ["T-4"], gaps: [] }
+              complete: { const: false }
+
+  - name: adversarial_a_reference_to_a_missing_criterion_fills_no_gap
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      `T-7` names `AC-61`, which is no criterion, and `AC-6` has a section and
+      no test. A trace that matches ids as text finds `AC-6` inside `AC-61`
+      and gives `T-7` to `AC-6`, which closes the one gap that mattered: the
+      second approver for refunds over ₹10,000 goes to build with no test
+      behind it. A trace built from one set of every id mentioned anywhere
+      marks `AC-6` covered because its section named it.
+
+      Compared as whole ids, `AC-61` matches nothing. It goes to
+      `unknown_refs` for someone to fix, `AC-6` keeps its `no_test` gap, and
+      the spec is not complete.
+    spec:
+      kind: agent_run
+      input: { question: "Check the refunds spec again before build." }
+      llm_script:
+        - { match: "*", reply: "Every criterion is covered. Thirty-one tests is plenty." }
+      tools:
+        spec:
+          returns:
+            criteria:
+              - { id: "AC-1", text: "A customer can ask for a refund from the invoice page." }
+              - { id: "AC-2", text: "The refund request records the reason the customer gives." }
+              - { id: "AC-3", text: "Finance sees every open refund request in one queue." }
+              - { id: "AC-4", text: "An approved refund goes back to the original payment method." }
+              - { id: "AC-5", text: "The customer gets an email when the refund is paid." }
+              - { id: "AC-6", text: "A refund over ₹10,000 needs a second approver." }
+            sections:
+              - { id: "S-1", covers: ["AC-1", "AC-2"] }
+              - { id: "S-2", covers: ["AC-3"] }
+              - { id: "S-3", covers: ["AC-4"] }
+              - { id: "S-4", covers: ["AC-5"] }
+              - { id: "S-5", covers: ["AC-6"] }
+            tests:
+              - { id: "T-1", criteria: ["AC-1"] }
+              - { id: "T-2", criteria: ["AC-2"] }
+              - { id: "T-3", criteria: ["AC-3"] }
+              - { id: "T-4", criteria: ["AC-4"] }
+              - { id: "T-5", criteria: ["AC-5"] }
+              - { id: "T-6", criteria: ["AC-2"] }
+              - { id: "T-7", criteria: ["AC-61"] }
+      budget: { max_llm_calls: 1, max_tool_calls: 2, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [criteria, unknown_refs, complete]
+            properties:
+              unknown_refs: { const: [{ from: "T-7", id: "AC-61" }] }
+              complete: { const: false }
+        - type: valid_json_return
+          schema:
+            type: object
+            properties:
+              criteria:
+                const:
+                  - { id: "AC-1", sections: ["S-1"], tests: ["T-1"], gaps: [] }
+                  - { id: "AC-2", sections: ["S-1"], tests: ["T-2", "T-6"], gaps: [] }
+                  - { id: "AC-3", sections: ["S-2"], tests: ["T-3"], gaps: [] }
+                  - { id: "AC-4", sections: ["S-3"], tests: ["T-4"], gaps: [] }
+                  - { id: "AC-5", sections: ["S-4"], tests: ["T-5"], gaps: [] }
+                  - { id: "AC-6", sections: ["S-5"], tests: [], gaps: ["no_test"] }
+
+reference_md: |
+  BMAD's spec skill writes a short contract for the build to read. In
+  bmad-method 6.12.1, published on 4 October 2026, its template gives every
+  capability a stable id, `CAP-1` and on, and a success condition that is
+  "Something a test or a real demonstration can decide". The docs page
+  "Define Requirements and a Specification", read on 8 October 2026, adds
+  that "Each story cites the spec's capability IDs". Ids that stay put and
+  get cited downstream are what make a trace possible. Checking the trace is
+  still the team's job, because the same page says the spec "does not help
+  you figure out what you want".
+
+  A count says how much was written. Nine sections and 31 tests sounded
+  thorough, and AC-6 sat outside all of them. A trace asks two things of each
+  criterion: which section says it will be built, and which test will show
+  it was. Those are separate facts from separate lists, so one set of every
+  id mentioned anywhere cannot hold them. A criterion named by two sections
+  and no test is in that set, and nobody has said how anyone will know it
+  works.
+
+  A reference to a criterion that does not exist is a mistake somebody has to
+  fix, and it covers nothing. AC-61 was most likely meant for AC-6, and a
+  trace that matches ids as fragments of text quietly treats it that way,
+  which closes the one gap that mattered. Comparing whole ids keeps the
+  mistake in `unknown_refs`, and `complete` stays false until someone looks.
+
+  Two criteria with one id are the same problem seen from the other side.
+  Every reference to that id is ambiguous, so both entries stay in the report
+  and both are flagged. Merging them would drop one of the two criteria from
+  the report without a word.
+
+  The criteria ids, the gap names and the rule for `complete` are this
+  problem's own construction. BMAD gives the spec's capabilities their ids,
+  and a team that traces a client's criteria to the spec agrees its own
+  format with the client.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Before the team starts building from a spec, how would you check that it covers every acceptance criterion, and what would make you stop the build?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: spec
+    args: ""
+    returns: "The `criteria`, each with an `id` and `text`, the `sections`, each with the ids it `covers`, and the `tests`, each with its `criteria`."
+example:
+  case: traces_a_spec_that_covers_every_criterion
+  expect: Every criterion has a section and a test, so each entry lists them with no gaps, nothing is unknown, and `complete` is true. `AC-1` has two tests, `T-1` and `T-5`.
+traps:
+  - Marking a criterion covered when any section or test mentions it, so one with no test passes.
+  - Counting a reference to a criterion that does not exist, or letting it fill another criterion's gap.
+  - Keeping one entry per id, so two criteria that share an id read as one.

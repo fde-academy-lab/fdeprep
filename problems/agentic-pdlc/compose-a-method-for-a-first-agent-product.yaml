@@ -1,0 +1,642 @@
+slug: compose-a-method-for-a-first-agent-product
+title: "Compose a method for a first agent product"
+day: 28
+skill: Build a delivery method from parts, keeping each one for the failure it prevents
+artefact_type: design
+difficulty: extreme
+track: agentic-pdlc
+concept:
+  topic: "Choosing a method"
+  question: "Which parts of which method does this client need, and what does each part prevent?"
+est_minutes: 55
+competencies:
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: client-communication, weight: 1.0 }
+  - { slug: evaluation-design, weight: 0.5 }
+  - { slug: system-design, weight: 0.5 }
+
+brief_md: |
+  A lender the size of Five-Star Business Finance makes small-business loans
+  secured on property, through its branches. Every loan file carries
+  identity, income and property documents, and branch staff check each one by
+  hand before the file goes to credit. The lender wants its first agent
+  product: an agent that reads a file's documents and tells branch staff what
+  is missing, what does not match and what to ask the borrower for. Its
+  output reaches borrowers in two places: the list of documents a branch asks
+  them for, and the reason a document is refused.
+
+  | What the lender has | Where it comes from |
+  |---|---|
+  | Six engineers, none of whom has shipped an agent | Head of engineering |
+  | A 16-week budget | The board |
+  | A compliance officer who must sign anything customer-facing, and is free one day a week | Head of compliance |
+  | A first AI pilot that ran four months with no exit criterion and was cancelled | Board minutes, last year |
+  | A second AI pilot that shipped a prompt nobody could reproduce after its author left | Head of engineering |
+  | Verification checklists for 3,000 loan files from last year | Credit operations |
+
+  The board has asked which method you will run, and when it will see the
+  agent work. Compose the method from these parts.
+
+  | Part | What its source says |
+  |---|---|
+  | Problem framing | BMAD lists `bmad-prfaq` as "Stress-test a product concept customer-first, working backwards from the press release", and `bmad-product-brief` as "Capture the product vision when the concept is clear". |
+  | BMAD planning by size | Four paths. Trivial: "You don't need BMad for an obvious, low-risk edit." One session: "A spec that fits one Build session goes straight to `bmad-build`". Epic-sized: "One coherent outcome that needs several sessions is an epic", run as a spec, stories, one Build per story, then integration and a retrospective, through `bmad-spec`, `bmad-ticket`, `bmad-build` or `bmad-build-auto`, and `bmad-retrospective`. "Review the proposed order and decide which stories need a checkpoint", and "Verify the stories together" before the retrospective. Project-sized: "a greenfield product, a multi-epic initiative, or work likely to need roughly 20 or more implementation sessions", which adds shared contracts through `bmad-prd`, `bmad-ux` and `bmad-architecture`. "Each stream needs an owner", and the path runs "integration checks and a retrospective at each epic boundary". |
+  | AWS AI-DLC | Three phases: Inception, Construction and Operations. In Inception, "AI transforms business intent into detailed requirements, stories and units" through Mob Elaboration, "where the entire team actively validates AI's questions and proposals". Construction runs through Mob Construction. "Epics are replaced by Units of Work", and sprints are replaced by bolts, "shorter, more intense work cycles measured in hours or days rather than weeks". AI "implements solutions only after receiving human validation". |
+  | AI-DLC workflows | "5 phases and 33 stages", and "11 workflow profiles", of which the README names Classic and Express. A run "stops at approval gates before moving forward", and the README lists "Human approval gates and source-bound review evidence". |
+  | Your own gates | An evaluation gate at the end of every bolt, and an approval gate before any customer-facing change. |
+
+  Each source was read on 8 October 2026: BMAD's
+  [Choose a Planning Path](https://docs.bmad-method.org/plan/choose-a-planning-path/)
+  page, when the current BMAD release was 6.12.1; the AWS DevOps blog post
+  [AI-Driven Development Life Cycle: Reimagining Software Engineering](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/),
+  by Raja SP, published 31 July 2025; and the README of
+  [aidlc-workflows](https://github.com/awslabs/aidlc-workflows), version
+  2.10.0.
+
+contract_md: |
+  Write the method you would put to the board. It has four parts, each under
+  its own heading, written exactly as `## The method`,
+  `## What each part prevents`, `## Where people decide` and
+  `## The first bolt`.
+
+  Under the first, say which parts you take, from which source, and how they
+  run across the 16 weeks. Settle three choices there or under the third
+  heading: one project-sized path or a chain of epics, who validates in Mob
+  Elaboration, and bolts of two days or of five. Each has more than one
+  defensible answer, so give the case for the option you turn down before
+  you settle it. Under the second, tie every part to the failure it
+  prevents, naming the pilot where one fits. Under the third, put every
+  human checkpoint on the calendar of the people in it. Under the last, say
+  what the first bolt builds and how a reviewer would check that it is done.
+
+  Attribute every fact about a method to its source and the date it was
+  read. Between 600 and 900 words.
+
+word_range: [600, 900]
+required_headings: [The method, What each part prevents, Where people decide, The first bolt]
+
+rubric:
+  - label: Ties every part to the failure it prevents
+    weight: 25
+    descriptor_md: |
+      Each part earns its place by a failure it prevents. Strong answers tie
+      the framing document's exit numbers, and an evaluation gate at the end
+      of every bolt, to pilot one, which ran four months with nothing that
+      could stop it. They tie specs, prompts, pinned model versions and
+      evaluation sets kept in the repository, with AI-DLC's source-bound
+      review evidence, to pilot two, whose prompt left with its author. They
+      tie the approval gate to the compliance officer's signature on what
+      reaches a borrower, and human review of early stories, through
+      `bmad-build` before any `bmad-build-auto`, to six engineers who have
+      never shipped an agent. Strong answers also leave out at least one part
+      that prevents nothing here. A part named with no failure attached is
+      ceremony.
+  - label: Gets the method facts right, attributed and dated
+    weight: 20
+    descriptor_md: |
+      Every fact about a method comes from a source, named and dated:
+      Inception, Mob Elaboration, bolts, Units of Work and human validation
+      from the AWS post of 31 July 2025; the four planning paths and their
+      skills from BMAD's Choose a Planning Path page; the 33 stages, the 11
+      profiles, the approval gates and the source-bound review evidence from
+      the aidlc-workflows README. That README names two of its profiles, and
+      BMAD's README shows no persona list. An answer that names personas,
+      profiles or stages without saying where it read them has invented
+      them, and so has one that calls a bolt a two-week sprint. Naming BMAD
+      and AI-DLC without saying what a part does earns nothing here.
+  - label: Places human checkpoints on the compliance officer's real calendar
+    weight: 20
+    descriptor_md: |
+      Sixteen weeks at one day a week is sixteen compliance days, and nothing
+      customer-facing ships unsigned. Strong answers count that budget against
+      their checkpoints. Two-day bolts come to 30 to 40, depending on how long
+      Inception takes, so the compliance officer cannot close every bolt, and
+      customer-facing changes are batched into a weekly gate or kept out of
+      most bolts, for example by holding borrower-facing text in templates.
+      Strong answers spend an early compliance day on framing, so what the
+      agent may tell a borrower is settled before it is built, and say what
+      happens to customer-facing changes in a week the compliance officer
+      misses. An answer that books the compliance officer into every bolt, or
+      into a week of Mob Elaboration, has booked days that do not exist.
+  - label: Argues the open decision both ways, then settles it
+    weight: 20
+    descriptor_md: |
+      Three choices have more than one defensible answer, and this row
+      rewards the argument over the pick. A project-sized path fits a
+      greenfield product that will pass twenty sessions, and gives the
+      compliance officer a PRD to sign; a chain of epics reaches working
+      software sooner, with an integration check and a retrospective at each
+      boundary. Whole-team Mob Elaboration suits six engineers in one room
+      and cannot include a compliance officer free one day a week, so it
+      moves to that day or turns into a scheduled gate. Two-day bolts give
+      more than twice the evaluation gates of five-day bolts and show a
+      pilot-one drift sooner; five-day bolts line up with the compliance day
+      at the cost of fewer checks, and sit near the sprints AWS says bolts
+      replace. Strong answers state the case for the option they reject, then
+      settle each choice with a fact about this lender.
+  - label: Gives the first bolt an exit a reviewer could check
+    weight: 15
+    descriptor_md: |
+      The first bolt builds something a reviewer can run, against a set
+      named before it starts, with a number that ends it. Strong answers pick
+      a thin slice, such as one document type checked end to end, judge it
+      against held-out files from last year's 3,000 checklists, name the
+      threshold and who signs, and make reproduction part of the exit:
+      someone who did not write the prompt runs it from the repository and
+      gets the same results. A first bolt that sets up an environment or
+      agrees requirements has no exit a reviewer could check.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      ## The method
+
+      I would compose the method from parts instead of adopting one whole,
+      and run it as a thin shared contract followed by a chain of three
+      epics.
+
+      Weeks 1 and 2 are framing and Inception. The head of credit operations
+      runs `bmad-prfaq`, which BMAD's Choose a Planning Path page (read 8
+      October 2026) lists as a way to "Stress-test a product concept
+      customer-first, working backwards from the press release". Its internal
+      FAQ carries the numbers that stop the work. The compliance officer's
+      first day is a Mob Elaboration session on that draft, in the sense of
+      the AWS post of 31 July 2025: AI turns intent into "requirements,
+      stories and units", and the team validates its questions and
+      proposals. What comes out is a short PRD, the document the compliance
+      officer signs.
+
+      Weeks 3 to 15 are three epics in BMAD's epic-sized shape: `bmad-spec`,
+      `bmad-ticket` for stories, one `bmad-build` per story, then an
+      integration check and `bmad-retrospective`. Epic one checks identity
+      documents, epic two property papers, and epic three writes the list a
+      branch sends a borrower. Work moves in two-day bolts, AWS's cycles
+      "measured in hours or days rather than weeks". Week 16 is a pilot in
+      ten branches.
+
+      Project or epics? BMAD sends "a greenfield product" or work "likely to
+      need roughly 20 or more implementation sessions" down the project
+      path, and six engineers will pass twenty sessions within a month. The
+      project path would also give the compliance officer a PRD, which BMAD
+      says is needed when more than one person must agree on what the product
+      is. Against that, its shared UX and architecture documents would take
+      weeks before anyone learns what an agent gets wrong on these files,
+      which is the experience this team lacks. I keep the PRD, drop the
+      rest, and close each epic with the integration check and retrospective
+      the project path asks for at every boundary.
+
+      ## What each part prevents
+
+      - The PR/FAQ's internal FAQ prevents another pilot one, which ran four
+        months because nothing could say stop. It fixes the week-6 decision
+        now: if verdicts match last year's checklists on fewer than 90
+        percent of identity documents, the work stops.
+      - The evaluation gate at every bolt's end answers pilot one as well. A
+        drift shows within two days.
+      - Keeping the spec, the prompt, the pinned model version and the
+        evaluation set in the repository prevents another pilot two, whose
+        prompt left with its author. The aidlc-workflows README (version
+        2.10.0, read 8 October 2026) lists "Human approval gates and
+        source-bound review evidence"; here, a bolt whose result only its
+        author can run fails review.
+      - `bmad-build`, with a person reviewing the first stories of each epic,
+        guards six engineers who have never shipped an agent. BMAD says to
+        give early decisions human attention before automating repetitions
+        of them, so `bmad-build-auto` waits until the patterns hold.
+      - The approval gate keeps a refusal reason or a document request from
+        reaching a borrower unsigned.
+      - I leave out `bmad-ux` and AI-DLC's Operations phase for these 16
+        weeks, because no failure in this brief needs them yet.
+
+      ## Where people decide
+
+      The compliance officer has 16 days, and two-day bolts in weeks 3 to 15
+      come to about 32, so the compliance officer decides once a week rather
+      than once a bolt. Day 1 is Mob Elaboration and day 2 signs the PRD.
+      Days 3 to 15 are scheduled approval gates: every customer-facing change
+      from that week's bolts arrives with its evaluation results and source
+      documents, and nothing customer-facing merges unsigned. Day 16 signs
+      the branch pilot. No day is spare, so a missed week holds its changes
+      for the next gate, and borrower-facing text lives in templates so most
+      bolts never need one.
+
+      Whole-team Mob Elaboration survives for the six engineers and the head
+      of credit operations, who mob daily for the first two weeks. For the
+      compliance officer it becomes a gate, and the case for full attendance
+      is real: someone in the room catches a wrong assumption sooner than
+      someone reading a pre-read.
+
+      Five-day bolts would line up with the compliance day and spend less
+      time on ceremony, and I would take them with an experienced team. Here
+      they mean 13 evaluation gates instead of 32, in cycles close to the
+      sprints AI-DLC set out to replace.
+
+      The board gets dates for decisions: week 6, continue or stop on the
+      FAQ's number; week 16, the branch pilot, if every gate has held. The
+      head of credit operations owns the exit numbers, the tech lead runs
+      each evaluation gate, and each epic has one engineer as its owner.
+
+      ## The first bolt
+
+      Two days, straight after Inception. The agent reads the PAN card and
+      the application form in one file and says whether the name, PAN and
+      date of birth match.
+
+      Exit: on 200 files drawn at random from last year's 3,000 checklists
+      and kept away from prompt writing, the agent's verdict matches the
+      checklist on at least 180; every mismatch is listed with its file
+      number; and an engineer who did not write the prompt runs one command
+      from a clean checkout and gets the same 200 verdicts. The tech lead
+      signs. A bolt that reaches 180 only on its author's machine has
+      failed, because that is pilot two again.
+  - band: adequate
+    score: 61
+    body_md: |
+      ## The method
+
+      We will run AWS's AI-Driven Development Life Cycle (AI-DLC) for the
+      whole project. It was designed for exactly this situation, a team
+      bringing AI into its delivery, and it gives the board a recognised
+      method rather than something we invented ourselves.
+
+      AI-DLC has three phases. In Inception, AI turns the business intent
+      into requirements, stories and units of work through Mob Elaboration,
+      where the whole team validates what the AI proposes. In Construction,
+      the team builds the units through Mob Construction, making technical
+      decisions together in real time. In Operations, the agent is deployed
+      and run with the team overseeing it. Work happens in bolts, which
+      replace sprints and are much shorter. We will use one-week bolts,
+      sixteen in total, with Inception taking the first two.
+
+      We will use the open-source aidlc-workflows tooling, which has 33
+      stages and 11 workflow profiles, and stops at approval gates before
+      moving on. We will choose the Classic profile, since it is the
+      standard route through Inception and Construction, and the team can
+      learn the method from it before trying anything lighter.
+
+      We looked at BMAD as well. It covers similar ground, with planning
+      paths sized from a trivial edit up to a full project, but running two
+      methods side by side would confuse a team that is new to both, so we
+      will keep to one and follow it as written.
+
+      ## What each part prevents
+
+      Inception prevents us from building the wrong thing, because the whole
+      team agrees the requirements before any code is written. Mob
+      Elaboration also spreads knowledge across the team, which matters
+      because the previous pilots depended too much on individuals.
+
+      Construction in short bolts prevents long periods without visible
+      progress, and gives the board regular updates. Each bolt ends with a
+      demo to the head of credit operations. Mob Construction also stops
+      engineers working in isolation, because technical decisions are made
+      together.
+
+      The approval gates in aidlc-workflows prevent changes going live
+      without review, which matters in a regulated lender. The audit trail
+      will also help with compliance questions later.
+
+      Operations prevents the common problem of a pilot that never reaches
+      production, because deployment is planned from the start rather than
+      left to the end.
+
+      ## Where people decide
+
+      Inception takes the first two weeks. The compliance officer joins Mob
+      Elaboration on their available day in each of those weeks, and reviews
+      the requirements document at the end of Inception.
+
+      From week 3, each one-week bolt ends with a review: the head of credit
+      operations sees a demo, and the compliance officer reviews anything
+      customer-facing on their day that week. The tech lead approves each
+      merge. Because bolts are one week long, every bolt lines up with one
+      compliance day, which keeps the process simple for everyone. If the
+      compliance officer cannot attend in a given week, the review moves to
+      the following week and the customer-facing changes wait.
+
+      The board receives a short update every four weeks, and a go-live
+      decision at week 16, based on the results of the final bolts.
+
+      ## The first bolt
+
+      The first bolt, in week 3, sets up the document pipeline. The team
+      connects the agent to the document store, loads a sample of last
+      year's loan files, and builds a first version of the extraction prompt
+      for identity documents.
+
+      The bolt is complete when the agent can read identity documents from
+      the sample and produce a checklist that the head of credit operations
+      agrees looks right. We will also record the prompt in the repository,
+      so the work is not lost if someone leaves.
+
+      After the first bolt we will continue with income documents and
+      property documents, then the borrower-facing list of missing
+      documents, which the compliance officer will review before it goes
+      live.
+  - band: weak
+    score: 28
+    body_md: |
+      ## The method
+
+      We recommend combining the two leading agentic delivery methods, BMAD
+      and AI-DLC, which together represent current best practice for
+      building AI agents.
+
+      BMAD (Breakthrough Method for Agile AI-Driven Development) gives us a
+      full team of AI personas: the Business Analyst, the Product Owner, the
+      Scrum Master, the Architect, the Developer, the QA Engineer and the
+      Compliance Guardian. Each persona is an expert agent that takes on one
+      role in the project, so our six engineers are supported by seven
+      specialist agents and the team is effectively doubled.
+
+      AI-DLC is Amazon's method for AI-driven development. It provides a
+      Regulated Industries profile designed for banks and lenders, which
+      builds compliance into every stage automatically. This is ideal for our
+      use case, because loan documents are sensitive and regulated.
+
+      We will run the project in agile two-week sprints, which AI-DLC calls
+      bolts, giving us eight bolts over the 16 weeks. Each bolt delivers a
+      working increment of the verification agent. We will hold a kick-off
+      workshop in week 1 with every stakeholder, including the compliance
+      officer if they are free, to introduce both methods and agree ways of
+      working.
+
+      Because the two methods automate so much of the planning, we do not
+      expect to need the full 16 weeks for the build itself, and any spare
+      time can go on extra features such as income checks for self-employed
+      borrowers.
+
+      ## What each part prevents
+
+      Using established methods prevents the problems we had with the
+      previous pilots. The previous pilots were run informally, without a
+      recognised methodology, and so they drifted. With BMAD and AI-DLC the
+      process is structured from the start.
+
+      The AI personas prevent knowledge gaps in the team. Because our
+      engineers have not built an agent before, the Architect and Developer
+      personas will guide them through best practice, and the QA Engineer
+      persona will test the work automatically. The personas also keep a
+      record of every decision, so if an engineer leaves, the next one can
+      pick up where they left off.
+
+      The Compliance Guardian persona prevents compliance issues by reviewing
+      every output for regulatory risk, which reduces the load on our
+      compliance officer.
+
+      ## Where people decide
+
+      The engineers make the day-to-day technical decisions, supported by
+      the personas. The head of credit operations acts as product owner and
+      attends the demo at the end of each bolt. The compliance officer will
+      be invited to the demos when they are available and can raise any
+      concerns there, and the Compliance Guardian persona covers the weeks
+      they cannot attend. Any disagreement between the engineers and the
+      personas is settled by the tech lead, who has the final say on
+      technical questions.
+
+      The board will receive a progress report at the end of every bolt. We
+      will aim to have the agent live in all branches by the end of week 16,
+      which gives the board the date it has asked for.
+
+      ## The first bolt
+
+      The first bolt sets up the foundations. The team will install BMAD and
+      AI-DLC, configure the personas, connect to the document storage
+      system, and agree the requirements with the head of credit
+      operations.
+
+      By the end of the first bolt we expect to have the environment ready
+      and a clear backlog for the following bolts. The second bolt will then
+      start building the identity document checks, followed by income and
+      property documents in bolts three to five, and the borrower
+      communications in bolts six and seven. Bolt eight is reserved for
+      testing and go-live across all branches.
+
+      We will also prepare a short deck for the board explaining the two
+      methods, so that its members understand how the work is organised and
+      why it will succeed where the previous pilots did not.
+
+      With this plan, the lender will have a fully working verification
+      agent in 16 weeks, built with the best practices of both methods.
+
+hints:
+  - Write down what went wrong in each pilot, and what a team that has never
+    shipped an agent is likely to get wrong. A part belongs in the method
+    only if it prevents one of those.
+  - Read each source for what a part does. A bolt, a Unit of Work, an
+    epic-sized path and an approval gate each answer a different failure,
+    and a part that answers none of this client's can be left out.
+  - Count the compliance officer's days across the 16 weeks, then count the
+    checkpoints that need them. Every customer-facing change has to fit
+    inside that budget.
+  - For each of the three choices, write the best case for the option you
+    will turn down. Settle it with a fact about this lender, in place of a
+    rule about methods in general.
+  - Write the first bolt's exit as a test a reviewer could run, naming the
+    set, the number, who signs, and who else re-runs it from the repository.
+
+scenario:
+  headline: "Two AI pilots failed, and the board wants a method and a date"
+  who: The board of a lender the size of Five-Star Business Finance
+  situation: >-
+    The lender's first agent product will read loan files and tell branch
+    staff what is missing or does not match. Six engineers who have never
+    shipped an agent have 16 weeks, and a compliance officer free one day a
+    week must sign anything a borrower sees.
+  stakes: >-
+    The first pilot ran four months with no exit criterion and was cancelled.
+    The second shipped a prompt nobody could reproduce after its author left.
+  metrics:
+    - { label: Budget, value: 16 weeks }
+    - { label: Compliance officer, value: 1 day a week }
+    - { label: Engineers, value: "6, none shipped" }
+
+diagram:
+  title: Sixteen weeks, six engineers and one compliance day a week
+  caption: >-
+    The method is built from framing, BMAD's planning paths, AI-DLC's bolts and
+    your own gates. The pilots say what it has to prevent.
+  direction: lr
+  nodes:
+    - { id: pilot1, label: Pilot one, sub: "four months, no exit criterion", kind: doc, tone: neutral, at: [0, 0] }
+    - { id: board, label: The board, sub: wants a method and a date, kind: actor, tone: green, at: [0, 1] }
+    - { id: pilot2, label: Pilot two, sub: a prompt nobody could reproduce, kind: doc, tone: neutral, at: [0, 2] }
+    - { id: framing, label: Framing, sub: PR/FAQ or product brief, kind: doc, tone: blue, at: [1, 1] }
+    - { id: planning, label: Planning by size, sub: "BMAD: trivial to project-sized", kind: decision, tone: purple, at: [2, 1] }
+    - { id: bolts, label: Bolts, sub: "AI-DLC: hours or days", kind: agent, tone: teal, at: [3, 1] }
+    - { id: evalgate, label: Evaluation gate, sub: "your own, at each bolt's end", kind: guard, tone: orange, at: [4, 0] }
+    - { id: approval, label: Approval gate, sub: before anything customer-facing, kind: guard, tone: orange, at: [4, 2] }
+    - { id: officer, label: Compliance officer, sub: free one day a week, kind: actor, tone: pink, at: [3, 2] }
+  edges:
+    - { from: pilot1, to: board, label: cancelled after four months, tone: danger }
+    - { from: pilot2, to: board, label: left with its author, tone: danger }
+    - { from: board, to: framing, label: asks which method, step: 1 }
+    - { from: framing, to: planning, label: sized to the work, step: 2 }
+    - { from: planning, to: bolts, label: built in bolts, step: 3 }
+    - { from: bolts, to: evalgate, label: every bolt, step: 4 }
+    - { from: bolts, to: approval, label: customer-facing changes }
+    - { from: officer, to: approval, label: signs, tone: muted }
+
+approach:
+  goal: A method the board can fund, where every part prevents a named failure
+  branches:
+    - label: Start from the failures
+      leaves: ["what stopped pilot one from stopping?", "what left with pilot two's author?", "what will six new engineers get wrong?"]
+    - label: Take parts and leave the brand names
+      detail: Each part comes from a source, and each source says what the part does.
+      leaves: [framing, planning by size, bolts and units of work, your own gates]
+    - label: Put people on the calendar
+      leaves: ["how many days does the compliance officer have?", "which changes need them?"]
+    - label: Settle the three choices
+      leaves: [a project or a chain of epics, who validates in Mob Elaboration, two-day or five-day bolts]
+    - label: Make the first bolt checkable
+      leaves: [a set named before it starts, a number that ends it, someone else re-runs it]
+
+coach:
+  opening: >-
+    Start from the two pilots. Name what went wrong in each, then keep a part
+    of a method only if it prevents one of those failures or one this team is
+    about to meet.
+  signals:
+    - id: no-pilot-named
+      when: { code_lacks: '(?i)pilot\s+(one|two|1|2)\b|(first|second|earlier)\s+(ai\s+)?pilot|four[-\s]month|four\s+months|prompt\s+nobody|author\s+left|left\s+with\s+its\s+author' }
+      say: >-
+        Your method never names either pilot. Which part would have stopped
+        the first one, and which would have kept the second one's prompt?
+    - id: persona-or-profile-unsourced
+      when:
+        code_matches: '(?i)\bpersonas?\b|regulated\s+(\w+\s+)?profile|compliance\s+(guardian|agent|persona)'
+        code_lacks: '(?i)read\s+(on\s+)?\d{1,2}\s+[a-z]+\s+20\d\d'
+      say: >-
+        Your answer names personas or a profile. Which source shows them, and
+        on what date did you read it?
+    - id: no-gate
+      when: { code_lacks: '(?i)\bgates?\b|\bexit\b|stop\s+the\s+work|\bsigns?\b|signature' }
+      say: >-
+        Nothing in your method can stop the work. Where is the first point at
+        which a number could say stop, and who reads it?
+    - id: compliance-calendar
+      when: { code_lacks: '(?i)\b16\s+(compliance\s+)?days|sixteen\s+(compliance\s+)?days|once\s+a\s+week|weekly|one\s+day\s+a\s+week|each\s+week' }
+      say: >-
+        The compliance officer is free one day a week. How many days is that
+        across 16 weeks, and how many of your checkpoints need them?
+    - id: one-sided
+      when: { code_lacks: '(?i)the\s+case\s+for|against\s+that|would\s+line\s+up|on\s+the\s+other\s+hand|in\s+exchange\s+for|at\s+the\s+cost\s+of|the\s+other\s+option' }
+      say: >-
+        Each of the three choices has a case for the option you did not pick.
+        Write it down, then say what about this lender settles it.
+    - id: uncheckable-first-bolt
+      when: { code_lacks: '(?i)at\s+least\s+\d+|\b\d+\s+of\s+(the\s+)?\d+|\b\d{2,4}\s+(held-out\s+)?(loan\s+)?(files|documents)\b' }
+      say: >-
+        Your first bolt has no number in it. On which set, and at what
+        result, would a reviewer agree it is done?
+    - id: no-reproduction
+      when: { code_lacks: '(?i)reproduc|repositor|clean\s+checkout|re-?runs?\b|did\s+not\s+write' }
+      say: >-
+        The second pilot's prompt left with its author. What in your method
+        lets someone else rebuild what a bolt made?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        List the two pilots' failures first. Then take one part at a time and
+        keep it only if it prevents one of them, or a failure this team will
+        meet.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three tries without a pass. Open the hints; the third one counts the
+        compliance officer's days.
+  wrap_up: >-
+    A method is a set of parts, each kept because it prevents a failure
+    somebody can name. Every checkpoint sits on the calendar of the people in
+    it, and the first bolt ends with a test someone else can re-run.
+
+reference_md: |
+  A company that has watched two AI pilots fail will trust a method when
+  every part of it answers a failure somebody can name. That is why this
+  problem asks for a composition instead of a brand. BMAD and AI-DLC overlap,
+  and each has parts this client does not need yet.
+
+  The two pilots name most of the parts. Pilot one ran four months with
+  nothing that could say stop, so the method needs exit numbers written
+  before work starts, which is what a PR/FAQ's internal FAQ is for, and a
+  check frequent enough that drift shows in days. Pilot two lost its prompt
+  with its author, so everything a bolt produces, the spec, the prompt, the
+  pinned model version and the evaluation set, lives in the repository and
+  re-runs for someone else. AWS's post says AI-DLC stores "plans,
+  requirements, and design artifacts" in the project repository, and the
+  aidlc-workflows README lists "Human approval gates and source-bound review
+  evidence". BMAD's planning page says to "Keep those plans after closure",
+  and to give the decisions that early stories settle "human attention
+  before automating repetitions of them", which is the part six engineers
+  who have never shipped an agent need most.
+
+  The calendar decides the rest. Sixteen weeks at one day a week is sixteen
+  compliance days. Two-day bolts come to thirty or more once Inception is
+  done, so the compliance officer cannot close each one, and the approval
+  gate has to run weekly on batched customer-facing changes, with
+  borrower-facing text held in templates so that most bolts never need it.
+  Five-day bolts would give one compliance day per bolt and fewer than half
+  as many evaluation gates, and their length approaches the sprints AWS
+  describes bolts replacing, with cycles "measured in hours or days rather
+  than weeks". Either choice can be defended. An answer that books the
+  compliance officer into every two-day bolt cannot.
+
+  Mob Elaboration has the same arithmetic. AWS describes "the entire team"
+  validating AI's questions and proposals. Six engineers can do that every
+  day, and a compliance officer can do it one day in five, so the whole team
+  is in the room only on that day, and the rest of the compliance officer's
+  part becomes a scheduled gate with the evidence attached.
+
+  Whether this is a project or a chain of epics turns on BMAD's own tests.
+  The project-sized path is for "a greenfield product, a multi-epic
+  initiative, or work likely to need roughly 20 or more implementation
+  sessions", and this product is greenfield and will pass twenty sessions.
+  BMAD also says a PRD is needed when more than one person must agree on what
+  the product is, which the compliance officer's signature makes true. A
+  strong answer can take the project path whole, or keep the PRD and run the
+  build as epics with "integration checks and a retrospective at each epic
+  boundary". What separates answers is whether the reason given is about
+  this lender.
+
+  The first bolt is where pilot two is either prevented or repeated. A slice
+  thin enough to finish in two days, judged on files held out from prompt
+  writing, and re-run by someone who did not write the prompt, tests the
+  method as much as the agent.
+
+  Sources, each read on 8 October 2026: BMAD's
+  [Choose a Planning Path](https://docs.bmad-method.org/plan/choose-a-planning-path/)
+  page, when the current BMAD release was 6.12.1, and the BMAD
+  [README](https://github.com/bmad-code-org/BMAD-METHOD), which calls the
+  approach "Agile Ai Driven Development" (AiDD) and shows no persona list;
+  the AWS DevOps blog post
+  [AI-Driven Development Life Cycle: Reimagining Software Engineering](https://aws.amazon.com/blogs/devops/ai-driven-development-life-cycle/),
+  Raja SP, 31 July 2025; and the
+  [aidlc-workflows README](https://github.com/awslabs/aidlc-workflows),
+  version 2.10.0. The same day, BMAD's Skills and Agents page described five
+  named agents that start its workflows, and the aidlc-workflows Workflow
+  Profiles guide named all 11 profiles. Neither is needed to compose this
+  method, so an answer that cites them with their source is accurate, and
+  one that names agents or profiles without a source has guessed. The
+  evaluation gate at every bolt, the weekly approval gate, the count of
+  compliance days and the first bolt's 200 held-out files are this problem's
+  own construction, and so is the lender.
+
+complexity: C4
+
+interview_evidence:
+  round: both
+  asked_as: |
+    A client's first two AI pilots failed: one ran four months with no exit criterion, and the other shipped a prompt nobody could reproduce. Which delivery method would you run for their first agent product, and what does each part of it prevent?
+  source: |
+    Author judgement. No employer frequency data stands behind it. Method facts from BMAD's
+    Choose a Planning Path page and README, the AWS DevOps blog post of 31 July 2025 by Raja SP,
+    and the aidlc-workflows README, version 2.10.0, all read 8 October 2026.
+
+traps:
+  - Adopting BMAD or AI-DLC whole, by name, without saying which failure each part prevents.
+  - Citing personas, profiles or stages that the sources in the brief do not show.
+  - Booking the compliance officer into every bolt, when 16 weeks at one day a week is 16 days.
+  - A first bolt that ends when the team feels ready, with no set, no number and nobody re-running it.

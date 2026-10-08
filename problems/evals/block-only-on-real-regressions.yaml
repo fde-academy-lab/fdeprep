@@ -1,0 +1,860 @@
+slug: block-only-on-real-regressions
+title: "Block only on real regressions"
+day: 23
+skill: Compare repeated trials of two prompts, and block only on failures the change caused
+artefact_type: code
+difficulty: extreme
+track: evals
+concept:
+  topic: "Regression testing"
+  question: "Which failures on a new prompt are the prompt's fault, and which were already there?"
+est_minutes: 50
+competencies:
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 15
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  A lending app the size of KreditBee gates every change to its repayments
+  assistant's prompt on a regression suite of 24 cases. The gate runs each
+  case once on the live prompt, the one in production, and once on the new
+  prompt, and blocks the change when any case fails.
+
+  Three cases have flipped between pass and fail for weeks on the live
+  prompt. Nearly every release blocks on one of them, so the team reruns
+  the gate until it goes green, and a green rerun hides whatever else failed
+  on the runs before it. The one real regression a month now ships the same
+  way. Last Tuesday a change that broke the EMI-date answer went out on its
+  third rerun, and 2,300 borrowers were told the wrong due date before it was
+  rolled back.
+
+  The gate can now afford three trials of every case on each prompt, and a
+  few more. Write the gate that blocks only on failures the change caused. It
+  compares what each prompt does over several trials, runs confirm trials
+  before convicting a case that slipped, and asks for a rerun only when it is
+  missing evidence.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` names the prompt change. `tools["suite"](change=question)` returns
+  its regression suite, where `baseline` is the live prompt and `candidate` is
+  the new one:
+
+      {"trials": 3, "confirm": 2, "min_answered": 2,
+       "baseline": {"prompt": "<the live prompt>"},
+       "candidate": {"prompt": "<the new prompt>"},
+       "cases": [{"id": "emi-date", "input": "When is my next EMI due?",
+                  "expect": "5 November"}, ...]}
+
+  One trial is one model call, `llm(TRIAL.format(prompt=..., input=..., n=...))`,
+  with the stub's template, the prompt under test, the case's `input` and the
+  trial's number. The main pass comes first: for each case in suite order,
+  trials 1 to `trials` on the baseline, then trials 1 to `trials` on the
+  candidate. Each trial is one of three things, and a missing trial is not
+  asked again:
+
+  - **missing** when the reply is empty or blank, or starts with `Error:`, or
+    the call raised.
+  - **passed** when `re.search(expect, reply)` finds a match.
+  - **failed** otherwise.
+
+  A case's standing on one prompt comes from its answered trials, the passed
+  and the failed ones: `no_data` when fewer than `min_answered` were answered,
+  `passes` when every one passed, `fails` when none did, and `mixed` otherwise.
+
+  Each case gets the verdict of the first rule that fits:
+
+  1. `no_data` when either prompt's standing is `no_data`.
+  2. `regression` when the baseline passes and the candidate fails.
+  3. When the baseline passes and the candidate is mixed, ask `confirm` more
+     trials on the candidate, numbered on from `trials`, after the main pass
+     and in suite order. The case is a `regression` when more than half of the
+     candidate's answered trials failed, and `flaky` otherwise.
+  4. `flaky` when either prompt's standing is `mixed`.
+  5. `improved` when the baseline fails and the candidate passes.
+  6. `unchanged` otherwise.
+
+  The decision is `block` when any case is a regression, otherwise `rerun`
+  when any case has no data, otherwise `ship`. Two things override it:
+
+  - When the gateway refuses a call, `llm` raises a `RuntimeError`, and every
+    later call would be refused too. Stop calling, count that trial and every
+    trial not yet asked as missing, give each case its verdict from what was
+    answered, and decide `rerun`.
+  - A suite that is null, or has no cases, is `rerun` with no model call.
+
+  Return
+
+      json.dumps({"decision": "block" | "rerun" | "ship",
+                  "cases": {"<id>": "<verdict>", ...},
+                  "regressions": [...], "flaky": [...], "no_data": [...]})
+
+  where each list holds the ids with that verdict, in suite order.
+
+  Budget: at most 15 model calls. Allowed imports: json, re.
+
+defence_question: |
+  Your rule means a case that failed once in three on the live prompt can
+  never block, however badly the new prompt does on it. The QA lead wants a
+  drop of more than a third in pass rate to block regardless. Defend one rule
+  for a 24-case suite with three known-flaky cases, where the main pass spends
+  144 model calls and you have 60 more to spend each run, and say what the
+  other rule gets wrong.
+
+stub_code: |
+  import json
+  import re
+
+  TRIAL = "{prompt}\n\nCustomer: {input}\nTrial: {n}"
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Gate a prompt change on its regression suite, blocking only on what the change broke.
+
+      tools["suite"](change=question) returns the trials, confirm and
+      min_answered counts, the baseline and candidate prompts, and the cases,
+      each with an id, an input and an expect regex. One trial is
+      llm(TRIAL.format(prompt=..., input=..., n=...)). Main pass first, case
+      by case in suite order: every baseline trial, then every candidate trial.
+
+      A trial is missing when its reply is blank or begins with Error:, or the
+      call raised; passed when expect matches the reply; failed otherwise. On
+      each prompt a case is no_data under min_answered answered trials, else
+      passes, fails or mixed.
+
+      Verdict, first rule that fits: no_data on either prompt is no_data;
+      passes then fails is regression; passes then mixed asks confirm more
+      candidate trials after the main pass, then is regression when more than
+      half of the candidate's answered trials failed, else flaky; mixed on
+      either prompt is flaky; fails then passes is improved; else unchanged.
+
+      Decision: block on any regression, else rerun on any no_data, else ship.
+      When llm raises, stop calling, count the rest as missing, decide rerun.
+      A suite that is null or has no cases is rerun with no model call.
+
+      Return json.dumps({"decision", "cases": {id: verdict}, "regressions",
+      "flaky", "no_data"}), each list in suite order.
+      At most 15 model calls. Allowed imports: json, re.
+      """
+      return json.dumps({"decision": "rerun", "cases": {}, "regressions": [],
+                         "flaky": [], "no_data": []})
+
+hints:
+  - Line up the three replies each prompt gave for one case before you compare
+    anything. There are three kinds of trial in them, and only two of the
+    kinds say anything about a prompt.
+  - A failure on the new prompt counts against it only when the live prompt
+    did not already fail that case some of the time. Work out the live
+    prompt's standing before you read the new prompt's.
+  - A case that passed every trial on the live prompt and only some on the
+    new prompt has not been convicted yet. Give it the confirm trials, after
+    every case has had its main trials, and let the share of failures decide.
+  - A refusal from the gateway means every later call is refused too. Stop
+    asking, count what never ran as missing, and end in rerun, because the
+    trials you never asked could have changed the decision.
+
+scenario:
+  headline: "A change that broke the EMI-date answer shipped on its third rerun"
+  who: "The repayments assistant's release owner at a lending app the size of KreditBee"
+  situation: >-
+    Every prompt change runs a 24-case regression suite once on each prompt
+    and blocks on any failure. Three cases have flipped between pass and fail
+    for weeks on the live prompt, so nearly every release blocks and the team
+    reruns the gate until it goes green.
+  stakes: >-
+    2,300 borrowers were told the wrong EMI due date before the change was
+    rolled back, and the next real regression will ship the same way.
+  metrics:
+    - { label: Cases in the suite, value: "24" }
+    - { label: Flip on the live prompt, value: "3" }
+    - { label: Borrowers told a wrong date, value: "2,300" }
+
+diagram:
+  title: Where a flaky case becomes a rerun and a regression ships
+  caption: >-
+    One draw cannot tell a slip from a case that always varied. Several
+    trials, the live prompt's standing and confirm trials make a block mean
+    something.
+  direction: lr
+  nodes:
+    - { id: suite, label: Regression suite, sub: "24 cases, three flip on live", kind: store, tone: blue, at: [0, 1] }
+    - { id: gate, label: Your gate, sub: three trials of each case a prompt, kind: agent, tone: purple, at: [1, 1] }
+    - { id: live, label: Live prompt, sub: the prompt in production, kind: model, tone: teal, at: [2, 0] }
+    - { id: change, label: New prompt, sub: the change under review, kind: model, tone: teal, at: [2, 2] }
+    - { id: gateway, label: Model gateway, sub: "empty replies, errors, refusals", kind: service, tone: neutral, at: [1, 2] }
+    - { id: confirm, label: Confirm trials, sub: two more for a case that slipped, kind: guard, tone: green, at: [3, 2] }
+    - { id: decision, label: Decision, sub: "block, rerun or ship", kind: decision, tone: green, at: [3, 1] }
+    - { id: lottery, label: Rerun until green, sub: how the EMI-date break shipped, kind: output, tone: pink, at: [3, 0] }
+  edges:
+    - { from: suite, to: gate, label: cases and two prompts, step: 1 }
+    - { from: gate, to: live, label: three trials a case, step: 2 }
+    - { from: gate, to: change, label: three trials a case, step: 2 }
+    - { from: gateway, to: gate, label: counted as missing, tone: muted }
+    - { from: change, to: confirm, label: passed before and slips now, step: 3 }
+    - { from: confirm, to: decision, label: more than half failed, tone: success, step: 4 }
+    - { from: gate, to: decision, label: a verdict for every case, step: 4 }
+    - { from: gate, to: lottery, label: one draw each, tone: danger }
+
+approach:
+  goal: Block a change only on failures the change itself caused
+  branches:
+    - label: Read each prompt over several trials
+      leaves: ["passed, failed or missing", a standing from the answered trials, too few answers is no data]
+    - label: Ask how the live prompt did first
+      detail: A case the live prompt already failed some of the time cannot convict the new one.
+      leaves: ["passes, then fails, is a regression", mixed on the live prompt is flaky]
+    - label: Confirm a slip before convicting it
+      leaves: [two more trials on the new prompt, convict on more than half failed, after every case's main trials]
+    - label: Keep outages out of the verdict
+      leaves: [a refusal ends the calling, a run cut short decides rerun, "no cases, no model call"]
+
+coach:
+  opening: >-
+    Pick one case and write out three trials on each prompt that should block
+    the change, and three that should not. The difference between the two
+    pictures is the rule you are about to write.
+  signals:
+    - id: blames-the-change-for-old-failures
+      when: { code_lacks: '["'']mixed["'']' }
+      say: >-
+        Nothing in your gate names a mixed standing. What should a failure on
+        the new prompt mean for a case the live prompt already failed some of
+        the time?
+    - id: no-second-look
+      when: { code_lacks: '["'']confirm["'']' }
+      say: >-
+        Your gate never reads the suite's confirm count. When a case that
+        always passed slips once on the new prompt, what decides whether the
+        change broke it?
+    - id: outage-as-failure
+      when: { code_lacks: '["'']\^?Error:' }
+      say: >-
+        Nothing in your gate tells a trial with no answer from a wrong answer.
+        What does an empty reply, or a reply that starts with `Error:`, tell
+        you about the new prompt?
+    - id: hidden-already-varied
+      when: { test_failed: a_case_that_already_varied_cannot_convict }
+      say: >-
+        In that run the live prompt passed one case only some of the time, and
+        the new prompt failed it every time. Whose failures were those, and
+        could the case convict the change?
+    - id: hidden-confirm-clears
+      when: { test_failed: confirm_trials_can_clear_a_slip }
+      say: >-
+        In that run a case slipped on the new prompt and then passed its
+        confirm trials. Count the failures among all of its answered trials.
+        Are they more than half?
+    - id: hidden-no-answers
+      when: { test_failed: a_case_the_provider_left_unanswered_has_no_data }
+      say: >-
+        The provider errored on two of one case's trials on the new prompt. How
+        many answered trials did that leave, and what does the suite say that
+        many is worth?
+    - id: adversarial-one-in-three
+      when: { test_failed: adversarial_one_pass_in_three_is_confirmed_as_a_regression }
+      say: >-
+        The new prompt passed the EMI-date case once in three trials. What did
+        your gate find out before deciding what that meant?
+    - id: adversarial-empty-and-502
+      when: { test_failed: adversarial_an_empty_reply_and_a_502_are_missing }
+      say: >-
+        One reply in that run was empty and another was a 502 from upstream.
+        Which of your counts did each of them land in?
+    - id: adversarial-gateway-closes
+      when: { test_failed: adversarial_the_gateway_closes_partway_through_a_case }
+      say: >-
+        The gateway refused a call partway through a case. How many trials of
+        that case were answered, and what did your gate do with the calls after
+        the refusal?
+    - id: adversarial-no-cases
+      when: { test_failed: adversarial_the_suite_comes_back_without_cases }
+      say: >-
+        The suite came back without a single case. What did your gate compare
+        before it decided?
+    - id: adversarial-budget-before-confirm
+      when: { test_failed: adversarial_the_budget_runs_out_before_the_confirm_trials }
+      say: >-
+        The budget ran out before the confirm trials were asked. Could the
+        trials your gate never asked have changed its decision?
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs without a pass. On this tier the hints open after two failed
+        runs and a written note, and the first one says where to look.
+  wrap_up: >-
+    One trial of a prompt is one draw. Compare what each prompt does over
+    several trials, let a case that already varied be flaky, confirm a slip
+    before convicting it, and keep outages and refusals out of the verdict.
+
+tests:
+  - name: ships_a_change_that_breaks_nothing
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "CHG-2611" }
+      llm_script:
+        - { match: { contains: "Customer: Can I close my loan early?" },
+            reply: "Yes. Closing early costs 4 percent of the principal still outstanding." }
+        - match: { all: [ { contains: "prompt v41" }, { contains: "Customer: Can I pay off part of my loan early?" } ] }
+          reply: "Part-payments are not allowed on this loan."
+        - { match: { contains: "Customer: Can I pay off part of my loan early?" },
+            reply: "Yes, in amounts of ₹10,000 or more, up to twice a year." }
+        - { match: "*", reply: "I can only help with questions about your loan." }
+      tools:
+        suite:
+          returns:
+            trials: 3
+            confirm: 2
+            min_answered: 2
+            baseline: { prompt: "Repayments assistant, prompt v41. Answer the borrower in one or two sentences, from the loan facts on file only." }
+            candidate: { prompt: "Repayments assistant, prompt v42. Lead with the amount the borrower owes, then answer in one sentence, from the loan facts on file only." }
+            cases:
+              - { id: foreclosure, input: "Can I close my loan early?", expect: "4 percent" }
+              - { id: part-payment, input: "Can I pay off part of my loan early?", expect: "₹10,000" }
+      budget: { max_llm_calls: 16, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [decision, cases, regressions, flaky, no_data]
+            properties:
+              decision: { const: ship }
+              cases:
+                type: object
+                required: [foreclosure, part-payment]
+                properties:
+                  foreclosure: { const: unchanged }
+                  part-payment: { const: improved }
+              regressions: { const: [] }
+              flaky: { const: [] }
+              no_data: { const: [] }
+        - { type: prompt_contains, value: 'prompt v42\. Lead with[^\n]*\n\nCustomer: Can I close my loan early\?\nTrial: 3' }
+        - { type: llm_calls_at_most, value: 12 }
+
+  - name: blocks_a_change_that_breaks_a_case
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: "CHG-2612" }
+      llm_script:
+        - match: { all: [ { contains: "prompt v43" }, { contains: "Customer: When is my next EMI due?" } ] }
+          reply: "₹4,250, due on 12 November."
+        - { match: { contains: "Customer: When is my next EMI due?" },
+            reply: "Your next EMI of ₹4,250 is due on 5 November." }
+        - { match: { contains: "Customer: Can I close my loan early?" },
+            reply: "Yes. Closing early costs 4 percent of the principal still outstanding." }
+        - { match: "*", reply: "I can only help with questions about your loan." }
+      tools:
+        suite:
+          returns:
+            trials: 3
+            confirm: 2
+            min_answered: 2
+            baseline: { prompt: "Repayments assistant, prompt v42. Answer the borrower in one or two sentences, from the loan facts on file only." }
+            candidate: { prompt: "Repayments assistant, prompt v43. Lead with the amount the borrower owes, then answer in one sentence, from the loan facts on file only." }
+            cases:
+              - { id: emi-date, input: "When is my next EMI due?", expect: "5 November" }
+              - { id: foreclosure, input: "Can I close my loan early?", expect: "4 percent" }
+      budget: { max_llm_calls: 16, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [decision, cases, regressions, flaky, no_data]
+            properties:
+              decision: { const: block }
+              cases:
+                type: object
+                required: [emi-date, foreclosure]
+                properties:
+                  emi-date: { const: regression }
+                  foreclosure: { const: unchanged }
+              regressions: { const: [emi-date] }
+              flaky: { const: [] }
+              no_data: { const: [] }
+        - { type: llm_calls_at_most, value: 12 }
+
+  # The live prompt passes kyc-hold two trials in three: it is one of the
+  # cases that flip. The new prompt fails it every time, which is a drop of
+  # two passes, and still not the change's fault.
+  - name: a_case_that_already_varied_cannot_convict
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "CHG-2613" }
+      llm_script:
+        - match: { all: [ { contains: "prompt v43" }, { contains: "Customer: Why is my loan application on hold?" }, { contains: "Trial: 2" } ] }
+          reply: "Your application was declined. You can apply again in 90 days."
+        - match: { all: [ { contains: "prompt v44" }, { contains: "Customer: Why is my loan application on hold?" } ] }
+          reply: "Your application was declined. You can apply again in 90 days."
+        - { match: { contains: "Customer: Why is my loan application on hold?" },
+            reply: "It is waiting for KYC. Upload your PAN card in the app to continue." }
+        - { match: { contains: "Customer: Can I pay off part of my loan early?" },
+            reply: "Yes, in amounts of ₹10,000 or more, up to twice a year." }
+        - { match: "*", reply: "I can only help with questions about your loan." }
+      tools:
+        suite:
+          returns:
+            trials: 3
+            confirm: 2
+            min_answered: 2
+            baseline: { prompt: "Repayments assistant, prompt v43. Answer the borrower in one or two sentences, from the loan facts on file only." }
+            candidate: { prompt: "Repayments assistant, prompt v44. Lead with the amount the borrower owes, then answer in one sentence, from the loan facts on file only." }
+            cases:
+              - { id: kyc-hold, input: "Why is my loan application on hold?", expect: "KYC" }
+              - { id: part-payment, input: "Can I pay off part of my loan early?", expect: "₹10,000" }
+      budget: { max_llm_calls: 16, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [decision, cases, regressions, flaky, no_data]
+            properties:
+              decision: { const: ship }
+              cases:
+                type: object
+                required: [kyc-hold, part-payment]
+                properties:
+                  kyc-hold: { const: flaky }
+                  part-payment: { const: unchanged }
+              regressions: { const: [] }
+              flaky: { const: [kyc-hold] }
+              no_data: { const: [] }
+        - { type: llm_calls_at_most, value: 12 }
+
+  # The new prompt passes bounce-charge once in its three main trials, the same
+  # picture as the EMI-date slip, and then passes both confirm trials: two
+  # failures in five answered trials is not more than half.
+  - name: confirm_trials_can_clear_a_slip
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "CHG-2614" }
+      llm_script:
+        - match: { all: [ { contains: "prompt v45" }, { contains: "Customer: What happens if my EMI bounces?" }, { regex: "Trial: [13]" } ] }
+          reply: "Nothing, as long as you pay before the end of the month."
+        - { match: { contains: "Customer: What happens if my EMI bounces?" },
+            reply: "A bounced EMI costs ₹500 and is reported to the credit bureaus." }
+        - { match: { contains: "Customer: Can I close my loan early?" },
+            reply: "Yes. Closing early costs 4 percent of the principal still outstanding." }
+        - { match: "*", reply: "I can only help with questions about your loan." }
+      tools:
+        suite:
+          returns:
+            trials: 3
+            confirm: 2
+            min_answered: 2
+            baseline: { prompt: "Repayments assistant, prompt v44. Answer the borrower in one or two sentences, from the loan facts on file only." }
+            candidate: { prompt: "Repayments assistant, prompt v45. Lead with the amount the borrower owes, then answer in one sentence, from the loan facts on file only." }
+            cases:
+              - { id: bounce-charge, input: "What happens if my EMI bounces?", expect: "₹500" }
+              - { id: foreclosure, input: "Can I close my loan early?", expect: "4 percent" }
+      budget: { max_llm_calls: 16, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [decision, cases, regressions, flaky, no_data]
+            properties:
+              decision: { const: ship }
+              cases:
+                type: object
+                required: [bounce-charge, foreclosure]
+                properties:
+                  bounce-charge: { const: flaky }
+                  foreclosure: { const: unchanged }
+              regressions: { const: [] }
+              flaky: { const: [bounce-charge] }
+              no_data: { const: [] }
+        - { type: llm_calls_at_most, value: 14 }
+
+  # Two of emi-holiday's three trials on the new prompt come back as provider
+  # errors. One answer is fewer than min_answered, so the case has no data.
+  - name: a_case_the_provider_left_unanswered_has_no_data
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "CHG-2615" }
+      llm_script:
+        - match: { all: [ { contains: "prompt v46" }, { contains: "Customer: Can I skip next month's EMI?" }, { regex: "Trial: [13]" } ] }
+          reply: "Error: the provider rate-limited this request"
+        - { match: { contains: "Customer: Can I skip next month's EMI?" },
+            reply: "You cannot skip an EMI, but you can move its date once a year." }
+        - { match: { contains: "Customer: Can I close my loan early?" },
+            reply: "Yes. Closing early costs 4 percent of the principal still outstanding." }
+        - { match: "*", reply: "I can only help with questions about your loan." }
+      tools:
+        suite:
+          returns:
+            trials: 3
+            confirm: 2
+            min_answered: 2
+            baseline: { prompt: "Repayments assistant, prompt v45. Answer the borrower in one or two sentences, from the loan facts on file only." }
+            candidate: { prompt: "Repayments assistant, prompt v46. Lead with the amount the borrower owes, then answer in one sentence, from the loan facts on file only." }
+            cases:
+              - { id: foreclosure, input: "Can I close my loan early?", expect: "4 percent" }
+              - { id: emi-holiday, input: "Can I skip next month's EMI?", expect: "cannot skip" }
+      budget: { max_llm_calls: 16, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [decision, cases, regressions, flaky, no_data]
+            properties:
+              decision: { const: rerun }
+              cases:
+                type: object
+                required: [foreclosure, emi-holiday]
+                properties:
+                  foreclosure: { const: unchanged }
+                  emi-holiday: { const: no_data }
+              regressions: { const: [] }
+              flaky: { const: [] }
+              no_data: { const: [emi-holiday] }
+        - { type: llm_calls_at_most, value: 12 }
+
+  - name: adversarial_one_pass_in_three_is_confirmed_as_a_regression
+    visibility: adversarial
+    fixture: tool_lies
+    annotation_md: |
+      This is the EMI-date break from last Tuesday. The live prompt gave the
+      right date in all three trials, and the new prompt gave it once in three,
+      leading with the amount and then naming 12 November. Three trials cannot
+      tell a case that slipped from a case that broke, and calling the case
+      flaky because it varied is how the break shipped.
+
+      The two confirm trials both said 12 November. One pass in five answered
+      trials is a regression, and the change is blocked. The hidden case with
+      the same first three trials went the other way when its confirm trials
+      passed, which is why the confirm trials have to run before the verdict.
+    spec:
+      kind: agent_run
+      input: { question: "CHG-2616" }
+      llm_script:
+        - match: { all: [ { contains: "prompt v47" }, { contains: "Customer: When is my next EMI due?" }, { contains: "Trial: 1" } ] }
+          reply: "₹4,250, due on 5 November."
+        - match: { all: [ { contains: "prompt v47" }, { contains: "Customer: When is my next EMI due?" } ] }
+          reply: "₹4,250, due on 12 November."
+        - { match: { contains: "Customer: When is my next EMI due?" },
+            reply: "Your next EMI of ₹4,250 is due on 5 November." }
+        - { match: { contains: "Customer: Can I pay off part of my loan early?" },
+            reply: "Yes, in amounts of ₹10,000 or more, up to twice a year." }
+        - { match: "*", reply: "I can only help with questions about your loan." }
+      tools:
+        suite:
+          returns:
+            trials: 3
+            confirm: 2
+            min_answered: 2
+            baseline: { prompt: "Repayments assistant, prompt v46. Answer the borrower in one or two sentences, from the loan facts on file only." }
+            candidate: { prompt: "Repayments assistant, prompt v47. Lead with the amount the borrower owes, then answer in one sentence, from the loan facts on file only." }
+            cases:
+              - { id: emi-date, input: "When is my next EMI due?", expect: "5 November" }
+              - { id: part-payment, input: "Can I pay off part of my loan early?", expect: "₹10,000" }
+      budget: { max_llm_calls: 16, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [decision, cases, regressions, flaky, no_data]
+            properties:
+              decision: { const: block }
+              cases:
+                type: object
+                required: [emi-date, part-payment]
+                properties:
+                  emi-date: { const: regression }
+                  part-payment: { const: unchanged }
+              regressions: { const: [emi-date] }
+              flaky: { const: [] }
+              no_data: { const: [] }
+        - { type: prompt_contains, value: "Customer: When is my next EMI due\\?\\nTrial: 5" }
+        - { type: llm_calls_at_most, value: 14 }
+
+  # Under the contract's order, call 11 is foreclosure's second trial on the
+  # new prompt and call 13 is the first confirm trial, on emi-holiday. Each
+  # missing reply, counted as a failure, is enough on its own to block.
+  - name: adversarial_an_empty_reply_and_a_502_are_missing
+    visibility: adversarial
+    fixture: tool_soft_error
+    annotation_md: |
+      Two calls in this run produced no answer. The 11th came back empty and
+      the 13th came back `Error: upstream 502`. Neither says anything about
+      the new prompt, and each one, counted as a failure, blocks the change on
+      its own.
+
+      Counted as a failure, the empty reply makes the foreclosure case look
+      mixed, and its confirm trials then fail. The 502 lands in the
+      EMI-holiday case's confirm trials and tips it to three failures in
+      five. Kept out of the counts, foreclosure passes both of its answered
+      trials on the new prompt, EMI holiday fails two of four, which is not more
+      than half, and the change ships with EMI holiday reported as flaky.
+    spec:
+      kind: agent_run
+      input: { question: "CHG-2617" }
+      llm_script:
+        - { match: { call_index: 11 }, reply: "" }
+        - { match: { call_index: 13 }, reply: "Error: upstream 502" }
+        - match: { all: [ { contains: "prompt v48" }, { contains: "Customer: Can I skip next month's EMI?" }, { regex: "Trial: [13]" } ] }
+          reply: "Yes, you can skip one EMI a year at no cost."
+        - { match: { contains: "Customer: Can I skip next month's EMI?" },
+            reply: "You cannot skip an EMI, but you can move its date once a year." }
+        - match: { all: [ { contains: "prompt v48" }, { contains: "Customer: Can I close my loan early?" }, { regex: "Trial: [45]" } ] }
+          reply: "Yes, and closing early costs nothing."
+        - { match: { contains: "Customer: Can I close my loan early?" },
+            reply: "Yes. Closing early costs 4 percent of the principal still outstanding." }
+        - { match: "*", reply: "I can only help with questions about your loan." }
+      tools:
+        suite:
+          returns:
+            trials: 3
+            confirm: 2
+            min_answered: 2
+            baseline: { prompt: "Repayments assistant, prompt v47. Answer the borrower in one or two sentences, from the loan facts on file only." }
+            candidate: { prompt: "Repayments assistant, prompt v48. Lead with the amount the borrower owes, then answer in one sentence, from the loan facts on file only." }
+            cases:
+              - { id: emi-holiday, input: "Can I skip next month's EMI?", expect: "cannot skip" }
+              - { id: foreclosure, input: "Can I close my loan early?", expect: "4 percent" }
+      budget: { max_llm_calls: 16, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [decision, cases, regressions, flaky, no_data]
+            properties:
+              decision: { const: ship }
+              cases:
+                type: object
+                required: [emi-holiday, foreclosure]
+                properties:
+                  emi-holiday: { const: flaky }
+                  foreclosure: { const: unchanged }
+              regressions: { const: [] }
+              flaky: { const: [emi-holiday] }
+              no_data: { const: [] }
+        - { type: llm_calls_at_most, value: 14 }
+
+  - name: adversarial_the_gateway_closes_partway_through_a_case
+    visibility: adversarial
+    fixture: budget_squeeze
+    annotation_md: |
+      The gateway allowed this run ten calls and refused the eleventh, partway
+      through the EMI-date case's trials on the new prompt. The new prompt
+      had answered one trial, wrongly. One answer is fewer than the suite's
+      minimum of two, so the case has no data on the new prompt. Counted as
+      failures, the refused trials make the case a regression, and the report
+      blames the change for a budget that ran out.
+
+      A refused call also means every later call will be refused, so asking
+      for the third trial only adds a second refusal. The gate stops, reports
+      what it measured, with part-payment unchanged and EMI date without
+      data, and decides rerun.
+    spec:
+      kind: agent_run
+      input: { question: "CHG-2618" }
+      llm_script:
+        - match: { all: [ { contains: "prompt v49" }, { contains: "Customer: When is my next EMI due?" } ] }
+          reply: "₹4,250, due on 12 November."
+        - { match: { contains: "Customer: When is my next EMI due?" },
+            reply: "Your next EMI of ₹4,250 is due on 5 November." }
+        - { match: { contains: "Customer: Can I pay off part of my loan early?" },
+            reply: "Yes, in amounts of ₹10,000 or more, up to twice a year." }
+        - { match: "*", reply: "I can only help with questions about your loan." }
+      tools:
+        suite:
+          returns:
+            trials: 3
+            confirm: 2
+            min_answered: 2
+            baseline: { prompt: "Repayments assistant, prompt v48. Answer the borrower in one or two sentences, from the loan facts on file only." }
+            candidate: { prompt: "Repayments assistant, prompt v49. Lead with the amount the borrower owes, then answer in one sentence, from the loan facts on file only." }
+            cases:
+              - { id: part-payment, input: "Can I pay off part of my loan early?", expect: "₹10,000" }
+              - { id: emi-date, input: "When is my next EMI due?", expect: "5 November" }
+      budget: { max_llm_calls: 10, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 11 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [decision, cases, regressions, flaky, no_data]
+            properties:
+              decision: { const: rerun }
+              cases:
+                type: object
+                required: [part-payment, emi-date]
+                properties:
+                  part-payment: { const: unchanged }
+                  emi-date: { const: no_data }
+              regressions: { const: [] }
+              flaky: { const: [] }
+              no_data: { const: [emi-date] }
+
+  - name: adversarial_the_suite_comes_back_without_cases
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The suite service could not reach its case store and answered with an
+      error and an empty list of cases. A gate that compares the cases it was
+      given compares nothing, finds no regression and ships a change nobody
+      tested. No cases is no evidence, so the decision is rerun, and there is
+      nothing to spend a model call on.
+    spec:
+      kind: agent_run
+      input: { question: "CHG-2619" }
+      llm_script:
+        - { match: "*", reply: "I can only help with questions about your loan." }
+      tools:
+        suite: { returns: { error: "the case store timed out", cases: [] } }
+      budget: { max_llm_calls: 16, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: llm_calls_at_most, value: 0 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [decision, cases, regressions, flaky, no_data]
+            properties:
+              decision: { const: rerun }
+              cases: { type: object, maxProperties: 0 }
+              regressions: { const: [] }
+              flaky: { const: [] }
+              no_data: { const: [] }
+
+  # Twelve calls pay for both cases' main trials, and the first confirm trial
+  # is refused. Had they been answered, bounce-charge's trials 4 and 5 would
+  # both have failed: three failures in five, a regression.
+  - name: adversarial_the_budget_runs_out_before_the_confirm_trials
+    visibility: adversarial
+    fixture: budget_squeeze
+    annotation_md: |
+      The budget paid for every case's main trials and refused the first
+      confirm trial. The new prompt passed the bounce-charge case two times in
+      three, so on its answered trials the case reads flaky, and no case is
+      short of data. A gate that decides on what it has ships this change.
+
+      The two confirm trials the gateway refused were the two that would have
+      failed. With them the case fails three trials in five, and the change is
+      blocked. A run the gateway cut short decides rerun, because the trials
+      it never asked could have convicted a case it was about to let through.
+      Asking for the confirm trials before part-payment's main trials would
+      have left part-payment with no data at all.
+    spec:
+      kind: agent_run
+      input: { question: "CHG-2620" }
+      llm_script:
+        - match: { all: [ { contains: "prompt v50" }, { contains: "Customer: What happens if my EMI bounces?" }, { regex: "Trial: [245]" } ] }
+          reply: "Nothing, as long as you pay before the end of the month."
+        - { match: { contains: "Customer: What happens if my EMI bounces?" },
+            reply: "A bounced EMI costs ₹500 and is reported to the credit bureaus." }
+        - { match: { contains: "Customer: Can I pay off part of my loan early?" },
+            reply: "Yes, in amounts of ₹10,000 or more, up to twice a year." }
+        - { match: "*", reply: "I can only help with questions about your loan." }
+      tools:
+        suite:
+          returns:
+            trials: 3
+            confirm: 2
+            min_answered: 2
+            baseline: { prompt: "Repayments assistant, prompt v49. Answer the borrower in one or two sentences, from the loan facts on file only." }
+            candidate: { prompt: "Repayments assistant, prompt v50. Lead with the amount the borrower owes, then answer in one sentence, from the loan facts on file only." }
+            cases:
+              - { id: bounce-charge, input: "What happens if my EMI bounces?", expect: "₹500" }
+              - { id: part-payment, input: "Can I pay off part of my loan early?", expect: "₹10,000" }
+      budget: { max_llm_calls: 12, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 13 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [decision, cases, regressions, flaky, no_data]
+            properties:
+              decision: { const: rerun }
+              cases:
+                type: object
+                required: [bounce-charge, part-payment]
+                properties:
+                  bounce-charge: { const: flaky }
+                  part-payment: { const: unchanged }
+              regressions: { const: [] }
+              flaky: { const: [bounce-charge] }
+              no_data: { const: [] }
+
+reference_md: |
+  The old gate compared one draw from each prompt. A model with any sampling
+  in it answers a case from a distribution, and the three cases that flip
+  passed about two trials in three on the live prompt. One run passes all
+  three of them 8 times in 27, about 30 percent, so seven runs in ten blocked
+  on cases the change never touched, and rerunning until green became the
+  release process. Rerunning until green also clears a real regression the
+  first time it happens to pass. A change that gets the EMI-date answer right
+  one time in three goes green on about one run in ten, and last Tuesday that
+  run came on the third rerun.
+
+  Three trials on each prompt turn a draw into a standing, read from the
+  trials that were answered. An empty reply, an `Error:` reply and a refused
+  call say nothing about either prompt. Counted as failures, a provider's bad
+  minute convicts the change. A case left with too few answers has no data,
+  and missing evidence is the one honest reason to rerun.
+
+  The live prompt's standing is what gives a failure on the new prompt its
+  meaning. A case that already failed some trials before is failing in its
+  usual way, so it is flaky whatever the change does, and the defence
+  question is where that choice gets argued. A case that passed every trial
+  before and fails every trial now is a regression on six answers. The case
+  in between, which passed before and slips now, gets two confirm trials, and
+  a conviction only when the new prompt failed more than half of its answered
+  trials. Five trials convict a case the new prompt still passes 90 percent of
+  the time in fewer than one run in a hundred, and convict a break
+  like the EMI-date one, which passes one time in three, in about four runs
+  in five.
+
+  Order starts to matter once the budget is short. The main trials are the
+  comparison and the confirm trials only settle one case, so they wait until
+  every case has been compared. When the gateway
+  refuses a call, every later call is refused too, so the gate stops asking
+  and decides rerun. The squeezed run shows why shipping there is the
+  dangerous mistake: the two confirm trials the gateway refused were the two
+  that would have convicted the case.
+
+  The τ-bench authors measured the same effect on agents (Yao and colleagues,
+  arXiv 2406.12045, version 1 of 17 June 2024). Their pass^k is the chance
+  that all k independent trials of a task succeed, averaged over tasks. Their
+  best gpt-4o function-calling agent averaged above 60 percent task success
+  on the retail domain, and its pass^8 fell below 25 percent. A single trial
+  measures one draw, and a release gate needs the distribution.
+
+complexity: C2
+
+interview_evidence:
+  round: both
+  asked_as: |
+    Your regression suite has a few flaky cases, so the team reruns the gate until it passes. How would you make a block mean something again?
+  source: |
+    Author judgement, with the τ-bench paper (arXiv 2406.12045, version 1, read 8 October 2026) for pass^k. No employer frequency data stands behind it.
+
+tools:
+  - name: suite
+    args: change
+    returns: 'The suite: `trials`, `confirm`, `min_answered`, the `baseline` and `candidate` prompts, and the `cases`, each an
+      `id`, `input` and `expect` regex.'
+example:
+  case: ships_a_change_that_breaks_nothing
+  expect: Three trials of each case on each prompt, 12 calls. `foreclosure` passes all six and is unchanged.
+    `part-payment` fails all three on the live prompt and all three pass on the new one, so it is improved. Ship.
+traps:
+  - Blaming the change for failures on a case the live prompt already failed some of the time.
+  - Deciding a case that slipped on the new prompt before its confirm trials, or asking those trials before every case
+    has had its main ones.
+  - Counting an empty reply, an `Error:` reply or a refused call as a failed trial, so an outage blocks a release.
+  - Shipping on a run the budget cut short, when the trials it never asked could have convicted a case.
