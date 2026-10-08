@@ -30,7 +30,7 @@ The order you will see built is the one the product owner set on 30 September: t
 
 | Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
 |---|---|---|---|---|---|---|
-| S15 First cohort | The platform exists to produce one signal a placement team trusts, and today that signal is implied instead of computed. | 73 | 42 (28 to 58) | 136 | 12 Oct to 30 Nov 2026 | Medium |
+| S15 First cohort | The platform exists to produce one signal a placement team trusts, and today that signal is implied instead of computed. | 73 | 42 (28 to 58) | 136 | 8 Oct to 30 Nov 2026 | Medium |
 | S16 Second version | Each item answers a need the first cohort is expected to expose, and none of them is worth building before that cohort confirms it. | 50 | 58 (35 to 82) | 62 | 1 Dec to 31 Mar 2027 | Medium |
 <!-- /generated:roadmap -->
 
@@ -60,7 +60,7 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S11.1 | Deploy route C: the stack, the web host, DNS, GitHub sign-in and HTTPS | Task | 8 | Planned | DEPLOY.md steps 0 to 6 are done and the site answers on its public address over HTTPS.<br>The first admin signs in through an invite minted on the host. |
 | S11.2 | Prove the Bedrock judge with one live submission | Task | 2 | Planned | One design submission comes back with a band from the live judge, and the judge's cost appears in the spend alarm's metric. |
 | S11.3 | Prove Transcribe, Polly and S3 with one real voice session | Task | 3 | Planned | A spoken answer is transcribed live, a pressure-mode follow-up plays aloud, and the recording can be fetched from the bucket afterwards. |
-| S11.4 | Run the database restore drill once | Task | 3 | Planned | A backup restores into a scratch database, and the time it took is written in README section 4. |
+| S11.4 | Run the database restore drill once | Task | 3 | Planned | A backup restores into a scratch database, and the time it took is written in README section 4.<br>The written procedure exists in DEPLOY.md section 8.2 since 8 October 2026, and the timed drill waits for a deployment to run it on. |
 | S11.5 | Brief a second operator and run one practice drill | Task | 2 | Planned | A second person pauses grading, requeues a submission and reads an alarm without help. |
 | S11.6 | Set the Bedrock budget alarm at 50 and 80 percent | Task | 1 | Planned | An AWS Budgets alert filtered on the AWS Marketplace billing entity, where Claude's charges appear, notifies at 50 and 80 percent of the monthly limit. |
 | S11.7 | Run the 200-submission burst test against staging | Task | 3 | Planned | npm run burst completes 200 concurrent submissions against the deployed stack, and the result is recorded in docs/project/quality.md. |
@@ -105,7 +105,7 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S14.5 | Measure the cost and latency of a session before rollout | Task | 3 | Planned | The model cost and the follow-up latency of ten sessions are recorded, priced from Bedrock's published rates on the day. |
 | S14.6 | Amend docs/07 and the privacy notice | Task | 3 | Planned | docs/07 describes generated follow-ups and resume handling, and the consent screen says what happens to a resume. |
 | S15.1 | A baseline diagnostic that sets a learner's persona | Feature | 8 | Planned | A new learner's persona comes from a short diagnostic instead of an admin's hand. |
-| S15.2 | Author constraint lists, so the unnamed-constraint check can fire | Task | 5 | Planned | Every C3 and C4 problem declares its constraints, and names_no_constraint fires on an answer that names none. |
+| S15.2 | Author constraint lists, so the unnamed-constraint check can fire | Task | 5 | Done | Every C3 and C4 design problem declares its constraints, the validator refuses one that does not, and names_no_constraint fires on an answer that names none and stays silent on every strong exemplar. |
 | S15.3 | Re-grade past submissions against a new judge prompt version | Feature | 8 | Planned | A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it. |
 | S15.4 | Replace the import screen with something that works on a deployment | Feature | 5 | Planned | An admin publishes content on a deployed host without a shell. |
 | S15.5 | Build analytics: cohort views, the stuck list, calibration and panel health | Feature | 13 | Planned | Faculty can see which topic a cohort failed without writing SQL. |
