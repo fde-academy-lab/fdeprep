@@ -15,6 +15,7 @@ The decisions that shaped the build, in the order they were made. Each records w
 | D9 | 30 Sep | The worker invokes the runner and judge functions directly. | SQS between the application and the functions. | The Postgres queue already carries delivery, retries and leases, and a second queue for a few dozen learners adds a place to fail. | Revisit if a cohort outgrows one worker host. | PR #40, docs/05 |
 | D10 | 30 Sep | Beta testers get one-time invites, and GitHub stays the only proof of identity. | Email and password accounts. | No password store to secure, and every tester already has GitHub. | Somebody without a GitHub account cannot join. | PR #40 |
 | D11 | 30 Sep | The delivery board is generated from a file in the repository. | Cards edited by hand on the Project. | The record is reviewed like code, and a sync puts back anything edited by hand. | Views must be made by hand once, because GitHub's API cannot create them. | This folder |
+| D12 | 8 Oct | Follow-up rounds are a mode of their own, asked between turns, with the model's words raced against a four-second deadline and the authored follow-ups as the fallback. | A follow-up generated mid-answer, inside pressure mode. | docs/07 section 12 item 4 forbids a model call while the learner speaks, so a question drawn from the answer can only come after it, and pressure mode's interruptions are a different, tested behaviour. | A new route between turns, a socket per reply, and a gap of up to six seconds the learner waits through. | docs/07 section 5a |
 
 ## Deliberately not built
 
