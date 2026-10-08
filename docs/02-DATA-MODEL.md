@@ -292,6 +292,34 @@ create table learner_test (
 
 `body_sha256` exists so an identical resubmission can be detected and, on Extreme, rejected without spending the daily allowance.
 
+### Evaluations (amended 8 October 2026)
+
+A graded submission has one or more `evaluation` rows: the evaluation record of `10` section 10, built by migrations 014, 017 and 025. The table is append-only. A re-run after an outage, a regrade under a new judge prompt and a faculty correction each add a row, and the newest row is the one the learner's result follows.
+
+```sql
+create table evaluation (
+  id                bigserial primary key,
+  submission_id     bigint not null references submission (id) on delete cascade,
+  enrolment_id      bigint references enrolment (id) on delete cascade,
+  complexity        text not null,               -- C1 to C4, the level it was graded at
+  state             evaluation_state not null,   -- complete, partial, error
+  verdict           verdict,
+  score             numeric(6, 2),
+  score_provisional boolean not null default false,
+  confidence        panel_confidence not null,   -- high, medium, low
+  band              text,
+  panel             jsonb not null,              -- each panelist's status, findings and band
+  disagreement      jsonb,
+  feedback_md       text not null,               -- the one voice the learner reads
+  overridden_by     bigint references app_user (id),
+  override_note     text,
+  judge_prompt      text,                        -- the file in judge/prompts/ that graded it
+  created_at        timestamptz not null default now()
+);
+```
+
+`judge_prompt` names the prompt file the judge graded with, such as `rubric.v1.md`. It is empty where no judge prompt graded the answer: a code submission, an answer a cheaper check stopped, and every row written before migration 025, which fills in nothing it cannot know. The regrade command selects rows by it, and `05` section 7 has the drill.
+
 ---
 
 ## 5. Tracks and roadmaps
