@@ -283,6 +283,36 @@ describe("the lease and fencing token from docs/03 section 9.3", () => {
         order by window_start`, [learner.enrolmentId]);
     expect(rows.map((row) => row.count)).toEqual([1, 0]);
   });
+
+  it("gives nothing back when the claim's window is already at zero", async () => {
+    // A rehearsal spends one rehearsal_weekly unit when it starts, and every
+    // errored submit in it refunds that scope, so the week's window can reach
+    // zero before the last error lands. The unit was never in an earlier
+    // window, so an earlier window keeps its count.
+    const { submission, message } = await queued();
+    await db().query(
+      `insert into rate_limit_counter (enrolment_id, scope, problem_id, window_start, count)
+       select enrolment_id, scope, problem_id, window_start - interval '2 hours', 1
+         from rate_limit_counter where enrolment_id = $1 and scope = 'run_hourly'`,
+      [learner.enrolmentId]);
+    await db().query(
+      `update rate_limit_counter set count = 0
+        where enrolment_id = $1 and scope = 'run_hourly'
+          and window_start > now() - interval '1 hour'`, [learner.enrolmentId]);
+
+    await writeResult({
+      submission_id: submission.id,
+      lease_token: message.body["lease_token"] as string,
+      fencing_token: Number(message.body["fencing_token"]),
+      body_sha256: message.body["body_sha256"] as string,
+      result: { ...RESULT, verdict: "error" },
+    });
+
+    const { rows } = await db().query<{ count: number }>(
+      `select count from rate_limit_counter where enrolment_id = $1 and scope = 'run_hourly'
+        order by window_start`, [learner.enrolmentId]);
+    expect(rows.map((row) => row.count)).toEqual([1, 0]);
+  });
 });
 
 describe("acceptance 4: the result survives the browser closing", () => {

@@ -269,15 +269,18 @@ export const VOICE_FREE_SHORT_ANSWERS_PER_DAY = 6;
  * who loses their one daily Extreme attempt to infrastructure stops trusting
  * every score.
  *
- * The unit goes back to the window that was open when the submission was
- * queued, and only that one, which is release()'s rule above. It used to come
+ * The unit goes back to the window the claim went into, which is the latest
+ * window for the learner, scope and problem that opened at or before the
+ * submission was queued, and to no other. A window already at zero gives
+ * nothing back rather than taking the unit off an earlier day. It used to come
  * off every window for the learner and the problem, so one error rewrote the
  * count of every earlier day.
  */
 export async function refund(client: PoolClient, submissionId: number): Promise<void> {
   await client.query(
     `update rate_limit_counter set count = count - 1
-      where id = (
+      where count > 0
+        and id = (
         select c.id
           from submission s
           join attempt a on a.id = s.attempt_id
@@ -294,7 +297,6 @@ export async function refund(client: PoolClient, submissionId: number): Promise<
                  case when s.kind in ('run','submit') then v.problem_id else null end)
          where s.id = $1
            and c.window_start <= s.queued_at
-           and c.count > 0
          order by c.window_start desc
          limit 1)`,
     [submissionId]);
