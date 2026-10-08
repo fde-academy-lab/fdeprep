@@ -77,6 +77,10 @@ export interface RoadmapItem {
   artefactType: string;
   estMinutes: number;
   competencyCount: number;
+  /** The storyline day, or null for a problem published before the storyline. */
+  day: number | null;
+  /** The topic inside its chapter. */
+  topic: string | null;
   ordinal: number;
   isOptional: boolean;
   solved: boolean;
@@ -216,9 +220,11 @@ export async function roadmapFor(
     problem_id: string; slug: string; title: string; difficulty: Difficulty;
     track: string; artefact_type: string; est_minutes: number; ordinal: number;
     is_optional: boolean; solved: boolean; attempted: boolean; competency_count: number;
+    day: number | null; topic: string | null;
   }>(
     `select p.id as problem_id, p.slug, p.title, p.difficulty::text as difficulty,
             p.track, p.artefact_type::text as artefact_type, p.est_minutes,
+            p.day, cur.kit->'concept'->>'topic' as topic,
             i.ordinal, i.is_optional,
             a.solved_at is not null as solved,
             a.id is not null as attempted,
@@ -227,6 +233,7 @@ export async function roadmapFor(
        from track_item i
        join track t on t.id = i.track_id
        join problem p on p.id = i.problem_id
+       left join problem_version cur on cur.problem_id = p.id and cur.version = p.current_version
        left join attempt a on a.problem_id = p.id and a.enrolment_id = $1
       where t.persona = $2::persona
       order by i.ordinal`,
@@ -241,6 +248,8 @@ export async function roadmapFor(
     artefactType: row.artefact_type,
     estMinutes: row.est_minutes,
     competencyCount: row.competency_count,
+    day: row.day,
+    topic: row.topic,
     ordinal: row.ordinal,
     isOptional: row.is_optional,
     solved: row.solved,
