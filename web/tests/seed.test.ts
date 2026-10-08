@@ -21,11 +21,13 @@ import { heatmap } from "../lib/progress/index.ts";
 import { readinessFor } from "../lib/progress/readiness.ts";
 import { loadCatalogue } from "../lib/seed/catalogue.ts";
 import { plan, type AttemptAction, type SeedPlan } from "../lib/seed/plan.ts";
+import { removeSeed } from "../lib/seed/replace.ts";
 import { runSeed, SeedRefused, type SeedReport } from "../lib/seed/run.ts";
 import { learnerOrNull } from "../lib/session/current.ts";
 import { importVoiceQuestion } from "../lib/voice/import.ts";
 import { NAMED, type Step } from "./fixtures/seed-readiness.ts";
 import { importFixtures, resetDatabase } from "./helpers.ts";
+import { seedCommand } from "../scripts/seed.ts";
 
 const VOICE = path.join(import.meta.dirname, "..", "..", "voice-questions");
 const QUESTIONS = [
@@ -305,4 +307,69 @@ describe("the seed refuses to grade somebody else's work", () => {
       await db().query("delete from voice_session where id = $1", [rows[0]!.id]);
     }
   });
+});
+
+describe("npm run db:seed refuses before it writes", () => {
+  async function run(argv: string[]): Promise<{ code: number; said: string }> {
+    const lines: string[] = [];
+    const code = await seedCommand(argv, (line) => lines.push(line));
+    return { code, said: lines.join("\n") };
+  }
+
+  it("refuses a second seed and names --replace", async () => {
+    const { code, said } = await run([]);
+    expect(code).toBe(1);
+    expect(said).toMatch(/--replace/);
+  });
+
+  it("refuses a production database without --yes, saying what it would write", async () => {
+    const env = process.env as Record<string, string | undefined>;
+    const previous = env["NODE_ENV"];
+    env["NODE_ENV"] = "production";
+    try {
+      const { code, said } = await run(["--replace"]);
+      expect(code).toBe(1);
+      expect(said).toMatch(/--yes/);
+      expect(said).toMatch(/forty seeded learners/);
+    } finally {
+      env["NODE_ENV"] = previous;
+    }
+  });
+
+  it("refuses an empty catalogue and says to import first", async () => {
+    await db().query("update problem set is_published = false");
+    try {
+      const { code, said } = await run([]);
+      expect(code).toBe(1);
+      expect(said).toBe(
+        "No problems are published. Run npm run import:content first, then npm run db:seed.");
+    } finally {
+      await db().query("update problem set is_published = true");
+    }
+  });
+});
+
+describe("--replace", () => {
+  it("removes the seed and nothing else, and the seed runs again", async () => {
+    const before = {
+      problems: await count("select count(*) as n from problem"),
+      users: await count("select count(*) as n from app_user"),
+    };
+
+    expect(await removeSeed()).toBe(2);
+
+    for (const table of ["cohort", "enrolment", "submission", "evaluation", "evaluation_review",
+                         "competency_score", "attempt", "invite", "voice_session", "rehearsal",
+                         "rate_limit_counter", "persona_change", "audit_log", "outbox"]) {
+      expect(await count(`select count(*) as n from ${table}`), table).toBe(0);
+    }
+    // The accounts stay and are reused; the catalogue is untouched.
+    expect(await count("select count(*) as n from app_user")).toBe(before.users);
+    expect(await count("select count(*) as n from problem")).toBe(before.problems);
+    expect(await removeSeed()).toBe(0);
+
+    await runSeed(seeded);
+    expect(await count("select count(*) as n from submission")).toBe(seeded.expected.submissions);
+    expect((await learnerOrNull())?.role).toBe("admin");
+  }, 240_000);
 });
