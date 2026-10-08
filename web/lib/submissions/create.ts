@@ -84,6 +84,17 @@ export async function createSubmission(input: CreateInput): Promise<CreatedSubmi
     const problem = rows[0];
     if (!problem) throw new Error(`problem ${input.problemId} has no current version`);
 
+    // docs/00 section 4: a Run executes public tests, and only a code problem
+    // has any. A prompt or design answer is graded by the judge, whose probes
+    // and rubric are its Submit battery, so a Run there would buy that
+    // battery, and the model calls behind it, at the Run allowance. No screen
+    // offers one; this refuses the request that names one anyway.
+    if (input.kind === "run" && problem.artefact_type !== "code") {
+      throw new GateRefused(
+        "Run sends code through its public tests, and a prompt or design answer has none. " +
+        "Submit it when it is ready.");
+    }
+
     // A build stage runs nothing until the stage before it passes. Checked
     // before the attempt row exists, so a refused request leaves no trace.
     if (input.kind !== "rehearsal_submit") {

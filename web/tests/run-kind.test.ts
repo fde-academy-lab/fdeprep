@@ -15,14 +15,15 @@
  * nothing else, through the real runner; the writer never stores a hidden or
  * adversarial result on a Run, whatever a runner sends; the screens, the
  * hint gate and the coach read none from one; a Submit and a rehearsal submit
- * still run the full battery; and a defence still goes to the judge.
+ * still run the full battery; a defence still goes to the judge; and a Run
+ * cannot buy the judge's battery on a problem that has no public tests.
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import { closeDb, db } from "../lib/db/pool.ts";
-import { createSubmission, type RunKind } from "../lib/submissions/create.ts";
+import { createSubmission, GateRefused, type RunKind } from "../lib/submissions/create.ts";
 import { dispatchOnce } from "../lib/queue/dispatcher.ts";
 import { runOnce, writeResultsOnce } from "../lib/queue/runner-worker.ts";
 import { writeResult } from "../lib/queue/result-writer.ts";
@@ -329,6 +330,24 @@ describe("what a learner reads back from a Run written before the fix", () => {
     const [past] = (await attemptHistory(learner.enrolmentId, id)).submissions;
     expect(past).toMatchObject({ kind: "run", publicPassed: 2, publicTotal: 2,
                                  hiddenPassed: null, hiddenTotal: null, score: null });
+  });
+});
+
+describe("a Run on a problem with no public tests to run", () => {
+  it("is refused before anything is written, on a prompt or a design problem", async () => {
+    // The judge never read a kind either, so a hand-made request for a Run
+    // on a prompt problem bought the probes and the rubric at the Run
+    // allowance. No screen offers one.
+    await importFixtures();
+    for (const slug of ["harden-the-leaky-prompt", "argue-the-eval-plan"]) {
+      const { rows: [problem] } = await db().query<{ id: string }>(
+        "select id from problem where slug = $1", [slug]);
+      await expect(create(Number(problem!.id), "run", "an answer")).rejects.toBeInstanceOf(GateRefused);
+    }
+    const { rows: [counts] } = await db().query<{ submissions: string; counters: string }>(
+      `select (select count(*) from submission) as submissions,
+              (select count(*) from rate_limit_counter) as counters`);
+    expect(counts).toEqual({ submissions: "0", counters: "0" });
   });
 });
 
