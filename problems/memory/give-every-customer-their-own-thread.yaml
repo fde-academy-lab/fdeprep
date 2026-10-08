@@ -341,8 +341,8 @@ diagram:
     - { from: router, to: one, label: one id for everyone, tone: danger }
     - { from: router, to: c14, label: "`thread_id` is C-14", step: 2, tone: success }
     - { from: router, to: c22, label: "`thread_id` is C-22", tone: success }
-    - { from: c14, to: graph, label: a yes or no resumes, step: 3 }
-    - { from: c22, to: graph, label: anything else is a turn }
+    - { from: c14, to: graph, label: a yes or no resumes it, step: 3 }
+    - { from: c22, to: graph, label: a new message is a turn }
     - { from: graph, to: file, label: after a yes, step: 4 }
 
 approach:
@@ -369,12 +369,12 @@ coach:
         Every message runs on the thread `main`. Whose checkpoint does the next
         customer's message read and write?
     - id: no-cancel-count
-      when: { code_lacks: 'cancelled\b[^\n]*\+=\s*1' }
+      when: { code_lacks: 'cancel\w*(\[[^\]]*\])?\s*(\+=|=[^=])' }
       say: >-
         Nothing in your code counts a cancelled confirmation. What happens to a
         paused thread when its customer writes something that is not a yes or a no?
     - id: no-unrouted
-      when: { code_lacks: 'unrouted\s*\+=' }
+      when: { code_lacks: 'unrouted\s*(\+=|=\s*unrouted\s*\+|\.append\()' }
       say: >-
         Nothing in your code counts a message that has no customer. Which
         thread would such a message land on?
@@ -388,6 +388,11 @@ coach:
       say: >-
         That customer asked a question while a confirmation waited. Did the
         question reach the model, or did it go in as the answer?
+    - id: strangers-yes
+      when: { test_failed: a_strangers_yes_files_nothing }
+      say: >-
+        A different customer wrote yes while that thread waited for a
+        confirmation. Whose question did your code treat it as answering?
     - id: no-is-an-answer
       when: { test_failed: a_no_files_nothing }
       say: >-
@@ -612,6 +617,49 @@ tests:
                       pending: { const: false }
                       cancelled: { const: 0 }
 
+  - name: a_strangers_yes_files_nothing
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "App chat, 7 October, 20:00 to 20:30" }
+      llm_script:
+        - { match: { contains: "Homeplus" },
+            reply: "Fact: card=8830\nFact: amount=4200\nFact: merchant=Homeplus\nDispute: ₹4,200 at Homeplus on 3 October, card ending 8830" }
+        - { match: "*", reply: "Noted." }
+      tools:
+        sessions:
+          returns:
+            - { customer: "C-19", text: "My card ending 8830 was charged ₹4,200 at Homeplus on 3 October. That was not me." }
+            - { customer: "C-23", text: "Yes" }
+        file_dispute: { returns: { status: 200, case: "DSP-30190" } }
+      budget: { max_llm_calls: 6, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: does_not_call_tool, name: file_dispute }
+        - { type: llm_calls_at_most, value: 2 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [customers]
+            properties:
+              customers:
+                type: object
+                required: [C-19, C-23]
+                properties:
+                  C-19:
+                    type: object
+                    required: [filed, pending, cancelled]
+                    properties:
+                      filed: { const: false }
+                      pending: { const: true }
+                      cancelled: { const: 0 }
+                  C-23:
+                    type: object
+                    required: [facts, filed, pending]
+                    properties:
+                      facts: { const: {} }
+                      filed: { const: false }
+                      pending: { const: false }
+
   - name: adversarial_a_message_with_no_customer
     visibility: adversarial
     fixture: tool_lies
@@ -680,6 +728,12 @@ reference_md: |
   such as a customer's earlier disputes, would sit in a store keyed by the
   customer and be read into a turn. It is the same question one level up,
   which key decides whose memory a turn reads, and the answer is the same.
+  The `InMemorySaver` here keeps its checkpoints in the process's memory, and
+  `build_graph` makes a new one for every batch, so a customer who comes back
+  tomorrow starts from an empty thread.
+  [Decide what to save to long-term memory](/problems/decide-what-to-save-to-long-term-memory),
+  in this chapter, asks which of these facts may be kept past the batch and
+  which never may.
 
   A paused thread is waiting for the answer to one question.
   `Command(resume=...)` hands the waiting `interrupt()` whatever it is given,
