@@ -11,9 +11,11 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { Users } from "lucide-react";
 import { currentLearner } from "@/lib/session/current";
-import { loadInterviewers, PANEL } from "@/lib/voice/interviewers";
+import { loadInterviewers, PANEL, type Interviewer } from "@/lib/voice/interviewers";
 import { publishedQuestions } from "@/lib/voice/question";
 import { ButtonLink } from "@/components/ui/button";
+import { InterviewerAvatar } from "@/components/voice/room/avatar";
+import { InterviewRoom } from "@/components/voice/room/room";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Page, PageHeading } from "@/components/ui/page";
 
@@ -24,6 +26,12 @@ export default async function InterviewersPage() {
   await currentLearner();
   const [interviewers, questions] = await Promise.all([loadInterviewers(), publishedQuestions()]);
   const names = new Map(interviewers.map((interviewer) => [interviewer.slug, interviewer.name]));
+  const bySlug = new Map(interviewers.map((interviewer) => [interviewer.slug, interviewer]));
+  /** Who sits at the table: the person, or the panel's members. */
+  const seats = (interviewer: Interviewer) =>
+    (interviewer.members.length > 0
+      ? interviewer.members.map((slug) => bySlug.get(slug)).filter((person) => person !== undefined)
+      : [interviewer]).map((person) => ({ slug: person.slug, name: person.name, role: person.title }));
 
   return (
     <Page>
@@ -41,8 +49,19 @@ export default async function InterviewersPage() {
             const asks = questions.filter((question) => question.interviewers.includes(interviewer.slug));
             return (
               <li key={interviewer.slug} className="flex flex-col rounded-panel border border-border bg-surface p-5">
-                <h2 className="text-lead font-semibold text-text">
-                  {interviewer.name}, <span className="font-normal text-text-dim">{interviewer.title}</span>
+                {/* The room is content: the interviewer at the table, as the
+                    lobby will show them. The wall is the page's own colour,
+                    so it sits apart inside the card. */}
+                <div className="mb-4 w-fit overflow-hidden rounded-control border border-border">
+                  <InterviewRoom size="debrief" interviewers={seats(interviewer)} />
+                </div>
+                <h2 className="flex items-center gap-2 text-lead font-semibold text-text">
+                  <InterviewerAvatar slug={interviewer.slug} />
+                  <span>
+                    {interviewer.slug === PANEL ? interviewer.name : (
+                      <>{interviewer.name}, <span className="font-normal text-text-dim">{interviewer.title}</span></>
+                    )}
+                  </span>
                 </h2>
                 <p className="mt-1 text-text-dim">{interviewer.role}</p>
                 {interviewer.slug === PANEL && interviewer.members.length > 0 ? (

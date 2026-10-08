@@ -224,3 +224,12 @@ export function labelOf(interviewer: Interviewer): InterviewerLabel {
   return { slug: interviewer.slug, name: interviewer.name, role: interviewer.role,
            title: interviewer.title };
 }
+
+/** Who sits at the table for an interviewer, retired or not: the person, or
+ *  the panel's members with the chair first. The room draws these. */
+export async function seatedFor(slug: string | null): Promise<InterviewerLabel[]> {
+  const interviewer = await interviewerOnRecord(slug);
+  if (!interviewer) return [];
+  const members = await membersOf(interviewer);
+  return (members.length > 0 ? members : [interviewer]).map(labelOf);
+}

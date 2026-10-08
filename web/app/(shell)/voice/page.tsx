@@ -26,6 +26,7 @@ import { roundName } from "@/lib/voice/rounds";
 import { logVoiceNotSetUp, voiceReadiness } from "@/lib/voice/start";
 import { ButtonLink } from "@/components/ui/button";
 import { cn } from "@/components/ui/cn";
+import { InterviewerAvatar } from "@/components/voice/room/avatar";
 import { DifficultyMeter } from "@/components/ui/difficulty";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Page, PageHeading } from "@/components/ui/page";
@@ -55,7 +56,7 @@ function Filter({ href, current, children }: {
 }) {
   return (
     <Link href={href} aria-current={current ? "true" : undefined}
-          className={cn("inline-flex h-7 items-center rounded-full border px-2.5 text-meta",
+          className={cn("inline-flex h-7 items-center gap-1.5 rounded-full border px-2.5 text-meta",
                         current ? "border-border-strong bg-surface-3 text-text"
                           : "border-border text-text-dim hover:bg-surface-2 hover:text-text")}>
       {children}
@@ -134,6 +135,7 @@ export default async function VoicePage({ searchParams }: { searchParams?: Promi
                 {interviewers.map((interviewer) => (
                   <Filter key={interviewer.slug} href={filtered({ interviewer: interviewer.slug })}
                           current={by === interviewer.slug}>
+                    <InterviewerAvatar slug={interviewer.slug} />
                     {interviewer.name}
                   </Filter>
                 ))}

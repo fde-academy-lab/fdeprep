@@ -8,7 +8,7 @@
  * before an answer starts and never during one: the cockpit receives the
  * lobby and hides it while the learner speaks.
  */
-import type { Interviewer } from "@/lib/voice/interviewers";
+import { PANEL, type Interviewer } from "@/lib/voice/interviewers";
 import { HearButton } from "./hear-button";
 
 export function InterviewerCard({ interviewer, questionId, speaks }: {
@@ -22,7 +22,9 @@ export function InterviewerCard({ interviewer, questionId, speaks }: {
     <section aria-label="Your interviewer" className="rounded-panel border border-border bg-surface p-5">
       <p className="text-meta text-text-faint">Your interviewer</p>
       <h2 className="mt-1 text-lead font-semibold text-text">
-        {interviewer.name}, <span className="font-normal text-text-dim">{interviewer.title}</span>
+        {interviewer.slug === PANEL ? interviewer.name : (
+          <>{interviewer.name}, <span className="font-normal text-text-dim">{interviewer.title}</span></>
+        )}
       </h2>
       <p className="mt-1 max-w-[70ch] text-text-dim">{interviewer.role}</p>
       <h3 className="mt-4 text-meta font-medium text-text-faint">Listens for</h3>
