@@ -237,3 +237,40 @@ def test_a_question_with_no_beats_is_refused_before_a_call():
         {"artefact_type": "voice", "transcript": "x", "question": {"beats": []}}, transport)
     assert result["status"] == "error"
     assert transport.calls == 0
+
+
+class TestPing:
+    """Plan section 4.4: the server wakes the judge when an interview session
+    opens, so a cold container has started before the first follow-up's
+    deadline begins."""
+
+    def test_ping_makes_no_model_call(self):
+        transport = ScriptedTransport([])
+        assert judge_event({"artefact_type": "ping"}, transport) == {
+            "status": "ok", "model_calls": 0}
+        assert transport.calls == 0
+
+    def test_ping_answers_without_a_configured_model(self, monkeypatch):
+        monkeypatch.delenv("JUDGE_MODEL_ID", raising=False)
+        assert judge_event({"artefact_type": "ping"}) == {"status": "ok", "model_calls": 0}
+
+    def test_ping_in_a_configured_judge_builds_a_client_and_sends_nothing(self, monkeypatch):
+        import boto3
+
+        built = []
+        monkeypatch.setattr(boto3, "client",
+                            lambda *args, **kwargs: built.append((args, kwargs)) or object())
+        monkeypatch.setenv("JUDGE_MODEL_ID", "us.m")
+        monkeypatch.setenv("JUDGE_REGION", "eu-west-1")
+        assert judge_event({"artefact_type": "ping"}) == {"status": "ok", "model_calls": 0}
+        assert built == [(("bedrock-runtime",), {"region_name": "eu-west-1"})]
+
+    def test_a_warm_up_that_fails_still_answers(self, monkeypatch):
+        import boto3
+
+        def unavailable(*_, **__):
+            raise RuntimeError("no SDK here")
+
+        monkeypatch.setattr(boto3, "client", unavailable)
+        monkeypatch.setenv("JUDGE_MODEL_ID", "us.m")
+        assert judge_event({"artefact_type": "ping"}) == {"status": "ok", "model_calls": 0}

@@ -12,12 +12,18 @@ from __future__ import annotations
 import statistics
 from typing import Any
 
-from .bedrock import ScriptedTransport, Transport
+from .bedrock import ScriptedTransport, Transport, failure_name
 from .defence import judge_defence
+from .follow_up import failed, judge_follow_up_event
 from .probes import ProbeDisagreement, run_probes
 from .rubric import judge_rubric, with_ids
 from .schema import JudgeOutputRejected
 from .voice import judge_voice_event
+
+# The voice interviewer's events answer with a status and a reason rather
+# than a verdict, and every answer to one carries them, including the
+# answers built here when the event never reached its module. Plan section 4.1.
+STATUS_EVENTS = ("voice_follow_up", "voice_resume_claims")
 
 # A prompt submission that clears every probe has met the objective bar. The
 # rubric decides how much of the remaining sixty it earns. docs/03 section 5
@@ -67,6 +73,10 @@ def pass_threshold(exemplars: list[dict[str, Any]]) -> float | None:
 
 
 def judge_event(event: dict[str, Any], transport: Transport | None = None) -> dict[str, Any]:
+    artefact = event.get("artefact_type") if isinstance(event, dict) else None
+    if artefact == "ping":
+        return _ping(warm_sdk=transport is None)
+
     if transport is None:  # pragma: no cover - exercised by the live tests
         from .bedrock import BedrockTransport
         from .config import load_config
@@ -74,12 +84,21 @@ def judge_event(event: dict[str, Any], transport: Transport | None = None) -> di
         try:
             transport = BedrockTransport(load_config())
         except ValueError as misconfigured:
+            if artefact in STATUS_EVENTS:
+                return failed("error", f"The judge is not configured to reach a model "
+                                       f"({misconfigured}).")
             return _error(f"The judge is not configured to reach a model ({misconfigured}). "
                           "Your attempt was not counted.")
 
     try:
         return _judge(event, transport)
     except Exception as failure:  # noqa: BLE001
+        if artefact in STATUS_EVENTS:
+            # Named, never quoted: an exception raised over a resume can carry
+            # the resume in its text.
+            return failed("error", f"The judge failed before it could answer "
+                                   f"({failure_name(failure)}).",
+                          calls=getattr(transport, "calls", 0))
         # docs/03 section 8: a model call that fails after its retries is an
         # error verdict that does not consume the cap. A grading Lambda that
         # raises instead leaves the caller guessing whether the learner's
@@ -88,6 +107,23 @@ def judge_event(event: dict[str, Any], transport: Transport | None = None) -> di
             "The judge could not reach the model. Your attempt was not counted. Try again.",
             calls=getattr(transport, "calls", 0),
             detail=f"{type(failure).__name__}: {failure}")
+
+
+def _ping(*, warm_sdk: bool) -> dict[str, Any]:
+    """Plan section 4.4: the server sends this when an interview session opens,
+    so a cold judge container has started before the first follow-up's four
+    second deadline begins. No model call, and no configuration needed to
+    answer. Inside Lambda it also loads the AWS SDK, which the first model
+    call would otherwise pay for inside that deadline."""
+    if warm_sdk:
+        from .bedrock import warm
+        from .config import load_config
+
+        try:
+            warm(load_config())
+        except ValueError:
+            pass  # unconfigured: the follow-up will say so with its own reason
+    return {"status": "ok", "model_calls": 0}
 
 
 def _judge(event: dict[str, Any], transport: Transport) -> dict[str, Any]:
@@ -100,6 +136,9 @@ def _judge(event: dict[str, Any], transport: Transport) -> dict[str, Any]:
     # verdict.
     if artefact == "voice":
         return judge_voice_event(event, transport)
+    # Plan section 4.1: the voice interviewer's follow-up between turns.
+    if artefact == "voice_follow_up":
+        return judge_follow_up_event(event, transport)
 
     problem = event.get("problem") or {}
     body = event.get("body") or ""
