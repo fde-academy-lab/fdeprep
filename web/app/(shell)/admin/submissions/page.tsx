@@ -145,6 +145,7 @@ export default async function SubmissionsPage({ searchParams }: {
               <Cell head>Verdict</Cell>
               <NumCell head>Score</NumCell>
               <Cell head>Trace</Cell>
+              <Cell head>Evaluations</Cell>
             </Head>
           }>
             {page.rows.map((row) => {
@@ -167,6 +168,16 @@ export default async function SubmissionsPage({ searchParams }: {
                       <Link href={`/traces/${row.id}` as Route}
                             className="text-text-dim underline-offset-2 hover:text-text hover:underline">
                         Trace
+                      </Link>
+                    ) : null}
+                  </Cell>
+                  <Cell>
+                    {/* S15.3: every evaluation this submission has had, with the
+                        judge prompt that graded each. Only a verdict gets one. */}
+                    {row.verdict ? (
+                      <Link href={`/admin/submissions/${row.id}` as Route}
+                            className="text-text-dim underline-offset-2 hover:text-text hover:underline">
+                        Evaluations
                       </Link>
                     ) : null}
                   </Cell>

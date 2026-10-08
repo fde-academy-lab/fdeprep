@@ -1740,10 +1740,10 @@ stages:
       - id: S15.3
         title: Re-grade past submissions against a new judge prompt version
         type: Feature
-        status: todo
+        status: done
         points: 8
         area: Evaluation panel
-        finish: 2026-11-09
+        finish: 2026-10-08
         acceptance:
           - A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it.
       - id: S15.4

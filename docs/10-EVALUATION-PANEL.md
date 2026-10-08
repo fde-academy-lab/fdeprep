@@ -233,6 +233,7 @@ This is the judge that exists today, in `judge/`, with its prompts as versioned 
 |---|---|
 | A panelist envelope | The judge returns findings tagged with its own identity, rather than a bare score, so the consolidator can attribute them. |
 | A hard timeout | The panel does not wait indefinitely. When the deadline passes, P3 is `unavailable` and the evaluation is `partial`. |
+| The prompt's name | Built 8 October 2026 (S15.3). A response a judge prompt graded carries `judge_prompt`, the file's name in `judge/prompts/`, such as `rubric.v1.md` or `defence.v1.md`. A response a cheaper check stopped carries none. P3's seat records it and section 10 says where it goes. |
 
 Everything in `.claude/rules/01-trust-boundaries.md` about prompt injection still holds. Learner text reaches P3 wrapped in delimiters and labelled as data, output is parsed as JSON against a schema and rejected when it does not conform, and a design answer asking for full marks scores on content.
 
@@ -348,6 +349,8 @@ Two rules make degradation safe rather than merely graceful.
 
 **A re-evaluation never consumes an allowance.** It is the platform finishing work it already owed.
 
+**The judge worker pays the backlog.** Built 8 October 2026 (S15.3). Each tick, after its own judgements, the worker re-runs at most three partial evaluations, oldest first: `drainReevaluations` in `web/lib/queue/judge-worker.ts`, over `reevaluationBacklog`. A re-run asks again only the panelists that could not run and carries the rest across, and P3 reads the judgement already on the record before it calls the judge. P1 is rebuilt from the committed result with the committed verdict, so a re-run moves no verdict. A re-run that completes the evaluation appends a row, floored at the provisional score. One that would still be partial writes nothing, so an outage stays one `partial` row, and that submission waits a minute before its next try, doubling to fifteen minutes. Nothing on the path reads or spends an allowance.
+
 **A worker refuses to start when its own catalogue requires a panelist it cannot run.** Checked once at boot, never per submission, because the failure it catches is permanent: a model that is not on disk now will not be on disk in an hour. The worker reads the published problems, takes the strongest demand any one of them places, and probes. A code-only catalogue starts without the embedding model, because C2 makes panelist 2 optional and the battery decides the grade. A catalogue holding one C3 problem does not. Nothing here is configured by hand: an operator describing what their box is for would eventually describe it wrong, so the content decides. `EVAL_DEGRADED_PANELISTS=pretrained` starts anyway, prints what was given up, and is a decision somebody made rather than a default.
 
 Only absences are checked at boot. Bedrock being unreachable is transient, costs a model call to test, and is already handled at run time by the evaluation going `partial` and owing a free re-run.
@@ -363,6 +366,8 @@ The learner-facing message names the next action, per `.claude/rules/02-writing.
 ## 10. The evaluation record
 
 One row per submission per evaluation attempt. Immutable. A re-run writes a new row and the latest complete row wins.
+
+Amended 8 October 2026: the newest row is the one shown, which is the same rule in practice. The result writer is the only writer of a `partial` row and it writes the first row, and a re-run, a regrade and an override write only complete rows, so a submission with any complete row has a complete row as its newest.
 
 ```json
 {
@@ -406,6 +411,27 @@ The result contract in `03` section 5 does not change shape. The front end keeps
 ```
 
 `gates` continues to be P1's output, because that is what it always was. P2 and P3 never appear in `gates`, since a gate is something that passes or fails and a band is not.
+
+P3 reads its score from the rubric gate's `percent`, the field the judge writes, and on a defence from the result's own `score`, because a defence's rubric gate holds the criterion alone. Until 8 October 2026 it read only a `score` field the judge never wrote, so every real design, prompt and defence evaluation was `partial` and owed a re-run. The drain in section 9 pays those off from the stored judgement, with no model call.
+
+### Which prompt graded it, and the regrade
+
+Built 8 October 2026 (S15.3). Every evaluation records `judge_prompt`, the file in `judge/prompts/` whose wording produced P3's band, from the `judge_prompt` the judge returns. It is empty where no judge prompt graded the answer, and on every row written before the column existed. An override copies it from the row it corrects, because it copies that row's panel.
+
+`npm run regrade` grades earlier submissions again after a prompt changes, and `05` section 7 has the drill. It takes each submission whose newest evaluation is complete, carries no faculty override, and was graded by P3 under a prompt other than the current one, or under the one named with `--from`. It works oldest first, up to `--limit`, asks the judge again with the rubric alone, and appends a new evaluation.
+
+| Rule | Why |
+|---|---|
+| The old row is never edited or deleted, and each row names its prompt. | An appeal has to read what the earlier prompt said. |
+| The terminal verdict never moves, in either direction. | Only deterministic checks produce one. P1 is rebuilt from the committed result with the committed verdict. |
+| The band may move either way, and the newest row is the one shown. | The newer prompt is the better judge, and a band from a retired prompt has no claim to outrank it. |
+| No allowance is spent. | Regrading is the platform's work, as a re-run is. |
+| P2 is carried across unchanged. | The prompt is the only thing that changed. |
+| A faculty correction is never regraded. | A person settled that grade, and a machine does not overrule one. |
+
+The learner's result keeps its committed verdict, score and rubric breakdown. The contract's `evaluation` block and `feedback_md` follow the newest row, as they do after a re-run, and neither names a prompt. Faculty read every row of a submission, newest first, with its prompt and what each panelist said, at `/admin/submissions/[id]`, linked from Submissions and from each Disagreements row.
+
+The current prompt is whatever `RUBRIC_PROMPT` in `judge/rubric.py` and `DEFENCE_PROMPT` in `judge/defence.py` name, read from that source. A run stops at the first answer the judge grades with some other prompt, because that judge has not been deployed with the new one and every further call would grade under the old wording again.
 
 ---
 

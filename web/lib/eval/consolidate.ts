@@ -32,6 +32,11 @@ export interface Evaluation {
   disagreement: Disagreement | null;
   /** The one voice. Carries no panelist name. */
   feedbackMd: string;
+  /**
+   * The judge prompt that graded this answer, from panelist 3's seat, or null
+   * where no prompt did. Provenance, so it never reaches the learner. S15.3.
+   */
+  judgePrompt?: string | null;
 }
 
 export interface ConsolidateInput {
@@ -66,6 +71,7 @@ export function consolidate(input: ConsolidateInput): Evaluation {
       disagreement: null,
       feedbackMd:
         "Grading did not complete. Your attempt was not counted. Try again.",
+      judgePrompt: null,
     };
   }
 
@@ -106,7 +112,13 @@ export function consolidate(input: ConsolidateInput): Evaluation {
     band,
     disagreement,
     feedbackMd: feedback(panel, state, verdict),
+    judgePrompt: judgedWith(panel),
   };
+}
+
+/** The prompt panelist 3 graded with, when it ran. Nothing else reads a prompt. */
+function judgedWith(panel: Array<PanelistResult & { panelist: PanelistName }>): string | null {
+  return panel.find((p) => p.panelist === "llm" && p.status === "ran")?.prompt ?? null;
 }
 
 function demandFor(demand: PanelDemand, name: PanelistName): string {

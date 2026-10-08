@@ -162,6 +162,10 @@ Written for the second operator, who is not the person who built this.
 
 The `error` verdict does not consume an allowance, so this should not happen. If it did, an admin can clear the counter row for that learner, scope and window in the Ops screen. Log the reason; the audit trail is the point.
 
+### A judge prompt changed
+
+Once the judge is deployed with the new prompt file, regrade what the old one graded. From `web/`, `npm run regrade -- --dry-run` lists the submissions a run would regrade and calls nothing. `npm run regrade` then regrades the oldest 25; run it again until it prints "Nothing to regrade". `--limit N` sets the batch, and `--from rubric.v1.md` takes only what that prompt graded. Each regrade is one model call that adds an evaluation, moves no verdict and spends no allowance (`10` section 10). A run that stops early naming another prompt means the judge has not been deployed with the new one yet.
+
 ### Rolling back
 
 The web application rolls back by checking out the previous commit on the web host, rebuilding and restarting, or from the Vercel dashboard on that route. The runner and the judge roll back by running `cdk deploy` from the previous commit, which rebuilds the previous images from source; each result records the runner image tag that graded it. Migrations roll forward only; write every migration so the previous application version still runs against the new schema, which means adding columns before using them and dropping them a release later.

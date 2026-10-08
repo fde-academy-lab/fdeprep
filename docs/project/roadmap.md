@@ -106,7 +106,7 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S14.6 | Amend docs/07 and the privacy notice | Task | 3 | Done | docs/07 describes generated follow-ups and resume handling, and the consent screen says what happens to a resume. |
 | S15.1 | A baseline diagnostic that sets a learner's persona | Feature | 8 | Planned | A new learner's persona comes from a short diagnostic instead of an admin's hand. |
 | S15.2 | Author constraint lists, so the unnamed-constraint check can fire | Task | 5 | Planned | Every C3 and C4 problem declares its constraints, and names_no_constraint fires on an answer that names none. |
-| S15.3 | Re-grade past submissions against a new judge prompt version | Feature | 8 | Planned | A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it. |
+| S15.3 | Re-grade past submissions against a new judge prompt version | Feature | 8 | Done | A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it. |
 | S15.4 | Replace the import screen with something that works on a deployment | Feature | 5 | Planned | An admin publishes content on a deployed host without a shell. |
 | S15.5 | Build analytics: cohort views, the stuck list, calibration and panel health | Feature | 13 | Done | Faculty can see which topic a cohort failed without writing SQL. |
 | S15.6 | Issue the report card as a dated, hashed snapshot | Feature | 8 | Done | A report card never changes after it is issued, and the SHA-256 of its canonical JSON snapshot, printed on its Markdown export with the snapshot itself, proves it. |
