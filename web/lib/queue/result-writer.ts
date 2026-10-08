@@ -147,10 +147,17 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
          JSON.stringify(contract)]);
     }
 
+    // A pass of the full battery solves the attempt, inside a rehearsal or out
+    // of one: a rehearsal submit runs the same battery under screen
+    // conditions, which are stricter than any tier (docs/00 section 7.4), and
+    // screen conditions open the traps and the defence once the attempt is
+    // solved (docs/00 section 3.2). A Run's pass is a pass of the public
+    // cases, and a defence passes or fails the defence, so neither solves it.
     if (verdict === "pass") {
       await client.query(
         `update attempt a set solved_at = coalesce(a.solved_at, now())
-           from submission s where s.id = $1 and s.attempt_id = a.id and s.kind = 'submit'`,
+           from submission s
+          where s.id = $1 and s.attempt_id = a.id and s.kind in ('submit', 'rehearsal_submit')`,
         [message.submission_id]);
     }
 

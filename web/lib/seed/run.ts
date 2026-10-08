@@ -495,6 +495,9 @@ class Seeder {
       for (const submit of action.submits) {
         await this.submitNow(login, await this.material(submit.slug), "rehearsal_submit",
           submit.outcome, { band: submit.band, rehearsalId: sitting.id });
+        // A passing rehearsal submit solves the attempt, so a later result on
+        // the problem names its hidden cases, as the runner's would.
+        if (submit.outcome === "clean") this.solved.add(`${login}:${submit.slug}`);
       }
       if (action.finished) await finishRehearsal(sitting.id);
     });

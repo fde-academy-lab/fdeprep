@@ -15,8 +15,10 @@
  * nothing else, through the real runner; the writer never stores a hidden or
  * adversarial result on a Run, whatever a runner sends; the screens, the
  * hint gate and the coach read none from one; a Submit and a rehearsal submit
- * still run the full battery; a defence still goes to the judge; and a Run
- * cannot buy the judge's battery on a problem that has no public tests.
+ * still run the full battery; a defence still goes to the judge; a Run
+ * cannot buy the judge's battery on a problem that has no public tests; and a
+ * passing rehearsal submit solves the attempt, as a passing submit does,
+ * where a Run's pass never does.
  */
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -365,5 +367,49 @@ describe("a defence", () => {
     expect(await depth("submissions")).toBe(0);
     const [message] = await receive("judgements", 1);
     expect(message!.body).toMatchObject({ kind: "defence", artefact_type: "defence" });
+  });
+});
+
+describe("which kinds mark the attempt solved", () => {
+  const PASS = {
+    verdict: "pass", score: 100,
+    gates: {
+      static: { status: "pass", reasons: [] },
+      public: { status: "pass", passed: 2, total: 2, cases: [] },
+      hidden: { status: "pass", passed: 4, total: 4, cases: [] },
+      adversarial: { status: "pass", passed: 1, total: 1, cases: [] },
+    },
+    steps: [], budget: { llm_calls: 3, tool_calls: 2, wall_ms: 40, max_llm_calls: 3, within_budget: true },
+    runner: { image_tag: "runner:test", duration_ms: 50 },
+  };
+  const RUN_PASS = {
+    ...PASS, score: null,
+    gates: { ...PASS.gates, hidden: NOTHING, adversarial: NOTHING },
+  };
+
+  async function solved(problemId: number): Promise<boolean> {
+    const { rows } = await db().query<{ solved: boolean }>(
+      "select solved_at is not null as solved from attempt where enrolment_id = $1 and problem_id = $2",
+      [learner.enrolmentId, problemId]);
+    return rows[0]!.solved;
+  }
+
+  it("leaves a passing Run unsolved, since it ran the public cases alone", async () => {
+    const { id } = await publish(WORKED);
+    await grade((await create(id, "run", "a")).id, RUN_PASS);
+    expect(await solved(id)).toBe(false);
+  });
+
+  it("marks a passing rehearsal submit solved, as a passing submit is", async () => {
+    const { id } = await publish(WORKED);
+    await grade((await create(id, "rehearsal_submit", "a", await sitting(id))).id, PASS);
+    expect(await solved(id)).toBe(true);
+  });
+
+  it("leaves a failing rehearsal submit unsolved", async () => {
+    const { id } = await publish(WORKED);
+    await grade((await create(id, "rehearsal_submit", "a", await sitting(id))).id,
+      { ...PASS, verdict: "fail", score: 61 });
+    expect(await solved(id)).toBe(false);
   });
 });
