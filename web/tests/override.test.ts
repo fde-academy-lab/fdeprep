@@ -349,8 +349,8 @@ describe("the readiness signal follows the correction", () => {
     // Pure, and deliberately not driven through the database: the query that
     // feeds this has no `order by`, so a test going through Postgres would be
     // pinning the planner rather than the rule.
-    const pass = { verdict: "pass", hintsUsed: 0, llmCalls: 1, callBudget: 6 };
-    const fail = { verdict: "fail", hintsUsed: 0, llmCalls: 1, callBudget: 6 };
+    const pass = { kind: "submit", verdict: "pass", hintsUsed: 0, llmCalls: 1, callBudget: 6 };
+    const fail = { kind: "submit", verdict: "fail", hintsUsed: 0, llmCalls: 1, callBudget: 6 };
 
     expect(bestStates([{ key: "a", ...fail }, { key: "a", ...pass }]).get("a")).toBe("clean");
     expect(bestStates([{ key: "a", ...pass }, { key: "a", ...fail }]).get("a")).toBe("clean");
@@ -358,10 +358,10 @@ describe("the readiness signal follows the correction", () => {
     // clean one however late it lands.
     expect(bestStates([
       { key: "a", ...pass },
-      { key: "a", verdict: "pass", hintsUsed: 3, llmCalls: 1, callBudget: 6 },
+      { key: "a", kind: "submit", verdict: "pass", hintsUsed: 3, llmCalls: 1, callBudget: 6 },
     ]).get("a")).toBe("clean");
     // A verdict that says nothing about the learner contributes nothing.
-    expect(bestStates([{ key: "a", verdict: "error", hintsUsed: 0,
+    expect(bestStates([{ key: "a", kind: "submit", verdict: "error", hintsUsed: 0,
                          llmCalls: null, callBudget: 6 }]).has("a")).toBe(false);
   });
 

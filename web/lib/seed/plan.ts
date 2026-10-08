@@ -553,10 +553,12 @@ function attemptAction(
  * Turn a drawn outcome into one this problem can produce.
  *
  * A judged problem has no runs, no budget and no timeout, and this plan gives
- * it no hints. A pass over budget is planned only where no defence follows:
- * the defence comes back with no call count, lib/eval/competency.ts reads a
- * missing count as within budget, and the over-budget pass would turn clean.
- * Hints are planned only where the tier opens them on failed runs alone.
+ * it no hints. A pass over budget is planned only where no defence follows.
+ * That rule kept a defence, which comes back with no call count, from turning
+ * the over-budget pass clean; since 8 October 2026 lib/eval/competency.ts lets
+ * a defence earn attempted at most, and the rule stays because TEST_SEED was
+ * chosen against the rows it plans. Hints are planned only where the tier
+ * opens them on failed runs alone.
  */
 function admissible(outcome: Outcome, problem: CatalogueProblem): Outcome {
   const tier = tierFor(problem.difficulty);
