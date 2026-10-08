@@ -203,6 +203,28 @@ export async function speakLine(text: string, voice: Voice): Promise<{ audioKey:
   return { audioKey: key };
 }
 
+/** Where a follow-up generated for one session's round lives. Kept thirty
+ *  days by the bucket's lifecycle rule, like the learner's own recording. */
+export function generatedKey(sessionId: number, ordinal: number): string {
+  return `voice/generated/${sessionId}/${ordinal}.mp3`;
+}
+
+/**
+ * Speak a follow-up generated for one round of one session. Said once, so it
+ * is stored under the session and the round rather than cached by its words.
+ * Null when no bucket is configured, which is the cockpit's cue to show the
+ * question as text in the listening phase and only there.
+ */
+export async function speakGenerated(
+  text: string, voice: Voice, sessionId: number, ordinal: number,
+): Promise<{ audioKey: string } | null> {
+  const config = ttsConfig();
+  if (!config) return null;
+  const key = generatedKey(sessionId, ordinal);
+  await putSpeech(key, await synthesise(text.trim(), voice, config), config);
+  return { audioKey: key };
+}
+
 /** A stored object's bytes, by key, or null when nothing is stored or no
  *  bucket is configured. Routes stream these, so no bucket address reaches a
  *  browser. */
