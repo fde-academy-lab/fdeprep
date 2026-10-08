@@ -18,6 +18,9 @@ import path from "node:path";
 import { parse } from "yaml";
 import { db } from "../db/pool.ts";
 import { staticGate, type GateProblem, type StaticGate } from "../gate/index.ts";
+import type { Embed } from "../eval/embed.ts";
+import { reevaluationBacklog } from "../eval/record.ts";
+import { reevaluatePartial } from "../eval/reevaluate.ts";
 import { deleteMessage, receive, send, type QueueMessage } from "./shim.ts";
 import { invokeLambda, type Invoker } from "./lambda.ts";
 
@@ -33,6 +36,12 @@ export interface JudgeOptions {
   lambda?: Invoker;
   /** Injected by tests that do not want to spawn a process at all. */
   invoke?: (event: Record<string, unknown>) => Promise<Record<string, unknown>>;
+  /** Partial evaluations one tick re-runs at most. Falls back to REEVALUATIONS_PER_TICK. */
+  reevaluationsPerTick?: number;
+  /** Which partial evaluations are waiting before their next re-run. Tests pass their own. */
+  backoff?: ReevaluationBackoff;
+  /** Panelist 2's encoder for a re-run. Tests pass a stub. */
+  embed?: Embed;
 }
 
 export async function judgeOnce(options: JudgeOptions = {}): Promise<number> {
@@ -47,7 +56,107 @@ export async function judgeOnce(options: JudgeOptions = {}): Promise<number> {
       await handle(message, options);
     }
   }
+
+  // After the new work, so a learner waiting on a first verdict never queues
+  // behind a re-run. A drain that fails costs the drain and never this tick's
+  // judgements, which are already written.
+  try {
+    await drainReevaluations(options);
+  } catch (error) {
+    console.error("re-evaluation drain failed:", (error as Error).message);
+  }
   return messages.length;
+}
+
+/** At most this many partial evaluations are re-run in one tick. */
+export const REEVALUATIONS_PER_TICK = 3;
+
+/**
+ * How long a partial evaluation waits after a re-run that could not complete
+ * it, doubled after each one up to the ceiling. The judge or the encoder is
+ * still down, and asking every second would only add load to whatever is
+ * failing. The ceiling keeps a recovered panelist's backlog cleared well
+ * inside the hour the learner was told.
+ */
+const RETRY_AFTER_MS = 60_000;
+const RETRY_CEILING_MS = 15 * 60_000;
+
+/** Submission id to how many re-runs have failed in a row and when the next may start. */
+export type ReevaluationBackoff = Map<number, { failures: number; until: number }>;
+
+const waiting: ReevaluationBackoff = new Map();
+
+/**
+ * Pay off the re-evaluation backlog, a few per tick. docs/10 section 9.
+ *
+ * A partial evaluation is a promise of a free re-run, and analytics/ reports
+ * the backlog as the debt. This is what pays it: oldest first, at most the
+ * bound per tick, each through reevaluatePartial, which appends a complete
+ * evaluation or writes nothing. No allowance is read or spent anywhere on this
+ * path. Returns how many it completed.
+ *
+ * The wait between failed attempts lives in this process, so a restarted
+ * worker tries each one once more straight away. That costs one call per
+ * waiting submission, and keeping the wait in the database would cost a write
+ * per failed attempt for the life of an outage.
+ */
+export async function drainReevaluations(options: JudgeOptions = {}): Promise<number> {
+  const perTick = options.reevaluationsPerTick ?? REEVALUATIONS_PER_TICK;
+  if (perTick < 1) return 0;
+  const backoff = options.backoff ?? waiting;
+  const now = Date.now();
+
+  // Wide enough that the waiting ones cannot crowd out the ones that are due.
+  const window = perTick + backoff.size;
+  const backlog = await reevaluationBacklog(window);
+  if (backlog.length < window) {
+    // The whole backlog came back, so a waiting id missing from it was paid
+    // off some other way.
+    for (const id of backoff.keys()) if (!backlog.includes(id)) backoff.delete(id);
+  }
+  const due = backlog.filter((id) => (backoff.get(id)?.until ?? 0) <= now).slice(0, perTick);
+
+  let completed = 0;
+  for (const submissionId of due) {
+    const outcome = await reevaluatePartial(submissionId, {
+      rejudge: (id) => rejudge(id, options),
+      embed: options.embed,
+    }).catch((error: Error) => {
+      // One submission's failure waits like any other, and never stops the rest.
+      console.error(`re-evaluation of submission ${submissionId} failed:`, error.message);
+      return { status: "unchanged" as const, reason: error.message };
+    });
+
+    if (outcome.status === "written") {
+      completed += 1;
+      backoff.delete(submissionId);
+      continue;
+    }
+    const failures = (backoff.get(submissionId)?.failures ?? 0) + 1;
+    backoff.set(submissionId, {
+      failures,
+      until: now + Math.min(RETRY_AFTER_MS * 2 ** (failures - 1), RETRY_CEILING_MS),
+    });
+  }
+  return completed;
+}
+
+/**
+ * Judge a graded submission's answer again, for the drain or a regrade.
+ *
+ * The rubric only. Probes are a battery that passed or failed when the
+ * submission did, they are already on the record, and no judge prompt reads
+ * them, so the event carries the problem without them and a re-run costs one
+ * model call rather than two per probe. The static gate runs here again
+ * exactly as it does for a first judgement, so an answer it now stops never
+ * reaches the model.
+ */
+export async function rejudge(
+  submissionId: number, options: JudgeOptions = {},
+): Promise<Record<string, unknown>> {
+  const built = await judgeEvent(submissionId, 1);
+  if ("result" in built) return built.result;
+  return invoke({ ...built.event, problem: { ...built.event.problem, probes: [] } }, options);
 }
 
 function judgeFunction(options: JudgeOptions): string | undefined {
@@ -105,6 +214,23 @@ interface JudgeRow {
 async function evaluate(
   submissionId: number, attempt: number, message: QueueMessage, options: JudgeOptions,
 ): Promise<Record<string, unknown>> {
+  const built = await judgeEvent(submissionId, attempt);
+  if ("result" in built) return built.result;
+  void message;
+  return invoke(built.event, options);
+}
+
+type JudgeEvent = Record<string, unknown> & { problem: Record<string, unknown> };
+
+/**
+ * The event the judge receives for a submission, or the result to record
+ * without one: a missing submission, or a static gate that already failed.
+ * Shared by the first judgement and by rejudge, so a re-run judges exactly
+ * what the first one did.
+ */
+async function judgeEvent(
+  submissionId: number, attempt: number,
+): Promise<{ event: JudgeEvent } | { result: Record<string, unknown> }> {
   const { rows } = await db().query<JudgeRow>(
     `select s.body, s.kind::text as kind, v.source_yaml, v.defence_criterion,
             a.solved_at, a.hints_used
@@ -114,8 +240,8 @@ async function evaluate(
       where s.id = $1`, [submissionId]);
   const row = rows[0];
   if (!row) {
-    return { verdict: "error", message: "the submission is missing",
-             consumes_allowance: false, model_calls: 0 };
+    return { result: { verdict: "error", message: "the submission is missing",
+                       consumes_allowance: false, model_calls: 0 } };
   }
 
   const problem = parse(row.source_yaml) as GateProblem & {
@@ -135,22 +261,21 @@ async function evaluate(
   // Acceptance criterion 1. A submission whose static gate failed never
   // reaches the judge, so the call count is zero rather than small.
   if (gate.status !== "pass") {
-    return failedStatically(gate, problem, row.hints_used);
+    return { result: failedStatically(gate, problem, row.hints_used) };
   }
 
-  const event = {
-    submission_id: submissionId,
-    artefact_type: artefact,
-    problem,
-    body: row.body,
-    already_passed: row.solved_at !== null,
-    hints_revealed: row.hints_used,
-    attempt,
-    static_gate: gate,
+  return {
+    event: {
+      submission_id: submissionId,
+      artefact_type: artefact,
+      problem: problem as unknown as Record<string, unknown>,
+      body: row.body,
+      already_passed: row.solved_at !== null,
+      hints_revealed: row.hints_used,
+      attempt,
+      static_gate: gate,
+    },
   };
-
-  void message;
-  return invoke(event, options);
 }
 
 function failedStatically(
