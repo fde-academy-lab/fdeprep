@@ -295,6 +295,20 @@ export interface CounterTarget {
 }
 
 /**
+ * The enrolment a GitHub login holds in this cohort, or null. Ops asks for the
+ * login, which every admin screen shows, and resolves it in the admin's own
+ * cohort, as the persona CSV does.
+ */
+export async function enrolmentByLogin(
+  login: string, cohortId: number, client: Pool | PoolClient = db(),
+): Promise<number | null> {
+  const { rows } = await client.query<{ id: string }>(
+    `select e.id from enrolment e join app_user u on u.id = e.user_id
+      where e.cohort_id = $1 and lower(u.github_login) = lower($2)`, [cohortId, login]);
+  return rows[0] ? Number(rows[0].id) : null;
+}
+
+/**
  * The counter clear from the docs/05 runbook.
  *
  * "An admin can clear the counter row for that learner, scope and window. Log

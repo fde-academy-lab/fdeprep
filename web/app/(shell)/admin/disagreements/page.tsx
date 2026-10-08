@@ -14,6 +14,7 @@ import Link from "next/link";
 import type { Metadata, Route } from "next";
 import { Scale, SearchX } from "lucide-react";
 import { disagreementQueue, type Disposition, type QueueFilter } from "@/lib/eval/review";
+import { BAND_WORD } from "@/lib/policy/bands";
 import { relativeDay } from "@/lib/progress/summary";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -114,7 +115,7 @@ export default async function DisagreementsPage({ searchParams }: {
                 <Cell className="whitespace-nowrap text-text">{row.login}</Cell>
                 <Cell>
                   <Link href={`/admin/submissions?slug=${row.slug}` as Route}
-                        className="text-text hover:text-accent">{row.title}</Link>
+                        className="text-text underline-offset-2 hover:underline">{row.title}</Link>
                 </Cell>
                 <Cell className="tnum text-text-dim">{row.complexity}</Cell>
                 <Cell>
@@ -123,11 +124,11 @@ export default async function DisagreementsPage({ searchParams }: {
                       being overruled from the judge overruling. */}
                   {Object.entries(row.byPanelist).map(([panelist, band]) => (
                     <div key={panelist} className="whitespace-nowrap text-text-dim">
-                      {panelist} said <span className="text-text">{band}</span>
+                      {panelist} said <span className="text-text">{BAND_WORD[band]}</span>
                     </div>
                   ))}
                 </Cell>
-                <Cell className="text-warn">{row.held}</Cell>
+                <Cell className="text-warn">{BAND_WORD[row.held]}</Cell>
                 <NumCell className="text-text">{row.score}</NumCell>
                 <Cell>
                   {row.review ? (

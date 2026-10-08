@@ -11,6 +11,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import type { Disposition } from "@/lib/eval/review";
+import { BAND_WORD, BANDS, type Band } from "@/lib/policy/bands";
 import { Button } from "@/components/ui/button";
 import { DialogForm, post } from "@/components/ui/dialog";
 import { Field, Select, Textarea } from "@/components/ui/field";
@@ -29,10 +30,8 @@ const LABELS: Readonly<Record<Disposition, string>> = {
   problem_flagged: "Problem is miscalibrated",
 };
 
-const BANDS = ["strong", "adequate", "weak", "off_question"] as const;
-
 export function OverrideAction({ evaluationId, held }: {
-  evaluationId: number; held: string;
+  evaluationId: number; held: Band;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -50,11 +49,11 @@ export function OverrideAction({ evaluationId, held }: {
                   }}>
         <p>
           Which band is right? A design answer passes at adequate or better, so this can change the
-          learner&apos;s verdict and their competency heatmap. The panel gave {held}.
+          learner&apos;s verdict and their competency heatmap. The panel gave {BAND_WORD[held]}.
         </p>
         <Field label="Band">
           <Select name="band" required>
-            {BANDS.map((band) => <option key={band} value={band}>{band}</option>)}
+            {BANDS.map((band) => <option key={band} value={band}>{BAND_WORD[band]}</option>)}
           </Select>
         </Field>
         <Field label="Why the panel was wrong" help="A learner may ask, and this is the answer.">

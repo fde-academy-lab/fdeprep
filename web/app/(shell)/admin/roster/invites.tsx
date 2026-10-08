@@ -53,22 +53,23 @@ export function InviteDialog({ size }: { size?: ButtonSize }) {
           </Field>
           <Field label="Role">
             <Select name="role" defaultValue="learner">
-              <option value="learner">learner</option>
-              <option value="faculty">faculty</option>
-              <option value="admin">admin</option>
+              <option value="learner">Learner</option>
+              <option value="faculty">Faculty</option>
+              <option value="admin">Admin</option>
             </Select>
           </Field>
           <Field label="Persona">
             <Select name="persona" defaultValue="navigator">
-              <option value="builder">builder</option>
-              <option value="navigator">navigator</option>
-              <option value="accelerator">accelerator</option>
+              <option value="builder">Builder</option>
+              <option value="navigator">Navigator</option>
+              <option value="accelerator">Accelerator</option>
             </Select>
           </Field>
           <Field label="Days it lasts">
             <Input name="expiresInDays" type="number" min={1} max={90} step={1} defaultValue={14} required />
           </Field>
-          <Field label="Who it is for (admins only see this)" className="col-span-2">
+          <Field label="Who it is for" help="Only admins see this. It shows in the Invites table."
+                 className="col-span-2">
             <Input name="note" maxLength={200} />
           </Field>
         </div>

@@ -43,7 +43,8 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
     { label: "Active in 7 days", value: cohort.activeThisWeek },
     { label: "Submissions this week", value: cohort.submissionsThisWeek },
     { label: "Stuck", value: cohort.stuck },
-    { label: "Disagreements open", value: cohort.disagreementsOpen },
+    // The Disagreements tab's own count, which lists every cohort, so the two agree.
+    { label: "Disagreements open, all cohorts", value: cohort.disagreementsOpen },
   ];
 
   /** A column header that sorts: newest or highest first, and the other way on a second click. */
@@ -98,7 +99,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
               {/* Two lines inside the 36 pixel row, so forty learners still read at a glance. */}
               <Cell className="py-0.5! leading-[1.15]">
                 <Link href={`/admin/learners/${row.enrolmentId}` as Route}
-                      className="font-medium text-text hover:text-accent">
+                      className="font-medium text-text underline-offset-2 hover:underline">
                   {row.login}
                 </Link>
                 {row.state === "active" ? null : <span className="ml-2 text-meta leading-[1.15] text-text-faint">{row.state}</span>}
@@ -116,7 +117,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
               <Cell className="whitespace-nowrap text-text-dim">
                 {row.lastActivity ? relativeDay(row.lastActivity) : "never"}
               </Cell>
-              <NumCell className="text-warn">{row.stuck || null}</NumCell>
+              <NumCell className="font-medium text-text">{row.stuck || null}</NumCell>
             </Row>
           ))}
         </Table>

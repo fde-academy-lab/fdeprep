@@ -103,7 +103,7 @@ export function Switches({ degraded, since, scopes }: {
                   submitLabel="Clear"
                   onSubmit={async (data) => {
                     const { cleared } = await post<{ cleared: number }>("/api/admin/counters", {
-                      enrolmentId: Number(data.get("enrolmentId")),
+                      login: data.get("login"),
                       scope: data.get("scope"),
                       reason: data.get("reason"),
                     });
@@ -111,8 +111,8 @@ export function Switches({ degraded, since, scopes }: {
                     return <p>Cleared {cleared} counter {cleared === 1 ? "row" : "rows"}.</p>;
                   }}>
         <div className="grid grid-cols-2 gap-4">
-          <Field label="Enrolment id">
-            <Input name="enrolmentId" type="number" min={1} step={1} required inputMode="numeric" />
+          <Field label="Learner">
+            <Input name="login" required placeholder="github login" autoComplete="off" spellCheck={false} />
           </Field>
           <Field label="Scope">
             <Select name="scope" required>

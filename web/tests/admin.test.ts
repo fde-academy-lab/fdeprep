@@ -8,7 +8,8 @@
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "../lib/db/pool.ts";
 import {
-  applyPersonaCsv, clearCounter, parsePersonaCsv, requeueSubmission, roster, toggleDegradedMode,
+  applyPersonaCsv, clearCounter, enrolmentByLogin, parsePersonaCsv, requeueSubmission, roster,
+  toggleDegradedMode,
 } from "../lib/admin/index.ts";
 import { opsSnapshot, STUCK_VOICE_AFTER_MINUTES, waitingLabel } from "../lib/admin/ops.ts";
 import { browseSubmissions } from "../lib/admin/submissions.ts";
@@ -159,6 +160,16 @@ describe("the counter clear from the docs/05 runbook", () => {
       { enrolmentId: learner.enrolmentId, scope: "submit_daily" },
       "Lost an Extreme attempt to a runner fault.", admin.userId);
     expect(await counterCount()).toBe(0);
+  });
+
+  it("finds the learner by login in the admin's cohort, and nobody outside it", async () => {
+    // Ops asks for the login, so a login from another cohort must not reach its enrolment.
+    expect(await enrolmentByLogin("Alice", learner.cohortId)).toBe(learner.enrolmentId);
+    const { rows: [elsewhere] } = await db().query<{ id: string }>(
+      "insert into cohort (slug, name, starts_on) values ('c4', 'Cohort 4', current_date) returning id");
+    await seedLearner({ githubId: 13, login: "bob", cohortId: Number(elsewhere!.id) });
+    expect(await enrolmentByLogin("bob", learner.cohortId)).toBeNull();
+    expect(await enrolmentByLogin("nobody", learner.cohortId)).toBeNull();
   });
 });
 

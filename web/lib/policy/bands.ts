@@ -20,6 +20,11 @@ export const BAND_MEANING: Readonly<Record<Band, string>> = {
   off_question: "The answer addresses something else.",
 };
 
+/** A band as faculty read it on screen. The enum stays the value stored and posted. */
+export const BAND_WORD: Readonly<Record<Band, string>> = {
+  strong: "strong", adequate: "adequate", weak: "weak", off_question: "off question",
+};
+
 /**
  * What each band is worth, anchored to the scores the content actually carries
  * rather than to numbers somebody liked.

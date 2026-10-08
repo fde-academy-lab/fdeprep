@@ -65,8 +65,8 @@ export default async function RosterPage() {
               <Cell className="font-medium text-text">{row.login}</Cell>
               <Cell className="text-text-dim">{row.displayName}</Cell>
               <Cell className="capitalize text-text-dim">{row.persona}</Cell>
-              <Cell className="text-text-dim">{row.role}</Cell>
-              <Cell className="text-text-dim">{row.state}</Cell>
+              <Cell className="capitalize text-text-dim">{row.role}</Cell>
+              <Cell className="capitalize text-text-dim">{row.state}</Cell>
               <Cell className="whitespace-nowrap text-text-dim">
                 {row.lastActivity ? relativeDay(row.lastActivity) : "never"}
               </Cell>
@@ -95,9 +95,9 @@ export default async function RosterPage() {
                 <Row key={invite.id}>
                   <Cell className="text-text">{invite.note ?? "no note"}</Cell>
                   <Cell className="text-text-dim">{invite.githubLogin ?? "anyone with the link"}</Cell>
-                  <Cell className="text-text-dim">{invite.role}</Cell>
+                  <Cell className="capitalize text-text-dim">{invite.role}</Cell>
                   <Cell className="capitalize text-text-dim">{invite.persona}</Cell>
-                  <Cell className="text-text">{invite.state}</Cell>
+                  <Cell className="capitalize text-text">{invite.state}</Cell>
                   <Cell className="whitespace-nowrap text-text-dim">{date(invite.expiresAt)}</Cell>
                   <Cell className="text-text-dim">{invite.usedByLogin ?? ""}</Cell>
                   <Cell className="py-0.5! text-right">

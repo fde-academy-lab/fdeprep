@@ -2,7 +2,7 @@
 import Link from "next/link";
 import type { Metadata, Route } from "next";
 import { Inbox, SearchX } from "lucide-react";
-import { browseSubmissions, type BrowserRow } from "@/lib/admin/submissions";
+import { browseSubmissions, type BrowserPage, type BrowserRow } from "@/lib/admin/submissions";
 import { relativeDay } from "@/lib/progress/summary";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
@@ -43,6 +43,31 @@ function verdictOf(row: BrowserRow): { kind: StatusKind; word: string } {
   }
 }
 
+/**
+ * The line over the table. There is no pager yet, so a list cut at one page
+ * says so, and names the rows it holds when the address asks for a later page.
+ */
+function countLine({ rows, total, page, perPage }: BrowserPage): string {
+  if (total <= rows.length) return `${total} ${total === 1 ? "submission" : "submissions"}`;
+  const from = (page - 1) * perPage;
+  const held = from ? `${from + 1} to ${from + rows.length}` : `First ${perPage}`;
+  return `${held} of ${total} submissions, newest first. Filter to narrow.`;
+}
+
+/**
+ * When a submission was queued. Inside the last day the time is what counts,
+ * because the runbook looks for a row queued over five minutes ago, so it is
+ * written as Ops writes it, on the server's clock. Older rows read by day.
+ */
+function when(iso: string, now: Date): string {
+  const day = relativeDay(iso, now);
+  if (day !== "today") return day;
+  const at = new Date(iso);
+  const time = at.toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false });
+  // relativeDay's today is the last 24 hours, so last night is named as yesterday.
+  return `${at.getDate() === now.getDate() ? "today" : "yesterday"} ${time}`;
+}
+
 type Params = Record<string, string | string[] | undefined>;
 const one = (params: Params, key: string) =>
   (Array.isArray(params[key]) ? params[key][0] : params[key]) ?? "";
@@ -72,6 +97,7 @@ export default async function SubmissionsPage({ searchParams }: {
     since: filters.since || undefined,
     page: Number(one(params, "page")) || 1,
   });
+  const now = new Date();
 
   return (
     <>
@@ -109,9 +135,7 @@ export default async function SubmissionsPage({ searchParams }: {
         )
       ) : (
         <section aria-label="Submissions found" className="space-y-3">
-          <p className="tnum text-text-dim">
-            {page.total} {page.total === 1 ? "submission" : "submissions"}
-          </p>
+          <p className="tnum text-text-dim">{countLine(page)}</p>
           <Table head={
             <Head>
               <Cell head>When</Cell>
@@ -127,7 +151,7 @@ export default async function SubmissionsPage({ searchParams }: {
               const verdict = verdictOf(row);
               return (
                 <Row key={row.id}>
-                  <Cell className="whitespace-nowrap text-text-dim">{relativeDay(row.queuedAt)}</Cell>
+                  <Cell className="whitespace-nowrap text-text-dim">{when(row.queuedAt, now)}</Cell>
                   <Cell className="text-text">{row.login}</Cell>
                   <Cell className="text-text-dim">{row.slug}</Cell>
                   <Cell className="text-text-dim">{row.kind.replace("_", " ")}</Cell>

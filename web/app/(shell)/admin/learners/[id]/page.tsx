@@ -77,7 +77,8 @@ export default async function LearnerPage(props: Props) {
         { label: "Login", value: learner.login },
         { label: "Persona", value: learner.persona.charAt(0).toUpperCase() + learner.persona.slice(1) },
         { label: "Cohort", value: learner.cohortName },
-        ...(learner.state === "active" ? [] : [{ label: "State", value: learner.state }]),
+        ...(learner.state === "active" ? []
+          : [{ label: "State", value: learner.state.charAt(0).toUpperCase() + learner.state.slice(1) }]),
       ]} />
 
       <ReadinessLine readiness={readiness} heatmapLink={false} />
@@ -151,7 +152,9 @@ export default async function LearnerPage(props: Props) {
             })}
           </Table>
         ) : (
-          <EmptyState icon={HistoryIcon} className="mt-4">Nothing attempted yet.</EmptyState>
+          <EmptyState icon={HistoryIcon} className="mt-4">
+            Nothing attempted yet. Their first Run or Submit appears here with its trace.
+          </EmptyState>
         )}
       </section>
 
@@ -180,7 +183,9 @@ export default async function LearnerPage(props: Props) {
             ))}
           </Table>
         ) : (
-          <EmptyState icon={Mic} className="mt-4">No answers finished yet.</EmptyState>
+          <EmptyState icon={Mic} className="mt-4">
+            No answers finished yet. A finished voice answer appears here with its score.
+          </EmptyState>
         )}
       </section>
     </>

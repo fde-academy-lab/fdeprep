@@ -257,8 +257,9 @@ describe("the Overview's table", () => {
     session.learner = { enrolmentId: 0, cohortId: Number(cohort!.id), userId: 0, displayName: "admin",
                         role: "admin", persona: "navigator" };
     const markup = await html(OverviewPage(query()));
-    // Disagreements open is the Disagreements tab's own count, which covers every cohort.
-    expect(visible(markup)).toMatch(/Active in 7 days 0 Submissions this week 0 Stuck 0 Disagreements open \d+/);
+    // Disagreements open is the Disagreements tab's own count, which covers every cohort, and says so.
+    expect(visible(markup)).toMatch(
+      /Active in 7 days 0 Submissions this week 0 Stuck 0 Disagreements open, all cohorts \d+/);
     expect(visible(markup)).toContain(
       "Nobody is enrolled in this cohort yet. Invite the first tester from the Roster. Invite a tester");
     expect(markup).toContain('href="/admin/roster#invite"');
@@ -313,6 +314,24 @@ describe("the other admin screens", () => {
     const all = visible(await html(SubmissionsPage(query())));
     const bad = visible(await html(SubmissionsPage(query({ since: "2026-02-30" }))));
     expect(bad).toBe(all);
+  });
+
+  it("says the Submissions list is cut at one page, and counts every row when they all fit", async () => {
+    signIn("daniel-osei", "admin");
+    const { rows: [all] } = await db().query<{ n: number }>("select count(*)::int as n from submission");
+    expect(all!.n).toBeGreaterThan(50);
+    expect(visible(await html(SubmissionsPage(query()))))
+      .toContain(`First 50 of ${all!.n} submissions, newest first. Filter to narrow.`);
+    expect(visible(await html(SubmissionsPage(query({ page: "2" })))))
+      .toContain(`51 to ${Math.min(100, all!.n)} of ${all!.n} submissions, newest first.`);
+
+    const { rows: [few] } = await db().query<{ login: string; n: number }>(
+      `select u.github_login as login, count(*)::int as n
+         from submission s join attempt a on a.id = s.attempt_id
+         join enrolment e on e.id = a.enrolment_id join app_user u on u.id = e.user_id
+        group by u.github_login having count(*) between 2 and 50 order by 1 limit 1`);
+    expect(visible(await html(SubmissionsPage(query({ login: few!.login })))))
+      .toContain(`${few!.n} submissions When Learner`);
   });
 
   it("says which empty state it is in by whether a filter is set", async () => {
