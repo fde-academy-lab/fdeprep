@@ -5,10 +5,27 @@ difficulty: medium
 total_seconds: 150
 competencies: [agent-loop, cost-and-latency, failure-mode-analysis]
 
+round: technical-deep-dive
+tests: Whether you put the stopping rule in the code that runs the loop, say what the run returns when it fires, and name the failure a ceiling does not catch.
+interviewers: [engineering-lead, senior-ai-engineer, bar-raiser]
+builds_on: [stop-when-the-model-will-not, stop-a-loop-that-learns-nothing, work-out-each-runs-cost-and-latency]
+
 prompt_text: |
-  One of their agents went round in circles for eleven minutes last night and
-  spent forty dollars on a single ticket. The engineer on call killed the pod.
-  They want to know what you would put in so that does not happen again.
+  At a helpdesk software company the size of Freshworks, one of their support
+  agents went round in circles for eleven minutes last night and spent forty
+  dollars on a single ticket. The engineer on call killed the pod. They want
+  to know what you would put in so that does not happen again.
+
+framework:
+  answer_first: Three ceilings in the application, on steps, wall clock and spend, and a terminal state that hands a person what the run found.
+  evidence: Forty dollars and eleven minutes are the two numbers they gave you. Say what each ceiling would have cut them to, and what a normal run costs, so the ceiling has a reason.
+  trade_off: A ceiling truncates a run that was about to succeed. You take that loss to stop the run that never would, and you keep the partial result so it is a smaller loss.
+  if_you_do_not_know: If you cannot say where their limits should sit, say you would read the step count of last month's runs and put the ceiling past the slowest good one.
+tips:
+  - Say what killing the pod cost them before you say what you would build. It stopped the spend and threw away eleven minutes of work and the customer's answer.
+  - A prompt that says stop after five steps is advice to the thing that just ignored it. Say that plainly when they ask why the prompt is not enough.
+  - Name the loop that stays inside every ceiling and still fails, the same call with the same arguments and nothing new coming back.
+  - Alert on the step distribution shifting, well before the ceiling fires. By the time the ceiling fires you have already paid.
 
 beats:
   - id: b1

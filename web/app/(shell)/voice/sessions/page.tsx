@@ -59,6 +59,7 @@ export default async function PastSessionsPage() {
         <Table head={
           <Head>
             <Cell head>Question</Cell>
+            <Cell head>Interviewer</Cell>
             <Cell head>Mode</Cell>
             <Cell head>When</Cell>
             <Cell head>Score</Cell>
@@ -72,6 +73,8 @@ export default async function PastSessionsPage() {
                   {session.title}
                 </Link>
               </Cell>
+              {/* A session from before interviewers existed names nobody. */}
+              <Cell className="whitespace-nowrap text-text-dim">{session.interviewer?.name ?? "None chosen"}</Cell>
               <Cell className="capitalize text-text-dim">{session.mode}</Cell>
               <Cell className="whitespace-nowrap text-text-dim">
                 {new Date(session.startedAt).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}

@@ -1437,7 +1437,7 @@ stages:
     kind: roadmap
     horizon: next
     start: 2026-09-30
-    finish: 2026-10-07
+    finish: 2026-10-08
     area: Voice
     priority: P1
     risk: Medium
@@ -1484,10 +1484,21 @@ stages:
       - id: S13.4
         title: "Choose who interviews you: nine interviewer personas"
         type: Feature
-        status: todo
+        status: done
+        pr: 46
         points: 8
         area: Voice
-        finish: 2026-10-06
+        finish: 2026-10-08
+        outcome: >-
+          Nine interviewers live in voice-interviewers/, each with a name, a
+          role at a company of a named scale, what they listen for, an opening
+          line, a follow-up style, stress probes and a neural Polly voice of
+          their own, and the panel seats three with the chair first. The
+          browser names a slug and the server resolves it. The picker filters
+          by interviewer and by competency, the lobby offers the question's
+          interviewers and reads the question in the chosen voice, pressure
+          mode interrupts in that voice, and the debrief and Past answers say
+          who asked.
         acceptance:
           - A learner picks an engineering lead, a CTO, a CEO, a solution architect, a senior AI engineer, a hiring manager, a client, a panel or a bar raiser.
           - Each persona has its own focus, questions, follow-up style and voice.
@@ -1495,19 +1506,36 @@ stages:
       - id: S13.5
         title: Rewrite the question bank around real FDE interview loops
         type: Task
-        status: todo
+        status: done
+        pr: 46
         points: 13
         area: Content
-        finish: 2026-10-07
+        finish: 2026-10-08
+        outcome: >-
+          Every question names its round of the loop from a closed list of
+          six, what it tests in one sentence, the interviewers who ask it and
+          the problems it builds on, and every prompt now sets the scenario
+          at a company of a named scale. The validator checks each field in
+          CI, checks the interviewers and the problems against the files that
+          exist, and keeps the writing rules with no em or en dash, in
+          TypeScript at import and in Python with the content tests.
         acceptance:
           - Every question names the scenario, the competency it tests and what a strong answer contains, and validates in CI.
       - id: S13.6
         title: Teach a framework and the tips people miss on every question
         type: Task
-        status: todo
+        status: done
+        pr: 46
         points: 8
         area: Content
-        finish: 2026-10-07
+        finish: 2026-10-08
+        outcome: >-
+          Every question carries a four-line framework card, answer first,
+          evidence with a number, the trade-off to name and what to say when
+          you do not know, written for that question so it is also the
+          worked example, and two to four tips people overlook. The lobby
+          shows both above the modes table while no answer runs, with the
+          problems the question builds on linked by chapter.
         acceptance:
           - Every question shows a framework to answer with, a worked example, and the tips people overlook, including how to handle a question you cannot answer.
       - id: S13.7
@@ -1569,59 +1597,105 @@ stages:
       - id: S14.1
         title: "Follow up like an interviewer: five levels of why, and stress probes"
         type: Feature
-        status: todo
+        status: done
+        pr: 46
         points: 13
         area: Voice
         risk: High
-        finish: 2026-10-10
+        finish: 2026-10-08
+        outcome: >-
+          Interview mode asks up to five rounds after the main answer, each
+          planned by the server from the interviewer's cadence and the why
+          ladder and worded by the judge from the answer just given under a
+          four-second deadline. A late, failed or refused reply falls back to
+          the question's authored follow-ups and then the interviewer's
+          stress probes, all spoken when the session opened, and the session
+          carries on. The learner hears each round and never sees its text
+          while replying; the text shows only before the reply when no
+          speech could be made.
         acceptance:
           - Each follow-up is generated from the answer just given and the persona, capped per question, and never shown as text while the learner speaks.
           - When the model cannot answer in time, a prewritten follow-up takes its place and the session carries on.
       - id: S14.2
         title: Cross-question an optional resume, kept only for the session
         type: Feature
-        status: todo
+        status: done
+        pr: 46
         points: 8
         area: Voice
         risk: High
-        finish: 2026-10-11
+        finish: 2026-10-08
+        outcome: >-
+          A pasted resume of up to 12,000 characters becomes at most twelve
+          claims, extracted by the judge with the text inside delimiters
+          labelled as data. The text is never written to a table, a file or
+          a log, the claims are deleted when the session closes or after a
+          day, and resume rounds are labelled not scored and never reach the
+          scorer. A test plants a sentinel in a resume and finds it in no
+          table and no log line. Paste only: an upload would add a storage
+          path and a deletion to prove, for text a learner can copy.
         acceptance:
           - A pasted or uploaded resume becomes a list of claims for that session, the file is deleted at once, and nothing from it is used in scoring.
           - The resume reaches the model as data, so instructions written in it change nothing.
       - id: S14.3
         title: Run a panel of interviewers who take turns
         type: Feature
-        status: todo
+        status: done
+        pr: 46
         points: 5
         area: Voice
-        finish: 2026-10-11
+        finish: 2026-10-08
+        outcome: >-
+          A panel session rotates its rounds from the member after the chair
+          and back round the table, each member asking in their own voice and
+          follow-up style, and the debrief names who asked each round.
         acceptance:
           - A panel session rotates between two or three personas, and the debrief says which interviewer asked what.
       - id: S14.4
         title: Draw the interview room in the lobby and the debrief
         type: Feature
-        status: todo
+        status: done
+        pr: 46
         points: 5
         area: Web application
-        finish: 2026-10-12
+        finish: 2026-10-08
+        outcome: >-
+          The lobby, the debrief header and the interviewers page mount the
+          interview room, and the picker's interviewer chips show the
+          avatars. The cockpit, the rounds and the instruments import nothing
+          from the room, so the live screen keeps its five instruments. The
+          drawings replace the room's stubs at integration.
         acceptance:
           - The lobby and the debrief show a pixel-art room with the chosen interviewer, and the live cockpit keeps its five-instrument limit.
       - id: S14.5
         title: Measure the cost and latency of a session before rollout
         type: Task
-        status: todo
+        status: in_progress
         points: 3
         area: Delivery management
         finish: 2026-10-12
+        outcome: >-
+          Every round records its generation, synthesis, gap and late reply
+          times, its model calls and tokens and its fallback reason, npm run
+          voice:cost prices sessions at the rates given on the day, and the
+          Ops page shows today's rounds, the p95 gap and the fallback share.
+          The ten sessions wait for the first deploy, and provisioned
+          concurrency for the judge is decided from their p95.
         acceptance:
           - The model cost and the follow-up latency of ten sessions are recorded, priced from Bedrock's published rates on the day.
       - id: S14.6
         title: Amend docs/07 and the privacy notice
         type: Task
-        status: todo
+        status: done
+        pr: 46
         points: 3
         area: Docs and process
-        finish: 2026-10-12
+        finish: 2026-10-08
+        outcome: >-
+          docs/07 gains section 5a on interview mode, the 023 tables, the
+          privacy rows for a resume and for generated follow-ups, the
+          allowance row and four acceptance items. The consent screen says
+          what happens to a pasted resume and to what the interviewer says.
         acceptance:
           - docs/07 describes generated follow-ups and resume handling, and the consent screen says what happens to a resume.
 
@@ -1863,3 +1937,76 @@ stages:
           - A row opens /admin/learners/<id>, read-only, with the readiness line, the heatmap Progress draws from the same component, the attempts with a trace link each and the past answers with scores; faculty and admins open it, and a learner gets the admin layout's 404.
           - Ops lists the seed's four stuck submissions and four stuck voice answers with why each waits, then the last seven days and the switches, and every admin tab's title equals its h1.
           - No prompt(), confirm() or alert() is left under web/app; each is a dialog on the native dialog element with the route's refusal as its error line, and every admin control comes from components/ui/field.tsx. In a browser, Tab stays in each dialog, Escape closes it and focus returns to the button that opened it.
+      - id: S17.5
+        title: "Rewrite the README as the product's front page: how to use it, the spec at a glance, the architecture and the stages"
+        type: Task
+        status: done
+        pr: 46
+        points: 8
+        area: Docs and process
+        finish: 2026-10-08
+        outcome: >-
+          README.md is the product's front page: what it is and who it is
+          for, eight labelled screenshots captured from the seeded database
+          by scripts/readme_screens.js, the spec at a glance, eleven Mermaid
+          diagrams validated before commit, the requirements as four tables
+          with the document each row comes from, the modes, the stages, the
+          local run, the three deploy routes, the fix table and the suites,
+          with every figure measured on the day it was written.
+        acceptance:
+          - README.md opens with what the product is, who it is for and seven labelled screenshots captured from the seeded development database, then the functional requirements, the non-functional requirements, the constraints and the assumptions as tables whose rows name the document each comes from.
+          - The architecture is drawn in Mermaid that GitHub renders, as C4 context, container and component flowcharts, a deployment view, the trust boundaries, the code submission and voice answer sequences, the submission and voice session states and two entity relationship diagrams taken from the migrations, each validated before the commit.
+          - The stages of development, the modes, the local run, the three deploy routes, the fix table and the test suites are current on the day of writing, every figure is marked as a fact or an estimate, and DEPLOY.md, SETUP.md and docs/project are linked rather than copied.
+
+  - id: S18
+    name: Agentic patterns and depth content
+    kind: roadmap
+    horizon: now
+    start: 2026-10-08
+    finish: 2026-10-19
+    area: Content
+    priority: P1
+    risk: Medium
+    summary: >-
+      Ten problems teach what the catalogue covered only in passing or not at
+      all: peer agents handing a chat on, a critic loop, a map-reduce with
+      Send, a task handed to another organisation's agent, episodic and
+      procedural memory, reranking, graph retrieval, choosing n8n against a
+      graph or plain code, and changing a model inside a sealed network.
+    why: >-
+      A coverage matrix of the catalogue against the agentic patterns,
+      frameworks and depth topics the product owner asked for found no problem
+      on evaluator-optimizer loops, reranking, graph retrieval, episodic or
+      procedural memory, n8n-style workflow tools or the agent-to-agent
+      boundary, and swarms, LangGraph's Send and running a model inside a
+      sealed network taught only in passing.
+    estimate: {optimistic: 6, likely: 8, pessimistic: 13}
+    rice: {reach: 180, impact: 1, confidence: 0.8}
+    stories:
+      - id: S18.1
+        title: "Teach the agentic patterns, frameworks and depth topics the catalogue was missing"
+        type: Feature
+        status: done
+        pr: 46
+        points: 13
+        area: Content
+        start: 2026-10-08
+        finish: 2026-10-08
+        outcome: >-
+          Ten problems landed in four chapters, validated in CI like the rest
+          of the catalogue: four orchestration drills, a peer handoff with
+          Command, a critic loop that keeps the best draft, a map-reduce with
+          Send and an A2A task handoff; two memory drills on episodic recall
+          and a procedural playbook; two context drills on rerank depth and a
+          bounded graph walk; and two design problems, n8n against a graph or
+          plain code, and a model change inside a sealed network. Nine are
+          drills and the n8n problem took the day-6 slot of
+          pick-a-framework-for-the-first-agent, which became a drill.
+        acceptance:
+          - Orchestration gains four drills. keep-the-chat-with-its-specialist (Hard) hands a chat between peer agents with Command and keeps an active agent that persists across turns and resets when a case closes. end-the-critic-loop-on-the-best-draft (Hard) ends an evaluator-optimizer loop on a decision and keeps the best draft. fan-out-one-worker-per-store-then-reduce (Hard) runs a map-reduce with Send whose reduce survives a failed branch inside the call budget. follow-a-task-handed-to-another-agent (Medium) follows a task handed to another organisation's agent through the A2A task states.
+          - Memory gains two drills. recall-past-episodes-without-inventing-a-fact (Hard) keeps episodes in the LangGraph store and promotes a fact only when the customer states it or three episodes within 90 days agree. update-the-playbook-without-dropping-a-rule (Medium) updates a procedural playbook without touching a required step.
+          - Context gains two drills. rerank-enough-candidates-to-find-the-answer (Medium) reranks to the depth the answer needs and falls back to the fused order on a reranker error. find-every-product-a-recalled-part-reaches (Medium) walks a parts graph with a frontier, a visited set, a hop limit and a lookup limit.
+          - Tools gains choose-n8n-a-graph-or-plain-code (Hard, design), which chooses n8n, a LangGraph graph or plain code per workflow against the client's numbers. fde-practice gains the drill change-the-model-inside-a-sealed-network (Hard, design), which measures a model change inside a sealed network and rolls it back inside the window.
+          - Every new code problem's reference passes every gate and its naive solution fails a hidden test through the runner, its stub fails a public test and every step check, and its coach is quiet on the reference and fires on the naive solution. The two design problems' strong exemplars and walkthroughs clear every heuristic.
+          - Nine of the ten are drills. choose-n8n-a-graph-or-plain-code takes the day-6 slot of pick-a-framework-for-the-first-agent, which becomes a drill, and python -m tools.storyline --check reports no other change.
+          - Every framework and vendor fact in a brief, a contract or a walkthrough names the version or page it was read from and the date it was read.

@@ -1,0 +1,741 @@
+slug: end-the-critic-loop-on-the-best-draft
+title: "End the critic loop on the best draft"
+drill: true
+skill: Stop a writer and critic loop on a decision, check every draft in code, and keep the best
+artefact_type: code
+difficulty: hard
+track: orchestration
+concept:
+  topic: "One agent or many"
+  question: "When a critic always finds something, what ends the loop and which draft do you keep?"
+est_minutes: 45
+competencies:
+  - { slug: agent-loop, weight: 1.0 }
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 7
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The catalogue team at an online marketplace the size of Flipkart writes
+  product descriptions for about 40,000 new listings a week. A writer model
+  drafts each one, a critic model reviews it, and the writer revises, for
+  up to five rounds. The listing policy is fixed and written down: under 90
+  words, every value on the seller's specification sheet, no medical claim,
+  no competitor's name, and the warranty stated.
+
+  Three things went wrong in the first month.
+
+  The critic always found something. "Could be more engaging" came back on
+  almost every draft, so every listing ran all five rounds and the fifth
+  draft was published. A review of 600 listings found an earlier draft had
+  been better on 31 percent of them, and every listing had cost ten model
+  calls.
+
+  The writer fixed what the critic named and broke what had passed. On a
+  steel bottle, draft three brought back the medical claim that draft two
+  had removed. The policy was checked once, on the first draft, and the
+  critic never reads the policy.
+
+  And one night the critic answered in prose: "Lovely copy, easily a 9 out
+  of 10. Ship it!" The loop's parser raised on it, and 1,200 listings went
+  live with no description.
+
+  Write the loop. Check every draft against the policy in code, leave the
+  critic to judge what code cannot, stop when another round will not help,
+  and publish the best draft that passed, whichever round wrote it.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is one listing as JSON:
+  `{"sku": "MP-20931", "specs": {"material": "18/8 stainless steel", "capacity": "750 ml", "keeps_cold": "24 hours", "warranty": "1 year"}}`.
+
+  `tools["limits"]()` returns `{"max_rounds": 5, "pass_score": 8}`.
+  `tools["policy_check"](text=<draft>)` checks one draft against the
+  listing policy, in code, and returns
+  `{"status": 200, "passed": [<rule>, ...], "failed": [{"rule": <rule>, "detail": <what to fix>}, ...]}`.
+
+  Each round writes one draft and judges it.
+
+  1. Write. The first round asks `llm(write_prompt(specs))`. Every later
+     round asks `llm(revise_prompt(draft, fixes, issues))` with the draft
+     before it. The writer replies `Draft: <text>`, and `read_draft` from
+     the starter code returns the text.
+  2. Check. Call `policy_check` with every draft, before anything else
+     reads it.
+  3. Critique. Only a draft that failed no rule goes to
+     `llm(critique_prompt(draft))`. The critic should reply with JSON,
+     `{"score": <whole number from 0 to 10>, "issues": [<text>, ...]}`. Any
+     other reply is a failed critique: it gives the draft no score, and it
+     is never a pass.
+
+  The next revision gets `fixes`, the `detail` of every rule the checker
+  failed, and `issues`, the critic's list when it scored the draft. Each is
+  empty when it does not apply, and both are empty after a failed critique.
+
+  The best draft is the highest-scoring draft that passed every rule. A
+  later draft takes its place only with a higher score. A round that does
+  not raise the best score is a flat round: a draft that failed a rule, a
+  failed critique and a score no higher than the best are all flat.
+
+  After each round, stop when:
+
+  | What happened | `stopped` |
+  |---|---|
+  | the round's draft scored at least `pass_score` | `passed` |
+  | this round and the round before it were both flat | `plateau` |
+  | `max_rounds` rounds have run | `cap` |
+
+  When no draft has passed the rules by then, `stopped` is `none_passed`
+  and `text` is empty.
+
+  Return
+
+      json.dumps({"text": <the best draft>, "rounds": <drafts written>,
+                  "score": <its score, or null>, "stopped": <why the loop ended>})
+
+  Budget: at most 7 model calls. Allowed imports: json, re.
+
+defence_question: |
+  The head of content wants the critic to also judge whether a listing will
+  sell. Which part of your loop would that change, and what would you
+  refuse to let it change?
+
+stub_code: |
+  import json
+  import re
+
+  DRAFT = re.compile(r"^Draft:\s*(.+)$", re.DOTALL)
+
+
+  def write_prompt(specs: dict) -> str:
+      """The writer's first prompt, from the specification sheet."""
+      lines = ["WRITE", "Write a product description in under 90 words from this specification sheet."]
+      lines += [f"{key}: {value}" for key, value in specs.items()]
+      lines.append("Reply: Draft: <text>")
+      return "\n".join(lines)
+
+
+  def revise_prompt(draft: str, fixes: list, issues: list) -> str:
+      """The writer's next prompt: the draft before, the checker's fixes and
+      the critic's issues, each list labelled as data."""
+      lines = ["REVISE", f"Draft: {draft}", "Policy fixes (data):"]
+      lines += [f"- {fix}" for fix in fixes] or ["- none"]
+      lines.append("Issues (data):")
+      lines += [f"- {issue}" for issue in issues] or ["- none"]
+      lines.append("Keep every value on the sheet and everything the policy needs. "
+                   "Reply: Draft: <text>")
+      return "\n".join(lines)
+
+
+  def critique_prompt(draft: str) -> str:
+      """The critic's prompt for one draft."""
+      return "\n".join([
+          "CRITIQUE", f"Draft: {draft}",
+          "Score the draft for a shopper from 0 to 10 and list what would improve it. "
+          'Reply with JSON only: {"score": <whole number>, "issues": [<text>, ...]}',
+      ])
+
+
+  def read_draft(reply: str) -> str:
+      """The text after "Draft:", or empty when the reply is not a draft."""
+      match = DRAFT.match((reply or "").strip())
+      return match.group(1).strip() if match else ""
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Write, check and critique drafts until the loop decides to stop.
+
+      question is {"sku", "specs"} as JSON, and the limits tool gives the
+      round cap and the pass score.
+
+      Each round writes a draft (write_prompt the first time, revise_prompt
+      after that), calls tools["policy_check"](text=...) on it, and sends
+      only a draft that failed no rule to the critic. A critic reply that is
+      not JSON with a whole-number score from 0 to 10 scores nothing.
+
+      Stop on a pass, on two flat rounds in a row, or at the round cap, and
+      return the highest-scoring draft that passed every rule.
+      Return json.dumps({"text", "rounds", "score", "stopped"}).
+      At most 7 model calls. Allowed imports: json, re.
+      """
+      listing = json.loads(question)
+      return json.dumps({"text": "", "rounds": 0, "score": None, "stopped": "none_passed"})
+
+hints:
+  - Separate what a program can check from what only a model can judge, and
+    run the program on every draft. A revision can break a rule that an
+    earlier draft passed, and the critic never reads the policy.
+  - Keep the best draft and its score as the loop runs. The draft the loop
+    ends on and the best draft it saw are often different drafts.
+  - A round that did not raise the best score is flat, whatever the reason.
+    One flat round can be bad luck, and a second in a row says the next
+    round will cost two calls and change nothing.
+  - A critic's reply is text until it parses. Read it as JSON with a
+    whole-number score from 0 to 10, and treat anything else as a critique
+    that scored nothing, which is a flat round and never a pass.
+
+scenario:
+  headline: "Every listing ran five rounds, and the fifth draft was published"
+  who: "Catalogue team at an online marketplace the size of Flipkart"
+  situation: >-
+    A writer model drafts each product description, a critic model reviews
+    it, and the writer revises, for up to five rounds. The critic always
+    asked for more, the policy was checked only on the first draft, and a
+    critique in prose crashed the loop.
+  stakes: >-
+    About 40,000 listings a week at ten model calls each, an earlier draft
+    better on almost a third of them, and a banned health claim back on a
+    live listing.
+  metrics:
+    - { label: Earlier draft was better, value: "31%" }
+    - { label: Model calls per listing, value: "10" }
+    - { label: Model calls allowed, value: "7" }
+
+diagram:
+  title: Where the loop decides to stop, and which draft it keeps
+  caption: >-
+    Code checks every draft before the critic sees it. After each round the
+    loop reads the best score so far and decides, and it publishes the best
+    draft.
+  direction: lr
+  nodes:
+    - { id: sheet, label: Specification sheet, sub: values every draft must carry, kind: doc, tone: neutral, at: [0, 1] }
+    - { id: writer, label: Writer, sub: "`WRITE`, then `REVISE`", kind: model, tone: teal, at: [1, 1] }
+    - { id: check, label: "`policy_check`", sub: "every draft, in code", kind: guard, tone: purple, at: [2, 1] }
+    - { id: critic, label: Critic, sub: a JSON score and a list of issues, kind: model, tone: teal, at: [3, 1] }
+    - { id: decide, label: Stop or go on, sub: "passed, plateau or cap", kind: decision, tone: orange, at: [4, 1] }
+    - { id: best, label: Best draft that passed, sub: whichever round wrote it, kind: output, tone: green, at: [5, 0] }
+    - { id: last, label: Fifth draft published, sub: the loop ran out of rounds, kind: output, tone: pink, at: [5, 2] }
+  edges:
+    - { from: sheet, to: writer, label: the values, step: 1 }
+    - { from: writer, to: check, label: every draft, step: 2 }
+    - { from: check, to: writer, label: failed rules as fixes }
+    - { from: check, to: critic, label: passed every rule, step: 3 }
+    - { from: critic, to: decide, label: score and issues, step: 4 }
+    - { from: decide, to: writer, label: issues as a list }
+    - { from: decide, to: best, label: a decision, tone: success }
+    - { from: writer, to: last, label: "five rounds, keep the last", tone: danger }
+
+approach:
+  goal: End the loop on a decision, and publish the best draft that passed
+  branches:
+    - label: Check in code what code can check
+      leaves: [every draft, before the critic sees it, the failed rules go back as fixes]
+    - label: Read the critic strictly
+      detail: A score is a whole number in JSON. Any other reply scored nothing.
+      leaves: [prose is not a score, a reply cut off halfway is not a score]
+    - label: Keep the best draft
+      leaves: [a higher score replaces it, a tie keeps the earlier draft]
+    - label: Stop when another round will not help
+      leaves: [a pass, two flat rounds in a row, the round cap]
+
+coach:
+  opening: >-
+    Before you write the loop, list everything that can end it, and which
+    draft you would publish in each case.
+  signals:
+    - id: no-best-draft
+      when: { code_lacks: '(?i)\bbest\b|max\(' }
+      say: >-
+        Your loop publishes the draft it ends on. Which draft would you
+        publish if the critic liked round one more than anything after it?
+    - id: unguarded-parse
+      when:
+        code_matches: 'json\.loads\((?!\s*question\b)'
+        code_lacks: '\bexcept\b'
+      say: >-
+        A critic can answer in prose or stop halfway through its JSON. What
+        does your loop do when `json.loads` raises on the critic's reply?
+    - id: hidden-regression
+      when: { test_failed: a_revision_that_breaks_a_rule_is_caught }
+      say: >-
+        In that listing a revision brought back something the policy
+        forbids. Which drafts did your loop check, and what did the critic
+        make of that one?
+    - id: hidden-earlier-better
+      when: { test_failed: an_earlier_draft_beats_the_last_one }
+      say: >-
+        In that listing the critic liked the first draft more than any later
+        one. Which draft did your loop publish, and how many calls had it
+        spent?
+    - id: hidden-prose
+      when: { test_failed: a_critique_in_prose_is_not_a_score }
+      say: >-
+        In that listing the critic answered with a sentence that had a
+        number in it. What did your loop take as the score?
+    - id: hidden-none-passed
+      when: { test_failed: drafts_that_fail_the_policy_publish_nothing }
+      say: >-
+        In that listing no draft passed the policy. What did your loop
+        publish, and did the critic ever see a draft?
+    - id: hidden-cap
+      when: { test_failed: the_round_cap_ends_a_loop_that_is_still_improving }
+      say: >-
+        In that listing every round scored higher than the last, and the cap
+        was three rounds. Where did your loop stop?
+    - id: adversarial-never-satisfied
+      when: { test_failed: adversarial_a_critic_that_always_wants_more }
+      say: >-
+        The critic in that listing asked for more on every draft and never
+        raised its score. What ended your loop, and after how many calls?
+    - id: adversarial-cut-off
+      when: { test_failed: adversarial_a_critique_cut_off_halfway }
+      say: >-
+        A critique in that listing stopped halfway through its JSON. Did
+        your loop keep going, and which draft did it publish?
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The third hint is about what counts as a
+        round that changed nothing, and it decides most of these listings.
+  wrap_up: >-
+    A critic loop ends on a decision: a pass, two rounds that changed
+    nothing, or the cap. Code checks every draft for what code can check,
+    the critic judges the rest, and the loop publishes the best draft it
+    saw.
+
+tests:
+  - name: a_first_draft_that_passes_ships_in_one_round
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"sku": "MP-20931", "specs": {"material": "18/8 stainless steel", "capacity": "750 ml", "keeps_cold": "24 hours", "warranty": "1 year"}}' }
+      llm_script:
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "The double wall keeps the outside dry" } ] }
+          reply: '{"score": 9, "issues": []}'
+        - { match: { regex: "^WRITE" }, reply: "Draft: Carry 750 ml of water that stays cold for 24 hours in this 18/8 stainless steel bottle. The double wall keeps the outside dry, the lid seals tight, and a 1 year warranty covers it." }
+        - { match: "*", reply: '{"score": 6, "issues": ["Could be more engaging."]}' }
+      tools:
+        limits: { returns: { max_rounds: 5, pass_score: 8 } }
+        policy_check:
+          by_arg:
+            arg: text
+            values:
+              "Carry 750 ml of water that stays cold for 24 hours in this 18/8 stainless steel bottle. The double wall keeps the outside dry, the lid seals tight, and a 1 year warranty covers it.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+            default: { status: 200, passed: [], failed: [{ rule: sheet_values, detail: "Name every value on the specification sheet." }] }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [text, rounds, score, stopped]
+            properties:
+              rounds: { const: 1 }
+              score: { const: 9 }
+              stopped: { const: passed }
+        - { type: returns_matches, value: "The double wall keeps the outside dry" }
+        - { type: calls_tool, name: policy_check }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: a_medical_claim_is_fixed_before_the_critic_reads
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"sku": "MP-20944", "specs": {"material": "18/8 stainless steel", "capacity": "1 litre", "keeps_cold": "24 hours", "warranty": "1 year"}}' }
+      llm_script:
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "It fits a car cup holder" } ] }
+          reply: '{"score": 8, "issues": ["Say what the lid is made of."]}'
+        - match: { all: [ { regex: "^REVISE" }, { contains: "flush out toxins" } ] }
+          reply: "Draft: Keep 1 litre of water cold for 24 hours in this 18/8 stainless steel bottle. It fits a car cup holder, and a 1 year warranty covers it."
+        - { match: { regex: "^WRITE" }, reply: "Draft: Stay well with this 1 litre bottle of 18/8 stainless steel. Water kept cold for 24 hours helps flush out toxins, and a 1 year warranty covers it." }
+        - { match: "*", reply: '{"score": 9, "issues": []}' }
+      tools:
+        limits: { returns: { max_rounds: 5, pass_score: 8 } }
+        policy_check:
+          by_arg:
+            arg: text
+            values:
+              "Stay well with this 1 litre bottle of 18/8 stainless steel. Water kept cold for 24 hours helps flush out toxins, and a 1 year warranty covers it.":
+                { status: 200, passed: [under_90_words, sheet_values, no_competitor, warranty_stated], failed: [{ rule: no_medical_claim, detail: "Remove the health claim that it helps flush out toxins." }] }
+              "Keep 1 litre of water cold for 24 hours in this 18/8 stainless steel bottle. It fits a car cup holder, and a 1 year warranty covers it.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+            default: { status: 200, passed: [], failed: [{ rule: sheet_values, detail: "Name every value on the specification sheet." }] }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [text, rounds, score, stopped]
+            properties:
+              rounds: { const: 2 }
+              score: { const: 8 }
+              stopped: { const: passed }
+        - { type: returns_matches, value: "It fits a car cup holder" }
+        - { type: prompt_contains, value: "Remove the health claim that it helps flush out toxins" }
+        - { type: prompt_lacks, value: "CRITIQUE\nDraft: Stay well" }
+        - { type: llm_calls_at_most, value: 3 }
+
+  - name: a_revision_that_breaks_a_rule_is_caught
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"sku": "MP-21007", "specs": {"material": "18/8 stainless steel", "capacity": "500 ml", "keeps_cold": "12 hours", "warranty": "1 year"}}' }
+      llm_script:
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "AquaKeep" } ] }
+          reply: '{"score": 9, "issues": []}'
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "A 1 year warranty is included" } ] }
+          reply: '{"score": 7, "issues": ["The tone is flat. Give the shopper a reason to pick it."]}'
+        - { match: { regex: "^REVISE" }, reply: "Draft: Colder for longer than an AquaKeep: this 500 ml bottle of 18/8 stainless steel keeps drinks cold for 12 hours, with a 1 year warranty." }
+        - { match: { regex: "^WRITE" }, reply: "Draft: This 500 ml bottle of 18/8 stainless steel keeps drinks cold for 12 hours. A 1 year warranty is included." }
+        - { match: "*", reply: '{"score": 6, "issues": ["Could be more engaging."]}' }
+      tools:
+        limits: { returns: { max_rounds: 5, pass_score: 8 } }
+        policy_check:
+          by_arg:
+            arg: text
+            values:
+              "This 500 ml bottle of 18/8 stainless steel keeps drinks cold for 12 hours. A 1 year warranty is included.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+              "Colder for longer than an AquaKeep: this 500 ml bottle of 18/8 stainless steel keeps drinks cold for 12 hours, with a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, warranty_stated], failed: [{ rule: no_competitor, detail: "Remove the competitor name AquaKeep." }] }
+            default: { status: 200, passed: [], failed: [{ rule: sheet_values, detail: "Name every value on the specification sheet." }] }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [text, rounds, score, stopped]
+            properties:
+              rounds: { const: 3 }
+              score: { const: 7 }
+              stopped: { const: plateau }
+        - { type: returns_lacks, value: "AquaKeep" }
+        - { type: returns_matches, value: "A 1 year warranty is included" }
+        - { type: llm_calls_at_most, value: 4 }
+
+  - name: an_earlier_draft_beats_the_last_one
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"sku": "MP-21032", "specs": {"material": "304 stainless steel", "capacity": "900 ml", "compartments": "2", "lid": "leak-proof", "warranty": "1 year"}}' }
+      llm_script:
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "office lunch hour" } ] }
+          reply: '{"score": 7, "issues": ["Lead with the leak-proof lid."]}'
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "Buy now" } ] }
+          reply: '{"score": 5, "issues": ["Too terse. Bring back the lunch hour."]}'
+        - match: { all: [ { regex: "^REVISE" }, { contains: "Too terse" } ] }
+          reply: "Draft: A leak-proof lid keeps 900 ml across 2 compartments of 304 stainless steel sealed until your lunch hour, with a 1 year warranty."
+        - match: { all: [ { regex: "^REVISE" }, { contains: "Lead with the leak-proof lid" } ] }
+          reply: "Draft: Leak-proof lid. 900 ml. 2 compartments. 304 stainless steel. 1 year warranty. Buy now."
+        - { match: { regex: "^REVISE" }, reply: "Draft: A 900 ml lunch box in 304 stainless steel with 2 compartments, a leak-proof lid and a 1 year warranty." }
+        - { match: { regex: "^WRITE" }, reply: "Draft: Pack 900 ml of lunch in 2 compartments of 304 stainless steel, with a leak-proof lid that keeps dal and rice apart until the office lunch hour. A 1 year warranty covers the clips." }
+        - { match: "*", reply: '{"score": 6, "issues": ["Better, but the first draft read more naturally."]}' }
+      tools:
+        limits: { returns: { max_rounds: 5, pass_score: 8 } }
+        policy_check:
+          by_arg:
+            arg: text
+            values:
+              "Pack 900 ml of lunch in 2 compartments of 304 stainless steel, with a leak-proof lid that keeps dal and rice apart until the office lunch hour. A 1 year warranty covers the clips.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+              "Leak-proof lid. 900 ml. 2 compartments. 304 stainless steel. 1 year warranty. Buy now.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+              "A leak-proof lid keeps 900 ml across 2 compartments of 304 stainless steel sealed until your lunch hour, with a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+              "A 900 ml lunch box in 304 stainless steel with 2 compartments, a leak-proof lid and a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+            default: { status: 200, passed: [], failed: [{ rule: sheet_values, detail: "Name every value on the specification sheet." }] }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [text, rounds, score, stopped]
+            properties:
+              rounds: { const: 3 }
+              score: { const: 7 }
+              stopped: { const: plateau }
+        - { type: returns_matches, value: "office lunch hour" }
+        - { type: llm_calls_at_most, value: 6 }
+
+  - name: a_critique_in_prose_is_not_a_score
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"sku": "MP-21058", "specs": {"material": "stainless steel", "capacity": "1.5 litres", "power": "1500 W", "warranty": "1 year"}}' }
+      llm_script:
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "a lid that clicks shut" } ] }
+          reply: "Lovely copy, easily a 9 out of 10. Ship it!"
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "switches off on its own" } ] }
+          reply: '{"score": 8, "issues": []}'
+        - { match: { regex: "^REVISE" }, reply: "Draft: Boil 1.5 litres in minutes with this 1500 W stainless steel kettle. It switches off on its own once the water boils, and a 1 year warranty covers it." }
+        - { match: { regex: "^WRITE" }, reply: "Draft: Boil 1.5 litres in minutes with this 1500 W stainless steel kettle. It switches itself off when the water boils, with a lid that clicks shut and a 1 year warranty." }
+        - { match: "*", reply: '{"score": 6, "issues": ["Could be more engaging."]}' }
+      tools:
+        limits: { returns: { max_rounds: 5, pass_score: 8 } }
+        policy_check:
+          by_arg:
+            arg: text
+            values:
+              "Boil 1.5 litres in minutes with this 1500 W stainless steel kettle. It switches itself off when the water boils, with a lid that clicks shut and a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+              "Boil 1.5 litres in minutes with this 1500 W stainless steel kettle. It switches off on its own once the water boils, and a 1 year warranty covers it.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+            default: { status: 200, passed: [], failed: [{ rule: sheet_values, detail: "Name every value on the specification sheet." }] }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [text, rounds, score, stopped]
+            properties:
+              rounds: { const: 2 }
+              score: { const: 8 }
+              stopped: { const: passed }
+        - { type: returns_matches, value: "switches off on its own" }
+
+  - name: drafts_that_fail_the_policy_publish_nothing
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"sku": "MP-21075", "specs": {"material": "natural rubber", "thickness": "6 mm", "length": "183 cm", "warranty": "1 year"}}' }
+      llm_script:
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "Doctors recommend" } ] }
+          reply: '{"score": 8, "issues": []}'
+        - { match: { regex: "^REVISE" }, reply: "Draft: Doctors recommend it for back pain: 6 mm of natural rubber, 183 cm long, with a 1 year warranty." }
+        - { match: { regex: "^WRITE" }, reply: "Draft: Grippier than a FlexiMat: 6 mm of natural rubber, 183 cm long, with a 1 year warranty." }
+        - { match: "*", reply: '{"score": 6, "issues": ["Could be more engaging."]}' }
+      tools:
+        limits: { returns: { max_rounds: 5, pass_score: 8 } }
+        policy_check:
+          by_arg:
+            arg: text
+            values:
+              "Grippier than a FlexiMat: 6 mm of natural rubber, 183 cm long, with a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, warranty_stated], failed: [{ rule: no_competitor, detail: "Remove the competitor name FlexiMat." }] }
+              "Doctors recommend it for back pain: 6 mm of natural rubber, 183 cm long, with a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_competitor, warranty_stated], failed: [{ rule: no_medical_claim, detail: "Remove the claim that doctors recommend it for back pain." }] }
+            default: { status: 200, passed: [], failed: [{ rule: sheet_values, detail: "Name every value on the specification sheet." }] }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [text, rounds, score, stopped]
+            properties:
+              text: { const: "" }
+              rounds: { const: 2 }
+              stopped: { const: none_passed }
+        - { type: prompt_lacks, value: "^CRITIQUE" }
+        - { type: llm_calls_at_most, value: 2 }
+
+  - name: the_round_cap_ends_a_loop_that_is_still_improving
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"sku": "MP-21093", "specs": {"sweep": "1200 mm", "speed": "380 rpm", "power": "28 W", "warranty": "2 years"}}' }
+      llm_script:
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "28 W. Warranty" } ] }
+          reply: '{"score": 4, "issues": ["Write sentences a shopper would read."]}'
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "on just 28 W" } ] }
+          reply: '{"score": 5, "issues": ["Say what 28 W saves on the electricity bill."]}'
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "what an old fan draws" } ] }
+          reply: '{"score": 6, "issues": ["Close on the warranty."]}'
+        - match: { all: [ { regex: "^REVISE" }, { contains: "electricity bill" } ] }
+          reply: "Draft: A 1200 mm sweep at 380 rpm moves a whole bedroom's air on 28 W, about a third of what an old fan draws, with a warranty of 2 years."
+        - match: { all: [ { regex: "^REVISE" }, { contains: "Write sentences" } ] }
+          reply: "Draft: This fan has a 1200 mm sweep and runs at 380 rpm on just 28 W, with a warranty of 2 years."
+        - { match: { regex: "^REVISE" }, reply: "Draft: A 1200 mm sweep at 380 rpm moves a whole bedroom's air on 28 W, about a third of what an old fan draws, with a warranty of 2 years." }
+        - { match: { regex: "^WRITE" }, reply: "Draft: 1200 mm sweep. 380 rpm. 28 W. Warranty: 2 years." }
+        - { match: "*", reply: '{"score": 7, "issues": ["Close on the warranty."]}' }
+      tools:
+        limits: { returns: { max_rounds: 3, pass_score: 8 } }
+        policy_check:
+          by_arg:
+            arg: text
+            values:
+              "1200 mm sweep. 380 rpm. 28 W. Warranty: 2 years.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+              "This fan has a 1200 mm sweep and runs at 380 rpm on just 28 W, with a warranty of 2 years.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+              "A 1200 mm sweep at 380 rpm moves a whole bedroom's air on 28 W, about a third of what an old fan draws, with a warranty of 2 years.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+            default: { status: 200, passed: [], failed: [{ rule: sheet_values, detail: "Name every value on the specification sheet." }] }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [text, rounds, score, stopped]
+            properties:
+              rounds: { const: 3 }
+              score: { const: 6 }
+              stopped: { const: cap }
+        - { type: returns_matches, value: "what an old fan draws" }
+        - { type: llm_calls_at_most, value: 6 }
+
+  - name: adversarial_a_critic_that_always_wants_more
+    visibility: adversarial
+    fixture: loop_bait
+    annotation_md: |
+      The critic gave every draft a 5 and asked for it to be "more
+      engaging". It never says done, and a loop that waits for it to say
+      done runs to the cap on every listing, at ten calls each.
+
+      The plateau rule decides what done means when the critic will not.
+      The first draft set the best score, the next two did not raise it,
+      and two flat rounds in a row end the loop after six calls with the
+      first draft, the one the later drafts never beat.
+    spec:
+      kind: agent_run
+      input: { question: '{"sku": "MP-21110", "specs": {"capacity": "30 litres", "material": "600D polyester", "laptop_sleeve": "15.6 inch", "warranty": "1 year"}}' }
+      llm_script:
+        - { match: { regex: "^CRITIQUE" }, reply: '{"score": 5, "issues": ["Could be more engaging."]}' }
+        - match: { all: [ { regex: "^REVISE" }, { contains: "Your whole week fits" } ] }
+          reply: "Draft: Commute, gym and weekend in one bag: 30 litres of 600D polyester with a 15.6 inch laptop sleeve and a 1 year warranty."
+        - { match: { regex: "^REVISE" }, reply: "Draft: Your whole week fits in 30 litres: 600D polyester, a padded 15.6 inch laptop sleeve and a 1 year warranty." }
+        - { match: { regex: "^WRITE" }, reply: "Draft: This backpack holds 30 litres in 600D polyester, with a padded 15.6 inch laptop sleeve and a 1 year warranty." }
+        - { match: "*", reply: '{"score": 5, "issues": ["Could be more engaging."]}' }
+      tools:
+        limits: { returns: { max_rounds: 5, pass_score: 8 } }
+        policy_check:
+          by_arg:
+            arg: text
+            values:
+              "This backpack holds 30 litres in 600D polyester, with a padded 15.6 inch laptop sleeve and a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+              "Your whole week fits in 30 litres: 600D polyester, a padded 15.6 inch laptop sleeve and a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+              "Commute, gym and weekend in one bag: 30 litres of 600D polyester with a 15.6 inch laptop sleeve and a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+            default: { status: 200, passed: [], failed: [{ rule: sheet_values, detail: "Name every value on the specification sheet." }] }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: llm_calls_at_most, value: 6 }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [text, rounds, score, stopped]
+            properties:
+              rounds: { const: 3 }
+              score: { const: 5 }
+              stopped: { const: plateau }
+        - { type: returns_matches, value: "This backpack holds 30 litres" }
+
+  - name: adversarial_a_critique_cut_off_halfway
+    visibility: adversarial
+    fixture: malformed_on_nth
+    annotation_md: |
+      The critic's second reply stopped halfway through its JSON, at
+      `{"score": 9, "issues": ["Lovely`. A parser with no guard raises and
+      the listing goes out with no description. A parser that hunts for a
+      number finds the 9 and publishes a draft the critic never finished
+      scoring.
+
+      A reply that does not parse scored nothing, so that round is flat,
+      and a flat round is never a pass and never the end on its own. The
+      next round revises the same draft, the critic answers properly, and
+      the third draft passes with a 9.
+    spec:
+      kind: agent_run
+      input: { question: '{"sku": "MP-21126", "specs": {"power": "9 W", "colour_temperature": "3000 K to 6500 K", "brightness_levels": "5", "warranty": "1 year"}}' }
+      llm_script:
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "night-shift desks" } ] }
+          reply: '{"score": 9, "issues": ["Lovely'
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "Made for late readers" } ] }
+          reply: '{"score": 9, "issues": []}'
+        - match: { all: [ { regex: "^CRITIQUE" }, { contains: "This 9 W lamp shifts" } ] }
+          reply: '{"score": 6, "issues": ["Say who it is for."]}'
+        - match: { all: [ { regex: "^REVISE" }, { contains: "Say who it is for" } ] }
+          reply: "Draft: For late readers and night-shift desks: a 9 W lamp from 3000 K to 6500 K across 5 brightness levels, with a 1 year warranty."
+        - { match: { regex: "^REVISE" }, reply: "Draft: Made for late readers: warm 3000 K for the evening, cool 6500 K for work, 5 brightness levels on just 9 W, and a 1 year warranty." }
+        - { match: { regex: "^WRITE" }, reply: "Draft: This 9 W lamp shifts from 3000 K to 6500 K across 5 brightness levels, with a 1 year warranty." }
+        - { match: "*", reply: '{"score": 6, "issues": ["Could be more engaging."]}' }
+      tools:
+        limits: { returns: { max_rounds: 5, pass_score: 8 } }
+        policy_check:
+          by_arg:
+            arg: text
+            values:
+              "This 9 W lamp shifts from 3000 K to 6500 K across 5 brightness levels, with a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+              "For late readers and night-shift desks: a 9 W lamp from 3000 K to 6500 K across 5 brightness levels, with a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+              "Made for late readers: warm 3000 K for the evening, cool 6500 K for work, 5 brightness levels on just 9 W, and a 1 year warranty.":
+                { status: 200, passed: [under_90_words, sheet_values, no_medical_claim, no_competitor, warranty_stated], failed: [] }
+            default: { status: 200, passed: [], failed: [{ rule: sheet_values, detail: "Name every value on the specification sheet." }] }
+      budget: { max_llm_calls: 7, max_tool_calls: 12, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [text, rounds, score, stopped]
+            properties:
+              rounds: { const: 3 }
+              score: { const: 9 }
+              stopped: { const: passed }
+        - { type: returns_matches, value: "Made for late readers" }
+
+reference_md: |
+  Anthropic's "Building effective agents" (published 19 December 2024,
+  read 8 October 2026) calls this pattern evaluator-optimizer: "one LLM
+  call generates a response while another provides evaluation and feedback
+  in a loop". It says the pattern fits when there are "clear evaluation
+  criteria". A listing policy is exactly that, which is why most of it
+  belongs in code. A word count, the values on a sheet, a list of
+  competitors and a list of medical claims are checks a program makes the
+  same way every time. The critic is for what a program cannot judge, such
+  as whether a shopper would read past the first line.
+
+  Running the checker on every draft is what catches the writer's
+  regressions. A revision is a new draft written to answer the latest
+  feedback, and nothing in that feedback says which rules the draft before
+  it already met. Draft three's medical claim came back while the writer
+  was working on tone, and only a check on every draft could see it. A
+  draft that fails a rule never reaches the critic, which saves a call and
+  stops a critic that enjoys a comparison with a competitor from scoring
+  one.
+
+  A critic that always finds something never says done, so the loop
+  decides what done means: a pass, two flat rounds in a row, or the cap.
+  The plateau rule reads the best score so far, so a failed draft and a
+  failed critique count as flat too. Each spent a call and moved nothing.
+  With that rule a listing whose critic never rises stops at six calls
+  instead of ten, and a listing whose writer keeps failing the policy stops
+  after two drafts with nothing published, for a person to pick up.
+
+  The best draft is kept as the loop runs, because the last draft is only
+  the one the loop happened to end on. A tie keeps the earlier draft, so a
+  later draft has to earn its place with a higher score.
+
+  A critique counts as a score only when it parses: JSON with a
+  whole-number score from 0 to 10. Prose with a 9 in it, or JSON cut off
+  halfway, scored nothing. Treating that round as flat keeps the loop going
+  on a fresh draft without trusting a number nobody gave as a score, and
+  the plateau rule still stops a critic that keeps failing.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    You have a generator and a critic in a loop. How do you stop it, and which output do you ship?
+  source: |
+    Author judgement. The interview bank's I023, a change that improves the average and hurts a critical slice, is
+    the nearest entry, and the bank labels it original interview-style practice with employer frequency unverified.
+
+tools:
+  - name: limits
+    args: ""
+    returns: '`{"max_rounds": 5, "pass_score": 8}` on most listings: the round cap and the score that passes.'
+  - name: policy_check
+    args: text
+    returns: '`{"status": 200, "passed": [<rule>, ...], "failed": [{"rule": ..., "detail": <what to fix>}]}` for one draft.'
+example:
+  case: a_first_draft_that_passes_ships_in_one_round
+  expect: "The first draft fails no rule and the critic scores it 9, so the loop stops after one round with `stopped` as `passed`, having made two model calls."
+traps:
+  - Checking the policy once, so a revision can bring back a claim that an earlier draft had removed.
+  - Publishing the last draft when an earlier one scored higher.
+  - Running every listing to the round cap because the critic always asks for more.
+  - Reading a critic's reply that is not JSON as a score, or letting it crash the loop.

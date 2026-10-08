@@ -12,7 +12,7 @@ The last six rows land with `eval/` and are not enforced today, because no probl
 
 | Rule | Reason |
 |---|---|
-| No `"*"` fallback in an `llm_script` | The mock would raise mid-test and the learner would see an infrastructure error |
+| An `llm_script` with no `"*"` fallback rule, which docs/03 section 2.2 also calls an authoring error | The mock would raise mid-test and the learner would see an infrastructure error |
 | A competency tag outside the fixed vocabulary | Tags roll up into the heatmap and an invented tag creates an orphan column |
 | Fewer than two public tests | A learner needs something to iterate against |
 | Fewer than two hidden tests on Medium and above | One hidden test is guessable |

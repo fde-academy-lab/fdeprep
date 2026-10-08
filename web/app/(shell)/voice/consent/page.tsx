@@ -49,6 +49,22 @@ const TERMS: { heading: string; body: string }[] = [
       "Into storage on the platform's own cloud account. The speech-to-text service " +
       "transcribes it and nothing else receives it.",
   },
+  {
+    heading: "Your resume, if you paste one",
+    body:
+      "In interview mode you can paste your resume so the interviewer can ask about it. " +
+      "The text is read once to pick out up to twelve claims, in your own words, and is then " +
+      "discarded. It is never saved, never logged and never shown to faculty. The claims are " +
+      "kept only while that session runs and are deleted when it ends. Nothing from your " +
+      "resume is used in your score.",
+  },
+  {
+    heading: "What the interviewer says",
+    body:
+      "The interviewer's questions are spoken by a synthetic voice. A question generated for " +
+      "your session is kept as audio for thirty days, like your recording, and its words stay " +
+      "in your debrief. Questions written in advance are cached and hold nothing about you.",
+  },
 ];
 
 export default async function VoiceConsentPage() {

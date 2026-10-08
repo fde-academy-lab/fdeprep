@@ -4,7 +4,7 @@ The decisions that shaped the build, in the order they were made. Each records w
 
 | ID | Date | Decision | Instead of | Why | What it costs | Where |
 |---|---|---|---|---|---|---|
-| D1 | 14 Sep | Write the whole specification before any code, and treat it as authoritative. | Building from a short brief and learning as it goes. | A disagreement between code and plan gets raised against a written contract instead of settled silently. | 2,843 lines before the first thing could be learned from running code. | README section 7.2 |
+| D1 | 14 Sep | Write the whole specification before any code, and treat it as authoritative. | Building from a short brief and learning as it goes. | A disagreement between code and plan gets raised against a written contract instead of settled silently. | 2,843 lines before the first thing could be learned from running code. | [delivery-history.md](delivery-history.md), S0 |
 | D2 | 14 Sep | Grade code against a scripted model, deterministically. | Grading with a live model. | A verdict anyone can reproduce can be appealed, and the model bill does not grow with practice. | A scripted tool cannot compute from its arguments, so some behaviours need a named fixture in the runner. | docs/00, docs/03 |
 | D3 | 14 Sep | PostgreSQL, GitHub sign-in and Lambda containers. | DynamoDB, Cognito and a sandbox priced per session, which an earlier build pack chose. | The workload is joins and aggregates, the learners already live on GitHub, and a Lambda costs nothing idle. | One more database to operate. | docs/09 |
 | D4 | 14 Sep | One policy module decides everything that depends on difficulty, and a lint rule enforces it. | Checks spread across screens. | Difficulty behaviour changed four times during the build, and every change touched one file. | A new rule has to be expressed in the policy module's terms. | PR #3 |
@@ -15,10 +15,11 @@ The decisions that shaped the build, in the order they were made. Each records w
 | D9 | 30 Sep | The worker invokes the runner and judge functions directly. | SQS between the application and the functions. | The Postgres queue already carries delivery, retries and leases, and a second queue for a few dozen learners adds a place to fail. | Revisit if a cohort outgrows one worker host. | PR #40, docs/05 |
 | D10 | 30 Sep | Beta testers get one-time invites, and GitHub stays the only proof of identity. | Email and password accounts. | No password store to secure, and every tester already has GitHub. | Somebody without a GitHub account cannot join. | PR #40 |
 | D11 | 30 Sep | The delivery board is generated from a file in the repository. | Cards edited by hand on the Project. | The record is reviewed like code, and a sync puts back anything edited by hand. | Views must be made by hand once, because GitHub's API cannot create them. | This folder |
+| D12 | 8 Oct | Follow-up rounds are a mode of their own, asked between turns, with the model's words raced against a four-second deadline and the authored follow-ups as the fallback. | A follow-up generated mid-answer, inside pressure mode. | docs/07 section 12 item 4 forbids a model call while the learner speaks, so a question drawn from the answer can only come after it, and pressure mode's interruptions are a different, tested behaviour. | A new route between turns, a socket per reply, and a gap of up to six seconds the learner waits through. | docs/07 section 5a |
 
 ## Deliberately not built
 
-A roadmap that only grows is one nobody trusts, so these are recorded as decisions too. The argument for each is in README section 8.4.
+A roadmap that only grows is one nobody trusts, so these are recorded as decisions too. The argument for each is in the README under [What stays unbuilt](../../README.md#what-stays-unbuilt).
 
 | Not building | Because |
 |---|---|

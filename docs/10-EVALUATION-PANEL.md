@@ -84,11 +84,11 @@ A fifth level is worth adding the day two things are true together: a second jud
 
 ### What the catalogue actually declares
 
-All 25 problems declare a level, and the validator requires one. The distribution is 17 at C2, 5 at C3 and 3 at C4, which matches the artefact types exactly, and two facts rather than a lack of effort explain why.
+Every problem declares a level, and the validator requires one. On 8 October 2026 the catalogue held 163 problems: code at C1 (2) or C2 (125), prompt at C3 (10), and design at C3 (2) or C4 (24). When it held 25, on 21 September 2026, the split was 17 at C2, 5 at C3 and 3 at C4. Two facts rather than a lack of effort explain why no code problem sits higher.
 
 **Code cannot go above C2.** From C3 the level requires panelist 2, and a code problem has no graded exemplar pool for it to compare against, so the panelist would report `skipped` against a `required` demand on every submission for ever. That drops every code evaluation to `medium` confidence and promises a voice that is never coming. A code problem stays at C2 until either code answers carry graded exemplars or the demand table changes.
 
-This is the intended behaviour of keeping the axes separate rather than a flattening of them. `bind-approval-to-an-exact-action` is Extreme and C2: it is hard, and there is still a right answer a battery can check.
+This is the intended behaviour of keeping the axes separate rather than a flattening of them. `resume-an-interrupted-graph-without-a-second-payout` is Extreme and C2: it is hard, and there is still a right answer a battery can check. This example named `bind-approval-to-an-exact-action` until that problem moved to Hard on 8 October 2026.
 
 ### Which panelists a level demands
 

@@ -228,9 +228,12 @@ export async function release(client: PoolClient, options: {
  * Which allowance a voice session spends. docs/07 section 10: guided and
  * unguided have a daily cap each, and pressure shares the rehearsal
  * allowance, because it is the expensive mode in both tokens and nerves.
+ * Interview mode spends the same rehearsal allowance (docs/07 section 5a): it
+ * is the most expensive mode, and a scope of its own would be a second enum
+ * value and two more migrations. A follow-up round spends nothing more.
  */
-export function voiceScope(mode: "guided" | "unguided" | "pressure"): Scope {
-  if (mode === "pressure") return "rehearsal_weekly";
+export function voiceScope(mode: "guided" | "unguided" | "pressure" | "interview"): Scope {
+  if (mode === "pressure" || mode === "interview") return "rehearsal_weekly";
   return mode === "guided" ? "voice_guided_daily" : "voice_unguided_daily";
 }
 

@@ -5,11 +5,27 @@ difficulty: hard
 total_seconds: 130
 competencies: [evaluation-design, failure-mode-analysis, client-communication]
 
+round: judgement-call
+tests: Whether you look inside an aggregate, weigh a slice by what a failure there costs, say what five cases can and cannot show, and end with a decision and its owner.
+interviewers: [senior-ai-engineer, engineering-lead, bar-raiser]
+builds_on: [block-only-on-real-regressions, set-the-release-threshold, report-variability-across-trials]
+
 prompt_text: |
-  Prompt B is two points better overall than prompt A. On the slice where the
-  agent handles a customer asking for a refund it is four points worse, and
-  that slice has five cases in it. The team wants to ship B today. What do you
-  say?
+  At a fashion marketplace the size of Myntra, prompt B for the support
+  agent is two points better overall than prompt A. On the slice where a
+  customer asks for a refund it is four points worse, and that slice has
+  five cases in it. The team wants to ship B today. What do you say?
+
+framework:
+  answer_first: I would not ship B today. Two points overall is a net, and the slice that got worse is the one where a mistake costs money.
+  evidence: Four points on five cases is one case moving, so the slice cannot show a regression and it cannot clear B either. The paired comparison over the same cases, read case by case, is a couple of hours.
+  trade_off: Holding B costs a day and a two-point gain on the easy paths. Shipping it risks the refund path getting worse in a way this eval set cannot see.
+  if_you_do_not_know: If you cannot tell whether the refund failures are one bug, say that reading the four cases is the first step, and name who decides once they have been read.
+tips:
+  - Ask what the two points are made of before you accept them. Thirty cases slightly better and five much worse is a different picture from a uniform lift.
+  - Do not reach for a weighted average. Weighting is averaging again, and the slice matters because of what a failure there costs.
+  - A slice too small to trust is a finding, and it is worse than a regression, because a regression can at least be seen.
+  - Say what you would do and whose call it is. Laying out considerations and stopping hands the problem back.
 
 beats:
   - id: b1

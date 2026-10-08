@@ -5,11 +5,27 @@ difficulty: hard
 total_seconds: 270
 competencies: [client-communication, system-design, failure-mode-analysis]
 
+round: client-role-play
+tests: Whether you can turn a delivery method into dates a sponsor can repeat, own an overrun with its causes ranked, and hold a scope without refusing her.
+interviewers: [client, ceo, hiring-manager]
+builds_on: [deliver-in-bolts-2-plan-bolt-1-without-splitting-a-unit, deliver-in-bolts-8-deploy-watch-and-roll-back, deliver-in-bolts-9-write-the-retrospective]
+
 prompt_text: |
-  The head of customer service has read the retrospective. She opens with:
-  bolt 1 overran, you rolled back, and you want two more bolts before
-  installs. Why not a sprint plan with dates I can show the board? Answer
-  her.
+  You are the FDE on the field-service agent at an appliance maker the size
+  of Voltas. The head of customer service has read the retrospective. She
+  opens with: bolt 1 overran, you rolled back, and you want two more bolts
+  before installs. Why not a sprint plan with dates I can show the board?
+  Answer her.
+
+framework:
+  answer_first: A bolt is two days that end in something she can open, so the plan is a date every two days, and the first one is the second of June.
+  evidence: Eleven hours over, ranked. Six of rework the review caught, five of estimates, two from the installs ticket. Each number comes with the change that answers it.
+  trade_off: Bolts give her a smaller promise kept every two days. A sprint plan gives her one date two weeks out and nothing to open before it. Say which she is choosing.
+  if_you_do_not_know: If you cannot give installs a date, say why. There is no measured baseline. Then give the date on which the baseline will exist, and the window after it.
+tips:
+  - Answer in dates in the first thirty seconds. She asked for dates, and an answer that explains the method first has lost her.
+  - Rank the causes of the overrun the way the retrospective did, with her own request last. Putting it first reads as blame.
+  - Say what the board can hear in one sentence that is true when checked, and say what slips if bolt 2 runs long. A unit slips. The date holds.
 
 beats:
   - id: b1

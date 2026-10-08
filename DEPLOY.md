@@ -589,7 +589,7 @@ Leave out `migrate` and `import:content`. Every migration stays backward compati
 | A page shows "This page did not load" with a reference number. | `journalctl -u fdeprep-web --no-pager \| grep -B25 REFERENCE` prints the error above it. |
 | The browser terminal will not connect. | Step 4.2, and that the instance still has its Elastic IP. |
 
-README section 5.2 has the full table.
+The README's table under [Fixing it when it breaks](README.md#fixing-it-when-it-breaks) has the full list.
 
 ## Appendix A: deploying from a laptop
 

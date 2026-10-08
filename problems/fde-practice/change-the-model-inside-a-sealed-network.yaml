@@ -1,0 +1,452 @@
+slug: change-the-model-inside-a-sealed-network
+title: "Change the model inside a sealed network"
+drill: true
+skill: Decide a model change from numbers measured inside a network that reports nothing out
+artefact_type: design
+difficulty: hard
+complexity: C4
+track: fde-practice
+concept:
+  topic: "Pilot to production"
+  question: "How do you change the model when you cannot see the system it runs in?"
+est_minutes: 45
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: evaluation-design, weight: 1.0 }
+  - { slug: client-communication, weight: 0.5 }
+
+panel: { static: true, pretrained: true, llm: true }
+
+constraints: ["80 GB", "second Saturday", "three working days", "400", "telemetry"]
+
+brief_md: |
+  A public-sector bank the size of Bank of Baroda runs a branch-operations
+  assistant inside its own data centre. About 1,900 branch staff ask it about
+  circulars and procedures. It has run for four months on an open-weight
+  model, quantised to 8 bits a weight to save memory and served on one of two
+  GPU nodes with 80 GB each. The second node carries the embedding model and
+  takes over if the first fails.
+
+  Nothing leaves the network: no telemetry, no traces, no model traffic.
+  Traces land in a store inside. You are on site two days a month. A redacted
+  trace extract can come out through a scanned transfer that takes three
+  working days, and every file that goes in takes the same route. Changes are
+  installed in a window on the second Saturday of each month. The bank's
+  training team wrote a 400-question set, and the assistant answered 84
+  percent of it within policy at go-live.
+
+  In month three a new circular format arrived: tables of three columns, with
+  Hindi and English side by side. On your last visit you measured 38 percent
+  on the 60 questions the training team wrote about the new circulars. The
+  400-question set has not been run since go-live.
+
+  The model's vendor has released a successor, and the CIO has read the
+  vendor's benchmark. At 8-bit the successor needs about 140 GB, so both GPU
+  nodes. At 4-bit, which halves the memory again at a cost in quality that
+  only a measurement shows, it fits on one. The CIO wants it in next month's
+  window.
+  The security lead refuses any traffic to a cloud model, even for a
+  comparison, and any telemetry out.
+
+  Month two left a warning. The embedding model was upgraded in the window on
+  the strength of its vendor's benchmark, the index was not rebuilt, retrieval
+  got worse, and nobody knew for nine days, until your next visit, because
+  nothing reports out.
+
+  Write the recommendation.
+
+contract_md: |
+  Write the recommendation for the CIO, who wants the successor in next
+  month's window, and the security lead, who will read every line for
+  anything that reaches outside the network. They read the same document.
+
+  Between 350 and 650 words. There is no template and no required heading.
+
+  Say what you would do first and why, how you would decide whether the
+  successor goes in and on which hardware, how a bad release is undone inside
+  the window, what the bank's own team can run without you, and what you
+  tell the CIO the successor will and will not fix.
+
+word_range: [350, 650]
+required_headings: []
+
+rubric:
+  - label: Diagnoses before deciding, and names retrieval as the first suspect
+    weight: 25
+    descriptor_md: |
+      The score fell when a new document format arrived, and the model stayed
+      the same. Strong answers start where the change was: they read the
+      redacted trace extract for the 60 failing questions, suspect how
+      three-column tables in two languages were parsed, chunked and indexed,
+      and test a parser and a rebuilt index before any model change. They say
+      that a successor would read the same broken passages. An answer that
+      treats the 38 percent as a weakness of the model has skipped the
+      diagnosis the brief's symptoms point to.
+  - label: Measures inside, on the model that will run, with the ready score agreed first
+    weight: 20
+    descriptor_md: |
+      The vendor's benchmark was measured outside, on the vendor's documents.
+      Strong answers run the 400 questions and the 60 inside, on the hardware
+      and the quantisation that will serve, and agree the score that counts as
+      ready before anyone sees a result, for example a floor on the 60 and no
+      drop below go-live on the 400. They find a way to measure that sends
+      nothing out, such as a measurement run in the window. Any comparison
+      with a hosted model, whatever the questions, is refused by the brief.
+  - label: Keeps the failover, or names the cost of losing it and who accepts it
+    weight: 15
+    descriptor_md: |
+      At 8-bit the successor needs about 140 GB, both 80 GB nodes, so the
+      embeddings share a node with it and nothing takes over when a node
+      fails. Strong answers count the GPUs twice, once for the weights and
+      once for a failure, and either keep the layout at 4-bit or put the
+      single point of failure in front of the bank to accept in writing. An
+      answer that schedules 8-bit without mentioning failover has removed it
+      without telling anyone.
+  - label: Rehearses the change and rolls back inside the window without another transfer
+    weight: 15
+    descriptor_md: |
+      The window is monthly and the door takes three working days, so a
+      rollback that needs a transfer is a month of a bad release. Strong
+      answers ship the previous model, index and parser in every bundle,
+      rehearse the install and the switch back with no route out before the
+      bundle travels, and set the score below which the bank's team switches
+      back that night.
+  - label: Leaves the bank's team able to measure and roll back without the FDE
+    weight: 15
+    descriptor_md: |
+      Month two went unnoticed for nine days because nobody inside could
+      measure anything. Strong answers leave an evaluation runner with the
+      400 and the 60 installed, run by the bank's own team after every
+      change, a runbook for the rollback, and a short score report that leaves
+      on the next transfer, so the next change is measured the day it lands.
+  - label: Tells the CIO what the successor does and does not fix
+    weight: 10
+    descriptor_md: |
+      Strong answers say plainly that a stronger model may answer some
+      questions better and cannot answer from a table that retrieval never
+      returns, and they give the CIO a date by which the successor can go in
+      on numbers measured inside. An answer that promises the 38 percent will
+      rise because the vendor's benchmark rose has repeated month two.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      The successor should not go in next month's window. That window should
+      find out why the new circulars score 38 percent and measure the
+      successor inside the bank, so the window after it can decide on numbers
+      we trust.
+
+      Start where the change was. The drop arrived with a document format,
+      and the model stayed the same. The new circulars are three-column tables
+      with Hindi and English side by side, and the redacted trace extract from
+      my last visit shows what retrieval returned for those 60 questions:
+      rows split across chunks, a Hindi cell joined to the wrong English row,
+      and often the older text circular in place of the new one. That is a
+      parsing and indexing problem, and the successor would read the same
+      broken chunks. The fix to test first is a parser that keeps each row
+      whole in both languages, and a rebuilt index.
+
+      Measure inside, on the model that will run. Next month's bundle carries
+      the parser, an evaluation runner with the 400 and the 60 questions, and
+      the successor's weights at 4-bit. In the window your team rebuilds the
+      index and runs both sets on the current model, then loads the successor
+      on node 2 for a measurement run and runs them again. Before the window
+      we agree what counts as ready: at least 80 percent on the 60, and
+      nothing below 84 percent on the 400. The results are read on site that
+      day, at the cost of node 2's failover for the measurement hour, and no
+      traffic goes to any cloud model.
+
+      Count the GPUs twice. At 4-bit the successor fits on one 80 GB node,
+      and node 2 keeps the embeddings and the failover. At 8-bit it needs
+      about 140 GB, both nodes, so the embeddings share a node with it and
+      nothing takes over: if either node fails, the assistant stops for 1,900
+      staff until someone restarts it. If the numbers favour 8-bit, that
+      single point of failure is the bank's to accept in writing, and I would
+      not recommend it.
+
+      Ship the way back in every bundle. Each bundle carries the previous
+      model, index and parser, so rollback is a change of version tag inside
+      the window, rehearsed on our side with no route out before the bundle
+      travels. If the evaluation run after the change falls below the agreed
+      score, your team rolls back that night from the runbook, without me and
+      without another three-day transfer.
+
+      Leave the measurement with your team. The runner and both question sets
+      stay installed, your operations team runs them after every change, and
+      a one-page score report travels out on the next transfer. The month-two
+      embedding upgrade went unnoticed for nine days because nobody inside
+      could measure it, and this closes that gap.
+
+      What the successor will and will not do: it may answer the older
+      circulars better, and it cannot read a table that retrieval never
+      returns. If the parser lifts the 60 past the ready score, the successor
+      becomes a choice we make on its own numbers rather than a repair.
+  - band: adequate
+    score: 60
+    body_md: |
+      The successor is a reasonable upgrade, and it can go in next month's
+      window if we are careful about how.
+
+      Hardware first. At 8-bit the successor needs about 140 GB, which means
+      both GPU nodes. That would leave no node for the embedding model on its
+      own and no failover if a node goes down, which is too much risk for a
+      system 1,900 branch staff rely on. At 4-bit it fits on one 80 GB node,
+      so we keep the current layout: the model on node 1, the embeddings and
+      the failover on node 2. I recommend the 4-bit version.
+
+      Measurement. The vendor's benchmark was run outside on its own
+      documents, so it tells us little about circulars. We will ship an
+      evaluation runner with the 400-question set and the 60 new-format
+      questions, run them on the current model during the window to get a
+      fresh baseline, then load the successor and run them again. We will
+      agree with the training team beforehand that the successor goes live
+      only if it beats the current model on both sets. The scores are read
+      inside the bank and nothing is sent out, which the security lead
+      requires.
+
+      Rollback. The bundle carries the current model as well as the
+      successor, so if the scores disappoint or something breaks, the bank's
+      team can switch back in the same window without waiting three working
+      days for another transfer. We will rehearse the install and the switch
+      on our side before the bundle goes in.
+
+      Expectations. The 38 percent on the new circulars should improve, since
+      the successor is a stronger model and the vendor reports large gains in
+      document understanding. I would expect the overall score to rise above
+      the 84 percent we saw at go-live as well.
+
+      Support. The bank's operations team will get a one-page runbook for the
+      install and the switch back, and I will go through the scores with the
+      training team on my next visit, so any question the successor still
+      gets wrong goes into the next round of work.
+
+      Next steps: the transfer request this week, the bundle built and
+      rehearsed in two weeks, and the install on the second Saturday.
+  - band: weak
+    score: 25
+    body_md: |
+      The vendor's new model is well ahead of the current one on its published
+      benchmark, and the CIO is right to want it as soon as possible. The
+      current model is now a generation old, and the 38 percent on the new
+      circulars shows it is struggling with harder documents.
+
+      I propose we install the successor in next month's window on the second
+      Saturday. To get its full quality we should run it at 8-bit, which needs
+      about 140 GB, so it will use both GPUs. The embedding model can share
+      the second GPU, since it is small. Running at 4-bit would save memory,
+      but it would throw away some of the accuracy the CIO is asking for, and
+      quality is the reason for the change.
+
+      Before the window we will prepare the bundle on our side and send it
+      through the transfer. To give everyone confidence, I suggest a short
+      comparison against a cloud model using synthetic questions only, so no
+      bank data leaves the network. If the successor comes within a few
+      points of the hosted model on those questions, we know it is performing
+      as the vendor says.
+
+      On the night, the bank's team installs the bundle and restarts the
+      assistant. I will be on site the following week to check how it is
+      doing with the branch staff and to collect feedback from the training
+      team.
+
+      To keep the branches informed, the training team can send a note before
+      the window saying that the assistant is moving to a newer model, and
+      that answers about the new circulars will improve from the Monday after
+      the upgrade.
+
+      If something goes wrong, we can prepare a second bundle with the
+      previous model and send it through the transfer, and the bank can
+      install it in the following window. Since the vendor's benchmark shows
+      a clear improvement, I expect this to be unlikely.
+
+      This plan gets the branch staff the better model within a month, keeps
+      the bank's documents inside the network, and uses the hardware the bank
+      already owns. It also prepares the bank to adopt future releases from
+      the same vendor quickly, which matters while models improve every few
+      months.
+
+hints:
+  - The drop arrived with a new document format, and the model stayed the
+    same. Start where the change was.
+  - Vendor benchmarks were measured outside. The number that matters is
+    measured inside, on the model that runs, against questions the bank
+    wrote.
+  - Count the GPUs twice, once for the successor's weights and once for what
+    happens when a node fails.
+  - The window is monthly and the door takes three working days. Say what has
+    to be ready when, and who turns it back when it goes wrong with nobody
+    from your team in the building.
+
+scenario:
+  headline: "The CIO wants the vendor's new model in next month's window"
+  who: The CIO and security lead of a public-sector bank the size of Bank of Baroda
+  situation: >-
+    A branch assistant runs inside the bank's data centre with nothing reporting
+    out. Scores on new tabular circulars fell to 38 percent, a successor model is
+    out, and an embedding upgrade in month two went unnoticed for nine days.
+  stakes: >-
+    About 1,900 branch staff act on its answers. A change that goes wrong stays
+    wrong until the next site visit, unless someone inside can measure it.
+  metrics:
+    - { label: GPU nodes, value: "2 × 80 GB" }
+    - { label: Score on new circulars, value: 38% }
+    - { label: Transfer time, value: 3 working days }
+
+diagram:
+  title: A system you can change only through a three-day door
+  caption: >-
+    Nothing reports out, so every number that decides a change has to be
+    measured inside, and the way back has to travel in with the change.
+  direction: lr
+  nodes:
+    - { id: staff, label: Branch staff, sub: "1,900 asking about circulars", kind: actor, tone: blue, at: [0, 1] }
+    - { id: assistant, label: Assistant, sub: inside the bank's data centre, kind: agent, tone: purple, at: [1, 1] }
+    - { id: node1, label: GPU node 1, sub: "80 GB, the model at 8-bit", kind: service, tone: teal, at: [2, 0] }
+    - { id: node2, label: GPU node 2, sub: "80 GB, embeddings and failover", kind: service, tone: teal, at: [2, 1] }
+    - { id: traces, label: Trace store, sub: readable only inside, kind: store, tone: neutral, at: [2, 2] }
+    - { id: runner, label: Evaluation runner, sub: "400 + 60, run by the bank's team", kind: guard, tone: green, at: [1, 2] }
+    - { id: door, label: Scanned transfer, sub: three working days each way, kind: guard, tone: orange, at: [3, 2] }
+    - { id: fde, label: You, sub: "outside, two days a month on site", kind: actor, tone: blue, at: [4, 1] }
+    - { id: vendor, label: "Vendor's benchmark", sub: measured outside, kind: doc, tone: pink, at: [3, 0] }
+  edges:
+    - { from: staff, to: assistant, label: questions, step: 1 }
+    - { from: assistant, to: node1, label: answers }
+    - { from: assistant, to: node2, label: retrieval }
+    - { from: assistant, to: traces, label: every step }
+    - { from: runner, to: assistant, label: the score after a change, tone: success }
+    - { from: traces, to: door, label: a redacted extract }
+    - { from: door, to: fde, label: three days later }
+    - { from: fde, to: door, label: bundle with the way back, tone: success }
+    - { from: vendor, to: node1, label: the month-two mistake, tone: danger }
+
+approach:
+  goal: Change the model only on numbers measured inside, with the way back inside the window
+  branches:
+    - label: Diagnose before you change
+      detail: The drop arrived with a new document format. Start where the change was.
+      leaves: ["what did retrieval return for the 60?", "how were tables in two languages chunked?"]
+    - label: Measure inside
+      leaves: ["the model that will run, on the bank's questions", agree the ready score before the number exists]
+    - label: Count the GPUs twice
+      leaves: [once for the weights, once for when a node fails]
+    - label: Undo inside the window
+      leaves: [the previous version in every bundle, a rollback the bank's team runs]
+    - label: Tell the CIO what it fixes
+      leaves: [a model cannot read a table retrieval never returns]
+
+coach:
+  opening: >-
+    Before you choose a model, write down what changed in month three and what
+    the trace extract would show if retrieval were the cause.
+  signals:
+    - id: no-diagnosis
+      when: { code_lacks: '(?i)(trace|extract|log)' }
+      say: >-
+        What did the trace extract say about the new circulars? The month-two
+        problem was found nine days late for one reason.
+    - id: model-blamed
+      when: { code_lacks: '(?i)(retriev|index|chunk|table|pars)' }
+      say: >-
+        The drop arrived with a new document format, and the model stayed the
+        same. Is it a model problem?
+    - id: failover-lost
+      when:
+        code_matches: '(?i)(both gpus|two gpus|both nodes|all the gpus|140 ?gb)'
+        code_lacks: '(?i)(failover|single point|fails? over|take[s]? over)'
+      say: >-
+        At 8-bit the successor takes both nodes. What runs when one of them
+        fails?
+    - id: no-number
+      when: { code_lacks: '(?i)(rehears|measure|score|eval|400)' }
+      say: >-
+        Which number decides whether the successor goes in, and where is it
+        measured?
+    - id: no-rollback
+      when: { code_lacks: '(?i)roll ?back' }
+      say: >-
+        The window is monthly and the door takes three days. How is a bad
+        release undone at 02:00 on the second Saturday?
+    - id: reaches-out
+      when:
+        code_matches: '(?i)(shadow|cloud model|telemetry|phone home|send .{0,30} out|compar\w+ against a hosted)'
+        code_lacks: '(?i)\b(no|never|not|without)\b[^.]{0,40}(shadow|cloud|telemetry|hosted)'
+      say: >-
+        The security lead reads this line. Which part of your plan reaches
+        outside the network?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Write down the date of each change in the brief and the score that
+        moved after it. The first one is your diagnosis.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three submissions without a pass. The hints are open, and the first
+        one says where to start looking.
+  wrap_up: >-
+    In a sealed network every change is measured inside or not at all.
+    Diagnose where the change was, agree the number before you have it, count
+    the GPUs for the failure as well as the weights, and ship the way back in
+    the same bundle.
+
+reference_md: |
+  Month two tells you how to read this brief. The embedding model was changed
+  on a benchmark measured outside, nobody measured anything inside, and the
+  bank found out nine days later because nothing reports out. The CIO is about
+  to make the same move with the model, on the same kind of evidence.
+
+  Diagnose before deciding. The score fell on the 60 questions about circulars
+  in a new format, three-column tables in two languages, and the rest has not
+  been measured since go-live. In month three the documents changed and the
+  model stayed the same, so the first suspect is how those tables were parsed,
+  chunked and indexed. The redacted trace extract shows what retrieval
+  returned for the failing questions. A table split across chunks, or a Hindi
+  cell joined to the wrong English row, defeats any model, so a successor
+  would read the same broken passages at a higher price. A parser and a
+  rebuilt index are the cheaper fix to test first.
+
+  Measure inside, on the model that will run. A vendor's benchmark answers a
+  question about the vendor's documents. The number that decides is the
+  bank's 400 questions and the 60 new ones, run inside on the hardware and the
+  quantisation that will serve, with the ready score agreed before anyone
+  sees a result. A window can carry a measurement run as well as an install:
+  the successor loaded on node 2 for an hour costs that hour's failover and
+  answers the question with the bank's own data, instead of a comparison with
+  a cloud model the security lead has already refused.
+
+  Count the GPUs twice. At 8-bit the successor needs about 140 GB, both 80 GB
+  nodes, which removes the failover and puts the embeddings on a node with
+  the model. That is a single point of failure for 1,900 staff, and it is the
+  bank's risk to accept in writing or refuse. At 4-bit the layout stays as it
+  is, in exchange for whatever quality 4-bit gives up, which the inside
+  measurement will show.
+
+  Ship the way back. With a monthly window and a three-day door, a rollback
+  that needs another transfer means a month of a bad release. Every bundle
+  carries the previous model, index and parser, the switch is rehearsed with
+  no route out before the bundle travels, and the bank's team runs it from a
+  runbook.
+
+  Leave the measurement behind. An evaluation runner the bank's team runs
+  after every change, with a one-page report that leaves on the next
+  transfer, would have caught the month-two problem on the day it happened.
+  It also lets the FDE leave the site without leaving the system unmeasured.
+
+  Then tell the CIO plainly what the successor does. It may answer some
+  questions better, and it cannot answer from a table that retrieval never
+  returns. The bank, its numbers and the month-two incident are invented for
+  this problem, and the memory figures are the brief's own.
+
+interview_evidence:
+  round: both
+  asked_as: |
+    The client's model runs in a network you cannot reach. A new model is out and the client wants it. What do you do first?
+  source: |
+    Adapted from the follow-up of interview bank entry I036 in docs/source-pack/09-interview-bank.json, which removes outbound internet from the model service; the offline-network problem in this chapter cites it too. That bank labels every entry "Original interview-style practice; actual employer frequency unverified", and this inherits the caveat. The month-two incident and the bank's numbers are author judgement.
+
+traps:
+  - Upgrading on the vendor's benchmark, the way the embedding model was upgraded in month two.
+  - Treating a drop that arrived with a new document format as a failure of the model.
+  - Running the successor on both GPU nodes and losing the failover without saying so.
+  - A rollback that needs another transfer, which leaves a bad release in place for a month.

@@ -14,7 +14,7 @@
  * no recording, and the page says so rather than showing zeros.
  */
 import Link from "next/link";
-import type { Metadata } from "next";
+import type { Metadata, Route } from "next";
 import { notFound } from "next/navigation";
 import { db } from "@/lib/db/pool";
 import { clock } from "@/lib/voice/clock";
@@ -25,8 +25,11 @@ import {
   CONTENT_WEIGHT, MAX_JUDGE_ATTEMPTS, PACE_WEIGHT, STRUCTURE_WEIGHT,
 } from "@/lib/voice/score";
 import { nextQuestionSlug } from "@/lib/voice/question";
+import { PANEL, seatedFor } from "@/lib/voice/interviewers";
+import type { DebriefRound } from "@/lib/voice/turns";
 import { currentLearner } from "@/lib/session/current";
 import { ButtonLink } from "@/components/ui/button";
+import { InterviewRoom } from "@/components/voice/room/room";
 import { AudioControls } from "./controls";
 import { Replay } from "./replay";
 
@@ -61,13 +64,17 @@ export default async function DebriefPage({ params }: { params: Promise<{ id: st
   const sessionId = Number(id);
   if (!Number.isSafeInteger(sessionId) || sessionId <= 0) notFound();
 
+  // Faculty and admins also see how each follow-up round was made. The
+  // learner sees who asked and what, in one voice.
+  const staff = learner.role !== "learner";
   let debrief;
   try {
-    debrief = await loadDebrief(sessionId, learner.enrolmentId);
+    debrief = await loadDebrief(sessionId, learner.enrolmentId, { staff });
   } catch (error) {
     if (error instanceof DebriefNotFound) notFound();
     throw error;
   }
+  const seated = debrief.interviewer ? await seatedFor(debrief.interviewer.slug) : [];
 
   const typed = debrief.input === "typed";
   const next = await nextQuestionSlug(debrief.question.slug);
@@ -78,6 +85,10 @@ export default async function DebriefPage({ params }: { params: Promise<{ id: st
     const authored = debrief.question.beats.find((candidate) => candidate.key === beat.key);
     return { ...beat, anchors: authored?.anchors ?? [], seconds: authored?.seconds ?? 60 };
   });
+  // Answer it again with the same interviewer. A slug the lobby no longer
+  // knows falls back there to the question's first.
+  const again = new URLSearchParams({ q: debrief.question.slug, mode: debrief.mode });
+  if (debrief.interviewer) again.set("interviewer", debrief.interviewer.slug);
 
   return (
     <main className="mx-auto max-w-3xl px-6 py-8">
@@ -89,8 +100,22 @@ export default async function DebriefPage({ params }: { params: Promise<{ id: st
         <span className="capitalize">{debrief.mode}</span>
         {typed ? " · typed, so there is no clock, pace or recording" : ` · ${clock(debrief.durationMs)}`}
       </p>
+      {debrief.interviewer ? (
+        <p className="mt-1 text-text-dim">
+          {debrief.interviewer.slug === PANEL
+            ? `Asked by the panel: ${namesInOrder(seated.map((person) => person.name))}.`
+            : `Asked by ${debrief.interviewer.name}, ${debrief.interviewer.title}.`}
+        </p>
+      ) : null}
+      {seated.length > 0 ? (
+        <div className="mt-4 w-fit overflow-hidden rounded-panel border border-border bg-surface">
+          <InterviewRoom size="debrief"
+                         interviewers={seated.map((person) => ({ slug: person.slug, name: person.name,
+                                                                 role: person.title }))} />
+        </div>
+      ) : null}
       <div className="mt-4 flex flex-wrap gap-2.5">
-        <ButtonLink href={`/voice/session?q=${debrief.question.slug}&mode=${debrief.mode}`} size="sm">
+        <ButtonLink href={`/voice/session?${again.toString()}` as Route} size="sm">
           Answer it again
         </ButtonLink>
         {next && next !== debrief.question.slug ? (
@@ -219,6 +244,33 @@ export default async function DebriefPage({ params }: { params: Promise<{ id: st
         </Panel>
       )}
 
+      {/* docs/07 section 5a: who asked what, in plain words. A round from
+          the resume says it was not scored. */}
+      {debrief.rounds.length > 0 ? (
+        <Panel title="Interview">
+          <ol className="space-y-4">
+            {debrief.rounds.map((round) => (
+              <li key={round.ordinal}>
+                <p className="flex flex-wrap items-baseline gap-x-3">
+                  <span className="font-mono text-text-faint">{round.ordinal}</span>
+                  <span className="text-text">{round.interviewer.name}</span>
+                  <span className="text-meta text-text-faint">{round.kindLabel}</span>
+                </p>
+                <blockquote className="mt-1 border-l-2 border-border-strong pl-3 text-text">
+                  {round.question}
+                </blockquote>
+                <p className="mt-1 whitespace-pre-wrap text-text-dim">
+                  {round.answer ? round.answer : "You did not reply to this one."}
+                </p>
+                {round.staff ? (
+                  <p className="mt-1 text-meta text-text-faint">{provenance(round.staff)}</p>
+                ) : null}
+              </li>
+            ))}
+          </ol>
+        </Panel>
+      ) : null}
+
       {/*
         docs/07 section 6: reported, never scored. The label is part of the
         panel rather than a footnote, because a number on a debrief with no
@@ -254,6 +306,27 @@ export default async function DebriefPage({ params }: { params: Promise<{ id: st
     </main>
   );
 }
+
+/** "A, B and C", the way the panel's members are named in a sentence. */
+function namesInOrder(names: string[]): string {
+  return names.length < 2 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}
+
+/** For faculty: how a round was made and how long each step took. */
+function provenance(staff: NonNullable<DebriefRound["staff"]>): string {
+  const ms = (value: number | null) => (value === null ? "none" : `${(value / 1000).toFixed(1)}s`);
+  const made = staff.source === "generated" ? "asked by the model"
+    : `${staff.source === "authored" ? "an authored follow-up" : "the interviewer's own probe"}` +
+      `${staff.fallbackReason ? `, because the model ${FALLBACK[staff.fallbackReason] ?? staff.fallbackReason}` : ""}`;
+  return `Faculty only: ${made}. Generation ${ms(staff.generationMs)}, speech ${ms(staff.synthesisMs)}, ` +
+    `gap ${ms(staff.gapMs)}.${staff.targets ? ` Pulled on: ${staff.targets}` : ""}`;
+}
+
+const FALLBACK: Record<string, string> = {
+  timeout: "was late",
+  error: "failed",
+  rejected: "answered with something the check refused",
+};
 
 function Axis({ label, points, outOf }: { label: string; points: number; outOf: number }) {
   return (

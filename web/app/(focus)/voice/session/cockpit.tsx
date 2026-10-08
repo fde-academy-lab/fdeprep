@@ -37,7 +37,10 @@ import type { FollowUp, VoiceQuestion } from "@/lib/voice/question";
 import {
   openSession, saveAnswer, socketLostNote, uploadRecording, type Answer, type Fetcher,
 } from "@/lib/voice/save";
+import type { TurnView } from "@/lib/voice/turns";
+import { ResumeBox } from "@/components/voice/resume-box";
 import { Announcer, BeatTrack, MicLevel, NudgeSlot, PaceBand, Territory } from "./instruments";
+import { Interview } from "./interview";
 import { clock } from "@/lib/voice/clock";
 
 /** fetch, called as a plain function so it is never invoked on another object. */
@@ -116,7 +119,7 @@ function spoken(segments: { text: string }[]): string {
   return segments.map((segment) => segment.text).join(" ");
 }
 
-export function Cockpit({ question, mode, nextSlug, lobby }: {
+export function Cockpit({ question, mode, nextSlug, lobby, interviewer = null, carry = {} }: {
   question: VoiceQuestion;
   mode: VoiceMode;
   /** The picker's next question, or null when this is the only one. */
@@ -124,6 +127,12 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
   /** The mode links and the typed-answer link. Drawn before and after an
    *  answer and never during one. */
   lobby?: ReactNode;
+  /** Who asks, as the lobby resolved it. The session route resolves the slug
+   *  again; the name is for the interruption's one line. */
+  interviewer?: { slug: string; name: string } | null;
+  /** The lobby's query to keep on Next question and the typed answer: the
+   *  chosen interviewer and the picker's track. */
+  carry?: Record<string, string>;
 }) {
   const router = useRouter();
 
@@ -150,6 +159,13 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
   /** Why the answer did not save, while it waits in this tab for Save again. */
   const [unsaved, setUnsaved] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  /** Interview mode: the first follow-up round, once the main answer is
+   *  saved, which hands the screen over to interview.tsx. */
+  const [handover, setHandover] = useState<TurnView | null>(null);
+  /** Interview mode: a pasted resume, held until Start sends it once. */
+  const [resume, setResume] = useState("");
+  /** Interview mode: a sentence from the opening, shown between rounds. */
+  const [openingNote, setOpeningNote] = useState<string | null>(null);
 
   /**
    * Transcript text lives here and only here.
@@ -194,20 +210,28 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
   /** An answer the server has not taken yet, kept for Save again. */
   const pending = useRef<{ id: number; answer: Answer; recording: Blob | null } | null>(null);
 
-  const guided = mode === "guided" || mode === "pressure";
+  // Interview mode's main answer is a guided answer; its rounds come after.
+  const guided = mode === "guided" || mode === "pressure" || mode === "interview";
+  const spokenOnly = mode === "pressure" || mode === "interview";
   const typedHref = {
     pathname: "/voice/session",
-    query: { q: question.slug, mode: mode === "pressure" ? "guided" : mode, input: "typed" },
+    query: { q: question.slug, mode: spokenOnly ? "guided" : mode, input: "typed", ...carry },
   } as const;
-  const nextHref = nextSlug ? { pathname: "/voice/session", query: { q: nextSlug, mode } } as const : null;
+  const nextHref = nextSlug
+    ? { pathname: "/voice/session", query: { q: nextSlug, mode, ...carry } } as const : null;
+  /** The same two addresses as strings, for router.push once the answer is saved. */
+  const address = (query: Record<string, string>) =>
+    `/voice/session?${new URLSearchParams(query).toString()}` as Route;
 
   // A check passed on the last question carries over, except into pressure.
   useEffect(() => {
-    if (mode !== "pressure" && recentMicCheck()) {
+    // Pressure and interview get their own check: both are a conversation
+    // out loud, and a muted microphone loses the rounds too.
+    if (!spokenOnly && recentMicCheck()) {
       setCarried(true);
       setPhase("ready");
     }
-  }, [mode]);
+  }, [spokenOnly]);
 
   const check = useCallback(async () => {
     setPhase("checking");
@@ -244,6 +268,8 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
     pending.current = null;
     setUnsaved(null);
     setFinishedId(id);
+    // Interview mode: the reply carries round 1, and the rounds take over.
+    if (result.turn) setHandover(result.turn);
 
     // docs/07 section 7: the MediaRecorder copy is kept for playback and
     // written to storage at the end. It is not the PCM the transcriber
@@ -483,9 +509,11 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
     setStarting(true);
     setNote(null);
     setFailed(false);
+    // Interview mode may carry a pasted resume, sent this once.
+    const pasted = mode === "interview" && resume.trim() ? { resume } : {};
     let opened: Awaited<ReturnType<typeof openSession>>;
     try {
-      opened = await openSession(send, { mode, question: question.slug });
+      opened = await openSession(send, { mode, question: question.slug, interviewer: interviewer?.slug, ...pasted });
     } finally {
       opening.current = false;
       setStarting(false);
@@ -495,6 +523,8 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
       return;
     }
     const started = opened.started;
+    setResume("");
+    setOpeningNote(started.interview?.resumeNote ?? null);
 
     // A fresh attempt. A start whose socket failed earlier on this page left
     // these set, and a stale finishing flag made the next Stop do nothing.
@@ -613,7 +643,8 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
       voicedAt.current = Date.now();
       setPhase("live");
     };
-  }, [abandon, answerClock, guided, mode, question.beats, question.slug, question.totalSeconds]);
+  }, [abandon, answerClock, guided, interviewer?.slug, mode, question.beats, question.slug, resume,
+      question.totalSeconds]);
 
   const remainingMs = question.totalSeconds * 1000 - elapsedMs;
   // Once every beat is covered there is no current beat, and showing the
@@ -646,6 +677,15 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
           </Link>
         </div>
       </div>
+    );
+  }
+
+  if (phase === "done" && handover && finishedId !== null) {
+    // Interview mode: the main answer is saved and round 1 is ready. No
+    // lobby here, because a round is part of the answer.
+    return (
+      <Interview sessionId={finishedId} first={handover} title={question.title}
+                 asker={interviewer?.name ?? "The interviewer"} nextHref={nextHref} note={openingNote} />
     );
   }
 
@@ -729,6 +769,8 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
           )}
         </section>
 
+        {mode === "interview" ? <ResumeBox value={resume} onChange={setResume} /> : null}
+
         <button
           type="button"
           onClick={() => void start()}
@@ -759,10 +801,17 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
 
       {interruption ? (
         <section className="mt-10 space-y-4" aria-label="Interruption">
-          <p className="font-mono text-text-faint">the interviewer cuts in</p>
+          <p className="font-mono text-text-faint">
+            {interviewer ? `${interviewer.name} cuts in` : "the interviewer cuts in"}
+          </p>
           <p className="text-lg">{interruption.followUp.text}</p>
           {interruption.followUp.audioUrl ? (
-            <audio autoPlay src={interruption.followUp.audioUrl} aria-label="The interviewer speaking" />
+            // In the chosen interviewer's voice: the address resolves the
+            // slug to a voice on the server.
+            <audio autoPlay aria-label="The interviewer speaking"
+                   src={interviewer
+                     ? `${interruption.followUp.audioUrl}?interviewer=${encodeURIComponent(interviewer.slug)}`
+                     : interruption.followUp.audioUrl} />
           ) : (
             <p className="text-text-faint">
               No spoken audio is configured, so the follow-up is written. Answer it out loud.
@@ -823,7 +872,7 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
             type="button"
             onClick={() => {
               setPhase("closing");
-              void finish().then(() => router.push(`/voice/session?q=${question.slug}&mode=${typedHref.query.mode}&input=typed` as Route));
+              void finish().then(() => router.push(address(typedHref.query)));
             }}
             disabled={phase === "closing"}
             className="mt-3 rounded border border-border px-3 py-1.5 text-text-dim hover:text-text
@@ -842,7 +891,7 @@ export function Cockpit({ question, mode, nextSlug, lobby }: {
               setPhase("closing");
               // Only once the answer is saved: leaving with it unsaved loses it.
               void finish().then((saved) => {
-                if (saved) router.push(`/voice/session?q=${nextSlug}&mode=${mode}` as Route);
+                if (saved && nextHref) router.push(address(nextHref.query));
               });
             }}
             disabled={phase === "closing"}

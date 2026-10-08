@@ -126,6 +126,12 @@ Probes run twice each for agreement, which doubles that line. It is worth the co
 
 Set an AWS Budgets alarm on the Bedrock line at a monthly figure you pick, alerting at 50 and 80 percent. Do this before the first learner signs in, not after the first surprise.
 
+Amended 8 October 2026: interview mode (docs/07 section 5a) adds a fourth source, one judge call per follow-up round, at most five rounds a session, and one more when a learner pastes a resume. It spends the weekly rehearsal allowance, so the cap on it is the same `rehearsal_weekly` row as pressure mode. The next section of the runbook measures it.
+
+```
+follow-up calls = interview sessions x rounds per session (at most 5) + resumes pasted
+```
+
 ---
 
 ## 6. Alarms
@@ -163,6 +169,20 @@ The web application rolls back by checking out the previous commit on the web ho
 ### Restoring the database
 
 Point-in-time restore to a new branch, verify against a known submission id, then repoint the application. Practise this once before the cohort starts. A restore procedure that has never been run is not a restore procedure.
+
+### Measuring interview mode's cost and wait
+
+Added 8 October 2026 for S14.5. Every follow-up round records how long the model took, how long its speech took, the gap the learner waited, the model calls and the tokens, and whether the authored bank asked instead. To read them, priced at Bedrock's published rates on the day:
+
+```bash
+cd web
+npm run voice:cost -- --since 2026-10-12 --in-per-mtok 3 --out-per-mtok 15
+npm run voice:cost -- --since 2026-10-12 --in-per-mtok 3 --out-per-mtok 15 --csv > interview-cost.csv
+```
+
+Replace the two rates with the published input and output prices per million tokens for the judge's model on the day you run it. The script prints one row per interview session and a summary line: sessions, rounds, the share that fell back, model calls including the scorer's two, the cost, and the 50th and 95th percentiles of the gap and of generation. The Ops screen shows today's rounds, the 95th percentile gap and the fallback share.
+
+The budget is six seconds at the 95th percentile from a reply ending to the next question being sent, of which four for the model. A deployed judge that has not run for a while starts cold, and the first round of a quiet morning falls back while it does; a session pings the judge when it opens to warm it. If the measured 95th percentile is over six seconds, or most fallbacks are timeouts on a session's first round, give the judge function provisioned concurrency of one or two in `infra/lib/fdeprep-stack.ts` and have a person deploy it. Provisioned concurrency is billed by the hour whether or not it is used, so decide it from the measured numbers.
 
 ### Before each cohort starts
 

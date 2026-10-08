@@ -75,6 +75,14 @@ export default async function OpsPage() {
           note: `${snapshot.errorCount} of ${snapshot.eventCount} events`,
         },
         { label: "Live model calls today", value: snapshot.liveCallsToday },
+        {
+          // S14.5: the gap a learner waits between interview rounds.
+          label: "Interview rounds today",
+          value: snapshot.interviewToday.rounds,
+          note: snapshot.interviewToday.p95GapMs === null ? "none asked yet"
+            : `p95 gap ${(snapshot.interviewToday.p95GapMs / 1000).toFixed(1)} s, fallback ` +
+              `${Math.round(snapshot.interviewToday.fallbackShare * 100)}%`,
+        },
       ]} />
 
       <section aria-labelledby="stuck">

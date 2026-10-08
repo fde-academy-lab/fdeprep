@@ -1,0 +1,460 @@
+slug: choose-n8n-a-graph-or-plain-code
+title: "Choose n8n, a graph or plain code"
+day: 6
+skill: Choose a workflow tool, a graph framework or plain code per workflow, from its numbers
+artefact_type: design
+difficulty: hard
+complexity: C4
+track: tools
+concept:
+  topic: "Frameworks"
+  question: "When does a workflow tool beat a graph framework, and when does plain code beat both?"
+est_minutes: 45
+competencies:
+  - { slug: system-design, weight: 1.0 }
+  - { slug: client-communication, weight: 1.0 }
+  - { slug: cost-and-latency, weight: 0.5 }
+
+panel: { static: true, pretrained: true, llm: true }
+
+constraints: ["40,000", "2,000", "analysts", "nightly", "audit"]
+
+brief_md: |
+  The operations technology group at a parcel-delivery network the size of
+  Delhivery has three automations to deliver this quarter. The platform team
+  is four engineers. Thirty operations analysts already run about 60 small
+  automations on a self-hosted n8n instance, which they built themselves and
+  like. The head of operations technology wants one recommendation per
+  workflow: what it is built with, and who owns it.
+
+  | Workflow | Its numbers |
+  |---|---|
+  | 1. Nightly reconciliation | Join yesterday's carrier manifest, a CSV of about 90,000 rows dropped on SFTP, with the warehouse system, and email the exceptions to 14 hub managers before 06:00. An analyst runs it by hand at 05:30 and misses two mornings a month. No step in it needs a judgement. Someone has suggested a model to word the covering note. |
+  | 2. Damaged-parcel claims on WhatsApp | About 40,000 conversations a day, 120,000 at festival peak. A model call on most turns, the parcel's tracking events retrieved for each claim, and a flow with 30 branches. A claims officer approves any payout over 2,000 rupees, and every decision needs an audit record the consumer forum can ask for. Replies within three seconds at p95. The quality team keeps 600 recorded conversations as the evaluation set. |
+  | 3. Hub-manager bot | About 800 questions a day on the company's messaging tool, such as "which pincodes are delayed today", answered from the operations dashboard's API. The questions change every week, the analysts want to add lookups themselves, and the platform team has no capacity to be in that loop. |
+
+  What the tools offer, each source read on 8 October 2026:
+
+  | Source | What it says |
+  |---|---|
+  | n8n pricing page, `n8n.io/pricing` | Cloud plans are priced on "monthly workflow executions, regardless of complexity": Starter EUR 20 a month for 2,500 executions, Pro EUR 50 for 10,000 and Business EUR 667 for 40,000, billed annually. Enterprise is priced on request. A self-hosted version is on GitHub. |
+  | n8n docs, Community edition features | "You can stick with the free Community edition indefinitely." It is the self-hosted version the analysts run, and it has no environments and no version control using git. |
+  | n8n docs, Queue mode | A busy self-hosted instance runs in queue mode: Redis as the message broker, a database every instance can reach ("Running a distributed system with this setup over SQLite isn't supported"), and workers that run 10 jobs at a time each by default. Multi-main high availability needs the self-hosted Enterprise plan. |
+  | n8n docs, Source control and environments | Environments backed by git branches are "Available on Business and Enterprise plans". |
+  | n8n docs, Evaluations | An evaluation runs a dataset of test cases through an AI workflow and compares the outputs, during development or in production. |
+  | n8n docs, LangChain in n8n | "n8n's AI nodes implement LangChain's JavaScript framework", with an AI Agent node that takes memory and tools. |
+  | LangGraph 1.2.12, read from the installed package | A graph compiled with a checkpointer saves its state at every step, `interrupt()` pauses a run until a person resumes it, and each node can carry its own retry policy. It is Python, and the analysts do not write Python. |
+
+  Write the recommendation.
+
+contract_md: |
+  Write the recommendation for the head of operations technology, who
+  decides, and the platform team lead, who will own whatever is built in code.
+  They read the same page.
+
+  Between 350 and 650 words. There is no template and no required heading.
+
+  For each workflow, say what it is built with, who owns it, who is paged when
+  it fails, and which of its numbers decided it. Say what you would build by
+  hand whichever tool you pick, and what each choice costs the client each
+  month and gives up. Claims about n8n hold for the pages in the brief, read on
+  8 October 2026, and claims about LangGraph for version 1.2.12.
+
+word_range: [350, 650]
+required_headings: []
+
+rubric:
+  - label: Decides per workflow, from that workflow's numbers
+    weight: 25
+    descriptor_md: |
+      Strong answers make three decisions, each from its own workflow's
+      numbers: how often it runs, who changes it and how often, what a wrong
+      answer costs, and who is paged. They show the arithmetic where the brief
+      gives prices. 40,000 conversations a day is more than 1.2 million
+      executions a month, since every message that arrives starts one, which
+      is thirty times what the Business plan includes, so the claims flow on
+      n8n means self-hosted queue mode or an Enterprise price on request. An
+      answer that puts all three on one tool, in either direction, has made one
+      decision three times, whatever reasons it gives.
+  - label: Puts the regulated, high-volume flow where tests, approvals and audit live in code, and prices the n8n alternative
+    weight: 20
+    descriptor_md: |
+      The claims flow pays money, answers to a consumer forum and has a set of
+      600 conversations to pass, which is what code with tests is for. Strong
+      answers name the mechanisms: an `interrupt()` before any payout over
+      2,000 rupees, a checkpoint and a decision record per claim, retries per
+      node, and the 600 conversations run on every change before it ships.
+      They also say what n8n would have to carry to host it, namely queue mode
+      with Redis, a shared database and workers sized for 120,000
+      conversations at peak, and who among four engineers would own that. An
+      answer that keeps the claims flow on n8n can earn most of this when it
+      names that owner, that cost, how the 600 conversations run on every
+      change, and that git-backed environments need the Business plan.
+  - label: Gives the analysts' bot to the tool they can change, and fences it
+    weight: 20
+    descriptor_md: |
+      800 questions a day, weekly changes and a platform team with no capacity
+      point to n8n, owned by the analysts. Strong answers fence it: credentials
+      that read the dashboard API and nothing else, so no change can write
+      anywhere; a cap on executions; and a review of changes, either a weekly
+      export of the workflows into git with a named reviewer or the
+      environments of a paid plan at their price. An answer that hands the bot
+      to the platform team as code puts four engineers in a weekly loop the
+      brief says they cannot staff, and an answer with no fence lets the next
+      lookup an analyst adds reach anything their credentials reach.
+  - label: Refuses a model where a join will do
+    weight: 15
+    descriptor_md: |
+      The reconciliation joins 90,000 rows and emails 14 people, and no step
+      in it needs a judgement. Strong answers make it a scheduled query with an
+      alert when the email has not gone by a set time, owned by whoever is
+      paged, and word the covering note from a template with the counts filled
+      in. A scheduled n8n workflow that runs the same query is also
+      defensible. A model or an agent anywhere in the join is an error, and a
+      model that only words the note adds a way for a 06:00 report to fail
+      and gains nothing a template lacks, which strong answers say.
+  - label: Names what is built by hand whatever the tool
+    weight: 10
+    descriptor_md: |
+      Strong answers list at least three of: the harness that runs the 600
+      conversations, the audit record per claim decision, the approval rule and
+      who may approve, the scoping of the bot's credentials, and the on-call
+      rota for all three workflows. A framework or a workflow tool hosts these
+      and decides none of them.
+  - label: Tells the client what each choice costs and gives up
+    weight: 10
+    descriptor_md: |
+      Strong answers say who is on call for each workflow, what each choice
+      costs a month (an n8n plan, the servers for queue mode or for the graph,
+      engineer time), and what the client gives up: the analysts cannot change
+      the claims flow, and the bot's speed of change costs a weekly review.
+      "Scalable", "flexible" or "best of both worlds" gives the head of
+      operations technology nothing to weigh.
+
+exemplars:
+  - band: strong
+    score: 90
+    body_md: |
+      Three workflows, three answers, each with an owner and a person who is
+      paged.
+
+      Nightly reconciliation: a scheduled job, owned by the platform team. It
+      joins 90,000 manifest rows with the warehouse system and emails 14 hub
+      managers, and no step in it needs a judgement. One query and an email
+      template do it in minutes, on a scheduler that pages the platform team
+      if the email has not gone by 05:45. The covering note is a template with
+      the counts filled in, instead of a model call: a model adds a way for a
+      06:00 report to fail and tells the managers nothing the counts do not.
+      Cost: about two days to build and test against last month's manifests,
+      and one alert on the existing rota.
+
+      Damaged-parcel claims: a LangGraph graph, owned and run by the platform
+      team. At 40,000 conversations a day, with every message starting an
+      execution, this flow is more than 1.2 million executions a month, thirty
+      times what n8n's Business plan includes for EUR 667. On n8n it would
+      mean self-hosted queue mode, with Redis, a shared Postgres and workers
+      sized for 120,000 conversations at festival peak, run by the same four
+      engineers, and still no tests the quality team trusts. In the graph, a
+      payout over 2,000 rupees stops at an `interrupt()` until a claims officer
+      approves it, the checkpoint and a decision record we write ourselves
+      give the consumer forum its audit trail, each node retries on its own,
+      and the 600 recorded conversations run on every change before it ships.
+      The analysts cannot edit this flow, and for a flow that pays money that
+      is the point.
+
+      Hub-manager bot: n8n, owned by the analysts, fenced. Eight hundred
+      questions a day that change weekly are what their instance is for, and
+      the platform team has no time to sit in that loop. The fence: the bot's
+      credentials read the dashboard API and nothing else, so no change can
+      write anywhere; executions are capped per hour; and every Friday a named
+      senior analyst exports the week's changed workflows into git and walks
+      one platform engineer through them in thirty minutes. Git-backed
+      environments would do this better, but they come with the Business
+      plan, which we would buy only if the Friday reviews keep finding
+      problems.
+
+      Built by hand whatever the tool: the harness that runs the 600
+      conversations, the audit record per claim decision, the approval rule
+      and who may approve, the bot's credential scope, and the on-call rota
+      for all three. No tool decides these for us.
+
+      What it costs each month: the platform team on call for the nightly job
+      and the claims graph, the servers for the graph and its Postgres, sized
+      in the first sprint, and thirty minutes of review a week. Nothing new is
+      bought for n8n while the bot runs on your own instance. What you give
+      up: the analysts cannot change the claims flow, and the bot changes
+      weekly at the cost of that Friday review.
+  - band: adequate
+    score: 60
+    body_md: |
+      My recommendation is to use the right tool for each job rather than
+      forcing one framework on everything.
+
+      Claims flow: LangGraph. This is the most important and riskiest
+      workflow, with 40,000 conversations a day, payouts that need a claims
+      officer's approval above 2,000 rupees, and a consumer forum that can ask
+      for the record of any decision. LangGraph lets us model the 30 branches
+      as a graph, pause for approval with `interrupt()`, and keep a
+      checkpoint of every step, which gives us an audit trail. We would also
+      run the quality team's 600 recorded conversations as a test suite
+      before each release, so a change that breaks a branch is caught before
+      customers see it. The platform team would own this graph, since it is
+      Python and needs proper engineering. n8n could technically do it, but
+      the volume and the regulation make code the safer choice.
+
+      Hub-manager bot: n8n. The analysts already know n8n and like it, the
+      questions change every week, and the platform team cannot take on
+      another workflow that changes so often. Building it in n8n lets the
+      analysts add new lookups themselves using the AI Agent node, which is
+      built on LangChain, so they get the same kind of agent capabilities
+      without writing code. At 800 questions a day the load is small for
+      their existing instance.
+
+      Nightly reconciliation: n8n as well. The analysts are the ones who run
+      it by hand today, so it makes sense for them to own the automated
+      version. n8n has a schedule trigger, an SFTP node, database nodes and an
+      email node, so the whole job can be built without code. The model
+      suggested for the covering note is not needed, because a fixed message
+      with the number of exceptions is enough for the hub managers.
+
+      Overall this gives a clear split. Engineering owns the one workflow
+      that is customer-facing and regulated, and the analysts own the two
+      internal ones they understand best. It also keeps the platform team
+      focused on the claims flow, which is where most of the risk sits, and
+      lets the analysts keep using a tool they are already productive in.
+      Over time we could move more workflows into LangGraph if the analysts'
+      automations start to need approvals or audit trails of their own.
+  - band: weak
+    score: 25
+    body_md: |
+      I recommend building all three workflows in n8n.
+
+      The most important factor here is adoption. Thirty analysts already
+      run about 60 automations on the company's n8n instance and they like
+      it. Introducing a second or third tool would split the team's skills,
+      create more systems to maintain and slow everyone down. With n8n, the
+      people closest to the operations problems can build and change the
+      automations themselves, without waiting for a platform team of only
+      four engineers.
+
+      For the nightly reconciliation, n8n's schedule trigger can run the job
+      at 05:00 every day, read the manifest from SFTP, look up the warehouse
+      system and send the email to the 14 hub managers. We can add a model
+      step to write a friendly covering note so the managers know what to
+      look at first, since n8n has AI nodes built in.
+
+      For the damaged-parcel claims flow, n8n's AI Agent node is built on
+      LangChain, so we get the same agent capabilities a developer framework
+      would give us. The 30 branches can be modelled with switch nodes, and a
+      claims officer can be notified for payouts over 2,000 rupees with a
+      wait node that resumes when they reply. At festival peak we can scale
+      n8n with queue mode, so volume will not be a problem.
+
+      For the hub-manager bot, the analysts can build the lookups against
+      the operations dashboard's API directly and add new ones every week as
+      the questions change, which is exactly what they asked for.
+
+      Because the analysts would own all three workflows, the platform team
+      stays free for the core systems, and a hub manager who asks for a new
+      report gets it the same week from someone who understands the hubs,
+      without joining an engineering backlog.
+
+      Using one tool for everything also means one place to monitor, one
+      set of credentials to manage and one skill set to hire for. LangGraph
+      would only make sense if we had a large engineering team, and plain
+      code would mean the analysts depend on engineers for every change. n8n
+      gives us the flexibility of code with the speed of a visual tool, and
+      the analysts are already enthusiastic about it, which is the best
+      predictor of success for any internal platform.
+
+hints:
+  - Put the three workflows side by side with three facts each, namely runs a
+    day, who changes it, and who is blamed when it breaks.
+  - A workflow tool is priced and built for people who are not engineers to
+    change things. A graph framework is built for engineers to test things.
+    Plain code is for a job with no decision in it.
+  - The decision is per workflow. One tool for all three is the mistake the
+    brief is built around, in either direction.
+  - Whatever you pick, name what you build by hand anyway, such as the
+    evaluation, the audit record, the approval rule and the credential fence.
+
+scenario:
+  headline: "Three automations, four engineers and thirty analysts who like n8n"
+  who: The operations technology group at a parcel network the size of Delhivery
+  situation: >-
+    A nightly reconciliation, a claims flow on WhatsApp at 40,000 conversations
+    a day, and a bot the analysts want to change weekly all need building this
+    quarter. The analysts want n8n for everything, and the platform team is
+    four engineers.
+  stakes: >-
+    The claims flow pays money and answers to a consumer forum. One tool for
+    all three either puts a regulated flow where nobody tests it or puts four
+    engineers in a weekly loop.
+  metrics:
+    - { label: Claims a day, value: "40,000" }
+    - { label: Platform engineers, value: "4" }
+    - { label: Bot questions a day, value: "800" }
+
+diagram:
+  title: Three workflows, three different answers
+  caption: >-
+    Each workflow goes where its numbers point, and some parts are built by
+    hand whichever tool runs them.
+  direction: lr
+  nodes:
+    - { id: nightly, label: Nightly reconciliation, sub: "90,000 rows, no judgement in it", kind: doc, tone: neutral, at: [0, 0] }
+    - { id: claims, label: Damaged-parcel claims, sub: "40,000 a day, payouts, 600-case eval", kind: queue, tone: orange, at: [0, 1] }
+    - { id: bot, label: Hub-manager bot, sub: "800 a day, changed weekly", kind: actor, tone: blue, at: [0, 2] }
+    - { id: code, label: Plain code, sub: "a scheduled query and an email", kind: service, tone: green, at: [2, 0] }
+    - { id: graph, label: LangGraph graph, sub: "interrupt, checkpoints, tests in CI", kind: agent, tone: purple, at: [2, 1] }
+    - { id: n8n, label: n8n workflow, sub: "owned by the analysts, fenced", kind: tool, tone: teal, at: [2, 2] }
+    - { id: onetool, label: One tool for all three, sub: the failure in either direction, kind: decision, tone: pink, at: [1, 3] }
+    - { id: hand, label: Built by hand anyway, sub: "eval, audit record, approval, credentials", kind: guard, tone: neutral, at: [3, 1] }
+  edges:
+    - { from: nightly, to: code, label: a join and an email, tone: success }
+    - { from: claims, to: graph, label: tests and approvals, tone: success }
+    - { from: bot, to: n8n, label: weekly changes, tone: success }
+    - { from: onetool, to: claims, label: untested or unstaffed, tone: danger }
+    - { from: onetool, to: nightly, label: an agent for a join, tone: danger }
+    - { from: hand, to: code, tone: muted }
+    - { from: hand, to: graph, tone: muted }
+    - { from: hand, to: n8n, tone: muted }
+
+approach:
+  goal: Give each workflow the tool its numbers point to, and say what that costs
+  branches:
+    - label: Read each workflow's numbers
+      leaves: [runs a day, who changes it and how often, "what does a wrong answer cost?"]
+    - label: Match the tool to who changes it
+      detail: A workflow tool is for people who are not engineers. A graph framework is for engineers who test.
+      leaves: [analysts change the bot, engineers test the claims flow]
+    - label: Price the volume
+      leaves: [executions a month on n8n Cloud, "queue mode, and who runs it"]
+    - label: Name what no tool decides
+      leaves: [the 600 conversations, the audit record, the approval rule, the bot's credentials]
+
+coach:
+  opening: >-
+    Before you choose any tool, write each workflow's numbers side by side: how
+    often it runs, who changes it, and who is paged when it breaks.
+  signals:
+    - id: no-n8n
+      when: { code_lacks: '(?i)n8n' }
+      say: >-
+        Which of the three did you give to n8n? The brief says who likes it and
+        who would change it every week.
+    - id: agent-for-a-join
+      when: { code_lacks: '(?i)(cron|schedul|sql|join|script|plain code|a job)' }
+      say: >-
+        The nightly reconciliation is a join and an email. What in it needs an
+        agent, and who is paged at 05:45 when it has not gone?
+    - id: unpriced-volume
+      when:
+        code_matches: '(?i)n8n'
+        code_lacks: '(?i)(execution|queue mode|redis|worker)'
+      say: >-
+        You put something on n8n without saying what an execution costs or who
+        runs the workers at 120,000 conversations a day.
+    - id: no-audit
+      when: { code_lacks: '(?i)(audit|approv|trace)' }
+      say: >-
+        The claims flow pays money and answers to a consumer forum. Where is the
+        record of each decision, and who approves a payout over 2,000 rupees?
+    - id: no-evaluation
+      when: { code_lacks: '(?i)(eval|test|600)' }
+      say: >-
+        The quality team keeps 600 recorded conversations. Which of your choices
+        runs them, and when?
+    - id: unfenced-bot
+      when:
+        code_matches: '(?i)analysts?'
+        code_lacks: '(?i)(read-only|read only|nothing else|credential|cap|limit|fence|review)'
+      say: >-
+        The analysts change the bot every week. What stops a bad change from
+        writing somewhere it should not?
+    - id: no-monthly-cost
+      when: { code_lacks: '(?i)(eur|a month|per month|monthly|on call|on-call|rota|paged)' }
+      say: >-
+        What does each choice cost the client each month, and who is on call for
+        it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the claims flow. Count its executions a month from 40,000
+        conversations a day and set the number against the pricing table.
+    - id: hints
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three submissions without a pass. The hints are open, and the first one
+        sets out the three facts to put side by side.
+  wrap_up: >-
+    Choose per workflow. A workflow tool fits what non-engineers change weekly,
+    a graph framework fits what engineers must test and audit, and plain code
+    fits a job with no decision in it. The evaluation, audit record, approval
+    and credentials are yours either way.
+
+reference_md: |
+  The brief describes three workflows that pull in three directions, and the
+  answer is three decisions, each made from that workflow's own numbers. One
+  tool for all three is the failure in either direction. n8n for everything
+  puts a regulated flow of 40,000 conversations a day where no one runs its
+  600 tests and four engineers inherit queue mode by accident. Code for
+  everything puts the same four engineers on the critical path of a bot the
+  analysts need to change every week.
+
+  The nightly reconciliation has no judgement in it, so it needs no agent and
+  no model. A 90,000-row join is one query, and the work worth paying for is
+  around it: a schedule, an alert when the email has not gone, and someone
+  paged. A covering note from a template carries the counts with no new way
+  to fail. Whether the platform team owns it as a scheduled job or the
+  analysts own it as an n8n schedule that runs the same query is a real
+  choice, and either is defensible when the answer names who is paged.
+
+  The claims flow is where code earns its cost. It pays money, it answers to a
+  consumer forum, and the quality team has 600 conversations it must keep
+  passing, so it needs an approval that survives a restart, a record per
+  decision and a test run on every change. LangGraph 1.2.12 gives the pause
+  as `interrupt()` with a checkpointer, saves state at every step and retries
+  each node on its own policy, and it is Python the analysts will not edit,
+  which for this flow is a feature. The numbers rule out n8n Cloud: every
+  incoming message starts an execution, so the flow runs to more than 1.2
+  million executions a month against 40,000 in the Business plan's EUR 667
+  (`n8n.io/pricing`, read 8 October 2026). Self-hosted, it means queue mode,
+  with Redis, a database every instance reaches and workers sized for
+  festival peak (`docs.n8n.io`, Queue mode, read the same day), owned by four
+  engineers instead of the analysts who chose the tool.
+
+  The hub-manager bot is the analysts' workflow, and the price of their speed
+  is a fence. Read-only credentials scoped to the dashboard API mean a bad
+  change can return a wrong answer and cannot write anything. A cap on
+  executions bounds a loop, and a weekly review keeps a second pair of eyes on
+  changes. Environments backed by git branches come only with the Business
+  and Enterprise plans, and the free Community edition the analysts run has
+  neither environments nor version control using git (`docs.n8n.io`, Source
+  control and environments, and Community edition features, read 8 October
+  2026). On their instance the review is a weekly export and a named
+  reviewer, at the cost of half an hour a week.
+
+  Some work is built by hand whichever tool wins: the harness for the 600
+  conversations, the audit record, the approval rule, the credential scope and
+  the on-call rota. n8n's evaluations and LangGraph's checkpoints are places
+  to put these. They decide none of them.
+
+  The company, its numbers and the analysts' instance are invented for this
+  problem. The prices and the plan limits are n8n's own, as read on 8 October
+  2026, and they move.
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    A client wants to use n8n for everything. When do you agree, and when do you insist on code?
+  source: |
+    Author judgement. Interview bank entries I010 (an agent against a fixed workflow) and I012 (when more agents make a workflow worse) in docs/source-pack/09-interview-bank.json are adjacent, and that bank labels every entry "Original interview-style practice; actual employer frequency unverified". n8n facts were read on n8n.io/pricing and docs.n8n.io on 8 October 2026, and LangGraph behaviour from version 1.2.12's installed source the same day.
+
+traps:
+  - One tool for all three workflows, in either direction, chosen because the analysts like it or
+    because code feels safer.
+  - A model or an agent in a nightly job that is a join and an email.
+  - Putting the claims flow on n8n with no monthly cost, no owner for queue mode and no way to run the
+    600 conversations on a change.
+  - Giving the analysts the bot with nothing that limits what a bad change can reach.

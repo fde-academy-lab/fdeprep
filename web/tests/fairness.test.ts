@@ -159,6 +159,59 @@ describe("delivery never reaches the heatmap or the export", () => {
   });
 });
 
+/**
+ * Interview mode, docs/07 section 5a. Two more things never reach a score:
+ * a pasted resume, and the follow-up rounds' own records.
+ */
+describe("the resume and the rounds never reach a score", () => {
+  beforeEach(async () => {
+    await resetDatabase();
+  });
+
+  afterAll(async () => {
+    await closeDb();
+  });
+
+  test("the scoring modules never mention the resume", async () => {
+    for (const file of ["score.ts", "judge.ts", "depth.ts"]) {
+      const source = await readFile(path.join(ROOT, "lib", "voice", file), "utf8");
+      expect(source, `${file} mentions the resume`).not.toMatch(/resume/i);
+    }
+  });
+
+  test("neither the export nor the heatmap reads a round", async () => {
+    const source = await readFile(path.join(ROOT, "lib", "progress", "index.ts"), "utf8");
+    expect(source).not.toMatch(/voice_turn|resume_claims/);
+
+    const learner = await seedLearner();
+    await db().query(
+      `insert into voice_question
+         (slug, title, track, difficulty, total_seconds, prompt_text, source_yaml)
+       values ('fairness-rounds', 'Fairness rounds', 'agent-loop', 'medium', 285, 'x', 'x')`);
+    const { rows } = await db().query<{ id: string }>(
+      `insert into voice_session
+         (enrolment_id, voice_question_id, cohort_id, mode, finished_at, scored_at, transcript, score,
+          content_score, structure_score, pace_score, resume_claims)
+       select $1, id, $2, 'interview', now(), now(), 'an answer', 70, 36, 22, 12,
+              '["Ran-the-Quokka-migration-claim"]'::jsonb
+         from voice_question where slug = 'fairness-rounds'
+       returning id`,
+      [learner.enrolmentId, learner.cohortId]);
+    await db().query(
+      `insert into voice_turn
+         (voice_session_id, ordinal, interviewer_slug, kind, depth, source, question_text, transcript,
+          generation_ms, gap_ms, targets)
+       values ($1, 1, 'cto', 'resume', 0, 'generated', 'Round-question-sentinel?', 'Round-reply-sentinel',
+               4321, 6543, 'Round-targets-sentinel')`,
+      [rows[0]!.id]);
+
+    const rendered = await historyCsv(learner.enrolmentId) + JSON.stringify(await heatmap(learner.enrolmentId));
+    for (const forbidden of [/Quokka/, /Round-question/, /Round-reply/, /Round-targets/, /\b4321\b/, /\b6543\b/]) {
+      expect(rendered, `the export or the heatmap matched ${forbidden}`).not.toMatch(forbidden);
+    }
+  });
+});
+
 describe("the delivery numbers themselves", () => {
   test("words per minute divides by time spent speaking, not the wall clock", () => {
     // Ten words in exactly one minute of speech, with a ten minute silence in

@@ -1,0 +1,675 @@
+slug: rerank-enough-candidates-to-find-the-answer
+title: "Rerank enough candidates to find the answer"
+drill: true
+skill: Rerank to the depth where answers sit, and fall back to the fused order when it fails
+artefact_type: code
+difficulty: medium
+track: context
+concept:
+  topic: "In the window or retrieved"
+  question: "How many candidates does the reranker need to see, and what if it cannot answer?"
+est_minutes: 30
+competencies:
+  - { slug: retrieval, weight: 1.0 }
+  - { slug: tool-error-handling, weight: 0.5 }
+  - { slug: context-assembly, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The customer-care knowledge desk at a life insurer the size of HDFC Life
+  answers policy questions for its call centre from 3,200 process documents.
+  Retrieval runs in two stages. Hybrid search, keyword and vector results
+  fused by rank, returns 30 candidate passages, best first. A reranker then
+  reads the question together with each passage and scores how well that
+  passage answers it, and the three passages it scores highest go to the
+  model. Search is quick and rough, and the reranker is slower and more
+  exact, which is why it reads a short list. It takes eight passages a call.
+
+  To save calls, the team reranked only the first five candidates. A customer
+  asked what they would get if they surrendered their unit-linked plan after
+  three years. The passage that answers it sat 11th in the fused list, so the
+  reranker never read it, and the model answered from a passage about
+  traditional savings plans: the surrender value is paid within seven working
+  days. A unit-linked plan surrendered in its first five years pays nothing
+  until the five-year lock-in ends. The desk gave the wrong answer to about
+  1,400 customers over two weeks.
+
+  A week later the reranker timed out for 40 minutes on a Tuesday. Its adapter
+  returned an empty list, and for those 40 minutes the desk told every caller
+  that no process document covered their question.
+
+  The search team has since checked 500 answered questions. The passage that
+  answers sat in the fused top five for 61 percent of them and in the first
+  24 for 96 percent, and the desk can afford three reranker calls a question.
+  Rerank deep enough to reach the answer, and keep answering when the reranker
+  cannot.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is JSON, such as `{"query": "Can a customer change the nominee
+  on their policy online?"}`. Every step below is code, and the model is
+  asked once, at the end.
+
+  1. Call `tools["search"](query=...)` once. It returns the fused list, best
+     first, about 30 entries:
+
+         {"status": 200, "candidates": [{"id": "P-207", "text": "..."}, ...]}
+
+     Some process documents were uploaded twice when the index moved last
+     year, so one id can appear twice. Keep each id once, at its first
+     position.
+
+  2. Rerank the first 24 unique candidates, eight a call, in fused order:
+
+         tools["rerank"](query=..., ids=["P-201", "P-207", ...])
+
+     It answers with a score from 0 to 1 for each passage, or with an error:
+
+         {"status": 200, "scores": [{"id": "P-207", "score": 0.91}, ...]}
+         {"error": "timeout"}
+
+     The reranker scores each passage against the query on its own, so a
+     score from one call compares with a score from another. Merge them into
+     one score per id.
+
+  3. Keep the three candidates with the highest scores. A tie goes to the one
+     earlier in the fused list.
+
+  4. When a reranker call returns an error, make no more reranker calls and
+     keep the first three unique candidates in fused order. Scored and
+     unscored passages never share one ranking.
+
+  5. Ask the model once with `answer_prompt(query, passages)`, which the
+     starter code provides. It replies `Final Answer: <text>`.
+
+  Return a JSON string:
+
+      {"top": ["P-207", "P-209", "P-212"], "reranked": true, "answer": "<the text after Final Answer:>"}
+
+  `top` holds the three ids in the order they went to the model, and
+  `reranked` is false when step 4 applied.
+
+  In this problem `rerank` is a scripted stand-in, and its replies come in
+  call order: the first scores the first eight unique candidates, the second
+  the next eight, and the third the eight after that.
+
+  Budget: at most 2 model calls, and a clean solution makes one. Allowed
+  imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  DEPTH = 24  # unique candidates the reranker reads
+  BATCH = 8   # passages the reranker reads in one call
+  TOP = 3     # passages the model reads
+
+
+  def unique(candidates: list) -> list:
+      """The candidates in fused order, each id once, at its first position."""
+      # TODO 1: keep the first entry for each id, in order
+      return candidates
+
+
+  def rerank_scores(query: str, candidates: list, tools: dict):
+      """Reranker scores by id for the first DEPTH candidates, BATCH ids a call,
+      or None when any call returns an error."""
+      # TODO 2: send the ids of candidates[:DEPTH] in slices of BATCH, and put
+      #         every reply's scores into one dict keyed by id
+      # TODO 3: on a reply that carries "error", stop and return None
+      return None
+
+
+  def answer_prompt(query: str, passages: list) -> str:
+      blocks = "\n".join(f"[{p['id']}] {p['text']}" for p in passages)
+      return ("Answer the customer's question from these passages only.\n"
+              f"Question: {query}\n{blocks}\n"
+              "Reply as Final Answer: <answer>.")
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      query = json.loads(question)["query"]
+      found = tools["search"](query=query) or {}
+      candidates = unique(found.get("candidates") or [])
+      scores = rerank_scores(query, candidates, tools)
+      # TODO 4: with scores, the TOP candidates with the highest scores, a tie
+      #         going to the earlier one. Without scores, the first TOP
+      #         candidates in fused order.
+      top = []
+      reply = llm(answer_prompt(query, top))
+      return json.dumps({
+          "top": [p["id"] for p in top],
+          "reranked": scores is not None,
+          "answer": reply.split("Final Answer:", 1)[-1].strip(),
+      })
+
+steps:
+  - id: s1
+    text: Send the first eight unique ids, in fused order, to `rerank`.
+    check_id: s1
+  - id: s2
+    text: Keep calling, eight ids a call, until the first 24 unique ids are scored.
+    check_id: s2
+  - id: s3
+    text: Merge the scores into one per id and keep the three highest.
+    check_id: s3
+  - id: s4
+    text: On a reranker error, stop calling it and keep the fused order, with `reranked` false.
+    check_id: s4
+
+step_checks:
+  # s1 to s3 read answers_from_the_passage_the_reranker_puts_first. Search
+  # returns P-201 at places 1 and 4 there, so the first eight unique ids run to
+  # the ninth entry, and a first call that keeps the repeat differs from this
+  # list. The 17th to 24th unique ids are P-710 to P-717, and search plus three
+  # reranker calls is four tool calls.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: rerank, args: { ids: ["P-201", "P-207", "P-212", "P-209", "P-236", "P-233", "P-224", "P-701"] } }
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: rerank, args: { ids: ["P-710", "P-711", "P-712", "P-713", "P-714", "P-715", "P-716", "P-717"] } }
+        - { type: tool_calls_at_most, value: 4 }
+  - step_id: s3
+    spec:
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [top, reranked, answer], properties: { top: { const: ["P-207", "P-209", "P-212"] }, reranked: { const: true } } } }
+  # s4 reads answers_from_the_fused_order_when_the_reranker_times_out, where
+  # every reranker call times out and the fused top three answer.
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [top, reranked, answer], properties: { top: { const: ["P-410", "P-402", "P-415"] }, reranked: { const: false } } } }
+
+hints:
+  - Count how many passages the reranker read for the unit-linked question, and
+    where in the fused list the passage that answers it sat.
+  - A reranker reorders what it reads and cannot promote a passage it never
+    saw. How deep it reads is a recall decision, and the desk measured it. The
+    answer sat within the first 24 for 96 questions in 100.
+  - Three calls of eight reach 24 passages. Each passage is scored on its own,
+    so one dict of scores by id, filled from every reply, ranks all 24
+    together.
+  - A failed reranker still leaves the fused order. Use all of it, say so with
+    `reranked` false, and stop calling, so half a reranked list never reaches
+    the model.
+
+scenario:
+  headline: "The answer sat 11th and the reranker read only the first five"
+  who: The customer-care knowledge desk at a life insurer the size of HDFC Life
+  situation: >-
+    Hybrid search returns 30 passages and a reranker picks the three the model
+    reads. The team reranked only the first five, so the passage answering a
+    unit-linked surrender question, 11th in the list, was never read. When the
+    reranker timed out, the desk said no document covered anything.
+  stakes: >-
+    About 1,400 customers heard their surrender money would come within seven
+    working days. A unit-linked plan in its first five years pays nothing until
+    the lock-in ends.
+  metrics:
+    - { label: "Answer's place in the list", value: 11th }
+    - { label: Candidates reranked, value: 5 of 30 }
+    - { label: Customers misinformed, value: "about 1,400" }
+
+diagram:
+  title: Where the passage that answers was never read
+  caption: >-
+    The reranker can only promote what it reads. Three calls of eight reach the
+    24 places where answers sit, and any error falls back to the fused order.
+  direction: lr
+  nodes:
+    - { id: caller, label: Call-centre agent, sub: asks for a customer, kind: actor, tone: blue, at: [0, 1] }
+    - { id: search, label: "`search`", sub: "30 passages, fused, some repeated", kind: tool, tone: neutral, at: [1, 1] }
+    - { id: dedupe, label: Each id once, sub: first position kept, kind: guard, tone: green, at: [2, 1] }
+    - { id: first, label: "`rerank` call 1", sub: unique passages 1 to 8, kind: service, tone: teal, at: [3, 0] }
+    - { id: second, label: "`rerank` call 2", sub: "9 to 16, the answer at 11", kind: service, tone: teal, at: [3, 1] }
+    - { id: third, label: "`rerank` call 3", sub: 17 to 24, kind: service, tone: teal, at: [3, 2] }
+    - { id: merge, label: Merge by id, sub: three highest scores, kind: decision, tone: purple, at: [4, 1] }
+    - { id: model, label: Model, sub: one call with three passages, kind: model, tone: teal, at: [5, 1] }
+    - { id: five, label: First five only, sub: the 11th passage never read, kind: output, tone: pink, at: [2, 0] }
+    - { id: fused, label: Fused order, sub: "any error, reranked false", kind: guard, tone: orange, at: [4, 2] }
+  edges:
+    - { from: caller, to: search, label: the question, step: 1 }
+    - { from: search, to: five, label: the old way, tone: danger }
+    - { from: five, to: model, label: "a traditional plan's rule", tone: danger }
+    - { from: search, to: dedupe, step: 2 }
+    - { from: dedupe, to: first, step: 3 }
+    - { from: dedupe, to: second, step: 3 }
+    - { from: dedupe, to: third, step: 3 }
+    - { from: first, to: merge, label: scores }
+    - { from: second, to: merge, label: scores }
+    - { from: third, to: merge, label: scores }
+    - { from: merge, to: model, label: top three, tone: success, step: 4 }
+    - { from: second, to: fused, label: an error, tone: muted }
+    - { from: fused, to: model, label: fused top three }
+
+approach:
+  goal: Let the reranker read every passage that might answer, and keep answering when it fails
+  branches:
+    - label: Depth decides recall
+      detail: The reranker reorders what it reads. A passage past the depth is never promoted, no matter how well it answers.
+      leaves: ["where did the answer sit in the fused list?", "how far do three calls of eight reach?"]
+    - label: Batches merge by id
+      leaves: [each passage is scored on its own, "one score per id, from every reply"]
+    - label: Spend no place twice
+      leaves: [drop a repeated id before the first call, keep its first position]
+    - label: A failed reranker still leaves an order
+      leaves: [fall back to the fused order, say which order answered, stop calling once it fails]
+
+coach:
+  opening: >-
+    Before you write a reranker call, count how many passages the old desk let
+    the reranker read, and where in the fused list the unit-linked answer sat.
+  signals:
+    - id: no-depth
+      when: { code_lacks: ':\s*(DEPTH|24)\s*\]' }
+      say: >-
+        Nothing in your code stops at the 24th unique candidate. The answer sat
+        inside the first 24 for 96 questions in 100, and the reranker can only
+        promote a passage it reads. How far down the fused list does yours read?
+    - id: one-call
+      when: { code_lacks: '(BATCH|8)\s*\]' }
+      say: >-
+        The reranker reads eight passages a call and ignores the rest. Where does
+        your code cut the 24 ids into calls of eight?
+    - id: no-dedupe
+      when: { code_lacks: '\bnot in\b|setdefault|fromkeys' }
+      say: >-
+        Search can return one id twice. What does the second copy cost you in a
+        call that holds only eight passages?
+    - id: hidden-depth
+      when: { test_failed: reranks_far_enough_to_reach_the_eleventh_passage }
+      say: >-
+        In that run the passage that answers sits 11th in the fused list. Which
+        of your reranker calls reads it, and does its score reach your top three?
+    - id: hidden-dupes
+      when: { test_failed: spends_no_reranker_slot_on_a_repeated_passage }
+      say: >-
+        In that run six ids come back twice. Which ids went into your third
+        reranker call, and had any of them been sent already?
+    - id: hidden-halfway
+      when: { test_failed: falls_back_whole_when_the_second_call_fails }
+      say: >-
+        In that run the reranker answers one call and times out on the next.
+        Which order reached the model, and what did `reranked` say about it?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with `unique()`: walk the candidates in order and keep an id only
+        the first time you meet it.
+    - id: keep-failing
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The second hint says how deep the reranker has to
+        read, and why.
+  wrap_up: >-
+    A reranker sharpens the order inside what it reads, and how far down the
+    list it reads fixes recall. Rerank to the depth your answers sit at, merge
+    the calls by id, and when the reranker fails, answer from the fused order
+    and say so.
+
+tests:
+  - name: answers_from_the_passage_the_reranker_puts_first
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"query": "Can a customer change the nominee on their policy online?"}' }
+      llm_script:
+        - { match: { contains: "[P-207]" },
+            reply: "Final Answer: Yes. The policyholder can change the nominee online under Service Requests, Change Nominee, and the change takes effect once the insurer acknowledges it [P-207]." }
+        - { match: "*", reply: "Final Answer: I could not find how to change a nominee in the process documents." }
+      tools:
+        search:
+          returns:
+            status: 200
+            candidates:
+              - { id: "P-201", text: "Nominee details are printed on the policy schedule and on every premium receipt." }
+              - { id: "P-207", text: "A nominee can be changed online under Service Requests, Change Nominee, and the change takes effect once the insurer acknowledges it." }
+              - { id: "P-212", text: "A nominee who is a minor needs an appointee, named in the same request." }
+              - { id: "P-201", text: "Nominee details are printed on the policy schedule and on every premium receipt." }
+              - { id: "P-209", text: "Changing the nominee at a branch needs form NC-2, signed by the policyholder." }
+              - { id: "P-236", text: "A death claim is paid to the nominee, or to the legal heirs when no nominee is named." }
+              - { id: "P-233", text: "More than one nominee can be named, each with a share in percent, and the shares add up to 100." }
+              - { id: "P-224", text: "Nominee changes on a policy assigned to a lender go to the legal desk." }
+              - { id: "P-701", text: "Premium receipts for the last three years can be downloaded from the customer portal." }
+              - { id: "P-702", text: "A change of name after marriage needs the marriage certificate and a signed request." }
+              - { id: "P-703", text: "Calls about a death claim go to the claims desk, never the service desk." }
+              - { id: "P-704", text: "The customer portal locks after five wrong passwords and opens again after 30 minutes." }
+              - { id: "P-705", text: "Printed policy documents are sent by courier within seven days of issue." }
+              - { id: "P-706", text: "A complaint is acknowledged within two working days and answered within 14." }
+              - { id: "P-707", text: "Revival requests above two lakh rupees go to the underwriting desk." }
+              - { id: "P-708", text: "Agents can see a policy's status but cannot change the bank details on it." }
+              - { id: "P-709", text: "The service desk is open from 9:00 to 19:00, Monday to Saturday." }
+              - { id: "P-710", text: "Medical reports for a new proposal are valid for six months." }
+              - { id: "P-711", text: "A cheque returned unpaid is charged 300 rupees and the premium falls due again." }
+              - { id: "P-712", text: "The registered email address can be changed only from the registered mobile number." }
+              - { id: "P-713", text: "Bonus rates for participating traditional plans are declared once a year." }
+              - { id: "P-714", text: "A customer can ask for a call back in Hindi, English, Tamil, Telugu or Marathi." }
+              - { id: "P-715", text: "Fund prices for unit-linked plans are published on the website every working day." }
+              - { id: "P-716", text: "Standing instructions on a credit card are set up from the customer portal." }
+              - { id: "P-717", text: "KYC documents older than ten years are asked for again at the next service request." }
+              - { id: "P-718", text: "Complaints still open after 14 days can be escalated to the head of customer service." }
+              - { id: "P-719", text: "Branch staff verify the customer's identity before reading out any policy detail." }
+              - { id: "P-720", text: "Policy loan interest is charged every six months and added to the loan if unpaid." }
+              - { id: "P-721", text: "A policy issued in error is cancelled and the premium refunded in full." }
+              - { id: "P-722", text: "Cash premiums are accepted only at branches, never by agents." }
+        rerank:
+          sequence:
+            - status: 200
+              scores: [{ id: "P-201", score: 0.47 }, { id: "P-207", score: 0.91 }, { id: "P-212", score: 0.66 }, { id: "P-209", score: 0.74 },
+                       { id: "P-236", score: 0.22 }, { id: "P-233", score: 0.58 }, { id: "P-224", score: 0.31 }, { id: "P-701", score: 0.25 }]
+            - status: 200
+              scores: [{ id: "P-702", score: 0.33 }, { id: "P-703", score: 0.24 }, { id: "P-704", score: 0.32 }, { id: "P-705", score: 0.10 },
+                       { id: "P-706", score: 0.31 }, { id: "P-707", score: 0.09 }, { id: "P-708", score: 0.17 }, { id: "P-709", score: 0.08 }]
+            - status: 200
+              scores: [{ id: "P-710", score: 0.18 }, { id: "P-711", score: 0.26 }, { id: "P-712", score: 0.34 }, { id: "P-713", score: 0.25 },
+                       { id: "P-714", score: 0.33 }, { id: "P-715", score: 0.11 }, { id: "P-716", score: 0.32 }, { id: "P-717", score: 0.10 }]
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [top, reranked, answer], properties: { top: { const: ["P-207", "P-209", "P-212"] }, reranked: { const: true } } } }
+        - { type: returns_matches, value: "(?i)service requests" }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: answers_from_the_fused_order_when_the_reranker_times_out
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"query": "What does a customer send to move premium auto-debit to a new bank account?"}' }
+      llm_script:
+        - { match: { contains: "[P-410]" },
+            reply: "Final Answer: Send a signed mandate form and a cancelled cheque from the new account [P-410]." }
+        - { match: "*", reply: "Final Answer: I could not find that in the process documents." }
+      tools:
+        search:
+          returns:
+            status: 200
+            candidates:
+              - { id: "P-410", text: "To move auto-debit to a new bank account, the customer sends a signed mandate form and a cancelled cheque from the new account." }
+              - { id: "P-402", text: "Auto-debit runs on the premium due date, and a failed debit is tried once more after three days." }
+              - { id: "P-415", text: "A refund of excess premium is paid to the account on the auto-debit mandate." }
+              - { id: "P-418", text: "A new auto-debit mandate takes up to 21 days to register with the bank." }
+              - { id: "P-706", text: "A complaint is acknowledged within two working days and answered within 14." }
+              - { id: "P-707", text: "Revival requests above two lakh rupees go to the underwriting desk." }
+              - { id: "P-708", text: "Agents can see a policy's status but cannot change the bank details on it." }
+              - { id: "P-709", text: "The service desk is open from 9:00 to 19:00, Monday to Saturday." }
+              - { id: "P-710", text: "Medical reports for a new proposal are valid for six months." }
+              - { id: "P-711", text: "A cheque returned unpaid is charged 300 rupees and the premium falls due again." }
+              - { id: "P-712", text: "The registered email address can be changed only from the registered mobile number." }
+              - { id: "P-713", text: "Bonus rates for participating traditional plans are declared once a year." }
+              - { id: "P-714", text: "A customer can ask for a call back in Hindi, English, Tamil, Telugu or Marathi." }
+              - { id: "P-715", text: "Fund prices for unit-linked plans are published on the website every working day." }
+              - { id: "P-716", text: "Standing instructions on a credit card are set up from the customer portal." }
+              - { id: "P-717", text: "KYC documents older than ten years are asked for again at the next service request." }
+              - { id: "P-718", text: "Complaints still open after 14 days can be escalated to the head of customer service." }
+              - { id: "P-719", text: "Branch staff verify the customer's identity before reading out any policy detail." }
+              - { id: "P-720", text: "Policy loan interest is charged every six months and added to the loan if unpaid." }
+              - { id: "P-721", text: "A policy issued in error is cancelled and the premium refunded in full." }
+              - { id: "P-722", text: "Cash premiums are accepted only at branches, never by agents." }
+              - { id: "P-723", text: "An address change applies from the next premium notice." }
+              - { id: "P-724", text: "The welcome call is made within 15 days of the policy being issued." }
+              - { id: "P-725", text: "A duplicate premium receipt can be sent to the registered email on request." }
+              - { id: "P-726", text: "Rider premiums are shown separately on the premium notice." }
+              - { id: "P-727", text: "The sum assured on a term plan cannot be raised after issue." }
+              - { id: "P-728", text: "Requests made on a public holiday are logged on the next working day." }
+              - { id: "P-729", text: "Customers living abroad must give an overseas address and a contact in India." }
+              - { id: "P-730", text: "Large sums assured need a financial underwriting questionnaire." }
+              - { id: "P-731", text: "A policy can be moved to a branch in another city on request." }
+        rerank:
+          returns: { error: "timeout" }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [top, reranked, answer], properties: { top: { const: ["P-410", "P-402", "P-415"] }, reranked: { const: false } } } }
+        - { type: returns_matches, value: "(?i)mandate form" }
+        - { type: no_exception }
+
+  - name: reranks_far_enough_to_reach_the_eleventh_passage
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"query": "What will I get if I surrender my unit-linked plan after three years?"}' }
+      llm_script:
+        - { match: { contains: "[P-311]" },
+            reply: "Final Answer: Surrendered in its first five years, a unit-linked plan's fund value, less the discontinuance charge, moves to the discontinued policy fund and is paid when the five-year lock-in ends [P-311]." }
+        - { match: { contains: "[P-102]" },
+            reply: "Final Answer: The guaranteed surrender value is paid within seven working days of the request [P-102]." }
+        - { match: "*", reply: "Final Answer: I could not find the surrender rule in the process documents." }
+      tools:
+        search:
+          returns:
+            status: 200
+            candidates:
+              - { id: "P-102", text: "Traditional savings plans surrendered after the third policy year pay the guaranteed surrender value within seven working days of the request." }
+              - { id: "P-118", text: "On a unit-linked plan the fund value is the number of units held times that day's unit price." }
+              - { id: "P-145", text: "A surrender request is taken at any branch or online, with the policy number and a cancelled cheque." }
+              - { id: "P-150", text: "On a traditional plan the surrender value is the higher of the guaranteed and the special surrender value." }
+              - { id: "P-163", text: "Partial withdrawals from a unit-linked plan are allowed from the sixth policy year." }
+              - { id: "P-171", text: "Switching between funds on a unit-linked plan is free four times a year." }
+              - { id: "P-177", text: "Premium redirection changes where future premiums are invested and leaves existing units where they are." }
+              - { id: "P-715", text: "Fund prices for unit-linked plans are published on the website every working day." }
+              - { id: "P-720", text: "Policy loan interest is charged every six months and added to the loan if unpaid." }
+              - { id: "P-711", text: "A cheque returned unpaid is charged 300 rupees and the premium falls due again." }
+              - { id: "P-311", text: "A unit-linked plan surrendered in its first five years: the fund value, less the discontinuance charge, moves to the discontinued policy fund and is paid when the five-year lock-in ends." }
+              - { id: "P-713", text: "Bonus rates for participating traditional plans are declared once a year." }
+              - { id: "P-714", text: "A customer can ask for a call back in Hindi, English, Tamil, Telugu or Marathi." }
+              - { id: "P-716", text: "Standing instructions on a credit card are set up from the customer portal." }
+              - { id: "P-717", text: "KYC documents older than ten years are asked for again at the next service request." }
+              - { id: "P-718", text: "Complaints still open after 14 days can be escalated to the head of customer service." }
+              - { id: "P-719", text: "Branch staff verify the customer's identity before reading out any policy detail." }
+              - { id: "P-721", text: "A policy issued in error is cancelled and the premium refunded in full." }
+              - { id: "P-722", text: "Cash premiums are accepted only at branches, never by agents." }
+              - { id: "P-723", text: "An address change applies from the next premium notice." }
+              - { id: "P-724", text: "The welcome call is made within 15 days of the policy being issued." }
+              - { id: "P-725", text: "A duplicate premium receipt can be sent to the registered email on request." }
+              - { id: "P-726", text: "Rider premiums are shown separately on the premium notice." }
+              - { id: "P-727", text: "The sum assured on a term plan cannot be raised after issue." }
+              - { id: "P-728", text: "Requests made on a public holiday are logged on the next working day." }
+              - { id: "P-729", text: "Customers living abroad must give an overseas address and a contact in India." }
+              - { id: "P-730", text: "Large sums assured need a financial underwriting questionnaire." }
+              - { id: "P-731", text: "A policy can be moved to a branch in another city on request." }
+              - { id: "P-732", text: "On a monthly annuity, payments start one month after the purchase date." }
+              - { id: "P-733", text: "The claims desk asks for the original policy document only when no e-policy exists." }
+        rerank:
+          sequence:
+            - status: 200
+              scores: [{ id: "P-102", score: 0.71 }, { id: "P-118", score: 0.66 }, { id: "P-145", score: 0.52 }, { id: "P-150", score: 0.48 },
+                       { id: "P-163", score: 0.39 }, { id: "P-171", score: 0.14 }, { id: "P-177", score: 0.11 }, { id: "P-715", score: 0.31 }]
+            - status: 200
+              scores: [{ id: "P-720", score: 0.26 }, { id: "P-711", score: 0.33 }, { id: "P-311", score: 0.94 }, { id: "P-713", score: 0.32 },
+                       { id: "P-714", score: 0.10 }, { id: "P-716", score: 0.09 }, { id: "P-717", score: 0.17 }, { id: "P-718", score: 0.08 }]
+            - status: 200
+              scores: [{ id: "P-719", score: 0.16 }, { id: "P-721", score: 0.34 }, { id: "P-722", score: 0.25 }, { id: "P-723", score: 0.33 },
+                       { id: "P-724", score: 0.11 }, { id: "P-725", score: 0.32 }, { id: "P-726", score: 0.10 }, { id: "P-727", score: 0.31 }]
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [top, reranked, answer], properties: { top: { const: ["P-311", "P-102", "P-118"] }, reranked: { const: true } } } }
+        - { type: returns_matches, value: "lock-in ends" }
+        - { type: returns_lacks, value: "seven working days" }
+
+  - name: spends_no_reranker_slot_on_a_repeated_passage
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"query": "Is there a charge for a duplicate copy of the policy document?"}' }
+      llm_script:
+        - { match: { contains: "[P-619]" },
+            reply: "Final Answer: Yes. A duplicate policy document costs 250 rupees and is posted within ten working days [P-619]. An e-policy can be downloaded free from the customer portal [P-607]." }
+        - { match: "*", reply: "Final Answer: I could not find a charge for a duplicate policy document." }
+      tools:
+        search:
+          returns:
+            status: 200
+            candidates:
+              - { id: "P-601", text: "Keep the original policy document safe, because the claims desk may ask for it." }
+              - { id: "P-604", text: "A lost policy document is reported with a signed indemnity bond." }
+              - { id: "P-601", text: "Keep the original policy document safe, because the claims desk may ask for it." }
+              - { id: "P-607", text: "An e-policy can be downloaded from the customer portal at no charge." }
+              - { id: "P-721", text: "A policy issued in error is cancelled and the premium refunded in full." }
+              - { id: "P-604", text: "A lost policy document is reported with a signed indemnity bond." }
+              - { id: "P-722", text: "Cash premiums are accepted only at branches, never by agents." }
+              - { id: "P-723", text: "An address change applies from the next premium notice." }
+              - { id: "P-724", text: "The welcome call is made within 15 days of the policy being issued." }
+              - { id: "P-607", text: "An e-policy can be downloaded from the customer portal at no charge." }
+              - { id: "P-725", text: "A duplicate premium receipt can be sent to the registered email on request." }
+              - { id: "P-726", text: "Rider premiums are shown separately on the premium notice." }
+              - { id: "P-727", text: "The sum assured on a term plan cannot be raised after issue." }
+              - { id: "P-728", text: "Requests made on a public holiday are logged on the next working day." }
+              - { id: "P-723", text: "An address change applies from the next premium notice." }
+              - { id: "P-729", text: "Customers living abroad must give an overseas address and a contact in India." }
+              - { id: "P-730", text: "Large sums assured need a financial underwriting questionnaire." }
+              - { id: "P-731", text: "A policy can be moved to a branch in another city on request." }
+              - { id: "P-732", text: "On a monthly annuity, payments start one month after the purchase date." }
+              - { id: "P-726", text: "Rider premiums are shown separately on the premium notice." }
+              - { id: "P-733", text: "The claims desk asks for the original policy document only when no e-policy exists." }
+              - { id: "P-734", text: "Requests signed under a power of attorney need the original attorney document." }
+              - { id: "P-735", text: "Service requests can be tracked with the reference number in the acknowledgement email." }
+              - { id: "P-729", text: "Customers living abroad must give an overseas address and a contact in India." }
+              - { id: "P-619", text: "A duplicate policy document costs 250 rupees and is posted within ten working days of the request." }
+              - { id: "P-701", text: "Premium receipts for the last three years can be downloaded from the customer portal." }
+              - { id: "P-702", text: "A change of name after marriage needs the marriage certificate and a signed request." }
+              - { id: "P-703", text: "Calls about a death claim go to the claims desk, never the service desk." }
+              - { id: "P-704", text: "The customer portal locks after five wrong passwords and opens again after 30 minutes." }
+              - { id: "P-705", text: "Printed policy documents are sent by courier within seven days of issue." }
+        rerank:
+          sequence:
+            - status: 200
+              scores: [{ id: "P-601", score: 0.40 }, { id: "P-604", score: 0.61 }, { id: "P-607", score: 0.64 }, { id: "P-721", score: 0.25 },
+                       { id: "P-722", score: 0.33 }, { id: "P-723", score: 0.24 }, { id: "P-724", score: 0.32 }, { id: "P-725", score: 0.10 }]
+            - status: 200
+              scores: [{ id: "P-726", score: 0.31 }, { id: "P-727", score: 0.09 }, { id: "P-728", score: 0.30 }, { id: "P-729", score: 0.08 },
+                       { id: "P-730", score: 0.18 }, { id: "P-731", score: 0.26 }, { id: "P-732", score: 0.34 }, { id: "P-733", score: 0.25 }]
+            - status: 200
+              scores: [{ id: "P-734", score: 0.33 }, { id: "P-735", score: 0.24 }, { id: "P-619", score: 0.92 }, { id: "P-701", score: 0.23 },
+                       { id: "P-702", score: 0.31 }, { id: "P-703", score: 0.22 }, { id: "P-704", score: 0.30 }, { id: "P-705", score: 0.08 }]
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: calls_tool_with, name: rerank, args: { ids: ["P-734", "P-735", "P-619", "P-701", "P-702", "P-703", "P-704", "P-705"] } }
+        - { type: tool_calls_at_most, value: 4 }
+        - { type: valid_json_return, schema: { type: object, required: [top, reranked, answer], properties: { top: { const: ["P-619", "P-607", "P-604"] }, reranked: { const: true } } } }
+        - { type: returns_matches, value: "250 rupees" }
+
+  - name: falls_back_whole_when_the_second_call_fails
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"query": "Where can a customer get the premium paid certificate for this year''s tax return?"}' }
+      llm_script:
+        - { match: { contains: "[P-505]" },
+            reply: "Final Answer: Download it from the customer portal under Documents [P-505], or ask for it by email from the registered address [P-512]." }
+        - { match: "*", reply: "Final Answer: I could not find the premium paid certificate in the process documents." }
+      tools:
+        search:
+          returns:
+            status: 200
+            candidates:
+              - { id: "P-505", text: "The premium paid certificate for any financial year can be downloaded from the customer portal under Documents." }
+              - { id: "P-512", text: "A premium paid certificate can also be requested by email from the registered address, and arrives within two working days." }
+              - { id: "P-520", text: "Tax certificates for annuity payments on a pension plan are issued separately every May." }
+              - { id: "P-710", text: "Medical reports for a new proposal are valid for six months." }
+              - { id: "P-711", text: "A cheque returned unpaid is charged 300 rupees and the premium falls due again." }
+              - { id: "P-712", text: "The registered email address can be changed only from the registered mobile number." }
+              - { id: "P-713", text: "Bonus rates for participating traditional plans are declared once a year." }
+              - { id: "P-714", text: "A customer can ask for a call back in Hindi, English, Tamil, Telugu or Marathi." }
+              - { id: "P-715", text: "Fund prices for unit-linked plans are published on the website every working day." }
+              - { id: "P-716", text: "Standing instructions on a credit card are set up from the customer portal." }
+              - { id: "P-717", text: "KYC documents older than ten years are asked for again at the next service request." }
+              - { id: "P-718", text: "Complaints still open after 14 days can be escalated to the head of customer service." }
+              - { id: "P-719", text: "Branch staff verify the customer's identity before reading out any policy detail." }
+              - { id: "P-720", text: "Policy loan interest is charged every six months and added to the loan if unpaid." }
+              - { id: "P-721", text: "A policy issued in error is cancelled and the premium refunded in full." }
+              - { id: "P-722", text: "Cash premiums are accepted only at branches, never by agents." }
+              - { id: "P-723", text: "An address change applies from the next premium notice." }
+              - { id: "P-724", text: "The welcome call is made within 15 days of the policy being issued." }
+              - { id: "P-725", text: "A duplicate premium receipt can be sent to the registered email on request." }
+              - { id: "P-726", text: "Rider premiums are shown separately on the premium notice." }
+              - { id: "P-727", text: "The sum assured on a term plan cannot be raised after issue." }
+              - { id: "P-728", text: "Requests made on a public holiday are logged on the next working day." }
+              - { id: "P-729", text: "Customers living abroad must give an overseas address and a contact in India." }
+              - { id: "P-730", text: "Large sums assured need a financial underwriting questionnaire." }
+              - { id: "P-731", text: "A policy can be moved to a branch in another city on request." }
+              - { id: "P-732", text: "On a monthly annuity, payments start one month after the purchase date." }
+              - { id: "P-733", text: "The claims desk asks for the original policy document only when no e-policy exists." }
+              - { id: "P-734", text: "Requests signed under a power of attorney need the original attorney document." }
+              - { id: "P-735", text: "Service requests can be tracked with the reference number in the acknowledgement email." }
+              - { id: "P-701", text: "Premium receipts for the last three years can be downloaded from the customer portal." }
+        rerank:
+          sequence:
+            - status: 200
+              scores: [{ id: "P-505", score: 0.62 }, { id: "P-512", score: 0.80 }, { id: "P-520", score: 0.88 }, { id: "P-710", score: 0.33 },
+                       { id: "P-711", score: 0.11 }, { id: "P-712", score: 0.32 }, { id: "P-713", score: 0.10 }, { id: "P-714", score: 0.18 }]
+            - { error: "timeout" }
+      budget: { max_llm_calls: 2, max_tool_calls: 8, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [top, reranked, answer], properties: { top: { const: ["P-505", "P-512", "P-520"] }, reranked: { const: false } } } }
+        - { type: tool_calls_at_most, value: 3 }
+        - { type: returns_matches, value: "(?i)customer portal" }
+
+reference_md: |
+  A retriever and a reranker do different jobs. Hybrid search is cheap and
+  wide: it finds 30 passages that might matter and orders them roughly. A
+  reranker reads the question together with each passage and scores how well
+  that passage answers it, which is slower and sharper. The sharpness applies
+  only inside what it reads. A passage at fused rank 11 cannot be promoted by
+  a reranker that reads five, no matter how well it answers, so the depth you
+  send is the recall of the whole pipeline.
+
+  The depth is a number you measure. The desk's review found the answering
+  passage inside the first five for 61 questions in 100 and inside the first
+  24 for 96, and three calls of eight cost what the desk can afford. Reading
+  five saved two calls a question at the cost of the answer on 35 questions
+  in 100.
+
+  Merging calls by score works here because this reranker scores each passage
+  against the question on its own, the way a cross-encoder does. A passage
+  gets the same score whichever call it travels in, so one dict of scores by
+  id ranks all 24 together. A reranker that orders a whole list against
+  itself gives scores that compare only inside one call, and its calls would
+  have to be merged some other way.
+
+  Repeated ids look harmless and cost recall. Each copy takes one of the 24
+  places, so six repeats push six unique passages past the depth. Dropping
+  them before the first call keeps every place for a different passage.
+
+  A failed reranker leaves the fused order, which is less precise than a
+  reranked one and still an answer. The adapter that returned an empty list
+  turned a slightly worse answer into "no document covers this" for 40
+  minutes. When the second call fails after the first succeeded, keeping the
+  first call's scores puts eight scored passages ahead of 16 unscored ones by
+  the accident of which call failed. The whole list falls back, and
+  `reranked` false tells the trace and the evaluation which order answered.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    Where does a reranker sit in a retrieval pipeline, how deep do you rerank, and what happens when the reranker is down?
+  source: |
+    Author judgement. Interview bank entry I008 in docs/source-pack/09-interview-bank.json, where the right document was retrieved and the answer is still wrong, is adjacent, and that bank labels every entry "Original interview-style practice; actual employer frequency unverified". No employer frequency data stands behind it.
+
+tools:
+  - name: search
+    args: query
+    returns: "`candidates` in fused order, best first, each an `id` and its `text`. One id can appear twice."
+  - name: rerank
+    args: query, ids (eight at most)
+    returns: 'A `score` from 0 to 1 for each id it reads, as `scores`, or `{"error": "timeout"}`.'
+example:
+  case: answers_from_the_passage_the_reranker_puts_first
+  expect: Search once, drop the second P-201, rerank the first 24 unique passages in three calls of eight,
+    and answer from P-207, the passage the reranker scores highest.
+traps:
+  - Reranking only the first few candidates, so a passage further down the fused list is never read,
+    no matter how well it answers.
+  - Sending more than eight ids in one call, so the reranker scores the first eight and never reads the
+    rest.
+  - Spending a reranker place on an id that search returned twice, which pushes a unique passage past
+    the 24th place.
+  - Meeting a reranker error with no passages at all, or ranking one call's scores ahead of the fused
+    order for the rest.

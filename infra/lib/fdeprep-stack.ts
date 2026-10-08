@@ -225,6 +225,15 @@ export class FdePrepStack extends Stack {
         prefix: "voice/answers/",
         expiration: Duration.days(VOICE_AUDIO_RETENTION_DAYS),
       }, {
+        // docs/07 sections 5a and 9: a follow-up generated for one session's
+        // round is kept as long as the learner's own recording. The lines
+        // said more than once, under voice/lines/, hold nothing about a
+        // learner and are kept.
+        id: "delete-generated-follow-ups-after-30-days",
+        enabled: true,
+        prefix: "voice/generated/",
+        expiration: Duration.days(VOICE_AUDIO_RETENTION_DAYS),
+      }, {
         id: "abort-incomplete-uploads",
         enabled: true,
         abortIncompleteMultipartUploadAfter: Duration.days(1),

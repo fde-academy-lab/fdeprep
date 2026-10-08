@@ -5,11 +5,26 @@ difficulty: hard
 total_seconds: 155
 competencies: [system-design, failure-mode-analysis, client-communication]
 
+round: decomposition-case
+tests: Whether you capture current behaviour before changing it, find where the failure lives, make the smallest change that reaches it, and prove you broke nothing else.
+interviewers: [solution-architect, engineering-lead, cto]
+builds_on: [build-a-golden-set-from-a-weeks-failures, turn-failed-traces-into-eval-cases, choose-retrieval-or-fine-tuning-from-the-failures]
+
 prompt_text: |
-  The extraction service is eight years old, nobody who wrote it is still
-  there, and it has no tests. It is also wrong about eleven percent of the
-  time and it is costing them real money. You cannot rewrite it. What do you
-  do?
+  At a paint maker the size of Asian Paints, the supplier invoice extraction
+  service is eight years old, nobody who wrote it is still there, and it has
+  no tests. It is wrong about eleven percent of the time and it is costing
+  them real money. You cannot rewrite it. What do you do?
+
+framework:
+  answer_first: The running service is the only specification, so the first day is capture. A few thousand real documents through it, inputs and outputs recorded. Everything else checks against that.
+  evidence: Eleven percent is never spread evenly. Find the document type or the field that carries it. Eight of eleven points in one supplier's scans turns a scary number into a task.
+  trade_off: The smallest change that reaches the failure, and the rest left alone on purpose. Cleaning up while you are in there is where brownfield work goes wrong, because afterwards nobody can tell which change caused what.
+  if_you_do_not_know: If there is no staging environment, say you would run the new version in shadow beside the old one in production, keep its output, and read the differences.
+tips:
+  - Say what you would establish before touching anything. An answer that opens with the fix has skipped the part that makes the fix checkable.
+  - Read the differences between old and new. Counting them tells you nothing about which ones matter.
+  - On the rewrite, say it is not first, and say what would earn it. A test suite and credibility, then pieces checked against the same baseline.
 
 beats:
   - id: b1
