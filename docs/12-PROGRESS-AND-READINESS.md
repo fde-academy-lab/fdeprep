@@ -102,6 +102,8 @@ Readiness 72%  screen_ready        Practised: written 14 · oral 2
 
 Two oral attempts against fourteen written ones is a learner who will be surprised by half of their screen. The number is not wrong and it is not the whole picture, and showing both costs one line.
 
+**Amended 8 October 2026**, story S15.5. `coverageFor` in `web/lib/progress/coverage.ts` counts it, and the readiness line on Home, Progress and the admin learner page shows `Practised: written 14 · oral 2` beside the band. A problem counts once, no matter how often it was submitted, toward the round its current version declares, and a problem marked `both` counts toward each. Practised means a submission with a verdict the learner earned, pass or fail, which is the evidence that moves a heatmap cell, so an error or a timeout practises nothing. Voice answers are not counted here: the line reads problems, as this section says.
+
 ---
 
 ## 6. Module boundary

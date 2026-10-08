@@ -75,6 +75,17 @@ Four tables, each a plain table with a filter row, following the density directi
 
 The stuck list is the one that earns its place daily. A learner failing the same problem four times is a learner about to quit, and the attempt notes on Hard problems are already text a faculty member can read.
 
+**Amended 8 October 2026** to what story S15.5 built, in `web/lib/analytics/`, each view for the viewer's own cohort.
+
+| View | Where | What it reads |
+|---|---|---|
+| Cohort standing | The Overview at `/admin`, with Export CSV beside its title. | `readinessFor`'s statement, interview coverage, last activity and the stuck count. |
+| Stuck list | `/admin/cohort`, first table. | Attempts with three or more failed submits and no pass. The Overview's Stuck column counts the same rows per learner. |
+| Competency gaps | `/admin/cohort`, second table, under a sentence naming the competency with the lowest pass rate. | `competency_score`: per competency, the active learners with a cell, those whose best cell is passed or clean, and the mean best state on a scale of 1 for attempted to 3 for clean. |
+| Interview coverage | `/admin/cohort`, third table. | Published problems per round, and those the cohort's active learners have practised, with the rule in `12` section 5. |
+
+Stuck means the learner and problem pair on every screen. A submission waiting in the queue with no verdict is waiting, which is the word Ops uses for it. The tables have no filter row: each is scoped to one cohort and is short at that scale, and a filter is worth adding the first time a cohort outgrows a screen.
+
 ---
 
 ## 5. Problem calibration
@@ -92,6 +103,17 @@ The feedback loop that makes the content improve, and the reason to keep evaluat
 These are thresholds to look at rather than rules to act on, and the document says so because an author who treats a threshold as a verdict will rewrite a problem that was fine.
 
 **The calibration report is written for the author, not for the learner.** It names the problem, the signal, the number, and what to check first.
+
+**Amended 8 October 2026**, story S15.5. The report is `/admin/calibration`, open to faculty and admins, and downloads as Markdown. Four choices the table above left open:
+
+| Choice | Value | Why |
+|---|---|---|
+| Smallest sample a signal needs | Five learners, first attempts or evaluations. | A rate over two or three learners is noise, and the report prints the sample beside every number. |
+| A high give-up rate | A quarter of attempts or more. | The table says high and gives no number. |
+| Far above `est_minutes` | More than double. | The same. |
+| Time to pass | The median elapsed time from opening the problem to passing it, breaks included. | A mean of elapsed times is set by whoever left a problem open overnight, and the platform records no active time. |
+
+Only learners count, so faculty trying a problem out never move its numbers. The disagreement rate reads the panel's newest evaluation of each submission and skips a faculty correction, which would otherwise hide that the judges disagreed. The tier thresholds live in the policy module, `calibrationFor` in `web/lib/policy/tiers.ts`.
 
 ### Exemplar coverage
 
@@ -115,6 +137,8 @@ Read daily by whoever is operating the platform, and the numbers that say whethe
 
 The re-evaluation backlog is the one with teeth. A `partial` evaluation is a promise to the learner, and a promise nobody drains is worse than a plain failure, because the learner is still waiting.
 
+**Amended 8 October 2026**, story S15.5. Panel health is `/admin/panel`, admin only, since it names panelists. Its unit is a panel run: one evaluation row the panel wrote, a re-run included and a faculty correction left out. A partial whose re-run later completes counts once as partial and once as complete, so the partial rate equals the count of partial rows over the count of runs and nothing is counted twice. The rates cover the last seven days and availability the last 24 hours, by the hour. The backlog counts submissions whose newest evaluation is still partial, the rule `reevaluationBacklog` in `web/lib/eval/record.ts` uses. The disagreement rate is over the runs where two judges both gave a band, since only those can disagree.
+
 ---
 
 ## 7. Exports
@@ -127,6 +151,8 @@ The re-evaluation backlog is the one with teeth. A `partial` evaluation is a pro
 | Calibration report | Markdown. | The author, before the next cohort. |
 
 Every export carries the date it was generated and the count of rows it covers. An undated export of a live system is a number somebody will quote six months later.
+
+**Amended 8 October 2026**, story S15.5. The cohort standing CSV puts both on its first line, as a comment with no comma in it, `# Cohort standing for <cohort> generated <time> covering <n> learners`, so a spreadsheet keeps it in one cell and a reader that skips lines starting with `#` skips it. Its columns are the Overview's, with the interview coverage counts beside readiness. The calibration Markdown states both in its opening paragraph.
 
 ---
 
