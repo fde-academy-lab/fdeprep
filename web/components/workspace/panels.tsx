@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import type { WorkspaceKit, PastSubmission } from "@/lib/problems/workspace";
 import type { Difficulty } from "@/lib/policy/tiers";
+import { STORYLINE_DAYS } from "@/lib/problems/vocabulary";
 import { DifficultyMeter } from "@/components/ui/difficulty";
 import { Markdown } from "@/components/ui/markdown";
 import { StatusIcon } from "@/components/ui/status";
@@ -81,13 +82,11 @@ const ROUND_WORDS: Readonly<Record<string, string>> = {
   both: "In a coding round, and again out loud",
 };
 
-export function ProblemIntro({ title, day, skill, interview, track, difficulty, estMinutes,
+export function ProblemIntro({ title, day, interview, track, difficulty, estMinutes,
                                artefactLabel, kit, briefMd, children }: {
   title: string;
   /** The day of a learner's first 30 as an FDE. */
   day?: number | null;
-  /** What the problem practises. */
-  skill?: string | null;
   interview?: { round: string; askedAs: string } | null;
   track: string;
   difficulty: Difficulty;
@@ -101,21 +100,11 @@ export function ProblemIntro({ title, day, skill, interview, track, difficulty, 
     <div className="space-y-7 px-5 pb-10 pt-5">
       <div>
         {kit.build ? <BuildStepper build={kit.build} /> : null}
-        {day ? (
-          <p className="mb-1 text-meta font-medium text-text-faint">Day {day} as an FDE</p>
-        ) : null}
         <p className="text-title font-semibold leading-tight tracking-[-0.01em] text-text">{title}</p>
-        {kit.concept ? (
-          <p className="mt-2 text-text">
-            <span className="text-text-faint">The question: </span>{kit.concept.question}
-          </p>
-        ) : null}
-        {skill ? (
-          <p className="mt-1.5 text-text-dim">
-            <span className="text-text-faint">You practise: </span>{renderCode(skill)}
-          </p>
-        ) : null}
+        {/* The question the problem answers is the first thing under its name, unlabelled. */}
+        {kit.concept ? <p className="mt-2 text-text">{kit.concept.question}</p> : null}
         <div className="mt-2.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-meta">
+          {day ? <span className="tnum text-text-dim">Day {day} of {STORYLINE_DAYS}</span> : null}
           <DifficultyMeter difficulty={difficulty} />
           <TrackLabel track={track} topic={kit.concept?.topic} />
           <span className="inline-flex items-center gap-1.5 text-text-dim">
@@ -250,14 +239,19 @@ const KIND_LABEL: Record<string, string> = {
   run: "Run", submit: "Submit", live: "Live run", rehearsal_submit: "Rehearsal submit",
 };
 
-export function AttemptsPanel({ submissions }: { submissions: PastSubmission[] }) {
+/** The code workspace's empty Attempts tab. Run is in the bar above, so the line names it. */
+const NOTHING_RUN = "Nothing run yet. Press Run, or Cmd Enter, to send your code through the public " +
+  "tests. Every run and submit lands here with its result and a replay.";
+
+export function AttemptsPanel({ submissions, empty = NOTHING_RUN }: {
+  submissions: PastSubmission[];
+  /** A workspace with no Run button names its own first action. */
+  empty?: string;
+}) {
   if (!submissions.length) {
     return (
       <div className="px-5 py-6">
-        <p className="text-text-dim">
-          Nothing run yet. Press Run to send your code through the public tests; every run and
-          submit lands here with its result and a replay.
-        </p>
+        <p className="text-text-dim">{empty}</p>
       </div>
     );
   }

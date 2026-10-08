@@ -174,7 +174,7 @@ export default function Workspace(props: Props) {
                 hintBadge={hintGate && hintGate.total ? `${hintGate.revealed}/${hintGate.total}` : null} />
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {tab === "brief" ? (
-          <ProblemIntro title={problem.title} day={problem.day} skill={problem.skill}
+          <ProblemIntro title={problem.title} day={problem.day}
                         interview={problem.interview} track={problem.track} difficulty={problem.difficulty}
                         estMinutes={problem.estMinutes} artefactLabel="Python"
                         kit={problem.kit} briefMd={problem.briefMd}>

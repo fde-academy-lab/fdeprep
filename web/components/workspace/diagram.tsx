@@ -159,6 +159,14 @@ function route(edges: DiagramEdge[], boxes: Map<string, DOMRect>, origin: DOMRec
 
 /** The narrowest a node gets before the picture scrolls instead of squeezing. */
 const MIN_NODE = 148;
+/** How far below their narrowest the columns give way rather than scroll. */
+const SQUEEZE = 16;
+
+/** The width inside an element's padding, which is what its content can use. */
+function inside(el: HTMLElement): number {
+  const style = getComputedStyle(el);
+  return el.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+}
 
 export function DiagramView({ diagram, className, large = false }: {
   diagram: Diagram; className?: string; large?: boolean;
@@ -181,9 +189,9 @@ export function DiagramView({ diagram, className, large = false }: {
   const grid = useMemo(() => layout(diagram, sideways), [diagram, sideways]);
   const byId = useMemo(() => new Map(diagram.nodes.map((n) => [n.id, n])), [diagram]);
 
-  // Measured in the diagram's own coordinates. A thumbnail scales the whole
-  // picture with a CSS transform, and getBoundingClientRect reports the scaled
-  // size, so without dividing it out the edges would be scaled twice.
+  // Measured in the diagram's own coordinates. A parent that scales the
+  // picture with a CSS transform changes what getBoundingClientRect reports,
+  // so without dividing it out the edges would be scaled twice.
   const measure = useCallback(() => {
     const el = container.current;
     if (!el || !el.offsetWidth) return;
@@ -201,7 +209,7 @@ export function DiagramView({ diagram, className, large = false }: {
   }, [diagram.edges]);
 
   useLayoutEffect(() => {
-    setAvailable(scroller.current?.clientWidth ?? 0);
+    setAvailable(scroller.current ? inside(scroller.current) : 0);
     measure();
   }, [measure, grid]);
   useEffect(() => {
@@ -209,7 +217,7 @@ export function DiagramView({ diagram, className, large = false }: {
     const outer = scroller.current;
     if (!el || !outer || typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver(() => {
-      setAvailable(outer.clientWidth);
+      setAvailable(inside(outer));
       measure();
     });
     observer.observe(el);
@@ -217,17 +225,25 @@ export function DiagramView({ diagram, className, large = false }: {
     return () => observer.disconnect();
   }, [measure]);
 
-  const gap = grid.cols > 3 ? "gap-x-8" : "gap-x-12";
+  const gap = grid.cols > 2 ? "gap-x-8" : "gap-x-12";
+  // The columns at their narrowest. Within SQUEEZE of the width the pane has,
+  // they give up the difference instead, because a picture that scrolls nine
+  // pixels sideways reads as broken. Until the pane is measured the picture
+  // keeps its full width, so no label wraps mid-word on the first paint.
+  const needed = grid.cols * MIN_NODE + (grid.cols - 1) * (grid.cols > 2 ? 32 : 48);
+  const minWidth = available > 0 && needed <= available + SQUEEZE ? undefined : needed;
+  // A column is never narrower than its longest word, so a name like
+  // apply_late_fee() widens its own column rather than breaking in two.
+  const columns = `repeat(${grid.cols}, minmax(min-content, 1fr))`;
 
   return (
     <div className={cn("min-w-0", className)}>
       {/* Below a readable column width the picture scrolls sideways inside
           its card, because a squeezed column breaks labels mid-word. */}
       <div ref={scroller} className="-mx-1 overflow-x-auto px-1 pb-1">
-      <div ref={container} className="relative"
-           style={{ minWidth: grid.cols * MIN_NODE + (grid.cols - 1) * (grid.cols > 3 ? 32 : 48) }}>
+      <div ref={container} className="relative" style={{ minWidth }}>
         <div className={cn("grid items-center gap-y-7", gap)}
-             style={{ gridTemplateColumns: `repeat(${grid.cols}, minmax(0, 1fr))` }}>
+             style={{ gridTemplateColumns: columns }}>
           {grid.placed.map((place) => {
             const node = byId.get(place.id)!;
             const tone = TONE[node.tone] ?? TONE.neutral;
@@ -362,43 +378,5 @@ export function DiagramFigure({ diagram }: { diagram: Diagram }) {
         </div>
       </dialog>
     </figure>
-  );
-}
-
-/**
- * The diagram at its natural size, scaled down to fit, for a preview beside
- * other content. A diagram squeezed into a narrow column instead breaks its
- * labels mid-word; scaled, it keeps its layout and reads as a picture of the
- * problem.
- */
-export function DiagramThumbnail({ diagram, naturalWidth = 600, className }: {
-  diagram: Diagram; naturalWidth?: number; className?: string;
-}) {
-  const outer = useRef<HTMLDivElement>(null);
-  const inner = useRef<HTMLDivElement>(null);
-  const [fit, setFit] = useState<{ scale: number; height: number } | null>(null);
-
-  useLayoutEffect(() => {
-    const measure = () => {
-      if (!outer.current || !inner.current) return;
-      const scale = Math.min(1, outer.current.clientWidth / naturalWidth);
-      setFit({ scale, height: inner.current.offsetHeight * scale });
-    };
-    measure();
-    if (typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(measure);
-    if (outer.current) observer.observe(outer.current);
-    if (inner.current) observer.observe(inner.current);
-    return () => observer.disconnect();
-  }, [naturalWidth]);
-
-  return (
-    <div ref={outer} className={cn("relative w-full overflow-hidden", className)}
-         style={{ height: fit ? fit.height : undefined }}>
-      <div ref={inner} className="origin-top-left [&_ol]:hidden"
-           style={{ width: naturalWidth, transform: fit ? `scale(${fit.scale})` : undefined }}>
-        <DiagramView diagram={diagram} />
-      </div>
-    </div>
   );
 }

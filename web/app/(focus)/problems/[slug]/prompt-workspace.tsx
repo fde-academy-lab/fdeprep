@@ -171,7 +171,7 @@ export default function PromptWorkspace(props: Props) {
                 hintBadge={hintGate && hintGate.total ? `${hintGate.revealed}/${hintGate.total}` : null} />
       <div className="relative min-h-0 flex-1 overflow-y-auto">
         {tab === "brief" ? (
-          <ProblemIntro title={problem.title} day={problem.day} skill={problem.skill}
+          <ProblemIntro title={problem.title} day={problem.day}
                         interview={problem.interview} track={problem.track} difficulty={problem.difficulty}
                         estMinutes={problem.estMinutes} artefactLabel="Prompt surgery"
                         kit={problem.kit} briefMd={problem.briefMd}>
@@ -226,7 +226,8 @@ export default function PromptWorkspace(props: Props) {
                         }).then(() => setTab("brief"));
                       }} />
         ) : (
-          <AttemptsPanel submissions={past} />
+          <AttemptsPanel submissions={past}
+                         empty="Nothing submitted yet. Press Submit, or Cmd Shift Enter, to send your prompt for grading. Every submit lands here with its result." />
         )}
         {gateNotice ? (
           <p role="alert" className="mx-5 mb-6 rounded-control border border-warn/40 bg-warn-soft px-3 py-2 text-text">
