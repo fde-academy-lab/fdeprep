@@ -11,7 +11,7 @@ import { LineCounter, parseDocument, type Document } from "yaml";
 import { compilePattern, PatternError, wordCount, type PromptRule } from "../gate/index.ts";
 import { HEURISTICS, heuristicNames, isHeuristic } from "../eval/heuristics.ts";
 import {
-  ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, TRACKS, VISIBILITIES,
+  ARTEFACT_TYPES, COMPETENCIES, DIFFICULTIES, STORYLINE_DAYS, TRACKS, VISIBILITIES,
 } from "./vocabulary.ts";
 import {
   COMPLEXITIES, defaultComplexity, isComplexity, panelFor,
@@ -820,7 +820,7 @@ function caseFacts(
 }
 
 /** The title and day limits are what a catalogue row shows on one line. */
-export const STORYLINE = { days: 30, titleMax: 64, titleWords: 8, skillMax: 90 } as const;
+export const STORYLINE = { days: STORYLINE_DAYS, titleMax: 64, titleWords: 8, skillMax: 90 } as const;
 
 /**
  * Rule: every catalogue problem has a day in the storyline, a title that says

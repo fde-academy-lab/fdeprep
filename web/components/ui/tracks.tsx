@@ -51,8 +51,8 @@ export function TrackLabel({ track, topic, className }: {
   return (
     <span className={cn("inline-flex items-center gap-1.5 text-text-dim", className)}>
       <TrackIcon track={track} className="size-3.5" />
-      <span>{trackName(track)}</span>
-      {topic ? <span className="text-text-faint">· {topic}</span> : null}
+      <span>{trackName(track)}{topic ? "," : null}</span>
+      {topic ? <span className="text-text-faint">{topic}</span> : null}
     </span>
   );
 }

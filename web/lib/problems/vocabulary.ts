@@ -116,6 +116,9 @@ export const CHAPTER_TOPICS: Readonly<Record<Track, readonly string[]>> = {
   "fde-practice": ["Integration contracts", "Pushback and scoping", "Pilot to production"],
 };
 
+/** The storyline: every catalogue problem belongs to one day of a learner's first 30 as an FDE. */
+export const STORYLINE_DAYS = 30;
+
 export const DIFFICULTIES = ["easy", "medium", "hard", "extreme"] as const;
 export const ARTEFACT_TYPES = ["code", "prompt", "design"] as const;
 export const VISIBILITIES = ["public", "hidden", "adversarial"] as const;
