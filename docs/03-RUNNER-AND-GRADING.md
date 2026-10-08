@@ -69,6 +69,7 @@ Until this amendment the worker built the event without the kind and the handler
 | A kind the runner does not grade, such as `defence` or `live`, is an `error` verdict | Guessing Submit would hand a Run the hidden battery, and guessing Run would pass a Submit on its public cases. An error consumes nothing (section 8) |
 | The result writer refuses a Run result in which a hidden or adversarial case ran, and stores any other Run result with no hidden or adversarial count and no score | A runner image older than the kind runs the whole battery, and rolling the runner image back is the documented response to a failing runner (`05-DEPLOY-AND-OPS.md`). The refused result becomes an `error` that consumes nothing, with no trace stored, because its verdict, budget and timing carry what the hidden cases did |
 | A Run is for code only, and `createSubmission` refuses one on a prompt or design problem | Neither has public tests, and their probes and rubric are their Submit battery, which a Run would otherwise buy at the Run allowance with the model calls behind it |
+| The results pane, the Attempts tab, the coach and the replay viewer read only the static and public gates and the public cases' trace from a Run | A Run row written before this amendment holds the whole battery's result and trace, and it should show a learner no more than a new one does |
 
 
 ---
