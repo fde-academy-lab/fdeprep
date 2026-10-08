@@ -64,7 +64,7 @@ Voice is one table (3) of every published question, with the round of the interv
 
 ![The voice lobby for one question with the CTO as interviewer: the interviewer chips, the pixel interview room, the interviewer card, the framework card, the tips, and the five ways to answer with the allowance each spends](docs/images/voice-lobby.png)
 
-The lobby opens on the question's clock and the round it comes from. Asked by (1) picks one of the question's interviewers, and the room (2) seats them. The interviewer card (3) says who they are, what they listen for and how they open. How to answer it (4) is the framework card written for this question: answer first, evidence with a number, the trade-off to name and what to say when you do not know. Tips people overlook (5) and the problems the question builds on follow. How you will answer (6) lists guided, unguided, pressure, interview and typed, each with the allowance it spends; in interview mode the interviewer follows up on what you said for up to five rounds.
+The lobby opens on the question's clock and the round it comes from. Asked by (1) picks one of the question's interviewers, and the room (2) seats them. The interviewer card (3) says who they are, what they listen for and how they open. How to answer it (4) is the framework card written for this question: answer first, evidence with a number, the trade-off to name and what to say when you do not know. Tips people overlook (5) and the problems the question builds on follow. How you will answer (6) lists guided, unguided, pressure, interview and typed, each with the allowance it spends; in interview mode the interviewer follows up on what you said, four rounds on this question and never more than five.
 
 ### 6. Read a debrief
 
