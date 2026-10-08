@@ -29,7 +29,7 @@ The order you will see built is the one the product owner set on 30 September: t
 
 | Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
 |---|---|---|---|---|---|---|
-| S15 First cohort | The platform exists to produce one signal a placement team trusts, and today that signal is implied instead of computed. | 73 | 42 (28 to 58) | 136 | 12 Oct to 30 Nov 2026 | Medium |
+| S15 First cohort | The platform exists to produce one signal a placement team trusts, and today that signal is implied instead of computed. | 73 | 42 (28 to 58) | 136 | 8 Oct to 30 Nov 2026 | Medium |
 | S16 Second version | Each item answers a need the first cohort is expected to expose, and none of them is worth building before that cohort confirms it. | 50 | 58 (35 to 82) | 62 | 1 Dec to 31 Mar 2027 | Medium |
 <!-- /generated:roadmap -->
 
@@ -105,7 +105,7 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S14.6 | Amend docs/07 and the privacy notice | Task | 3 | Planned | docs/07 describes generated follow-ups and resume handling, and the consent screen says what happens to a resume. |
 | S15.1 | A baseline diagnostic that sets a learner's persona | Feature | 8 | Planned | A new learner's persona comes from a short diagnostic instead of an admin's hand. |
 | S15.2 | Author constraint lists, so the unnamed-constraint check can fire | Task | 5 | Planned | Every C3 and C4 problem declares its constraints, and names_no_constraint fires on an answer that names none. |
-| S15.3 | Re-grade past submissions against a new judge prompt version | Feature | 8 | Planned | A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it. |
+| S15.3 | Re-grade past submissions against a new judge prompt version | Feature | 8 | Done | A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it. |
 | S15.4 | Replace the import screen with something that works on a deployment | Feature | 5 | Planned | An admin publishes content on a deployed host without a shell. |
 | S15.5 | Build analytics: cohort views, the stuck list, calibration and panel health | Feature | 13 | Planned | Faculty can see which topic a cohort failed without writing SQL. |
 | S15.6 | Issue the report card as a dated, hashed snapshot | Feature | 8 | Planned | A report card never changes after it is issued, and its hash proves it. |
