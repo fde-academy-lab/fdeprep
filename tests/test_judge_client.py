@@ -9,13 +9,17 @@ four fields, and has no seed.
 """
 
 import os
+import re
+from pathlib import Path
 
 import pytest
 
-from judge.bedrock import BedrockTransport, ScriptedTransport
-from judge.config import JudgeConfig, load_config
+from judge.bedrock import BedrockTransport, ScriptedTransport, worst_case_s
+from judge.config import MAX_RETRIES, JudgeConfig, load_config
 from judge.defence import judge_defence
 from judge.schema import JudgeOutputRejected
+
+STACK = Path(__file__).resolve().parents[1] / "infra/lib/fdeprep-stack.ts"
 
 
 class RecordingClient:
@@ -142,6 +146,92 @@ class TestRetry:
         assert transport.complete(system="s", user="u") == "recovered"
 
 
+class AlwaysThrottles:
+    def __init__(self):
+        self.attempts = 0
+
+    def converse(self, **_):
+        self.attempts += 1
+        raise RuntimeError("ThrottlingException")
+
+
+def built(client, **config) -> tuple[BedrockTransport, list]:
+    """A transport whose clients come from a factory that records the Config
+    each one was built with."""
+    configs = []
+
+    def factory(settings):
+        configs.append(settings)
+        return client
+
+    transport = BedrockTransport(JudgeConfig(model_id="m", region="r", **config),
+                                 client_factory=factory)
+    return transport, configs
+
+
+class TestOneRetryLayer:
+    """botocore's own retries are off on every client, so this module's loop
+    is the only retry and `calls` is every attempt sent. Before, a client with
+    no Config retried in botocore's legacy mode underneath the loop: up to
+    five attempts for each of the loop's three, with three counted."""
+
+    def test_the_default_client_turns_botocore_retries_off(self):
+        transport, configs = built(RecordingClient())
+        transport.complete(system="s", user="u")
+        transport.complete(system="s", user="u")
+        [settings] = configs
+        assert settings.retries == {"total_max_attempts": 1}
+        assert (settings.connect_timeout, settings.read_timeout) == (2, 60)
+
+    def test_a_real_client_carries_the_settings(self):
+        config = BedrockTransport(JudgeConfig(model_id="m", region="us-east-1")).client.meta.config
+        assert config.retries["total_max_attempts"] == 1
+        assert (config.connect_timeout, config.read_timeout) == (2, 60)
+
+    def test_every_attempt_sent_is_counted(self):
+        client = AlwaysThrottles()
+        transport, _ = built(client, backoff_s=0)
+        with pytest.raises(RuntimeError):
+            transport.complete(system="s", user="u")
+        assert client.attempts == 3 == transport.calls
+
+    def test_the_waits_double_with_jitter_under_a_cap(self, monkeypatch):
+        slept: list[float] = []
+        monkeypatch.setattr("judge.bedrock.time.sleep", slept.append)
+
+        transport, _ = built(AlwaysThrottles(), retries=3, backoff_s=0.5)
+        with pytest.raises(RuntimeError):
+            transport.complete(system="s", user="u")
+        assert len(slept) == 3
+        for wait, longest in zip(slept, [0.5, 1.0, 2.0]):
+            assert longest / 2 <= wait <= longest
+
+        slept.clear()
+        transport, _ = built(AlwaysThrottles(), retries=3, backoff_s=30)
+        with pytest.raises(RuntimeError):
+            transport.complete(system="s", user="u")
+        assert all(2 <= wait <= 4 for wait in slept)
+
+    def test_a_read_timeout_past_the_default_is_held_to_it(self):
+        transport, configs = built(RecordingClient())
+        transport.complete(system="s", user="u", timeout_s=600, retries=0)
+        assert configs[0].read_timeout == 60
+
+    def test_one_call_cannot_outlast_the_judge_lambda(self):
+        """The judge gets JUDGE_TIMEOUT_SECONDS in infra. One call's worst
+        case, every attempt running to both timeouts and every wait at its
+        longest, stays inside it with the deployed defaults and with the
+        most retries config allows, and one more retry would not."""
+        timeout = int(re.search(r"const JUDGE_TIMEOUT_SECONDS = (\d+);",
+                                STACK.read_text()).group(1))
+        assert timeout == 300
+        assert worst_case_s(2, 0.5) == 187.5
+        assert worst_case_s(MAX_RETRIES, backoff_s=1e9) == 260 < timeout
+        assert worst_case_s(MAX_RETRIES + 1, backoff_s=0.5) > timeout
+        assert worst_case_s(0, 0.5, timeout_s=3.5) == 5.5
+        assert worst_case_s(1, 0.5, timeout_s=7.5) == 19.5
+
+
 class TestConfig:
     def test_the_model_is_read_from_the_environment(self, monkeypatch):
         monkeypatch.setenv("JUDGE_MODEL_ID", "eu.anthropic.claude-opus-5")
@@ -196,6 +286,18 @@ class TestConfig:
         monkeypatch.setenv("JUDGE_MODEL_ID", "us.anthropic.claude-fable-5-1")
         monkeypatch.setenv("JUDGE_THINKING", "adaptive")
         assert load_config().thinking == "adaptive"
+
+    @pytest.mark.parametrize("raw", ["4", "-1"])
+    def test_retries_that_could_outlast_the_lambda_are_refused(self, monkeypatch, raw):
+        monkeypatch.setenv("JUDGE_MODEL_ID", "us.m")
+        monkeypatch.setenv("JUDGE_RETRIES", raw)
+        with pytest.raises(ValueError, match="outside 0 to 3"):
+            load_config()
+
+    def test_the_most_retries_allowed_are_accepted(self, monkeypatch):
+        monkeypatch.setenv("JUDGE_MODEL_ID", "us.m")
+        monkeypatch.setenv("JUDGE_RETRIES", str(MAX_RETRIES))
+        assert load_config().retries == MAX_RETRIES
 
     def test_an_unknown_thinking_mode_is_refused(self, monkeypatch):
         monkeypatch.setenv("JUDGE_MODEL_ID", "us.anthropic.claude-opus-5")

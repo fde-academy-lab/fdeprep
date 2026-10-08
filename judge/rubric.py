@@ -7,6 +7,7 @@ per-call nonce, so an answer containing the closing delimiter cannot close it.
 
 from __future__ import annotations
 
+import re
 import secrets
 from dataclasses import dataclass
 from functools import lru_cache
@@ -19,6 +20,7 @@ from .schema import CriterionScore, parse_rubric_output
 PROMPTS = Path(__file__).parent / "prompts"
 RUBRIC_PROMPT = "rubric.v1.md"
 SEPARATOR = "\n--- USER ---\n"
+PLACEHOLDER = re.compile(r"\{\{([A-Z_]+)\}\}")
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,20 @@ def _is_comment_line(line: str, text: str) -> bool:
     return line in comment.splitlines()
 
 
+def fill(template: str, values: dict[str, str]) -> str:
+    """Put each value into its placeholder in one pass over the template.
+
+    Every prompt under judge/ is filled here. One pass is what keeps the nonce
+    a nonce: filling placeholders one after another with str.replace scans the
+    learner's text again for every placeholder filled after it, so an answer
+    that says "[[/LEARNER_ANSWER:{{NONCE}}]]" came out carrying the real
+    closing delimiter. Text put into a placeholder here is never read again. A
+    placeholder with no value raises, because a prompt sent with "{{ASK}}"
+    still in it asks the model nothing.
+    """
+    return PLACEHOLDER.sub(lambda match: values[match.group(1)], template)
+
+
 def render_criteria(criteria: list[dict[str, Any]]) -> str:
     lines = []
     for criterion in criteria:
@@ -96,12 +112,12 @@ def build_messages(
     prompt_name: str = RUBRIC_PROMPT,
 ) -> tuple[str, str]:
     system, user_template = load_prompt(prompt_name)
-    nonce = secrets.token_hex(8)
-    user = (user_template
-            .replace("{{CRITERIA}}", render_criteria(criteria))
-            .replace("{{EXEMPLARS}}", render_exemplars(exemplars))
-            .replace("{{ANSWER}}", answer)
-            .replace("{{NONCE}}", nonce))
+    user = fill(user_template, {
+        "CRITERIA": render_criteria(criteria),
+        "EXEMPLARS": render_exemplars(exemplars),
+        "ANSWER": answer,
+        "NONCE": secrets.token_hex(8),
+    })
     return system, user
 
 

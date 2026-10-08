@@ -1,10 +1,12 @@
 """Scoring a spoken answer. docs/07 sections 6 and 7.
 
 Two model calls and no more: the rubric over the final transcript, and the
-final beat coverage pass. Both reuse the machinery Phase 4 already built, so
-the delimiters, the nonce, the schema rejection and the exemplar anchoring are
-the same ones a design answer gets rather than a second implementation that
-drifts.
+final beat coverage pass. In interview mode the rubric also reads the
+follow-up rounds, each labelled after the main answer, and the beat pass
+still reads the main answer alone. Both reuse the machinery Phase 4 already
+built, so the delimiters, the nonce, the schema rejection and the exemplar
+anchoring are the same ones a design answer gets rather than a second
+implementation that drifts.
 
 What this file does not do is the other half of the score. Structure and pace
 are deterministic and are computed in the application, in web/lib/voice/score.ts,
@@ -23,7 +25,7 @@ import secrets
 from typing import Any
 
 from .bedrock import Transport
-from .rubric import RUBRIC_PROMPT, judge_rubric, load_prompt
+from .rubric import RUBRIC_PROMPT, fill, judge_rubric, load_prompt
 from .schema import BeatCoverage, parse_beat_output
 
 BEATS_PROMPT = "voice-beats.v1.md"
@@ -47,13 +49,69 @@ def judge_beats(
     max_tokens: int | None = None,
 ) -> list[BeatCoverage]:
     system, user_template = load_prompt(prompt_name)
-    nonce = secrets.token_hex(8)
-    user = (user_template
-            .replace("{{BEATS}}", render_beats(beats))
-            .replace("{{TRANSCRIPT}}", transcript)
-            .replace("{{NONCE}}", nonce))
+    user = fill(user_template, {"BEATS": render_beats(beats), "TRANSCRIPT": transcript,
+                                "NONCE": secrets.token_hex(8)})
     raw = transport.complete(system=system, user=user, max_tokens=max_tokens)
     return parse_beat_output(raw, beats)
+
+
+# Plan section 4.7 and D5: the rubric reads every follow-up round of an
+# interview session except one that came from the resume.
+SCORED_ROUND_KINDS = ("why", "stress")
+
+
+class RoundsRefused(ValueError):
+    """The event's follow-up rounds cannot be scored as sent."""
+
+
+def read_follow_ups(raw: Any) -> list[dict[str, str]]:
+    """The rounds the rubric reads, or a refusal.
+
+    A round from the resume is refused rather than skipped. S14.2 says nothing
+    from the resume is used in scoring, and the scorer filters those rounds
+    out before it builds the event, so one arriving here means that filter
+    failed. Scoring the session anyway would hide the failure. A round whose
+    kind is missing or unknown is refused for the same reason: nothing shows
+    it did not come from the resume.
+    """
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        raise RoundsRefused("follow_ups is not a list")
+    rounds = []
+    for ordinal, entry in enumerate(raw, 1):
+        if not isinstance(entry, dict):
+            raise RoundsRefused(f"follow-up round {ordinal} is not an object")
+        kind = entry.get("kind")
+        if kind == "resume":
+            raise RoundsRefused(f"follow-up round {ordinal} came from the resume, and nothing "
+                                "from a resume is scored. Leave resume rounds out of the "
+                                "voice event")
+        if not isinstance(kind, str) or kind not in SCORED_ROUND_KINDS:
+            raise RoundsRefused(f"follow-up round {ordinal} has no kind the judge scores, so "
+                                "nothing shows it did not come from the resume. Send "
+                                f"{' or '.join(SCORED_ROUND_KINDS)}")
+        question, answer = entry.get("question"), entry.get("answer")
+        if not isinstance(question, str) or not question.strip():
+            raise RoundsRefused(f"follow-up round {ordinal} has no question")
+        if not isinstance(answer, str):
+            raise RoundsRefused(f"follow-up round {ordinal} has no answer")
+        rounds.append({"question": question.strip(), "answer": answer.strip()})
+    return rounds
+
+
+def conversation(transcript: str, rounds: list[dict[str, str]]) -> str:
+    """What the rubric judges in interview mode: the main answer, then each
+    round with the interviewer's question labelled, all of it inside the one
+    answer delimiter. With no rounds it is the transcript unchanged, so every
+    other session is judged on exactly what it was before."""
+    if not rounds:
+        return transcript
+    parts = [f"The main answer:\n{transcript}"]
+    for ordinal, entry in enumerate(rounds, 1):
+        parts.append(f"Follow-up round {ordinal}. The interviewer asked: {entry['question']}\n"
+                     f"The candidate replied: {entry['answer'] or '(nothing was transcribed)'}")
+    return "\n\n".join(parts)
 
 
 def judge_voice_event(event: dict[str, Any], transport: Transport) -> dict[str, Any]:
@@ -66,6 +124,11 @@ def judge_voice_event(event: dict[str, Any], transport: Transport) -> dict[str, 
 
     if not beats:
         return _voice_error("That question has no beats, so nothing could be scored.")
+
+    try:
+        rounds = read_follow_ups(event.get("follow_ups"))
+    except RoundsRefused as refused:
+        return _voice_error(f"The session was not scored: {refused}.")
 
     # An answer with no words is not a judging failure and should not spend a
     # model call. It scores zero for content and covers no beat, which is the
@@ -82,6 +145,8 @@ def judge_voice_event(event: dict[str, Any], transport: Transport) -> dict[str, 
             "model_calls": 0,
         }
 
+    # D5: a beat reached only because the interviewer asked for it is a
+    # prompted beat, so coverage is judged on the main answer alone.
     coverage = judge_beats(transcript, beats, transport)
 
     if not criteria:
@@ -98,7 +163,10 @@ def judge_voice_event(event: dict[str, Any], transport: Transport) -> dict[str, 
             "model_calls": transport.calls,
         }
 
-    rubric = judge_rubric(transcript, criteria, exemplars, transport, RUBRIC_PROMPT)
+    # The rubric reads the whole conversation, because a criterion such as
+    # "holds position under the follow-up" needs the follow-ups.
+    rubric = judge_rubric(conversation(transcript, rounds), criteria, exemplars, transport,
+                          RUBRIC_PROMPT)
 
     return {
         "status": "ok",

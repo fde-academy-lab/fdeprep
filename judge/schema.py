@@ -154,3 +154,150 @@ def parse_beat_output(raw: str, beats: list[dict[str, Any]]) -> list[BeatCoverag
 
     order = {key: index for index, key in enumerate(declared)}
     return sorted(results, key=lambda r: order[r.beat_key])
+
+
+def _object(raw: str) -> dict[str, Any]:
+    """One JSON object, after at most one fence, or a rejection.
+
+    A message built here names the rule that failed and never the text that
+    failed it. The two parsers below read replies that can carry a learner's
+    words or a resume's back, and a rejection message ends up in a log.
+    """
+    try:
+        payload = json.loads(_unwrap(raw))
+    except (json.JSONDecodeError, ValueError, RecursionError) as error:
+        # A JSONDecodeError says where the parse stopped, never what it read.
+        raise JudgeOutputRejected(f"the judge did not return JSON: {error}") from error
+    if not isinstance(payload, dict):
+        raise JudgeOutputRejected("the judge did not return a JSON object")
+    return payload
+
+
+def _exact_keys(payload: dict[str, Any], keys: tuple[str, ...]) -> None:
+    missing = [key for key in keys if key not in payload]
+    if missing:
+        raise JudgeOutputRejected(f"the reply has no {' or '.join(missing)}")
+    if len(payload) != len(keys):
+        raise JudgeOutputRejected(f"the reply carries keys other than {', '.join(keys)}")
+
+
+@dataclass(frozen=True)
+class FollowUp:
+    text: str
+    kind: str
+    depth: int
+    targets: str
+
+
+FOLLOW_UP_KINDS = ("why", "stress", "resume")
+FOLLOW_UP_KEYS = ("text", "kind", "depth", "targets")
+FOLLOW_UP_MAX_WORDS = 45
+FOLLOW_UP_MAX_CHARS = 320
+FOLLOW_UP_MAX_DEPTH = 5
+TARGETS_MAX_CHARS = 160
+
+
+def parse_follow_up_output(raw: str, ask: dict[str, Any]) -> FollowUp:
+    """One interviewer question, generated between turns. Plan section 4.2.
+
+    The question is spoken to the learner, so anything that is not one short
+    question in the shape asked for is refused, and the server asks an
+    authored follow-up instead. `kind` and `depth` have to repeat the ask: the
+    server planned the round, and a model that answers a different round has
+    not done what it was asked. A `[[` or `]]` in the text is a delimiter
+    echoed back, which is what a transcript steering the model looks like.
+
+    Surrounding whitespace is the one thing trimmed. Nothing else is coerced.
+    """
+    payload = _object(raw)
+    _exact_keys(payload, FOLLOW_UP_KEYS)
+
+    text = payload["text"]
+    if not isinstance(text, str) or not text.strip():
+        raise JudgeOutputRejected("text is missing or empty")
+    text = text.strip()
+    words = len(text.split())
+    if words > FOLLOW_UP_MAX_WORDS:
+        raise JudgeOutputRejected(
+            f"text runs to {words} words against a cap of {FOLLOW_UP_MAX_WORDS}")
+    if len(text) > FOLLOW_UP_MAX_CHARS:
+        raise JudgeOutputRejected(
+            f"text runs to {len(text)} characters against a cap of {FOLLOW_UP_MAX_CHARS}")
+    if not text.endswith("?"):
+        raise JudgeOutputRejected("text does not end in a question mark")
+    if "[[" in text or "]]" in text:
+        raise JudgeOutputRejected("text contains a delimiter")
+
+    kind = payload["kind"]
+    if not isinstance(kind, str) or kind not in FOLLOW_UP_KINDS:
+        raise JudgeOutputRejected(f"kind is not one of {', '.join(FOLLOW_UP_KINDS)}")
+    if kind != ask["kind"]:
+        raise JudgeOutputRejected(f"kind is {kind} and the ask was {ask['kind']}")
+
+    depth = payload["depth"]
+    # bool is an int in Python and True would sail through as 1.
+    if isinstance(depth, bool) or not isinstance(depth, int):
+        raise JudgeOutputRejected("depth is not a whole number")
+    if not 0 <= depth <= FOLLOW_UP_MAX_DEPTH:
+        raise JudgeOutputRejected(f"depth is outside 0 to {FOLLOW_UP_MAX_DEPTH}")
+    if depth != ask["depth"]:
+        raise JudgeOutputRejected(f"depth {depth} differs from the ask's {ask['depth']}")
+
+    targets = payload["targets"]
+    if not isinstance(targets, str):
+        raise JudgeOutputRejected("targets is not a string")
+    if len(targets) > TARGETS_MAX_CHARS:
+        raise JudgeOutputRejected(
+            f"targets runs to {len(targets)} characters against a cap of {TARGETS_MAX_CHARS}")
+
+    return FollowUp(text=text, kind=kind, depth=depth, targets=targets.strip())
+
+
+CLAIM_MAX_WORDS = 25
+CLAIMS_MAX = 12
+
+# Contact and identity data. The first line is the plan's pattern from section
+# 4.2: an email, a scheme or www link, a run of nine or more digits and
+# separators (a phone, an Aadhaar or a social security number), and the names
+# of identity documents, where "pan" no longer matches "pan-India". The second
+# line adds what the plan's pattern lets through: a link written without its
+# scheme, such as linkedin.com/in/name, and an Indian PAN (ABCDE1234F) or
+# passport (K1234567) number written without the word. The digit run also
+# matches a year range such as 2019-2023, which costs a claim and is the side
+# to err on.
+PERSONAL = re.compile(
+    r"(@|https?://|www\.|\+?\d[\d\s().-]{7,}\d|\b(date of birth|dob|passport|aadhaar)\b"
+    r"|\bpan\b(?!-)"
+    r"|\b[a-z0-9-]+\.(com|in|io|org|dev|ai|co|me|app)/|\b[a-z]{5}\d{4}[a-z]\b|\b[a-z]\d{7}\b)",
+    re.IGNORECASE,
+)
+
+
+def parse_resume_claims_output(raw: str) -> list[str]:
+    """Claims drawn from a pasted resume. Plan sections 4.2 and 4.8.
+
+    A reply out of shape is refused whole. A claim that looks like contact or
+    identity data is dropped without refusing the rest: the judge was told to
+    leave such things out, and this is the control that holds when it does
+    not. No message raised here repeats a claim, because a claim is the resume
+    in the candidate's own words.
+    """
+    payload = _object(raw)
+    _exact_keys(payload, ("claims",))
+
+    entries = payload["claims"]
+    if not isinstance(entries, list):
+        raise JudgeOutputRejected("claims is not an array")
+    if len(entries) > CLAIMS_MAX:
+        raise JudgeOutputRejected(
+            f"the reply lists {len(entries)} claims against a cap of {CLAIMS_MAX}")
+
+    for index, entry in enumerate(entries):
+        if not isinstance(entry, str) or not entry.strip():
+            raise JudgeOutputRejected(f"claims[{index}] is not a non-empty string")
+        words = len(entry.split())
+        if words > CLAIM_MAX_WORDS:
+            raise JudgeOutputRejected(
+                f"claims[{index}] runs to {words} words against a cap of {CLAIM_MAX_WORDS}")
+
+    return [entry.strip() for entry in entries if not PERSONAL.search(entry)]
