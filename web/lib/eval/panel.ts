@@ -50,6 +50,11 @@ export interface PanelistResult {
    */
   verdict?: "pass" | "fail";
   scoreContribution?: number;
+  /**
+   * The file in judge/prompts/ a model panelist graded with. Faculty and the
+   * appeal path read it on the record; a learner never does. S15.3.
+   */
+  prompt?: string;
 }
 
 export interface PanelInput {

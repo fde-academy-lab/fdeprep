@@ -28,6 +28,10 @@ export interface StoredEvaluation {
   panel: Evaluation["panel"];
   disagreement: Disagreement | null;
   feedbackMd: string;
+  /** The judge prompt that graded it, or null where none did. Faculty only. */
+  judgePrompt: string | null;
+  /** The reviewer when a person set this grade, which a regrade leaves alone. */
+  overriddenBy: number | null;
   createdAt: string;
 }
 
@@ -88,16 +92,17 @@ export async function saveEvaluation(
   const { rows } = await client.query<{ id: string }>(
     `insert into evaluation
        (submission_id, enrolment_id, complexity, state, verdict, score,
-        score_provisional, confidence, band, panel, disagreement, feedback_md)
+        score_provisional, confidence, band, panel, disagreement, feedback_md,
+        judge_prompt)
      values ($1, $2, $3, $4::evaluation_state, $5::verdict, $6, $7,
-             $8::panel_confidence, $9, $10, $11, $12)
+             $8::panel_confidence, $9, $10, $11, $12, $13)
      returning id`,
     [
       evaluation.submissionId, enrolmentId, evaluation.complexity, evaluation.state,
       evaluation.verdict, score, evaluation.scoreProvisional, evaluation.confidence,
       evaluation.band, JSON.stringify(evaluation.panel),
       evaluation.disagreement ? JSON.stringify(evaluation.disagreement) : null,
-      evaluation.feedbackMd,
+      evaluation.feedbackMd, evaluation.judgePrompt ?? null,
     ]);
 
   return Number(rows[0]!.id);
@@ -113,6 +118,7 @@ export async function latestEvaluation(
     verdict: "pass" | "fail" | null; score: string | null; score_provisional: boolean;
     confidence: Confidence; band: Band | null; panel: Evaluation["panel"];
     disagreement: Disagreement | null; feedback_md: string; created_at: Date;
+    judge_prompt: string | null; overridden_by: string | null;
   }>(
     `select * from evaluation where submission_id = $1
       order by created_at desc, id desc limit 1`, [submissionId]);
@@ -133,6 +139,9 @@ export async function latestEvaluation(
     panel: row.panel,
     disagreement: row.disagreement,
     feedbackMd: row.feedback_md,
+    judgePrompt: row.judge_prompt ?? null,
+    overriddenBy: row.overridden_by === null || row.overridden_by === undefined
+      ? null : Number(row.overridden_by),
     createdAt: row.created_at.toISOString(),
   };
 }
@@ -142,7 +151,8 @@ export async function latestEvaluation(
  *
  * A partial evaluation is a promise to the learner, and a promise nobody
  * drains is worse than a plain failure because the learner is still waiting.
- * `analytics/` reports the depth of this list and the worker works it.
+ * `analytics/` reports the depth of this list and the judge worker works it,
+ * a few per tick (lib/queue/judge-worker.ts, drainReevaluations).
  */
 export async function reevaluationBacklog(
   limit = 50,
@@ -152,10 +162,15 @@ export async function reevaluationBacklog(
   // supersedes the partial that preceded it. Filtering before the distinct
   // would return every submission that was ever partial, including the ones
   // already paid off.
+  //
+  // The inner filter keeps that distinct to submissions that were ever
+  // partial, through evaluation_state_idx. The worker asks this every tick,
+  // and on a quiet day the answer is nothing, which should cost nothing.
   const { rows } = await client.query<{ submission_id: string }>(
     `select submission_id from (
        select distinct on (submission_id) submission_id, state, created_at
          from evaluation
+        where submission_id in (select submission_id from evaluation where state = 'partial')
         order by submission_id, created_at desc, id desc
      ) newest
       where state = 'partial'
