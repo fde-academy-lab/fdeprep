@@ -162,6 +162,7 @@ async function countAll(enrolmentId: number, where: string[], params: unknown[])
   const { rows } = await db().query<{ count: string }>(
     `select count(*) from problem p
        left join attempt mine on mine.problem_id = p.id and mine.enrolment_id = $1
+       left join problem_version cur on cur.problem_id = p.id and cur.version = p.current_version
       ${where.length ? `where ${where.join(" and ")}` : ""}`, params);
   return Number(rows[0]!.count);
 }

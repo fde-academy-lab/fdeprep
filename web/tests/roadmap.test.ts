@@ -127,6 +127,14 @@ describe("the problems page", () => {
     const byChapter = await listProblems({ enrolmentId: builder, perPage: 100, search: rows[0]!.track });
     expect(byChapter.rows.map((r) => r.slug)).toContain(rows[0]!.slug);
   });
+
+  // Found 8 October 2026: an empty page is counted by a second query, which
+  // did not join the problem version the search clause reads, so a search
+  // with no match threw where the page's no-match state belongs.
+  it("returns an empty page for a search that matches nothing", async () => {
+    const page = await listProblems({ enrolmentId: learners["builder"]!.enrolmentId, search: "zzzzqq" });
+    expect(page).toMatchObject({ rows: [], total: 0, pages: 1 });
+  });
 });
 
 describe("one path order on every screen", () => {

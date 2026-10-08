@@ -130,9 +130,8 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
                           text-meta text-text-dim">
               <Mic aria-hidden className="size-3.5" /> Timed practice
             </p>
-            <h1 className="mt-4 text-display font-semibold tracking-[-0.02em] text-text">
-              Answer it out loud against the clock
-            </h1>
+            <h1 className="mt-4 text-display font-semibold tracking-[-0.02em] text-text">{question.title}</h1>
+            <p className="mt-2 text-lead text-text-dim">Answer it out loud against the clock.</p>
             <p className="mt-3 text-text-dim">
               Graded voice sessions are not switched on for this cohort yet, so this run records
               nothing and scores nothing. The clock and the beats are the same ones a graded
@@ -160,19 +159,23 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
             ) : null}
           </>
         ) : !granted ? (
-          <div className="rounded-panel border border-border bg-surface p-6">
-            <ShieldCheck aria-hidden className="size-6 text-text-dim" strokeWidth={1.75} />
-            <h1 className="mt-3 text-title font-semibold text-text">Recording needs your consent first</h1>
-            <p className="mt-2 text-text-dim">
-              A graded session records your audio so the debrief can play it back. Read what is kept,
-              for how long and who can hear it, then accept or leave.
-            </p>
-            <div className="mt-5 flex flex-wrap gap-2.5">
-              <ButtonLink href="/voice/consent" variant="primary">Read what is recorded</ButtonLink>
-              {typeInstead}
-              <ButtonLink href="/voice" variant="ghost">Not now</ButtonLink>
+          <>
+            <h1 className="text-display font-semibold tracking-[-0.02em] text-text">{question.title}</h1>
+            <p className="mt-2 text-lead text-text-dim">Answer it out loud against the clock.</p>
+            <div className="mt-8 rounded-panel border border-border bg-surface p-6">
+              <ShieldCheck aria-hidden className="size-6 text-text-dim" strokeWidth={1.75} />
+              <h2 className="mt-3 text-title font-semibold text-text">Recording needs your consent first</h2>
+              <p className="mt-2 text-text-dim">
+                A graded session records your audio so the debrief can play it back. Read what is kept,
+                for how long and who can hear it, then accept or leave.
+              </p>
+              <div className="mt-5 flex flex-wrap gap-2.5">
+                <ButtonLink href="/voice/consent" variant="primary">Read what is recorded</ButtonLink>
+                {typeInstead}
+                <ButtonLink href="/voice" variant="ghost">Not now</ButtonLink>
+              </div>
             </div>
-          </div>
+          </>
         ) : (
           /* Keyed so a new question or mode is a new cockpit. Its refs hold
              the session, the transcript and the follow-ups already fired, and

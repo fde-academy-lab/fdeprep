@@ -72,7 +72,7 @@ export function ContinuePanel({ firstName, item, teaser, kind }: {
               <ButtonLink href={problemHref(item.slug)} variant="primary" size="lg">
                 {kind === "continue" ? "Continue" : "Open the problem"} <ArrowRight aria-hidden />
               </ButtonLink>
-              <ButtonLink href="/problems" variant="ghost" size="lg">Browse all problems</ButtonLink>
+              <ButtonLink href="/problems" variant="ghost" size="lg">Problems</ButtonLink>
             </div>
           </>
         ) : (
@@ -82,7 +82,7 @@ export function ContinuePanel({ firstName, item, teaser, kind }: {
             </h1>
             <div className="flex flex-wrap gap-2.5">
               <ButtonLink href="/rehearsal" variant="primary" size="lg">Sit a rehearsal <ArrowRight aria-hidden /></ButtonLink>
-              <ButtonLink href="/problems" variant="ghost" size="lg">Browse all problems</ButtonLink>
+              <ButtonLink href="/problems" variant="ghost" size="lg">Problems</ButtonLink>
             </div>
           </>
         )}
