@@ -7,7 +7,7 @@
  * procedure acts on, then the two switches.
  */
 import type { Metadata } from "next";
-import { opsSnapshot, QUEUE_DEPTH_ALARM, STUCK_AFTER_MINUTES } from "@/lib/admin/ops";
+import { opsSnapshot, QUEUE_DEPTH_ALARM, STUCK_AFTER_MINUTES, waitingLabel } from "@/lib/admin/ops";
 import { Requeue, Switches } from "./controls";
 
 export const dynamic = "force-dynamic";
@@ -59,7 +59,7 @@ export default async function OpsPage() {
                   <td className="tnum py-2 pr-4">#{row.id}</td>
                   <td className="py-2 pr-4">{row.login}</td>
                   <td className="py-2 pr-4">{row.slug}</td>
-                  <td className="tnum py-2 pr-4 text-warn">{row.waitingMinutes}m</td>
+                  <td className="tnum py-2 pr-4 text-warn">{waitingLabel(row.waitingMinutes)}</td>
                   <td className="py-2"><Requeue submissionId={row.id} /></td>
                 </tr>
               ))}

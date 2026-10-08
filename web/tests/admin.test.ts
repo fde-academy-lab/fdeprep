@@ -10,7 +10,7 @@ import { closeDb, db } from "../lib/db/pool.ts";
 import {
   applyPersonaCsv, clearCounter, parsePersonaCsv, requeueSubmission, roster, toggleDegradedMode,
 } from "../lib/admin/index.ts";
-import { opsSnapshot, STUCK_VOICE_AFTER_MINUTES } from "../lib/admin/ops.ts";
+import { opsSnapshot, STUCK_VOICE_AFTER_MINUTES, waitingLabel } from "../lib/admin/ops.ts";
 import { browseSubmissions } from "../lib/admin/submissions.ts";
 import { createSubmission } from "../lib/submissions/create.ts";
 import { dispatchOnce } from "../lib/queue/dispatcher.ts";
@@ -254,6 +254,12 @@ describe("the ops dashboard", () => {
     const submission = await stuckSubmission();
     const snapshot = await opsSnapshot();
     expect(snapshot.stuck.map((row) => row.id)).not.toContain(submission.id);
+  });
+
+  it("says how long a row has waited in minutes, then hours, then days", () => {
+    // The seed's four stuck rows as Ops read them, and each edge between units.
+    expect([7, 40, 59, 60, 182, 1439, 1440, 2882].map(waitingLabel)).toEqual(
+      ["7m", "40m", "59m", "1h 0m", "3h 2m", "23h 59m", "1d 0h", "2d 0h"]);
   });
 });
 

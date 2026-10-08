@@ -61,6 +61,13 @@ export interface OpsSnapshot {
   degraded: DegradedMode;
 }
 
+/** A wait as Ops shows it: "9m" under an hour, "3h 2m" under a day, "2d 0h" after that. */
+export function waitingLabel(minutes: number): string {
+  if (minutes < 60) return `${minutes}m`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
+  return `${Math.floor(minutes / 1440)}d ${Math.floor((minutes % 1440) / 60)}h`;
+}
+
 export async function opsSnapshot(client: Pool | PoolClient = db()): Promise<OpsSnapshot> {
   const depths = await client.query<{ queue: string; count: string }>(
     `select queue, count(*) from queue_message
