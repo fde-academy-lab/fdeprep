@@ -24,6 +24,11 @@ export async function migrate(log: (line: string) => void = console.log) {
     if (applied.has(file)) continue;
     const sql = await readFile(path.join(DIR, file), "utf8");
     const client = await pool.connect();
+    // A migration that leaves part of itself undone says so in a notice, as
+    // 026 does on a host whose user may not create roles. Printed, so the
+    // person running the deploy reads it rather than nobody.
+    const notice = (message: { message?: string }) => log(`${file}: ${message.message ?? ""}`);
+    client.on("notice", notice);
     try {
       await client.query("begin");
       await client.query(sql);
@@ -34,6 +39,7 @@ export async function migrate(log: (line: string) => void = console.log) {
       await client.query("rollback");
       throw new Error(`${file} failed: ${(error as Error).message}`);
     } finally {
+      client.removeListener("notice", notice);
       client.release();
     }
   }
