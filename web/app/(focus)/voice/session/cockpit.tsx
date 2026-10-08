@@ -37,7 +37,10 @@ import type { FollowUp, VoiceQuestion } from "@/lib/voice/question";
 import {
   openSession, saveAnswer, socketLostNote, uploadRecording, type Answer, type Fetcher,
 } from "@/lib/voice/save";
+import type { TurnView } from "@/lib/voice/turns";
+import { ResumeBox } from "@/components/voice/resume-box";
 import { Announcer, BeatTrack, MicLevel, NudgeSlot, PaceBand, Territory } from "./instruments";
+import { Interview } from "./interview";
 import { clock } from "@/lib/voice/clock";
 
 /** fetch, called as a plain function so it is never invoked on another object. */
@@ -156,6 +159,13 @@ export function Cockpit({ question, mode, nextSlug, lobby, interviewer = null, c
   /** Why the answer did not save, while it waits in this tab for Save again. */
   const [unsaved, setUnsaved] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
+  /** Interview mode: the first follow-up round, once the main answer is
+   *  saved, which hands the screen over to interview.tsx. */
+  const [handover, setHandover] = useState<TurnView | null>(null);
+  /** Interview mode: a pasted resume, held until Start sends it once. */
+  const [resume, setResume] = useState("");
+  /** Interview mode: a sentence from the opening, shown between rounds. */
+  const [openingNote, setOpeningNote] = useState<string | null>(null);
 
   /**
    * Transcript text lives here and only here.
@@ -200,10 +210,12 @@ export function Cockpit({ question, mode, nextSlug, lobby, interviewer = null, c
   /** An answer the server has not taken yet, kept for Save again. */
   const pending = useRef<{ id: number; answer: Answer; recording: Blob | null } | null>(null);
 
-  const guided = mode === "guided" || mode === "pressure";
+  // Interview mode's main answer is a guided answer; its rounds come after.
+  const guided = mode === "guided" || mode === "pressure" || mode === "interview";
+  const spokenOnly = mode === "pressure" || mode === "interview";
   const typedHref = {
     pathname: "/voice/session",
-    query: { q: question.slug, mode: mode === "pressure" ? "guided" : mode, input: "typed", ...carry },
+    query: { q: question.slug, mode: spokenOnly ? "guided" : mode, input: "typed", ...carry },
   } as const;
   const nextHref = nextSlug
     ? { pathname: "/voice/session", query: { q: nextSlug, mode, ...carry } } as const : null;
@@ -213,11 +225,13 @@ export function Cockpit({ question, mode, nextSlug, lobby, interviewer = null, c
 
   // A check passed on the last question carries over, except into pressure.
   useEffect(() => {
-    if (mode !== "pressure" && recentMicCheck()) {
+    // Pressure and interview get their own check: both are a conversation
+    // out loud, and a muted microphone loses the rounds too.
+    if (!spokenOnly && recentMicCheck()) {
       setCarried(true);
       setPhase("ready");
     }
-  }, [mode]);
+  }, [spokenOnly]);
 
   const check = useCallback(async () => {
     setPhase("checking");
@@ -254,6 +268,8 @@ export function Cockpit({ question, mode, nextSlug, lobby, interviewer = null, c
     pending.current = null;
     setUnsaved(null);
     setFinishedId(id);
+    // Interview mode: the reply carries round 1, and the rounds take over.
+    if (result.turn) setHandover(result.turn);
 
     // docs/07 section 7: the MediaRecorder copy is kept for playback and
     // written to storage at the end. It is not the PCM the transcriber
@@ -493,9 +509,11 @@ export function Cockpit({ question, mode, nextSlug, lobby, interviewer = null, c
     setStarting(true);
     setNote(null);
     setFailed(false);
+    // Interview mode may carry a pasted resume, sent this once.
+    const pasted = mode === "interview" && resume.trim() ? { resume } : {};
     let opened: Awaited<ReturnType<typeof openSession>>;
     try {
-      opened = await openSession(send, { mode, question: question.slug, interviewer: interviewer?.slug });
+      opened = await openSession(send, { mode, question: question.slug, interviewer: interviewer?.slug, ...pasted });
     } finally {
       opening.current = false;
       setStarting(false);
@@ -505,6 +523,8 @@ export function Cockpit({ question, mode, nextSlug, lobby, interviewer = null, c
       return;
     }
     const started = opened.started;
+    setResume("");
+    setOpeningNote(started.interview?.resumeNote ?? null);
 
     // A fresh attempt. A start whose socket failed earlier on this page left
     // these set, and a stale finishing flag made the next Stop do nothing.
@@ -623,7 +643,7 @@ export function Cockpit({ question, mode, nextSlug, lobby, interviewer = null, c
       voicedAt.current = Date.now();
       setPhase("live");
     };
-  }, [abandon, answerClock, guided, interviewer?.slug, mode, question.beats, question.slug,
+  }, [abandon, answerClock, guided, interviewer?.slug, mode, question.beats, question.slug, resume,
       question.totalSeconds]);
 
   const remainingMs = question.totalSeconds * 1000 - elapsedMs;
@@ -657,6 +677,15 @@ export function Cockpit({ question, mode, nextSlug, lobby, interviewer = null, c
           </Link>
         </div>
       </div>
+    );
+  }
+
+  if (phase === "done" && handover && finishedId !== null) {
+    // Interview mode: the main answer is saved and round 1 is ready. No
+    // lobby here, because a round is part of the answer.
+    return (
+      <Interview sessionId={finishedId} first={handover} title={question.title}
+                 asker={interviewer?.name ?? "The interviewer"} nextHref={nextHref} note={openingNote} />
     );
   }
 
@@ -739,6 +768,8 @@ export function Cockpit({ question, mode, nextSlug, lobby, interviewer = null, c
             </p>
           )}
         </section>
+
+        {mode === "interview" ? <ResumeBox value={resume} onChange={setResume} /> : null}
 
         <button
           type="button"

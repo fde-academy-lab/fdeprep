@@ -36,18 +36,21 @@ import { isTrack } from "@/components/ui/tracks";
 import { consentState } from "@/lib/voice/consent";
 import { currentLearner } from "@/lib/session/current";
 import { clock } from "@/lib/voice/clock";
-import { loadInterviewers, lobbyInterviewer } from "@/lib/voice/interviewers";
+import { loadInterviewers, lobbyInterviewer, membersOf, PANEL } from "@/lib/voice/interviewers";
 import {
   beatsAreAPathway, loadQuestion, nextQuestionSlug, problemsBuiltOn, publishedQuestions,
   QuestionNotFound, resolvePublishedQuestion, VOICE_TRACK_ORDER, type BuiltOn, type VoiceQuestion,
 } from "@/lib/voice/question";
 import { isRound, ROUND_LINES, ROUND_NAMES } from "@/lib/voice/rounds";
-import { logVoiceNotSetUp, voiceReadiness, type VoiceMode } from "@/lib/voice/start";
+import {
+  interviewRoundsForQuestion, logVoiceNotSetUp, voiceReadiness, type VoiceMode,
+} from "@/lib/voice/start";
 import { ttsConfig } from "@/lib/voice/tts";
 import { typedWordLimit } from "@/lib/voice/typed";
 import { LogoMark } from "@/components/ui/logo";
 import { ButtonLink } from "@/components/ui/button";
 import { InterviewerCard } from "@/components/voice/interviewer-card";
+import { InterviewRoom } from "@/components/voice/room/room";
 import { VoicePractice } from "@/components/voice/practice";
 import { cn } from "@/components/ui/cn";
 import { Cockpit } from "./cockpit";
@@ -55,7 +58,7 @@ import { TypedAnswer } from "./typed-answer";
 
 export const dynamic = "force-dynamic";
 
-const MODES: VoiceMode[] = ["guided", "unguided", "pressure"];
+const MODES: VoiceMode[] = ["guided", "unguided", "pressure", "interview"];
 
 type Params = Record<string, string | string[] | undefined>;
 
@@ -195,7 +198,7 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
   const question = await questionFor(first(params.q));
   // Pressure with nothing to interrupt with is guided mode spending the
   // weekly rehearsal allowance, so a question with no follow-ups is guided.
-  const mode = requested === "pressure" && question.followUps.length === 0 ? "guided" : requested;
+  const wanted = requested === "pressure" && question.followUps.length === 0 ? "guided" : requested;
 
   // Who asks: the link's choice when it is published, else the question's
   // first. A choice the link made is also the filter Next question keeps, as
@@ -209,6 +212,13 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
   ]);
   const interviewer = lobbyInterviewer(everyone, chosen, question.interviewers);
   const explicit = interviewer && interviewer.slug === chosen ? interviewer.slug : null;
+  // Interview mode needs somebody to follow up, so a question that names no
+  // interviewer runs it as guided. The room seats the panel's three members.
+  const mode = wanted === "interview" && !interviewer ? "guided" : wanted;
+  const [rounds, seated] = interviewer
+    ? await Promise.all([interviewRoundsForQuestion(question.id),
+                         interviewer.slug === PANEL ? membersOf(interviewer) : [interviewer]])
+    : [0, []];
   const carry: Record<string, string> = {};
   if (explicit) carry.interviewer = explicit;
   if (track) carry.track = track;
@@ -222,9 +232,9 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
   const readiness = voiceReadiness();
   if (!readiness.ready) logVoiceNotSetUp(readiness.missing);
   const staff = learner.role !== "learner";
-  // Pressure is an interviewer cutting in out loud, so a typed pressure
-  // answer is a guided one.
-  const typedMode = mode === "pressure" ? "guided" : mode;
+  // Pressure is an interviewer cutting in out loud, and interview mode a
+  // conversation out loud, so a typed answer in either is a guided one.
+  const typedMode = mode === "pressure" || mode === "interview" ? "guided" : mode;
   const practice = "Timed practice, nothing is recorded or scored";
   const names = new Map(everyone.map((person) => [person.slug, person.name]));
   const choices = interviewer && !question.interviewers.includes(interviewer.slug)
@@ -244,6 +254,13 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
       key: "pressure", name: "Pressure", line: "Guided, and the interviewer cuts in twice.",
       spends: readiness.ready ? left(pressure, "this week, shared with rehearsals") : practice,
       current: !typed && mode === "pressure", query: { q: question.slug, mode: "pressure", ...carry },
+    }] : []),
+    ...(interviewer ? [{
+      key: "interview", name: "Interview",
+      line: `Guided, then ${interviewer.slug === PANEL ? "the panel follows" :
+        `${interviewer.name.split(" ")[0]} follows`} up on what you said, up to ${rounds} rounds.`,
+      spends: readiness.ready ? left(pressure, "this week, shared with rehearsals") : practice,
+      current: !typed && mode === "interview", query: { q: question.slug, mode: "interview", ...carry },
     }] : []),
     { key: "typed", name: "Type",
       line: "Write the answer when you cannot speak; it is scored on the same rubric.",
@@ -268,6 +285,13 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
           <InterviewerChoice slugs={choices} chosen={interviewer.slug} names={names}
                              query={{ q: question.slug, mode: typed ? typedMode : mode, ...(typed ? { input: "typed" } : {}),
                                       ...(track ? { track } : {}) }} />
+          {/* The room is content, drawn in the diagram tones, and appears
+              only here, while no answer runs, and on the debrief. */}
+          <div className="mb-3 overflow-hidden rounded-panel border border-border bg-surface">
+            <InterviewRoom size="lobby"
+                           interviewers={seated.map((person) => ({ slug: person.slug, name: person.name,
+                                                                   role: person.title }))} />
+          </div>
           <InterviewerCard interviewer={interviewer} questionId={question.id} speaks={ttsConfig() !== null} />
         </div>
       ) : null}
@@ -323,6 +347,11 @@ export default async function VoiceSessionPage({ searchParams }: { searchParams:
               <p className="mt-6 text-text-dim">
                 Pressure needs a spoken answer, because the interviewer interrupts out loud. This
                 one is guided instead.
+              </p>
+            ) : mode === "interview" ? (
+              <p className="mt-6 text-text-dim">
+                Interview mode needs a spoken answer, because the interviewer follows up out loud.
+                This one is guided instead.
               </p>
             ) : null}
             <TypedAnswer key={`${question.slug}:${typedMode}`} question={question} mode={typedMode}

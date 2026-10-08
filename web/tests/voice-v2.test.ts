@@ -413,9 +413,10 @@ describe("the cockpit", () => {
 
   test("opens the session on the question on screen", async () => {
     // The request moved to lib/voice/save.ts, which sends what it is given.
-    // Since S13.4 it also names the interviewer, a slug the route resolves.
+    // Since S13.4 it also names the interviewer, a slug the route resolves,
+    // and since S14.2 an interview session may carry a pasted resume.
     expect(await source()).toMatch(
-      /openSession\(send, \{ mode, question: question\.slug, interviewer: interviewer\?\.slug \}\)/);
+      /openSession\(send, \{ mode, question: question\.slug, interviewer: interviewer\?\.slug, \.\.\.pasted \}\)/);
     const save = await readFile(path.join(WEB, "lib", "voice", "save.ts"), "utf8");
     expect(save).toMatch(/fetcher\("\/api\/voice\/sessions", \{[\s\S]{0,120}body: JSON\.stringify\(ask\)/);
   });

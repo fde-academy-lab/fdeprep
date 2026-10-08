@@ -23,6 +23,7 @@ import type { TimelineIn } from "./persist.ts";
 import type { CloseReason } from "./protocol.ts";
 import type { VoiceMode } from "./run.ts";
 import type { StartedSession } from "./start.ts";
+import type { TurnView } from "./turns.ts";
 
 /** `fetch`, or a test's stand-in for it. */
 export type Fetcher = (url: string, init?: RequestInit) => Promise<Response>;
@@ -46,8 +47,9 @@ const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, 
 export async function openSession(
   fetcher: Fetcher,
   /** The interviewer is a slug the server resolves, or absent for the
-   *  question's first. */
-  ask: { mode: VoiceMode; question: string; interviewer?: string },
+   *  question's first. The resume, interview mode only, is sent this once
+   *  and never again. */
+  ask: { mode: VoiceMode; question: string; interviewer?: string; resume?: string },
 ): Promise<{ ok: true; started: StartedSession } | { ok: false; message: string }> {
   let response: Response;
   try {
@@ -82,7 +84,57 @@ export async function openSession(
 }
 
 /**
- * Send the finished answer, trying again on a failure that might pass.
+ * Send the finished answer, trying again on a failure that might pass. The
+ * retry rule is postWithRetries', below. In interview mode the reply carries
+ * the first follow-up round, or null when the interview closed instead.
+ */
+export async function saveAnswer(
+  fetcher: Fetcher,
+  sessionId: number,
+  answer: Answer,
+  options: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{ saved: true; turn?: TurnView | null } | { saved: false; message: string }> {
+  const result = await postWithRetries(fetcher, `/api/voice/sessions/${sessionId}/finish`, answer,
+                                       options);
+  if (!result.saved) return result;
+  // Interview mode: the reply carries the first follow-up round.
+  const turn = (result.body as { turn?: TurnView | null } | null)?.turn;
+  return turn === undefined ? { saved: true } : { saved: true, turn };
+}
+
+/** What a follow-up round's reply sends when it ends. */
+export type Reply = {
+  transcript: string;
+  segments: { text: string; startMs: number; endMs: number }[];
+  /** How long the reply ran, by this browser's clock. */
+  replyMs: number;
+  /** Stop, Next question or a closing tab: the interview ends here. */
+  close: boolean;
+};
+
+/**
+ * Send one reply, with the same three tries as an answer, and return the
+ * next round or the close. docs/07 section 5a. Called once a reply has ended,
+ * never during one.
+ */
+export async function finishReply(
+  fetcher: Fetcher,
+  sessionId: number,
+  ordinal: number,
+  reply: Reply,
+  options: { sleep?: (ms: number) => Promise<void> } = {},
+): Promise<{ saved: true; closed: boolean; turn: TurnView | null } | { saved: false; message: string }> {
+  const result = await postWithRetries(fetcher,
+    `/api/voice/sessions/${sessionId}/turns/${ordinal}/finish`, reply, options);
+  if (!result.saved) return result;
+  const body = result.body as { closed?: boolean; turn?: TurnView } | null;
+  // A 409 has no round in it; the interview is treated as over, and the
+  // debrief has whatever was saved.
+  return { saved: true, closed: body?.closed !== false || !body?.turn, turn: body?.turn ?? null };
+}
+
+/**
+ * POST a finished answer or reply, trying again on a failure that might pass.
  *
  * A 409 counts as saved. The route answers it for a session that is already
  * finished, and in the cockpit that means an earlier try reached the server
@@ -92,12 +144,12 @@ export async function openSession(
  * refused the same way. A 401 is the session ending, which the learner can
  * fix in another tab without losing this one.
  */
-export async function saveAnswer(
+async function postWithRetries(
   fetcher: Fetcher,
-  sessionId: number,
-  answer: Answer,
-  options: { sleep?: (ms: number) => Promise<void> } = {},
-): Promise<{ saved: true } | { saved: false; message: string }> {
+  url: string,
+  payload: unknown,
+  options: { sleep?: (ms: number) => Promise<void> },
+): Promise<{ saved: true; body: unknown } | { saved: false; message: string }> {
   const sleep = options.sleep ?? wait;
   let lastStatus: number | null = null;
 
@@ -106,16 +158,17 @@ export async function saveAnswer(
 
     let response: Response;
     try {
-      response = await fetcher(`/api/voice/sessions/${sessionId}/finish`, {
+      response = await fetcher(url, {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify(answer),
+        body: JSON.stringify(payload),
       });
     } catch {
       lastStatus = null;
       continue;
     }
-    if (response.ok || response.status === 409) return { saved: true };
+    if (response.ok) return { saved: true, body: (await readReply(response)).body };
+    if (response.status === 409) return { saved: true, body: null };
 
     lastStatus = response.status;
     if (response.status === 401) {

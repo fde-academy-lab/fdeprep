@@ -19,6 +19,7 @@ import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { CockpitRun } from "@/lib/voice/run";
 import { MAX_WORDS, wordCount } from "@/lib/voice/nudges";
+import { REPLY_SECONDS, ReplyRun } from "@/lib/voice/reply";
 import type { Beat } from "@/lib/voice/cues";
 
 const APP = path.join(import.meta.dirname, "..", "app", "(focus)", "voice", "session");
@@ -154,7 +155,7 @@ describe("no model call while the learner is speaking", () => {
   });
 
   test("the engine imports nothing that could reach a network", async () => {
-    for (const file of ["cues.ts", "nudges.ts", "run.ts"]) {
+    for (const file of ["cues.ts", "nudges.ts", "run.ts", "reply.ts"]) {
       const source = await read(path.join(LIB, file));
       expect(source, `${file} fetches`).not.toMatch(/\bfetch\(|XMLHttpRequest|WebSocket|aws-sdk/);
       // Imports are relative siblings only: nothing from a package, so
@@ -277,6 +278,85 @@ describe("pressure mode", () => {
     expect(source).toMatch(/covered\.includes\(followUp\.triggerAfterBeat\)/);
     // No model generates one. docs/07 section 5 calls that a later addition.
     expect(source).not.toMatch(/bedrock|generate|completion/i);
+  });
+});
+
+/**
+ * docs/07 section 5a: interview mode's follow-up rounds. The same two rules
+ * as the main answer, checked the same ways: no text of the question while
+ * the learner replies, and no call out during a reply.
+ */
+describe("interview mode's rounds", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const code = (line: string) => !/^\s*(\/\/|\*|\/\*)/.test(line);
+
+  test("a round's words are drawn only in the listening phase, and only when there is no audio", async () => {
+    const source = await read(path.join(APP, "interview.tsx"));
+    const lines = source.split("\n");
+    const uses = lines.flatMap((line, index) => (code(line) && /\bturn\.text\b/.test(line) ? [index] : []));
+    expect(uses.length).toBeGreaterThan(0);
+    for (const index of uses) {
+      const guard = lines.slice(Math.max(0, index - 2), index + 1).join("\n");
+      expect(guard, `turn.text on line ${index + 1} is not guarded`)
+        .toMatch(/phase === "listening" && turn\.audioUrl === null \? \(/);
+    }
+    // No other way to the words: no destructuring of the round, and no spread
+    // of it into markup or state.
+    expect(source).not.toMatch(/\{[^}]*\btext\b[^}]*\}\s*=\s*(turn|first|result\.turn)\b/);
+    expect(source).not.toMatch(/\.\.\.(turn|first)\b/);
+  });
+
+  test("the transcript of a reply only ever goes into a ref", async () => {
+    const source = await read(path.join(APP, "interview.tsx"));
+    const offenders = source.split("\n").filter((line) => code(line) &&
+      /(?<!\$)\{\s*(transcript\.current|message\.text)/.test(line));
+    expect(offenders).toEqual([]);
+    for (const match of source.matchAll(/set(Problem|Announcement|NudgeLine)\(([^;]*)\)/g)) {
+      expect(match[2], `set${match[1]} was given ${match[2]}`).not.toMatch(/transcript\.current|message\.text/);
+    }
+  });
+
+  test("a whole reply runs with zero calls out", () => {
+    const calls: string[] = [];
+    const refuse = (...args: unknown[]) => {
+      calls.push(String(args[0]));
+      throw new Error("the reply called out while the learner was speaking");
+    };
+    vi.stubGlobal("fetch", refuse);
+    vi.stubGlobal("XMLHttpRequest", function XHR() {
+      refuse("XMLHttpRequest");
+    });
+
+    const reply = new ReplyRun();
+    let over = false;
+    for (let at = 100; at <= REPLY_SECONDS * 1000 && !over; at += 100) {
+      over = reply.advanceTo({ elapsedMs: at, voiced: at % 9_000 > 4_000 }).over;
+    }
+    expect(over).toBe(true);
+    expect(calls).toEqual([]);
+    expect(reply.nudges.length).toBeGreaterThan(0);
+  });
+
+  test("the reply's one request is its finish, after the reply has ended", async () => {
+    const source = await read(path.join(APP, "interview.tsx"));
+    expect(source).not.toMatch(/XMLHttpRequest/);
+    // fetch is only the plain function handed to lib/voice/save.ts.
+    const fetches = source.split("\n").filter((line) => code(line) && /\bfetch\(/.test(line));
+    expect(fetches).toEqual(["const send: Fetcher = (url, init) => fetch(url, init);"]);
+    // And send is used by finishReply alone, which runs in store(), after endReply.
+    const sends = source.split("\n").filter((line) => code(line) && /\bsend\b/.test(line) &&
+      !/const send/.test(line) && !/ws\.send/.test(line));
+    expect(sends.every((line) => /finishReply\(send,/.test(line))).toBe(true);
+  });
+
+  test("the cockpit, the rounds and the instruments import nothing from the room", async () => {
+    for (const file of ["cockpit.tsx", "interview.tsx", "instruments.tsx"]) {
+      const source = await read(path.join(APP, file));
+      expect(source, `${file} imports the room`).not.toMatch(/voice\/room|from "\.\/room|from "\.\.\/room/);
+    }
   });
 });
 
