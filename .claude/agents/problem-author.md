@@ -67,10 +67,15 @@ whole path afterwards with `python -m tools.storyline`, so do not run it.
 Run, from the repository root, and fix everything they find:
 
     cd web && npm run -s validate:problems
-    cd web && npx vitest run tests/coach-catalogue.test.ts tests/kit.test.ts
+    cd web && npx vitest run tests/coach-catalogue.test.ts tests/kit.test.ts tests/heuristics.test.ts
     .venv/bin/python -m runner.local problems/<chapter>/<slug>.yaml problems/<chapter>/<slug>/reference_solution.py
     .venv/bin/python -m runner.local problems/<chapter>/<slug>.yaml problems/<chapter>/<slug>/naive_solution.py
     .venv/bin/python -m pytest -q tests/test_launch_content.py tests/test_writing_rules.py tests/test_inline_code.py -k "<slug>"
+
+`heuristics.test.ts` runs every heuristic on every reference walkthrough and
+strong exemplar. On a C4 design problem both have to weigh a choice in words
+the trade-off rule recognises, such as "at the cost of" or "instead of";
+two batches failed it on 8 October 2026.
 
 The reference passes every gate, the naive solution fails at least one hidden
 test, the stub fails a public test and every step check, and the coach is
