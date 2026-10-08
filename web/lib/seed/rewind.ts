@@ -36,12 +36,19 @@ export const REWIND = {
 export type RewindTable = keyof typeof REWIND;
 export type RewindColumn<T extends RewindTable> = (typeof REWIND)[T][number];
 
-/** A moment from Postgres as text, so microseconds survive the round trip. */
-export type Moment = string;
+/**
+ * A moment read from the Postgres clock: as text, so microseconds survive the
+ * round trip into a window bound, and as epoch milliseconds for arithmetic.
+ * Both come from one reading.
+ */
+export interface Moment { at: string; ms: number }
 
-export async function now(client: Pool | PoolClient): Promise<Moment> {
-  const { rows } = await client.query<{ at: string }>("select clock_timestamp()::text as at");
-  return rows[0]!.at;
+export async function now(client: Pool | PoolClient, earlierByMs = 0): Promise<Moment> {
+  const { rows } = await client.query<{ at: string; ms: string }>(
+    `select t::text as at, (extract(epoch from t) * 1000)::text as ms
+       from (select clock_timestamp() - $1::double precision * interval '1 millisecond' as t) x`,
+    [earlierByMs]);
+  return { at: rows[0]!.at, ms: Number(rows[0]!.ms) };
 }
 
 const BACK = "- $3::double precision * interval '1 millisecond'";
@@ -52,12 +59,15 @@ const BACK = "- $3::double precision * interval '1 millisecond'";
  * A row born in the window moves whole, future moments included: a lease
  * that expires two minutes after it was taken still expires two minutes after
  * it was taken. A row born earlier moves only the moments set in the window.
+ * `tables` narrows it to some of the allowlist.
  */
 export async function rewindWindow(
-  client: Pool | PoolClient, window: { from: Moment; to: Moment }, ms: number,
+  client: Pool | PoolClient, window: { from: string; to: string }, ms: number,
+  tables: readonly RewindTable[] = Object.keys(REWIND) as RewindTable[],
 ): Promise<void> {
-  for (const [table, columns] of Object.entries(REWIND) as Array<[RewindTable, readonly string[]]>) {
-    const [birth, ...rest] = columns;
+  for (const table of tables) {
+    const [birth, ...rest] = REWIND[table] as readonly string[];
+    const columns = REWIND[table] as readonly string[];
     await client.query(
       `update ${table} set ${columns.map((c) => `${c} = ${c} ${BACK}`).join(", ")}
         where ${birth} >= $1::timestamptz and ${birth} <= $2::timestamptz`,

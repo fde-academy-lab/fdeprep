@@ -72,7 +72,7 @@ describe("rewindWindow", () => {
     const born = await db().query<{ queued_at: Date }>(
       "select queued_at from submission where id = $1", [fresh.id]);
 
-    await rewindWindow(db(), { from, to }, 3 * DAY);
+    await rewindWindow(db(), { from: from.at, to: to.at }, 3 * DAY);
 
     const { rows } = await db().query<{ id: string; queued_at: Date }>(
       "select id, queued_at from submission order by id");
@@ -97,7 +97,7 @@ describe("rewindWindow", () => {
     const from = await now(db());
     await db().query("update attempt set solved_at = now() where id = $1", [opened.attemptId]);
     const to = await now(db());
-    await rewindWindow(db(), { from, to }, DAY);
+    await rewindWindow(db(), { from: from.at, to: to.at }, DAY);
 
     const { rows } = await db().query<{ first_opened_at: Date; solved_at: Date }>(
       "select first_opened_at, solved_at from attempt where id = $1", [opened.attemptId]);

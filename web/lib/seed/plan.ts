@@ -332,7 +332,11 @@ export function plan(options: PlanOptions): SeedPlan {
     const isSprinter = archetype === "sprinter";
     const thisSprinter = isSprinter ? sprinterIndex++ : -1;
 
-    for (const daysAgo of activeDays(person, from, scale, today, random)) {
+    const days = activeDays(person, from, scale, today, random);
+    // A sprinter's two rehearsals: the first sitting and the fourth, or the
+    // last when a burst is shorter. Two in a week is the weekly cap, exactly.
+    const rehearsals = new Set(isSprinter ? [0, Math.min(3, days.length - 1)] : []);
+    for (const daysAgo of days) {
       if (personaAfter.has(person.login) && daysAgo <= csv.daysAgo) {
         state.persona = personaAfter.get(person.login)!;
       }
@@ -341,8 +345,8 @@ export function plan(options: PlanOptions): SeedPlan {
       if (state.sittings === 0) actions.push({ type: "consent" });
       const used = new Set<string>();
 
-      if (isSprinter && (state.sittings === 0 || state.sittings === 3)) {
-        const second = state.sittings === 3;
+      if (rehearsals.has(state.sittings)) {
+        const second = state.sittings > 0;
         // Two sittings are left unfinished across the plan: the second
         // rehearsal of the first two sprinters.
         const finished = !(second && thisSprinter < 2);
@@ -699,10 +703,12 @@ function adminSittings(
   at(1, 90, [invite("pending-seat", "c3", "builder", "kwame-asante",
                     "Replacement for a seat given up in week two")]);
 
+  // Thirty days, so a link made two weeks before the seed runs is still good
+  // when it is redeemed: the seed redeems it now, against the real clock.
   for (const person of people.filter((p) => p.joinsByInvite)) {
     const day = joinDay.get(person.login)!;
     at(day + 1, 95, [invite(person.login, person.cohort, person.persona, person.login,
-                            "Joining Cohort 4 after it started")]);
+                            "Joining Cohort 4 after it started", 30)]);
     out.push({ login: person.login, daysAgo: day, minute: 600, actions: [
       { type: "redeem", invite: person.login }] });
   }
