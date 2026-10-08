@@ -10,8 +10,16 @@
  * problem is passed, because a Run executes the public cases only (docs/00
  * section 4). A Run row written before 8 October 2026 carries the whole
  * battery, and this is where it stops.
+ *
+ * What the learner reads of the hidden and adversarial gates is the tier's to
+ * say, and the policy module says which tier a result reads under. Extreme and
+ * screen conditions show nothing about the tests (docs/00 section 3.2), so
+ * there both gates report whether they passed and nothing else. Every reader
+ * of a result goes through here: the result pane, the event stream, the
+ * polling route and the Attempts tab, through countsUnpublished.
  */
 import { db } from "../db/pool.ts";
+import { SITTING_SQL, tierForResult, type Difficulty } from "../policy/index.ts";
 import { withheldGate } from "./run-contract.ts";
 
 export interface GateView {
@@ -102,6 +110,12 @@ export interface SubmissionView {
   queuedAt: string;
   finishedAt: string | null;
   gates: { static: GateView; public: GateView; hidden: GateView; adversarial: GateView };
+  /**
+   * False when the hidden and adversarial gates carry no count: on a Run,
+   * which runs neither, and on a result whose tier shows nothing about the
+   * tests. Their `passed` and `total` then read 0 and say nothing.
+   */
+  unpublishedCounts: boolean;
   /** Present on prompt and design submissions, empty on code. */
   checks: CheckView[];
   probes: ProbeView;
@@ -130,15 +144,31 @@ function trimCorrection(evaluation: unknown): CorrectionView | null {
   };
 }
 
+/**
+ * Whether a learner reads the hidden and adversarial counts of a result.
+ *
+ * A Run never runs either battery. Otherwise the tier the result reads under
+ * decides, which is a rehearsal submit's screen conditions, any result's while
+ * a sitting holds its problem, or the problem's own tier (tierForResult).
+ */
+export function countsUnpublished(
+  difficulty: Difficulty, kind: string, sitting: boolean,
+): boolean {
+  return kind !== "run" && tierForResult(difficulty, { kind, sitting }).visibility.hiddenCount;
+}
+
 export async function publicView(submissionId: number): Promise<SubmissionView> {
   const { rows } = await db().query<{
     id: string; status: SubmissionView["status"]; verdict: string | null;
     score: string | null; kind: string; queued_at: Date; finished_at: Date | null;
     result: Record<string, any> | null; solved_at: Date | null;
+    difficulty: Difficulty; sitting: boolean;
   }>(
     `select s.id, s.status, s.verdict::text, s.score, s.kind::text,
-            s.queued_at, s.finished_at, s.result, a.solved_at
+            s.queued_at, s.finished_at, s.result, a.solved_at,
+            p.difficulty::text as difficulty, ${SITTING_SQL} as sitting
        from submission s join attempt a on a.id = s.attempt_id
+       join problem p on p.id = a.problem_id
       where s.id = $1`, [submissionId]);
 
   const row = rows[0];
@@ -147,6 +177,13 @@ export async function publicView(submissionId: number): Promise<SubmissionView> 
   const alreadyPassed = row.solved_at !== null;
   const gates = (row.result?.["gates"] ?? {}) as Record<string, any>;
   const run = row.kind === "run";
+  const counted = countsUnpublished(row.difficulty, row.kind, row.sitting);
+  const unpublished = (gate: Record<string, any> | undefined): GateView =>
+    run ? withheldGate()
+      // The tier shows nothing about the tests: whether the battery passed,
+      // and no count or name, even once the problem is passed.
+      : !counted ? { ...trim(gate, false), passed: 0, total: 0 }
+      : trim(gate, alreadyPassed);
 
   return {
     id: Number(row.id),
@@ -159,9 +196,10 @@ export async function publicView(submissionId: number): Promise<SubmissionView> 
     gates: {
       static: trim(gates["static"], true),
       public: trim(gates["public"], true),
-      hidden: run ? withheldGate() : trim(gates["hidden"], alreadyPassed),
-      adversarial: run ? withheldGate() : trim(gates["adversarial"], alreadyPassed),
+      hidden: unpublished(gates["hidden"]),
+      adversarial: unpublished(gates["adversarial"]),
     },
+    unpublishedCounts: counted,
     checks: trimChecks(gates["static"]),
     probes: trimProbes(gates["probes"], alreadyPassed),
     rubric: trimRubric(gates["rubric"]),

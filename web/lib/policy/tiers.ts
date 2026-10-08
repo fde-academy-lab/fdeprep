@@ -181,6 +181,26 @@ export const SCREEN_CONDITIONS: Tier = {
 };
 
 /**
+ * The tier a finished submission's result reads under, which decides what a
+ * learner reads of its hidden and adversarial cases (docs/00 section 3.2).
+ *
+ * A rehearsal submit ran under screen conditions whatever the problem's own
+ * tier. So does every result on a problem while the learner sits a rehearsal
+ * that holds it, the rule the coach already keeps, because a sitting shows
+ * nothing about the tests and its Attempts tab lists the practice submits made
+ * before it. Every other result reads under the problem's tier.
+ *
+ * Added 8 October 2026. Until then the results view and the Attempts tab
+ * reported the hidden and adversarial counts on every tier.
+ */
+export function tierForResult(
+  difficulty: Difficulty, options: { kind: string; sitting: boolean },
+): Tier {
+  return options.kind === "rehearsal_submit" || options.sitting
+    ? SCREEN_CONDITIONS : tierFor(difficulty);
+}
+
+/**
  * Tiers whose clean cells are the evidence a real screen asks for.
  *
  * docs/12 section 2: screen_ready needs readiness of seventy percent or more

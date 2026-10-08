@@ -208,7 +208,11 @@ describe("a Run through the real runner", () => {
     const view = await publicView(submit.id);
     expect(view.verdict).toBe("fail");
     expect(view.gates.hidden.status).toBe("fail");
-    expect(view.gates.hidden.total).toBeGreaterThan(0);
+    // Screen conditions show nothing about the tests, so the count that says
+    // the full battery ran is on the row, where faculty read it.
+    const { rows: [row] } = await db().query<{ hidden_total: number }>(
+      "select hidden_total from submission where id = $1", [submit.id]);
+    expect(row!.hidden_total).toBeGreaterThan(0);
   }, 120_000);
 });
 
