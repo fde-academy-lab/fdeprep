@@ -126,7 +126,7 @@ Probes run twice each for agreement, which doubles that line. It is worth the co
 
 Set an AWS Budgets alarm on the Bedrock line at a monthly figure you pick, alerting at 50 and 80 percent. Do this before the first learner signs in, not after the first surprise.
 
-Amended 11 October 2026: interview mode (docs/07 section 5a) adds a fourth source, one judge call per follow-up round, at most five rounds a session, and one more when a learner pastes a resume. It spends the weekly rehearsal allowance, so the cap on it is the same `rehearsal_weekly` row as pressure mode. The next section of the runbook measures it.
+Amended 8 October 2026: interview mode (docs/07 section 5a) adds a fourth source, one judge call per follow-up round, at most five rounds a session, and one more when a learner pastes a resume. It spends the weekly rehearsal allowance, so the cap on it is the same `rehearsal_weekly` row as pressure mode. The next section of the runbook measures it.
 
 ```
 follow-up calls = interview sessions x rounds per session (at most 5) + resumes pasted
@@ -172,7 +172,7 @@ Point-in-time restore to a new branch, verify against a known submission id, the
 
 ### Measuring interview mode's cost and wait
 
-Added 11 October 2026 for S14.5. Every follow-up round records how long the model took, how long its speech took, the gap the learner waited, the model calls and the tokens, and whether the authored bank asked instead. To read them, priced at Bedrock's published rates on the day:
+Added 8 October 2026 for S14.5. Every follow-up round records how long the model took, how long its speech took, the gap the learner waited, the model calls and the tokens, and whether the authored bank asked instead. To read them, priced at Bedrock's published rates on the day:
 
 ```bash
 cd web

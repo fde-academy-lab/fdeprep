@@ -2,7 +2,7 @@
 
 A spoken interview simulator. The learner hears or reads a question, answers out loud into a microphone under a clock, and gets a debrief that scores what they said and shows how they said it.
 
-Three modes. Guided is an instrumented cockpit. Unguided is a microphone and a clock. Pressure adds an interviewer who interrupts. Amended 11 October 2026: a fourth, interview, follows the answer with rounds of questions drawn from it, section 5a.
+Three modes. Guided is an instrumented cockpit. Unguided is a microphone and a clock. Pressure adds an interviewer who interrupts. Amended 8 October 2026: a fourth, interview, follows the answer with rounds of questions drawn from it, section 5a.
 
 ---
 
@@ -74,7 +74,7 @@ Beats are the answer pathway. Anchors are cheap string matches used for live cue
 
 Authoring rule: four to six beats. Three is not a pathway, seven is a script.
 
-Amended 9 October 2026. A question also names the loop it comes from and
+Amended 8 October 2026. A question also names the loop it comes from and
 teaches how to answer it. `round` is one of six: hiring-manager-screen,
 technical-deep-dive, system-design, client-role-play, decomposition-case
 and judgement-call. `tests` is one sentence naming the competency in plain
@@ -94,7 +94,7 @@ never a real incident at a real company.
 
 ## 2a. The interviewers
 
-Added 9 October 2026. Nine personas live in `voice-interviewers/`, one YAML
+Added 8 October 2026. Nine personas live in `voice-interviewers/`, one YAML
 file each: an engineering lead, a CTO, a CEO, a solution architect, a
 senior AI engineer, a hiring manager, a client sponsor, a panel of three
 and a bar raiser. Each has a name, a role at a company of a named scale,
@@ -271,7 +271,7 @@ deleting it, because a past interruption points at it.
 
 ## 5a. Interview mode: follow-up rounds
 
-Added 11 October 2026. A fourth spoken mode. The learner answers the
+Added 8 October 2026. A fourth spoken mode. The learner answers the
 question in the guided cockpit, and when the answer ends the interviewer
 follows up, out loud, from what was just said. Each follow-up gets a sixty
 second reply on its own clock, and the rounds continue up to the question's
@@ -529,7 +529,7 @@ Added 30 September 2026, in migration 021, all additive:
 | `voice_session.input` | `spoken` or `typed`, so the scorer, the debrief and the history treat a typed answer as one. |
 | `voice_session.spent_allowance` | Whether the session holds one unit of its mode's allowance. Set when it opens, cleared when an answer that said nothing gives the unit back. |
 
-Added 9 October 2026, in migration 022, all additive:
+Added 8 October 2026, in migration 022, all additive:
 
 | Table or column | Why |
 |---|---|
@@ -538,7 +538,7 @@ Added 9 October 2026, in migration 022, all additive:
 | `voice_session.interviewer_slug` | Who asked, resolved on the server. Null on every session from before the interviewers. |
 | `voice_spoken_line` | Speech said more than once, cached once per voice and text, keyed on the hash of the words. |
 
-Added 11 October 2026, in migration 023, all additive:
+Added 8 October 2026, in migration 023, all additive:
 
 | Table or column | Why |
 |---|---|
@@ -610,7 +610,7 @@ The client-communication questions matter most and are the ones no coding platfo
 
 Amended 8 October 2026: the PDLC and SDLC simulations (docs/04 section 2.0) each close on a client-communication question, explaining to the sponsor why the POC's number for the board is 58 and not 81, and defending the bolt 2 plan to a sponsor who wants dates. The set is fourteen questions, and client-communication holds five.
 
-Amended 9 October 2026: every question names its round, its competency in one sentence, the interviewers who ask it, the problems it builds on, a framework card and the tips people overlook. The table above is unchanged.
+Amended 8 October 2026: every question names its round, its competency in one sentence, the interviewers who ask it, the problems it builds on, a framework card and the tips people overlook. The table above is unchanged.
 
 ---
 
