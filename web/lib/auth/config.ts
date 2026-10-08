@@ -6,6 +6,7 @@
  * was set then and nothing can change it afterwards.
  */
 import { publicUrl } from "../http/public-url.ts";
+import { logOnce } from "../log-once.ts";
 
 export class AuthNotConfigured extends Error {}
 
@@ -73,6 +74,16 @@ export type AuthEnv = Partial<Record<"AUTH_DEV_LEARNER" | "GITHUB_CLIENT_ID" | "
 
 export function githubConfigured(env: AuthEnv = process.env): boolean {
   return Boolean(env.GITHUB_CLIENT_ID);
+}
+
+/**
+ * Called by a page that has nothing to sign in with. The page says sign-in
+ * is not set up and names nothing; this line tells whoever runs the
+ * deployment what is missing, once per process.
+ */
+export function logSignInNotSetUp(): void {
+  logOnce("Sign-in is not set up: set GITHUB_CLIENT_ID, GITHUB_CLIENT_SECRET and AUTH_SECRET " +
+          "(SETUP.md, the sign-in section), or AUTH_DEV_LEARNER=1 to run without sign-in on a laptop.");
 }
 
 /**
