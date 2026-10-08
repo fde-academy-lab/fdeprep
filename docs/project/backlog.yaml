@@ -1341,7 +1341,7 @@ stages:
           - Human in the loop, observability, orchestration, harness, loop, tools, context, memory, guardrails, evals and Agentic PDLC gain 35 problems between them, 13 of them Hard and 9 Extreme, each validated in full.
           - Every new code problem's reference passes every gate and its naive solution fails a hidden test through the runner, its stub fails a public test and every step check, and its coach is quiet on the reference and fires on the naive solution.
       - id: S12.15
-        title: Open the Agentic SDLC chapter and add a regression gate to evals
+        title: Open the Agentic SDLC chapter, add a regression gate to evals, and teach LangGraph control flow
         type: Feature
         status: done
         pr: 45
@@ -1350,6 +1350,7 @@ stages:
         finish: 2026-10-08
         acceptance:
           - Agentic SDLC holds six problems on AI-DLC and BMAD, four of them code (ordering units of work, packing them into bolts, gating a bolt on its approval evidence, finding criteria with no spec or test) and two design (running Inception, choosing a BMAD planning path), Agentic PDLC gains two design problems, and evals gains an Extreme regression gate that tells a flaky case from a real regression.
+          - Loop, harness and orchestration each gain a Hard LangGraph problem: ending a graph's loop at an edge, retrying a node only on errors worth retrying, and routing through a supervisor that keeps every specialist's answer.
           - Every new code problem's reference passes every gate and its naive solution fails a hidden test through the runner, the 30-day path is re-laid with the new problems on it, and docs/04 section 2.2 states what each tier asks for.
 
   - id: S13
