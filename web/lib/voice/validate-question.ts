@@ -29,16 +29,51 @@
  * exemplar covers in a sentence. The cockpit then shows STRETCHING through a
  * good answer. The band is a share against a share, so it holds at any speaking
  * rate, which matters because nobody has measured the real one yet.
+ *
+ * Amended 9 October 2026 (docs/07 section 2): a question names its round, what
+ * it tests in one sentence, the interviewers who ask it, the problems it
+ * builds on, a four-line framework card and two to four tips, and every string
+ * a learner reads keeps the writing rules, with no em or en dash. Two of the
+ * rules are cross-file, checking interviewers and problems against the files
+ * that exist, and run only when the caller supplies the sets, which CI does.
  */
 import { LineCounter, parseDocument } from "yaml";
 import { COMPETENCIES, DIFFICULTIES } from "../problems/vocabulary.ts";
+import { proseFindings, sentences } from "./prose.ts";
+import { ROUNDS } from "./rounds.ts";
 
 export type VoiceRule =
   | "yaml_syntax" | "schema" | "unknown_competency" | "unknown_track"
   | "beat_count" | "duplicate_beat" | "beat_seconds" | "no_anchors"
   | "anchor_not_in_exemplar" | "total_seconds" | "rubric_weights"
   | "exemplar_bands" | "exemplar_scores" | "follow_up_beat"
-  | "delivery_in_rubric" | "beat_allocation";
+  | "delivery_in_rubric" | "beat_allocation"
+  // Added 9 October 2026: what a question says about the loop it comes from,
+  // and the writing rules on what a learner reads.
+  | "round" | "tests_sentence" | "interviewers" | "unknown_interviewer" | "builds_on"
+  | "unknown_problem" | "framework" | "tips" | "interview_rounds" | "prose_dash" | "banned_word"
+  // The interviewer files, lib/voice/validate-interviewer.ts.
+  | "slug" | "listens_for" | "stress_probes" | "cadence" | "voice" | "members";
+
+/**
+ * The sets the cross-file rules check against. CI passes both; the import and
+ * the unit tests pass neither, and then those two rules are skipped, because
+ * the import runs where the problem files may not be.
+ */
+export interface VoiceValidateOptions {
+  /** Slugs of the files in voice-interviewers/. */
+  interviewers?: Set<string>;
+  /** Slugs of the problem files under problems/, fixtures excluded. */
+  problems?: Set<string>;
+}
+
+/** docs/07 section 2, amended 9 October 2026: the four lines of the framework card. */
+export const FRAMEWORK_KEYS = ["answer_first", "evidence", "trade_off", "if_you_do_not_know"] as const;
+
+const TESTS_MAX_WORDS = 40;
+const FRAMEWORK_MAX_SENTENCES = 3;
+const TIPS = { min: 2, max: 4 };
+const INTERVIEW_ROUNDS = { min: 1, max: 5 };
 
 export interface VoiceError {
   rule: VoiceRule;
@@ -80,7 +115,9 @@ const BANDS = ["strong", "adequate", "weak"] as const;
 /** docs/07 section 6: reported, never scored. */
 const DELIVERY_WORDS = /\b(words per minute|wpm|filler|fillers|fluen\w*|accent|um\b|articulat\w*)/i;
 
-export function validateVoiceYaml(source: string, file: string): VoiceReport {
+export function validateVoiceYaml(
+  source: string, file: string, options: VoiceValidateOptions = {},
+): VoiceReport {
   const counter = new LineCounter();
   const doc = parseDocument(source, { lineCounter: counter, keepSourceTokens: true });
   const errors: VoiceError[] = [];
@@ -272,8 +309,126 @@ export function validateVoiceYaml(source: string, file: string): VoiceReport {
     }
   });
 
+  loopRules(raw, options, add, lineOf);
+  for (const finding of proseFindings(raw)) {
+    add(finding.rule, finding.message, lineOf(finding.path));
+  }
+
   if (errors.length) return { ok: false, file, errors };
   return { ok: true, file, errors, slug: String(raw["slug"]) };
+}
+
+/**
+ * docs/07 section 2, amended 9 October 2026: what a question says about the
+ * loop it comes from and how to answer it. The round and the interviewers are
+ * how the picker files it; the framework card and the tips are what the lobby
+ * teaches before the answer starts.
+ */
+function loopRules(
+  raw: Record<string, unknown>,
+  options: VoiceValidateOptions,
+  add: (rule: VoiceRule, message: string, line: number) => void,
+  lineOf: (at: Array<string | number>) => number,
+): void {
+  const round = raw["round"];
+  if (typeof round !== "string" || !(ROUNDS as readonly string[]).includes(round)) {
+    add("round",
+        `round ${round === undefined ? "is missing" : `${String(round)} is not a round`}. It is ` +
+        `one of ${ROUNDS.join(", ")}`, round === undefined ? 1 : lineOf(["round"]));
+  }
+
+  const tests = raw["tests"];
+  const testsText = typeof tests === "string" ? tests.trim() : "";
+  if (!testsText || sentences(testsText).length > 1 ||
+      testsText.split(/\s+/).length > TESTS_MAX_WORDS || !testsText.endsWith(".")) {
+    add("tests_sentence",
+        tests === undefined
+          ? "tests is missing. Name the competency in one sentence ending in a full stop"
+          : `tests has to be one sentence of at most ${TESTS_MAX_WORDS} words ending in a full ` +
+            `stop: "${testsText}"`,
+        tests === undefined ? 1 : lineOf(["tests"]));
+  }
+
+  const interviewers = raw["interviewers"];
+  const named = Array.isArray(interviewers) ? interviewers.map(String) : [];
+  if (named.length === 0) {
+    add("interviewers", "interviewers is missing or empty, so no interviewer asks this question",
+        interviewers === undefined ? 1 : lineOf(["interviewers"]));
+  }
+  if (options.interviewers) {
+    const known = options.interviewers;
+    named.forEach((slug, index) => {
+      if (!known.has(slug)) {
+        add("unknown_interviewer",
+            `interviewer ${slug} is not in voice-interviewers/. Known: ${[...known].sort().join(", ")}`,
+            lineOf(["interviewers", index]));
+      }
+    });
+  }
+
+  const buildsOn = raw["builds_on"];
+  const problems = Array.isArray(buildsOn) ? buildsOn.map(String) : [];
+  if (problems.length === 0) {
+    add("builds_on", "builds_on is missing or empty. Name the problems this question builds on",
+        buildsOn === undefined ? 1 : lineOf(["builds_on"]));
+  }
+  if (options.problems) {
+    const known = options.problems;
+    problems.forEach((slug, index) => {
+      if (!known.has(slug)) {
+        add("unknown_problem",
+            `builds_on names ${slug}, which is not a problem file under problems/`,
+            lineOf(["builds_on", index]));
+      }
+    });
+  }
+
+  const framework = raw["framework"];
+  if (!framework || typeof framework !== "object" || Array.isArray(framework)) {
+    add("framework", `framework is missing. It has four keys: ${FRAMEWORK_KEYS.join(", ")}`, 1);
+  } else {
+    const card = framework as Record<string, unknown>;
+    for (const key of FRAMEWORK_KEYS) {
+      const value = card[key];
+      if (typeof value !== "string" || !value.trim()) {
+        add("framework", `framework.${key} is missing or empty`, lineOf(["framework"]));
+      } else if (sentences(value).length > FRAMEWORK_MAX_SENTENCES) {
+        add("framework",
+            `framework.${key} runs to ${sentences(value).length} sentences. The card holds at most ` +
+            `${FRAMEWORK_MAX_SENTENCES} per line`, lineOf(["framework", key]));
+      }
+    }
+    for (const key of Object.keys(card)) {
+      if (!(FRAMEWORK_KEYS as readonly string[]).includes(key)) {
+        add("framework", `framework.${key} is not one of ${FRAMEWORK_KEYS.join(", ")}`,
+            lineOf(["framework", key]));
+      }
+    }
+  }
+
+  const tips = raw["tips"];
+  const tipList = Array.isArray(tips) ? tips : [];
+  if (tipList.length < TIPS.min || tipList.length > TIPS.max) {
+    add("tips", `tips needs ${TIPS.min} to ${TIPS.max} entries, found ${tipList.length}`,
+        tips === undefined ? 1 : lineOf(["tips"]));
+  }
+  tipList.forEach((tip, index) => {
+    const text = typeof tip === "string" ? tip.trim() : "";
+    if (!/^[A-Z0-9]/.test(text) || !text.endsWith(".")) {
+      add("tips", `tip ${index + 1} is not a full sentence ending in a full stop`,
+          lineOf(["tips", index]));
+    }
+  });
+
+  const rounds = raw["interview_rounds"];
+  if (rounds !== undefined &&
+      !(typeof rounds === "number" && Number.isInteger(rounds) &&
+        rounds >= INTERVIEW_ROUNDS.min && rounds <= INTERVIEW_ROUNDS.max)) {
+    add("interview_rounds",
+        `interview_rounds is ${String(rounds)}. It is a whole number from ${INTERVIEW_ROUNDS.min} ` +
+        `to ${INTERVIEW_ROUNDS.max}, or absent to take the default for the difficulty`,
+        lineOf(["interview_rounds"]));
+  }
 }
 
 /** Words the strong exemplar spends on each beat.

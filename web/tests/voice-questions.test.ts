@@ -9,9 +9,15 @@
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { parse } from "yaml";
+import { INTERVIEWER_SLUGS } from "../lib/voice/interviewers.ts";
+import { ROUNDS } from "../lib/voice/rounds.ts";
 import { validateVoiceYaml } from "../lib/voice/validate-question.ts";
+import { problemSlugs } from "../scripts/validate-voice-questions.ts";
 
 const ROOT = path.join(import.meta.dirname, "..", "..", "voice-questions");
+const PROBLEMS = path.join(import.meta.dirname, "..", "..", "problems");
+const INTERVIEWERS = new Set<string>(INTERVIEWER_SLUGS);
 
 async function files(): Promise<string[]> {
   const found: string[] = [];
@@ -39,8 +45,20 @@ track: agent-loop
 difficulty: medium
 total_seconds: 100
 competencies: [agent-loop]
+round: technical-deep-dive
+tests: Whether you can name the mechanism that stops a loop and the case it misses.
+interviewers: [engineering-lead, bar-raiser]
+builds_on: [stop-when-the-model-will-not]
 prompt_text: |
   Say something.
+framework:
+  answer_first: Name the ceiling first.
+  evidence: Give the number it would have cut.
+  trade_off: A ceiling truncates a good run. Say why you take that loss.
+  if_you_do_not_know: Say what you would measure first.
+tips:
+  - Say the mechanism before the monitoring.
+  - Name the case the ceiling misses.
 beats:
   - { id: b1, label: One, seconds: 25, anchors: ["step budget"] }
   - { id: b2, label: Two, seconds: 25, anchors: ["degrade"] }
@@ -73,12 +91,49 @@ function rulesFrom(source: string): string[] {
   return validateVoiceYaml(source, "t.yaml").errors.map((e) => e.rule);
 }
 
+/** With the cross-file sets supplied, as CI runs it. */
+function rulesAgainst(source: string, problems = new Set(["stop-when-the-model-will-not"])): string[] {
+  return validateVoiceYaml(source, "t.yaml", { interviewers: INTERVIEWERS, problems })
+    .errors.map((e) => e.rule);
+}
+
 describe("the authored launch set", () => {
   it("validates every question", async () => {
     for (const { file, source } of await loadAll()) {
       const report = validateVoiceYaml(source, file);
       expect(report.errors, path.basename(file)).toEqual([]);
       expect(report.ok).toBe(true);
+    }
+  });
+
+  it("validates every question against the interviewers and the problems that exist", async () => {
+    const problems = await problemSlugs();
+    expect(problems.size).toBeGreaterThan(100);
+    for (const { file, source } of await loadAll()) {
+      const report = validateVoiceYaml(source, file, { interviewers: INTERVIEWERS, problems });
+      expect(report.errors, path.basename(file)).toEqual([]);
+    }
+  });
+
+  it("builds every question on problem files that exist under problems/", async () => {
+    const files = new Set<string>();
+    for (const entry of await readdir(PROBLEMS, { withFileTypes: true, recursive: true })) {
+      const dir = entry.parentPath ?? entry.path;
+      if (entry.isFile() && entry.name.endsWith(".yaml") && !dir.includes("_fixtures")) {
+        files.add(entry.name.replace(/\.yaml$/, ""));
+      }
+    }
+    for (const { file, source } of await loadAll()) {
+      const question = parse(source) as { builds_on: string[] };
+      expect(question.builds_on.length, path.basename(file)).toBeGreaterThan(0);
+      for (const slug of question.builds_on) expect(files.has(slug), `${path.basename(file)}: ${slug}`).toBe(true);
+    }
+  });
+
+  it("names a round from the list on every question", async () => {
+    for (const { file, source } of await loadAll()) {
+      const question = parse(source) as { round: string };
+      expect(ROUNDS, path.basename(file)).toContain(question.round);
     }
   });
 
@@ -231,5 +286,93 @@ describe("the validator", () => {
       GOOD.replace('anchors: ["monitor"]', 'anchors: ["kubernetes"]'), "t.yaml");
     const error = report.errors.find((e) => e.rule === "anchor_not_in_exemplar");
     expect(error?.line).toBeGreaterThan(1);
+  });
+});
+
+/** docs/07 section 2, amended 9 October 2026: the loop a question comes from,
+ *  and the card that teaches how to answer it. */
+describe("the validator, on what a question says about its loop", () => {
+  it("accepts the good question with the cross-file sets supplied", () => {
+    expect(rulesAgainst(GOOD)).toEqual([]);
+  });
+
+  it("refuses a round outside the list, and a missing one", () => {
+    expect(rulesFrom(GOOD.replace("round: technical-deep-dive", "round: coffee-chat"))).toContain("round");
+    expect(rulesFrom(GOOD.replace("round: technical-deep-dive\n", ""))).toContain("round");
+  });
+
+  it("refuses a tests line of two sentences, or one with no full stop", () => {
+    expect(rulesFrom(GOOD.replace("the case it misses.", "the case it misses. And more.")))
+      .toContain("tests_sentence");
+    expect(rulesFrom(GOOD.replace("the case it misses.", "the case it misses")))
+      .toContain("tests_sentence");
+  });
+
+  it("refuses an interviewer nobody wrote, and no interviewers at all", () => {
+    expect(rulesAgainst(GOOD.replace("[engineering-lead, bar-raiser]", "[engineering-lead, intern]")))
+      .toContain("unknown_interviewer");
+    expect(rulesFrom(GOOD.replace("[engineering-lead, bar-raiser]", "[]"))).toContain("interviewers");
+  });
+
+  it("refuses a problem that is not a file under problems/", () => {
+    expect(rulesAgainst(GOOD.replace("[stop-when-the-model-will-not]", "[a-problem-nobody-wrote]")))
+      .toContain("unknown_problem");
+    expect(rulesFrom(GOOD.replace("builds_on: [stop-when-the-model-will-not]\n", "")))
+      .toContain("builds_on");
+  });
+
+  it("skips the cross-file rules when no set is supplied, as the import does", () => {
+    expect(rulesFrom(GOOD.replace("[engineering-lead, bar-raiser]", "[intern]"))).toEqual([]);
+  });
+
+  it("refuses a framework missing if_you_do_not_know, or carrying a fifth line", () => {
+    expect(rulesFrom(GOOD.replace("  if_you_do_not_know: Say what you would measure first.\n", "")))
+      .toContain("framework");
+    expect(rulesFrom(GOOD.replace("  evidence:", "  aside: One more thing.\n  evidence:")))
+      .toContain("framework");
+  });
+
+  it("refuses a framework line of four sentences", () => {
+    expect(rulesFrom(GOOD.replace("Name the ceiling first.", "One. Two. Three. Four.")))
+      .toContain("framework");
+  });
+
+  it("refuses one tip, five tips, and a tip that is not a sentence", () => {
+    expect(rulesFrom(GOOD.replace("  - Name the case the ceiling misses.\n", ""))).toContain("tips");
+    expect(rulesFrom(GOOD.replace("  - Name the case the ceiling misses.\n",
+      "  - Name the case the ceiling misses.\n  - Three.\n  - Four.\n  - Five.\n"))).toContain("tips");
+    expect(rulesFrom(GOOD.replace("Name the case the ceiling misses.", "the case it misses")))
+      .toContain("tips");
+  });
+
+  it("refuses an em dash in a tip, and an en dash in the prompt", () => {
+    expect(rulesFrom(GOOD.replace("before the monitoring.", "before the monitoring \u2014 always.")))
+      .toContain("prose_dash");
+    expect(rulesFrom(GOOD.replace("Say something.", "Say something \u2013 anything.")))
+      .toContain("prose_dash");
+  });
+
+  it("refuses a word the writing rules ban in a framework line", () => {
+    // Joined here so a search for the word finds content, not this test.
+    const word = "cruc" + "ial";
+    expect(rulesFrom(GOOD.replace("Give the number it would have cut.", `Give the ${word} number.`)))
+      .toContain("banned_word");
+  });
+
+  it("refuses a sentence adverb, and leaves the same word alone inside a weak exemplar", () => {
+    const adverb = "How" + "ever";
+    expect(rulesFrom(GOOD.replace("Name the ceiling first.", `${adverb}, name the ceiling first.`)))
+      .toContain("banned_word");
+    expect(rulesFrom(GOOD.replace("It should stop eventually.", `${adverb}, it should stop.`)))
+      .toEqual([]);
+  });
+
+  it("refuses interview_rounds outside one to five, and accepts it inside", () => {
+    expect(rulesFrom(GOOD.replace("round: technical-deep-dive", "round: technical-deep-dive\ninterview_rounds: 6")))
+      .toContain("interview_rounds");
+    expect(rulesFrom(GOOD.replace("round: technical-deep-dive", "round: technical-deep-dive\ninterview_rounds: 2.5")))
+      .toContain("interview_rounds");
+    expect(rulesFrom(GOOD.replace("round: technical-deep-dive", "round: technical-deep-dive\ninterview_rounds: 4")))
+      .toEqual([]);
   });
 });
