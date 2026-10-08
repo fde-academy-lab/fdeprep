@@ -1,0 +1,848 @@
+slug: update-the-playbook-without-dropping-a-rule
+title: "Update the playbook without dropping a rule"
+drill: true
+skill: Apply a model's playbook edits only when they spare required steps and have support
+artefact_type: code
+difficulty: medium
+track: memory
+concept:
+  topic: "Memory writes"
+  question: "When the agent learns a new way of working, what must it never unlearn?"
+est_minutes: 30
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: prompt-hardening, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The IT helpdesk agent at an IT services company the size of Wipro handles
+  about 9,000 tickets a week, and it follows a playbook for each kind of
+  issue. For a VPN that will not connect it verifies the caller with a call
+  back to their registered phone, resets the VPN token, checks the
+  certificate on the laptop, and escalates to the network team. The playbooks
+  are the agent's procedural memory: they hold how it works, the way facts
+  hold what it knows. Each week an optimiser model reads the reviewers'
+  comments on the week's tickets and proposes changes.
+
+  In September three changes went wrong.
+
+  The optimiser rewrote the whole VPN playbook from the latest comments, and
+  the identity step, which the security team owns, was missing from the new
+  version. For six days the agent reset tokens for anyone who asked.
+
+  One reviewer's comment on one ticket from Pune became a rule for everyone:
+  never reset tokens for users in Pune. For two weeks every caller from the
+  Pune office was escalated.
+
+  Two reviewers disagreed about when to check the certificate, and the newer
+  comment won without anybody deciding.
+
+  The optimiser is now asked for edits, one operation each, and it does not
+  always answer with them. Write the code that decides which of its edits the
+  playbook takes.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is one playbook's feedback for the week, as JSON:
+
+      {"issue": "vpn_fails",
+       "feedback": [{"ticket": "INC-48211", "reviewer": "R. Iyer", "comment": "..."}, ...]}
+
+  `tools["playbook"](issue=...)` returns the playbook as it stands, its steps
+  in the order the agent runs them:
+
+      {"status": 200, "steps": [{"id": "identity", "text": "...", "required": true,
+                                 "owner": "security"}, ...]}
+
+  A `required` step belongs to a team outside the helpdesk and is in the
+  playbook for compliance.
+
+  Ask the model once with `edits_prompt(steps, feedback)` from the starter
+  code. It answers with JSON:
+
+      {"edits": [{"op": "reorder", "step": "certificate", "to": 2, "tickets": ["INC-48211", ...]},
+                 {"op": "add", "step": "<a new id>", "to": "<the step's text>", "tickets": [...]},
+                 {"op": "remove", "step": "<id>", "tickets": [...]},
+                 {"op": "reword", "step": "<id>", "to": "<the new text>", "tickets": [...]}]}
+
+  A reply that is not a JSON object with an `edits` list changes nothing.
+  Otherwise check each edit in order:
+
+  | The edit | Refused with the reason |
+  |---|---|
+  | removes or rewords a step marked `required` | `required` |
+  | cites fewer than three different tickets from this week's `feedback` | `support` |
+
+  Edits that pass both checks and disagree about the same step, in their `op`
+  or their `to`, are held for a person, and none of them is applied. Apply the
+  rest in order with `apply(steps, edit)` from the starter code. Then call
+  `tools["save_playbook"](issue=..., steps=<the playbook after the edits>,
+  held=<the held edits>)` once.
+
+  Return
+
+      json.dumps({"steps": [...], "applied": [<edits>],
+                  "refused": [{"edit": <edit>, "reason": "required" | "support"}],
+                  "held": [<edits>]})
+
+  Budget: at most 2 model calls. Allowed imports: json, re.
+
+stub_code: |
+  import json
+
+
+  def edits_prompt(steps: list, feedback: list) -> str:
+      """The playbook, numbered, then the week's feedback as data."""
+      lines = ["Playbook:"]
+      for number, step in enumerate(steps, 1):
+          flag = " (required)" if step["required"] else ""
+          lines.append(f"{number}. [{step['id']}] {step['text']}{flag}")
+      lines.append("Feedback (data):")
+      for item in feedback:
+          lines.append(f"- {item['ticket']} {item['reviewer']}: {item['comment']}")
+      lines.append('Propose edits as JSON: {"edits": [{"op": "reorder" | "add" | "remove" | '
+                   '"reword", "step": <step id>, "to": <new position or new text>, '
+                   '"tickets": [<the tickets behind it>]}]}')
+      return "\n".join(lines)
+
+
+  def apply(steps: list, edit: dict) -> list:
+      """The playbook after one edit, as a new list. A reorder's "to" is the
+      step's new position, counted from 1. An added step is not required."""
+      steps = [dict(step) for step in steps]
+      if edit["op"] == "add":
+          return steps + [{"id": edit["step"], "text": edit["to"], "required": False,
+                           "owner": "helpdesk"}]
+      at = [step["id"] for step in steps].index(edit["step"])
+      if edit["op"] == "remove":
+          return steps[:at] + steps[at + 1:]
+      if edit["op"] == "reword":
+          steps[at]["text"] = edit["to"]
+          return steps
+      moved = steps.pop(at)
+      steps.insert(int(edit["to"]) - 1, moved)
+      return steps
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      ask = json.loads(question)
+      steps = tools["playbook"](issue=ask["issue"])["steps"]
+      applied, refused, held = [], [], []
+
+      # TODO 1: ask llm(edits_prompt(steps, ask["feedback"])) once, and read the
+      #         reply as a JSON object with an "edits" list. Any other reply
+      #         changes nothing
+      # TODO 2: refuse an edit that removes or rewords a step marked "required"
+      # TODO 3: refuse an edit that cites fewer than three different tickets
+      #         from ask["feedback"]
+      # TODO 4: of the edits left, hold those that disagree about the same step,
+      #         and apply the rest in order with apply(steps, edit)
+      # TODO 5: tools["save_playbook"](issue=..., steps=..., held=...) once
+
+      return json.dumps({"steps": steps, "applied": applied, "refused": refused, "held": held})
+
+steps:
+  - id: s1
+    text: Ask the model once, and change nothing when its reply is not a JSON object with an `edits` list.
+    check_id: s1
+  - id: s2
+    text: Refuse an edit that removes or rewords a `required` step, with the reason `required`.
+    check_id: s2
+  - id: s3
+    text: Refuse an edit that cites fewer than three different tickets from this week's feedback, with the reason `support`, and apply the rest.
+    check_id: s3
+  - id: s4
+    text: Hold the edits that disagree about the same step for a person, and leave that step as it was.
+    check_id: s4
+
+step_checks:
+  # No public case answers with anything but edits, so this check runs a reply
+  # that proposes none.
+  - step_id: s1
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          {"issue": "printer_offline", "feedback": [
+          {"ticket": "INC-47702", "reviewer": "S. Kulkarni", "comment": "The spooler restart fixed it in two minutes."},
+          {"ticket": "INC-47719", "reviewer": "A. Pillai", "comment": "The user had unplugged the cable."},
+          {"ticket": "INC-47725", "reviewer": "R. Iyer", "comment": "Reinstalling the driver took forty minutes."}]}
+      llm_script:
+        - { match: "*", reply: "I would check the cable first, restart the spooler next, and drop the driver step, since it is slow." }
+      tools:
+        playbook:
+          returns:
+            status: 200
+            steps:
+              - { id: cable, text: "Ask the user to check the printer's network cable.", required: false, owner: helpdesk }
+              - { id: spooler, text: "Restart the print spooler on the user's laptop.", required: false, owner: helpdesk }
+              - { id: driver, text: "Reinstall the printer driver from the software centre.", required: false, owner: desktop }
+        save_playbook: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: prompt_contains, value: "Playbook:" }
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: calls_tool_with, name: save_playbook, args: { issue: printer_offline, held: [] } }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, applied]
+            properties:
+              applied: { type: array, maxItems: 0 }
+              steps:
+                type: array
+                minItems: 3
+                maxItems: 3
+                prefixItems:
+                  - { properties: { id: { const: cable } } }
+                  - { properties: { id: { const: spooler } } }
+                  - { properties: { id: { const: driver } } }
+  # The public case removes a required step, and the step is about rewording
+  # one too, so the check runs a case that tries both.
+  - step_id: s2
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          {"issue": "mailbox_full", "feedback": [
+          {"ticket": "INC-46610", "reviewer": "M. Das", "comment": "The legal hold check found nothing again."},
+          {"ticket": "INC-46622", "reviewer": "R. Iyer", "comment": "Legal hold lookups take a day and never find a hold."},
+          {"ticket": "INC-46631", "reviewer": "S. Kulkarni", "comment": "Skip the legal hold check for junior staff."},
+          {"ticket": "INC-46640", "reviewer": "A. Pillai", "comment": "Archiving after two years is too slow, users want space now."},
+          {"ticket": "INC-46655", "reviewer": "M. Das", "comment": "Archive after one year instead."},
+          {"ticket": "INC-46671", "reviewer": "R. Iyer", "comment": "Two years is too long to keep old mail."}]}
+      llm_script:
+        - match: "*"
+          reply: '{"edits": [{"op": "remove", "step": "legal_hold", "tickets": ["INC-46610", "INC-46622", "INC-46631"]}, {"op": "reword", "step": "archive", "to": "Delete mail older than one year.", "tickets": ["INC-46640", "INC-46655", "INC-46671"]}]}'
+      tools:
+        playbook:
+          returns:
+            status: 200
+            steps:
+              - { id: legal_hold, text: "Check whether the mailbox is under a legal hold.", required: true, owner: legal }
+              - { id: archive, text: "Move mail older than two years to the records archive.", required: true, owner: records }
+              - { id: quota, text: "Raise the quota by 5 GB, at most once a quarter.", required: false, owner: helpdesk }
+        save_playbook: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, refused, applied]
+            properties:
+              applied: { type: array, maxItems: 0 }
+              refused:
+                type: array
+                minItems: 2
+                maxItems: 2
+                items: { properties: { reason: { const: required } } }
+              steps:
+                type: array
+                prefixItems:
+                  - { properties: { id: { const: legal_hold } } }
+                  - properties:
+                      id: { const: archive }
+                      text: { const: "Move mail older than two years to the records archive." }
+  # Reads moves_the_certificate_check_and_refuses_a_one_ticket_rule.
+  - step_id: s3
+    spec:
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [applied, refused]
+            properties:
+              applied:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items: { properties: { op: { const: reorder }, step: { const: certificate } } }
+              refused:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items: { properties: { reason: { const: support } } }
+  # No public case has two edits that disagree, so this check runs its own.
+  - step_id: s4
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          {"issue": "mailbox_full", "feedback": [
+          {"ticket": "INC-46702", "reviewer": "A. Pillai", "comment": "Users do not know where deleted items are."},
+          {"ticket": "INC-46715", "reviewer": "A. Pillai", "comment": "Show the screen, users get lost in the menu."},
+          {"ticket": "INC-46728", "reviewer": "M. Das", "comment": "A screenshot would help here."},
+          {"ticket": "INC-46733", "reviewer": "R. Iyer", "comment": "Do not walk users through it, empty the folder for them."},
+          {"ticket": "INC-46741", "reviewer": "R. Iyer", "comment": "Faster if the agent empties deleted items itself."},
+          {"ticket": "INC-46759", "reviewer": "S. Kulkarni", "comment": "Users would rather we just clear it."}]}
+      llm_script:
+        - match: "*"
+          reply: '{"edits": [{"op": "reword", "step": "cleanup", "to": "Send the user a screenshot of where to empty deleted items.", "tickets": ["INC-46702", "INC-46715", "INC-46728"]}, {"op": "reword", "step": "cleanup", "to": "Empty the deleted items folder for the user.", "tickets": ["INC-46733", "INC-46741", "INC-46759"]}]}'
+      tools:
+        playbook:
+          returns:
+            status: 200
+            steps:
+              - { id: quota, text: "Raise the quota by 5 GB, at most once a quarter.", required: false, owner: helpdesk }
+              - { id: cleanup, text: "Show the user how to empty deleted items.", required: false, owner: helpdesk }
+        save_playbook: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, applied, held]
+            properties:
+              applied: { type: array, maxItems: 0 }
+              held: { type: array, minItems: 2, maxItems: 2 }
+              steps:
+                type: array
+                prefixItems:
+                  - { properties: { id: { const: quota } } }
+                  - properties:
+                      id: { const: cleanup }
+                      text: { const: "Show the user how to empty deleted items." }
+
+hints:
+  - A playbook is a list of steps, and an edit is one operation on it. An
+    operation can be checked before it is applied. A rewritten playbook can
+    only be compared with the old one, by somebody who knows what to look for.
+  - Some steps belong to other teams. Moving one changes the order of the
+    work, while removing one or rewording it changes what the step makes the
+    agent do, which is the part that team owns.
+  - Count the tickets behind each edit yourself, against the feedback you were
+    given. A ticket listed twice is one ticket, and a ticket the week's
+    feedback never had supports nothing.
+  - "Check every edit first. Then look at the ones that passed: when two of
+    them name the same step and want different things, neither is applied and
+    both go to a person."
+
+scenario:
+  headline: "The optimiser rewrote the VPN playbook and dropped the identity check"
+  who: "The IT helpdesk agent at an IT services company the size of Wipro"
+  situation: >-
+    An optimiser model updates the agent's playbooks each week from reviewers'
+    comments. It rewrote the VPN playbook without the identity step, turned
+    one comment on one ticket into a rule for a whole city, and settled a
+    disagreement between reviewers by taking the newer comment.
+  stakes: >-
+    For six days tokens were reset with no identity check, and for two weeks a
+    rule one ticket made sent every caller from the Pune office to escalation.
+  metrics:
+    - { label: Days with no identity check, value: "6" }
+    - { label: Tickets behind the Pune rule, value: "1" }
+    - { label: Tickets an edit needs, value: "3" }
+
+diagram:
+  title: Where a model's edit meets the playbook
+  caption: >-
+    The optimiser proposes edits. Code checks each one against the required
+    steps and the week's feedback, and a disagreement goes to a person.
+  direction: lr
+  nodes:
+    - { id: feedback, label: Reviewer feedback, sub: "ticket, reviewer, comment", kind: doc, tone: blue, at: [0, 0] }
+    - { id: playbook, label: Playbook, sub: "steps in order, required flags, owners", kind: store, tone: green, at: [0, 2] }
+    - { id: model, label: Optimiser model, sub: "edits as JSON, one call", kind: model, tone: teal, at: [1, 1] }
+    - { id: checks, label: Edit checks, sub: "required steps, three tickets, rivals", kind: guard, tone: purple, at: [2, 1] }
+    - { id: refused, label: Refused with a reason, sub: required or support, kind: output, tone: neutral, at: [3, 0] }
+    - { id: updated, label: Updated playbook, sub: the edits that passed, kind: store, tone: green, at: [3, 1] }
+    - { id: person, label: A person decides, sub: edits that pull one step apart, kind: actor, tone: orange, at: [3, 2] }
+    - { id: save, label: "`save_playbook`", sub: steps and held edits, kind: tool, tone: green, at: [4, 1] }
+    - { id: rewrite, label: Whole playbook rewritten, sub: the identity step gone, kind: output, tone: pink, at: [2, 3] }
+  edges:
+    - { from: feedback, to: model, label: "this week's comments", step: 1 }
+    - { from: playbook, to: model, label: the steps as they stand, step: 1 }
+    - { from: model, to: checks, label: proposed edits, step: 2 }
+    - { from: checks, to: refused, label: fails a check, step: 3 }
+    - { from: checks, to: updated, label: applied in order, tone: success, step: 3 }
+    - { from: checks, to: person, label: edits that disagree, step: 3 }
+    - { from: updated, to: save, label: once, step: 4 }
+    - { from: model, to: rewrite, label: saved as it came, tone: danger }
+
+approach:
+  goal: Let the playbook learn from the week without losing a step another team owns
+  branches:
+    - label: Read the reply as edits or not at all
+      leaves: [a JSON object with an edits list, prose or a whole playbook changes nothing]
+    - label: Guard the steps other teams own
+      detail: A required step is there for compliance. The optimiser may move it, and may not remove it or change its words.
+      leaves: [no removal, no rewording]
+    - label: Count the support yourself
+      leaves: ["only tickets in this week's feedback", a ticket listed twice counts once, three different tickets or no change]
+    - label: Leave a disagreement to a person
+      leaves: [two edits that want different things for one step, neither is applied, both are held]
+
+coach:
+  opening: >-
+    Before you apply anything, list what the optimiser could send you that
+    should change nothing at all, and why each one should not.
+  signals:
+    - id: counts-the-list
+      when: { code_matches: 'len\(\s*\w*\[["'']tickets["'']\]\s*\)' }
+      say: >-
+        Your code counts the tickets the model listed. Which of them are in this
+        week's feedback, and is one ticket listed three times three voices?
+    - id: no-parse-guard
+      when: { code_lacks: '\bexcept\b' }
+      say: >-
+        What does your code do when the optimiser answers with prose, or with a
+        whole playbook instead of a list of edits?
+    - id: no-hold
+      when: { code_lacks: 'held\.append|held\s*\+=|held\.extend' }
+      say: >-
+        Two reviewers can pull one step in opposite directions. Where does your
+        code notice, and who decides?
+    - id: hidden-one-voice
+      when: { test_failed: one_ticket_cited_three_times_is_one_voice }
+      say: >-
+        One edit in that run cited the same ticket three times. How many
+        different tickets did your code count behind it?
+    - id: hidden-unknown-tickets
+      when: { test_failed: tickets_the_week_never_had_are_no_support }
+      say: >-
+        That edit cited four tickets. How many of them are in the week's
+        feedback?
+    - id: hidden-disagreement
+      when: { test_failed: two_reviewers_pull_one_step_apart }
+      say: >-
+        Two edits in that run moved the same step to different places. Which
+        one did your playbook end up with, and who chose it?
+    - id: hidden-whole-playbook
+      when: { test_failed: a_whole_new_playbook_changes_nothing }
+      say: >-
+        The optimiser answered that run with a whole new playbook instead of
+        edits. What did your code do with it?
+    - id: hidden-reword
+      when: { test_failed: a_required_step_keeps_its_words }
+      say: >-
+        One edit in that run kept a required step in place and changed its
+        words. Is the step still doing what the team that owns it put it there
+        for?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with TODO 1: parse the reply inside a `try`, and treat anything
+        that is not an object with an `edits` list as no edits at all.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint is about why an edit can be
+        checked when a rewritten playbook cannot.
+  wrap_up: >-
+    Procedural memory changes how the agent works on every ticket, so a change
+    to it is checked like code: one edit at a time, against the steps other
+    teams own and the evidence the week holds, with any disagreement left to a
+    person.
+
+tests:
+  - name: moves_the_certificate_check_and_refuses_a_one_ticket_rule
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          {"issue": "vpn_fails", "feedback": [
+          {"ticket": "INC-48211", "reviewer": "R. Iyer", "comment": "Token reset did nothing. The certificate had expired."},
+          {"ticket": "INC-48230", "reviewer": "M. Das", "comment": "Look at the certificate before resetting the token."},
+          {"ticket": "INC-48242", "reviewer": "R. Iyer", "comment": "Expired certificate again, and the reset was wasted."},
+          {"ticket": "INC-48255", "reviewer": "S. Kulkarni", "comment": "Same pattern: expired certificate, token reset first."},
+          {"ticket": "INC-48263", "reviewer": "A. Pillai", "comment": "The agent reset the token before checking the certificate."},
+          {"ticket": "INC-48270", "reviewer": "M. Das", "comment": "A user in Pune could not connect from hotel wifi. Maybe stop resets there."}]}
+      llm_script:
+        - match: "*"
+          reply: '{"edits": [{"op": "reorder", "step": "certificate", "to": 2, "tickets": ["INC-48211", "INC-48230", "INC-48242", "INC-48255", "INC-48263"]}, {"op": "add", "step": "no_reset_pune", "to": "Never reset VPN tokens for users in Pune.", "tickets": ["INC-48270"]}]}'
+      tools:
+        playbook:
+          returns:
+            status: 200
+            steps:
+              - { id: identity, text: "Verify the caller with a call back to their registered phone number.", required: true, owner: security }
+              - { id: token, text: "Reset the caller's VPN token.", required: false, owner: helpdesk }
+              - { id: certificate, text: "Check when the VPN certificate on the laptop expires.", required: false, owner: network }
+              - { id: escalate, text: "Escalate to the network team with the ticket and the client log.", required: true, owner: network }
+        save_playbook: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, applied, refused, held]
+            properties:
+              steps:
+                type: array
+                minItems: 4
+                maxItems: 4
+                prefixItems:
+                  - { properties: { id: { const: identity } } }
+                  - { properties: { id: { const: certificate } } }
+                  - { properties: { id: { const: token } } }
+                  - { properties: { id: { const: escalate } } }
+              applied:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items: { properties: { op: { const: reorder }, step: { const: certificate } } }
+              refused:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items: { properties: { reason: { const: support }, edit: { properties: { step: { const: no_reset_pune } } } } }
+              held: { type: array, maxItems: 0 }
+        - { type: calls_tool_with, name: save_playbook, args: { issue: vpn_fails, held: [] } }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: refuses_to_drop_the_identity_check
+    visibility: public
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          {"issue": "password_reset", "feedback": [
+          {"ticket": "INC-50118", "reviewer": "R. Iyer", "comment": "The call back took 40 minutes and the user missed a client meeting."},
+          {"ticket": "INC-50131", "reviewer": "S. Kulkarni", "comment": "Users abroad cannot take the call back on their registered number."},
+          {"ticket": "INC-50146", "reviewer": "A. Pillai", "comment": "The call back is the slowest part of every reset."},
+          {"ticket": "INC-50152", "reviewer": "M. Das", "comment": "Skip the call back for repeat callers, they are clearly genuine."}]}
+      llm_script:
+        - match: "*"
+          reply: '{"edits": [{"op": "remove", "step": "identity", "tickets": ["INC-50118", "INC-50131", "INC-50146", "INC-50152"]}]}'
+      tools:
+        playbook:
+          returns:
+            status: 200
+            steps:
+              - { id: identity, text: "Verify the caller with a call back to their registered phone number.", required: true, owner: security }
+              - { id: mfa, text: "Check that the account still has a second factor enrolled.", required: false, owner: helpdesk }
+              - { id: reset, text: "Issue a one-time password that expires in 15 minutes.", required: false, owner: helpdesk }
+              - { id: notify, text: "Email the user from the security mailbox that their password was reset.", required: true, owner: security }
+        save_playbook: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, applied, refused]
+            properties:
+              steps:
+                type: array
+                minItems: 4
+                maxItems: 4
+                prefixItems:
+                  - { properties: { id: { const: identity } } }
+              applied: { type: array, maxItems: 0 }
+              refused:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items: { properties: { reason: { const: required }, edit: { properties: { op: { const: remove } } } } }
+        - { type: calls_tool_with, name: save_playbook, args: { issue: password_reset } }
+
+  - name: one_ticket_cited_three_times_is_one_voice
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          {"issue": "vpn_fails", "feedback": [
+          {"ticket": "INC-51088", "reviewer": "R. Iyer", "comment": "Escalations reach network without the client log."},
+          {"ticket": "INC-51094", "reviewer": "S. Kulkarni", "comment": "The network team asked for the client log again."},
+          {"ticket": "INC-51102", "reviewer": "M. Das", "comment": "Pune again. I would stop resetting tokens for Pune altogether."},
+          {"ticket": "INC-51117", "reviewer": "A. Pillai", "comment": "Client log missing from the escalation."},
+          {"ticket": "INC-51125", "reviewer": "R. Iyer", "comment": "No client log attached when the ticket reached network."}]}
+      llm_script:
+        - match: "*"
+          reply: '{"edits": [{"op": "add", "step": "no_reset_pune", "to": "Never reset VPN tokens for users in Pune.", "tickets": ["INC-51102", "INC-51102", "INC-51102"]}, {"op": "add", "step": "attach_log", "to": "Attach the client log to the ticket before escalating.", "tickets": ["INC-51088", "INC-51094", "INC-51117", "INC-51125"]}]}'
+      tools:
+        playbook:
+          returns:
+            status: 200
+            steps:
+              - { id: identity, text: "Verify the caller with a call back to their registered phone number.", required: true, owner: security }
+              - { id: token, text: "Reset the caller's VPN token.", required: false, owner: helpdesk }
+              - { id: certificate, text: "Check when the VPN certificate on the laptop expires.", required: false, owner: network }
+              - { id: escalate, text: "Escalate to the network team with the ticket and the client log.", required: true, owner: network }
+        save_playbook: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, applied, refused]
+            properties:
+              steps:
+                type: array
+                minItems: 5
+                maxItems: 5
+                prefixItems:
+                  - { properties: { id: { const: identity } } }
+                  - { properties: { id: { const: token } } }
+                  - { properties: { id: { const: certificate } } }
+                  - { properties: { id: { const: escalate } } }
+                  - { properties: { id: { const: attach_log } } }
+              applied:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items: { properties: { step: { const: attach_log } } }
+              refused:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items: { properties: { reason: { const: support }, edit: { properties: { step: { const: no_reset_pune } } } } }
+
+  - name: tickets_the_week_never_had_are_no_support
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          {"issue": "laptop_wont_boot", "feedback": [
+          {"ticket": "INC-60311", "reviewer": "S. Kulkarni", "comment": "Safe mode took 30 minutes and fixed nothing."},
+          {"ticket": "INC-60327", "reviewer": "A. Pillai", "comment": "Safe mode never helps with a disk error."},
+          {"ticket": "INC-60340", "reviewer": "R. Iyer", "comment": "The reimage was booked quickly. Good."}]}
+      llm_script:
+        - match: "*"
+          reply: '{"edits": [{"op": "reword", "step": "safe_mode", "to": "Skip safe mode and book a reimage straight away.", "tickets": ["INC-60311", "INC-60327", "INC-60918", "INC-61004"]}]}'
+      tools:
+        playbook:
+          returns:
+            status: 200
+            steps:
+              - { id: asset, text: "Confirm the asset tag against the user's record.", required: true, owner: asset-management }
+              - { id: safe_mode, text: "Walk the user through starting in safe mode.", required: false, owner: helpdesk }
+              - { id: reimage, text: "Book a reimage at the nearest service desk.", required: false, owner: helpdesk }
+              - { id: replace, text: "Ship a replacement laptop when the reimage fails.", required: false, owner: asset-management }
+        save_playbook: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, applied, refused]
+            properties:
+              steps:
+                type: array
+                prefixItems:
+                  - { properties: { id: { const: asset } } }
+                  - properties:
+                      id: { const: safe_mode }
+                      text: { const: "Walk the user through starting in safe mode." }
+              applied: { type: array, maxItems: 0 }
+              refused:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items: { properties: { reason: { const: support } } }
+
+  - name: two_reviewers_pull_one_step_apart
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          {"issue": "vpn_fails", "feedback": [
+          {"ticket": "INC-52201", "reviewer": "A. Pillai", "comment": "Check the certificate before touching the token."},
+          {"ticket": "INC-52214", "reviewer": "A. Pillai", "comment": "Expired certificate, the reset was pointless."},
+          {"ticket": "INC-52219", "reviewer": "R. Iyer", "comment": "Certificate checks take ten minutes. Only do them when the reset fails."},
+          {"ticket": "INC-52230", "reviewer": "M. Das", "comment": "Certificate first would have saved a call."},
+          {"ticket": "INC-52236", "reviewer": "R. Iyer", "comment": "The reset fixed it. The certificate check before it was wasted time."},
+          {"ticket": "INC-52244", "reviewer": "S. Kulkarni", "comment": "Leave the certificate for last, most callers just need a reset."}]}
+      llm_script:
+        - match: "*"
+          reply: '{"edits": [{"op": "reorder", "step": "certificate", "to": 2, "tickets": ["INC-52201", "INC-52214", "INC-52230"]}, {"op": "reorder", "step": "certificate", "to": 4, "tickets": ["INC-52219", "INC-52236", "INC-52244"]}]}'
+      tools:
+        playbook:
+          returns:
+            status: 200
+            steps:
+              - { id: identity, text: "Verify the caller with a call back to their registered phone number.", required: true, owner: security }
+              - { id: token, text: "Reset the caller's VPN token.", required: false, owner: helpdesk }
+              - { id: certificate, text: "Check when the VPN certificate on the laptop expires.", required: false, owner: network }
+              - { id: escalate, text: "Escalate to the network team with the ticket and the client log.", required: true, owner: network }
+        save_playbook: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, applied, held]
+            properties:
+              steps:
+                type: array
+                minItems: 4
+                maxItems: 4
+                prefixItems:
+                  - { properties: { id: { const: identity } } }
+                  - { properties: { id: { const: token } } }
+                  - { properties: { id: { const: certificate } } }
+                  - { properties: { id: { const: escalate } } }
+              applied: { type: array, maxItems: 0 }
+              held: { type: array, minItems: 2, maxItems: 2 }
+
+  - name: a_whole_new_playbook_changes_nothing
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          {"issue": "vpn_fails", "feedback": [
+          {"ticket": "INC-53402", "reviewer": "S. Kulkarni", "comment": "The call back held up an urgent reset for half an hour."},
+          {"ticket": "INC-53417", "reviewer": "M. Das", "comment": "Reset first, the rest can wait."},
+          {"ticket": "INC-53429", "reviewer": "R. Iyer", "comment": "The certificate check found nothing again."},
+          {"ticket": "INC-53433", "reviewer": "A. Pillai", "comment": "The user was locked out for an hour waiting for the call back."}]}
+      llm_script:
+        - match: "*"
+          reply: '{"steps": [{"id": "token", "text": "Reset the caller''s VPN token straight away."}, {"id": "certificate", "text": "Check the certificate if the reset fails."}, {"id": "escalate", "text": "Escalate to the network team."}]}'
+      tools:
+        playbook:
+          returns:
+            status: 200
+            steps:
+              - { id: identity, text: "Verify the caller with a call back to their registered phone number.", required: true, owner: security }
+              - { id: token, text: "Reset the caller's VPN token.", required: false, owner: helpdesk }
+              - { id: certificate, text: "Check when the VPN certificate on the laptop expires.", required: false, owner: network }
+              - { id: escalate, text: "Escalate to the network team with the ticket and the client log.", required: true, owner: network }
+        save_playbook: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: calls_tool_with, name: save_playbook, args: { issue: vpn_fails, held: [] } }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, applied, refused, held]
+            properties:
+              steps:
+                type: array
+                minItems: 4
+                maxItems: 4
+                prefixItems:
+                  - properties:
+                      id: { const: identity }
+                      text: { const: "Verify the caller with a call back to their registered phone number." }
+              applied: { type: array, maxItems: 0 }
+              refused: { type: array, maxItems: 0 }
+              held: { type: array, maxItems: 0 }
+
+  - name: a_required_step_keeps_its_words
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input:
+        question: >-
+          {"issue": "password_reset", "feedback": [
+          {"ticket": "INC-53301", "reviewer": "R. Iyer", "comment": "The call back failed because the user was travelling."},
+          {"ticket": "INC-53318", "reviewer": "M. Das", "comment": "Ask for the employee number instead of calling back."},
+          {"ticket": "INC-53325", "reviewer": "S. Kulkarni", "comment": "Call backs to registered numbers fail for remote staff."},
+          {"ticket": "INC-53333", "reviewer": "A. Pillai", "comment": "The account had no second factor and nobody enrolled one."},
+          {"ticket": "INC-53340", "reviewer": "R. Iyer", "comment": "When the second factor is missing, enrol one during the call."},
+          {"ticket": "INC-53352", "reviewer": "M. Das", "comment": "No second factor on the account again."}]}
+      llm_script:
+        - match: "*"
+          reply: '{"edits": [{"op": "reword", "step": "identity", "to": "Verify the caller by asking for their employee number.", "tickets": ["INC-53301", "INC-53318", "INC-53325"]}, {"op": "reword", "step": "mfa", "to": "Check the account has a second factor, and enrol one if it has none.", "tickets": ["INC-53333", "INC-53340", "INC-53352"]}]}'
+      tools:
+        playbook:
+          returns:
+            status: 200
+            steps:
+              - { id: identity, text: "Verify the caller with a call back to their registered phone number.", required: true, owner: security }
+              - { id: mfa, text: "Check that the account still has a second factor enrolled.", required: false, owner: helpdesk }
+              - { id: reset, text: "Issue a one-time password that expires in 15 minutes.", required: false, owner: helpdesk }
+              - { id: notify, text: "Email the user from the security mailbox that their password was reset.", required: true, owner: security }
+        save_playbook: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [steps, applied, refused]
+            properties:
+              steps:
+                type: array
+                minItems: 4
+                maxItems: 4
+                prefixItems:
+                  - properties:
+                      id: { const: identity }
+                      text: { const: "Verify the caller with a call back to their registered phone number." }
+                  - properties:
+                      id: { const: mfa }
+                      text: { const: "Check the account has a second factor, and enrol one if it has none." }
+              applied:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items: { properties: { step: { const: mfa } } }
+              refused:
+                type: array
+                minItems: 1
+                maxItems: 1
+                items: { properties: { reason: { const: required }, edit: { properties: { step: { const: identity } } } } }
+
+reference_md: |
+  A playbook is the agent's procedural memory: it decides what the agent does,
+  and in what order, on every ticket of its kind. A wrong fact in memory
+  misleads the answers that use it. A wrong step is wrong for every caller
+  until somebody notices, which in September took six days. So the model never
+  writes the playbook. It proposes edits, and code decides which ones the
+  playbook takes.
+
+  An edit is one operation with a target, which is what makes it checkable.
+  The September rewrite read like a better playbook and lacked the identity
+  step, and the only way to see that was to compare it with the old one line
+  by line. The same change as an edit is a `remove` of a step marked
+  `required`, and refusing it takes one comparison.
+
+  Required steps belong to teams outside the helpdesk, so the optimiser may
+  move them and nothing more. A removed identity check is easy to spot, and a
+  reworded one is not. "Verify the caller by asking for their employee number"
+  keeps a step called identity and drops the control security put there,
+  because an employee number is printed on every badge.
+
+  Support is counted by the code, against the week's feedback. The model's
+  list of tickets is a claim, and it can repeat one ticket or cite tickets the
+  week never had. The Pune rule was one reviewer's comment on one ticket,
+  cited as if it were a pattern. Three different tickets from this week's
+  feedback is a low bar, and the model cannot clear it by saying so.
+
+  Two edits that pull one step in different directions are a disagreement
+  between reviewers, and settling it by order is how the newer comment won in
+  September. Neither edit is applied, both are held, and the person who owns
+  the playbook decides. A reply that is not a list of edits changes nothing:
+  the optimiser was asked for edits, and a whole new playbook is the
+  September rewrite arriving again.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    Your agent updates its own instructions from reviewer feedback every week. What stops it from unlearning a compliance rule?
+  source: |
+    Author judgement. The nearest entry in the FDE interview bank, docs/source-pack/09-interview-bank.json
+    I018, asks how a corrected fact becomes wrong again, and carries the bank's caveat that actual
+    employer frequency is unverified.
+
+tools:
+  - name: playbook
+    args: issue
+    returns: The playbook's `steps` in the order the agent runs them, each with an `id`, its `text`, `required` and the `owner`.
+  - name: save_playbook
+    args: issue, steps, held
+    returns: '`{"status": 200}` once the playbook and the held edits are recorded.'
+example:
+  case: moves_the_certificate_check_and_refuses_a_one_ticket_rule
+  expect: >-
+    The reorder cites five tickets from the feedback, so the certificate check moves to second
+    place. The Pune rule cites one ticket and is refused with the reason `support`.
+traps:
+  - Counting the tickets the model lists, when it can list one ticket three times or cite tickets the feedback never had.
+  - Guarding a required step against removal and letting a reword hollow it out.
+  - Applying two edits that disagree, so whichever comes last wins and nobody decides.
+  - Applying whatever the optimiser returns when it is not a list of edits.
