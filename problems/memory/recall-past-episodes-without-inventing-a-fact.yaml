@@ -1,0 +1,772 @@
+slug: recall-past-episodes-without-inventing-a-fact
+title: "Recall past episodes without inventing a fact"
+drill: true
+skill: Recall past chats by state and date, and promote a fact only when three recent ones agree
+artefact_type: code
+difficulty: hard
+track: memory
+concept:
+  topic: "Memory writes"
+  question: "When does something that happened once become something the agent knows?"
+est_minutes: 45
+competencies:
+  - { slug: state-and-memory, weight: 1.0 }
+  - { slug: prompt-hardening, weight: 0.5 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re, typing, datetime, langgraph]
+
+brief_md: |
+  A food delivery platform the size of Zomato gives its support agent a
+  memory for every customer, kept in a LangGraph store under two namespaces.
+  `("episodes", <customer>)` holds one entry for each closed chat: when it
+  happened, what the customer asked, what the agent did, and whether the
+  issue was resolved. `("facts", <customer>)` holds what the agent may rely on
+  in the next chat, such as a diet or a usual portion size. The store outlives
+  any one chat. The checkpointer remembers a thread, and the store remembers a
+  person.
+
+  A review of 3,000 customers' memories in September found three faults.
+
+  One gluten-free order became a standing fact. A customer had ordered a
+  gluten-free pasta for a friend, and her next chat opened with "as you prefer
+  gluten-free". One customer in nine had a preference on file that they had
+  never stated.
+
+  Recall ranked past chats by how much they had in common with the new
+  message. A customer who mentioned pizza was greeted with "glad we sorted
+  your pizza", about a refund from fourteen months earlier, while last month's
+  chat about a rider who never arrived was still open and went unmentioned.
+
+  And a chat that ended in an escalation was written as resolved, because the
+  chat had closed. When that customer came back, the agent told her "we fixed
+  that" about an escalation nobody had picked up.
+
+  The store still holds everything the old version wrote. Write the graph that
+  recalls a customer's past chats, answers the new message and writes the
+  chat back, without turning something that happened once into something the
+  agent knows.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is one chat as JSON:
+
+      {"customer": "C-2210", "thread": "T-9301", "today": "2026-10-07",
+       "message": "<what the customer wrote>"}
+
+  The sandbox keeps nothing between cases, so `tools["load_memory"](customer=...)`
+  hands you the customer's memory as yesterday's store held it:
+
+      {"status": 200,
+       "episodes": [{"id": "E-2001", "when": "2026-08-14", "asked": "...", "did": "...",
+                     "outcome": "resolved", "noted": {"diet": "gluten-free"}}, ...],
+       "facts": [{"key": "size", "value": "large", "source": "stated",
+                  "since": "2026-03-14"}, ...]}
+
+  Episodes come oldest first. `noted` holds what the order behind that chat
+  recorded, and is often empty. An episode is open unless its `outcome` is
+  `resolved`. A fact's `source` is `stated` when the customer said it and
+  `promoted` when episodes agreed on it, and only those two are known: the old
+  version also wrote facts it had inferred. When `load_memory` raises or
+  answers without those lists, the customer is new.
+
+  Build a `StateGraph`, compile it with `store=InMemoryStore()` and an
+  `InMemorySaver()`, and run the chat once on its own thread,
+  `{"configurable": {"thread_id": <thread>}}`. A node that takes
+  `runtime: Runtime` reads the store as `runtime.store`. Write the loaded
+  memory into the store before anything else: each episode under
+  `("episodes", <customer>)` keyed by its `id`, each fact under
+  `("facts", <customer>)` keyed by its `key`. In langgraph 1.2.12 `put`
+  replaces whatever was under that key, and `search` returns at most `limit`
+  items, ten unless you pass it, in the order they were put.
+
+  Recall three episodes: the open ones first, then the rest, newest first
+  within each. Ask the model once with `reply_prompt(message, recalled, facts)`
+  from the starter code, where `facts` is every known fact. The model answers
+  in lines, which `read_reply` parses:
+
+      Reply: <the message for the customer>
+      Did: <what the agent did>
+      Outcome: resolved or open
+      Stated: <key>=<value>     one line for each thing the customer said about themselves
+
+  Then close the chat:
+
+  - Write this chat as an episode, `{"id": <thread>, "when": <today>,
+    "asked": <the message>, "did": <the Did line>, "outcome": ...}`, with
+    `asked` and `did` cut to their first 240 characters. The outcome is
+    `resolved` only when the Outcome line says exactly `resolved`. Anything
+    else, or no line at all, is `open`.
+  - Write a `stated` fact for each `Stated:` line whose value the customer's
+    message contains, ignoring case. A value the message does not contain is
+    the model's inference, and is not written.
+  - Write a `promoted` fact for a key and value that three or more episodes
+    from the last 90 days agree on in `noted` (`today` minus `when` is 90 days
+    or fewer), unless the customer has stated that key, before or in this
+    chat, or the same fact is already known.
+  - Every fact written carries `since: <today>`. Call
+    `tools["save_memory"](customer=..., episode=..., facts=[<the facts written>])`
+    once.
+
+  Return
+
+      json.dumps({"reply": <the Reply line>, "recalled": [<episode ids, in prompt order>],
+                  "facts_written": [{"key", "value", "source", "since"}, ...],
+                  "episode": <this chat's episode>})
+
+  Budget: at most 2 model calls. Allowed imports: json, re, typing, datetime
+  and langgraph, version 1.2.12.
+
+defence_question: |
+  The product team wants a customer's usual order remembered after two
+  episodes instead of three, so the agent feels more personal. What changes in
+  your promotion rule, what goes wrong for a customer who ordered for a friend
+  twice, and who should make that call?
+
+stub_code: |
+  import json
+  import re
+  from datetime import date
+  from typing import TypedDict
+
+  from langgraph.checkpoint.memory import InMemorySaver
+  from langgraph.graph import END, START, StateGraph
+  from langgraph.runtime import Runtime
+  from langgraph.store.memory import InMemoryStore
+
+  RECALL = 3          # episodes the model sees
+  AGREE = 3           # agreeing episodes a promoted fact needs
+  WINDOW_DAYS = 90    # how recent those episodes must be
+  CAP = 240           # characters kept of asked and did
+  LINE = re.compile(r"^(Reply|Did|Outcome|Stated):[ \t]*(.*?)[ \t]*$", re.MULTILINE)
+  STATED = re.compile(r"^([a-z_]+)\s*=\s*(.+)$")
+
+
+  def reply_prompt(message: str, recalled: list, facts: list) -> str:
+      """The prompt for the one model call: the message, then the recalled
+      episodes and the known facts as data, in the order they are given."""
+      lines = [f"Customer message: {message}", "Past (data):"]
+      for episode in recalled:
+          label = "RESOLVED" if episode.get("outcome") == "resolved" else "OPEN"
+          lines.append(f"- {episode['when']} {label} {episode['id']}: asked "
+                       f"\"{episode.get('asked', '')}\"; did \"{episode.get('did', '')}\"")
+      lines.append("Known (data):")
+      for fact in facts:
+          lines.append(f"- {fact['key']}: {fact['value']} ({fact['source']})")
+      lines.append("Answer with a Reply: line for the customer, a Did: line saying what you did, "
+                   "an Outcome: line saying resolved or open, and a Stated: key=value line for "
+                   "each thing the customer says about themselves in this message.")
+      return "\n".join(lines)
+
+
+  def read_reply(text: str) -> dict:
+      """The model's lines as {"reply", "did", "outcome", "stated"}: text, or ""
+      when a line is missing, and stated as a list of (key, value) pairs."""
+      said = {"reply": "", "did": "", "outcome": "", "stated": []}
+      for name, value in LINE.findall(text):
+          if name == "Stated":
+              pair = STATED.match(value)
+              if pair:
+                  said["stated"].append((pair.group(1), pair.group(2).strip()))
+          else:
+              said[name.lower()] = value
+      return said
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      """Recall a customer's past chats, answer the message, write the chat back.
+
+      question is {"customer", "thread", "today", "message"} as JSON.
+      tools["load_memory"](customer=...) gives {"episodes": [...], "facts": [...]}.
+
+      Build a StateGraph compiled with store=InMemoryStore() and an
+      InMemorySaver(), and invoke it once on {"configurable": {"thread_id": ...}}.
+      A node that takes runtime: Runtime reads the store as runtime.store.
+        seed    put each episode under ("episodes", customer) by id, and each
+                fact under ("facts", customer) by key
+        recall  open episodes first, then the rest, newest first; keep RECALL.
+                The facts the model sees are the stated and promoted ones
+        reply   one call, llm(reply_prompt(...)), read with read_reply
+        close   write this chat as an episode; a stated fact for each Stated
+                value the message contains; a promoted fact when AGREE episodes
+                from the last WINDOW_DAYS agree in noted, unless the key was
+                stated or the fact is known; then tools["save_memory"] once
+
+      Return json.dumps({"reply", "recalled", "facts_written", "episode"}).
+      At most 2 model calls. Allowed imports: json, re, typing, datetime,
+      langgraph.
+      """
+      return json.dumps({"reply": "", "recalled": [], "facts_written": [], "episode": {}})
+
+hints:
+  - Separate what happened from what is true. An episode has a date and an
+    outcome, and a fact has a source. For each fault in the brief, say whether
+    an episode was treated as a fact or a fact as an episode.
+  - Recall is a choice of three, in an order. What is still open matters more
+    than what is recent, and what is recent matters more than what shares the
+    message's words. Choose only after you have read every episode.
+  - "A promoted fact is a count over a window: three episodes from the last 90
+    days with the same key and value in `noted`. The customer's own words are
+    the one shortcut, so check each `Stated:` value against their message
+    before you write it."
+  - An episode is resolved only when the model says exactly that. An
+    escalation, a "pending", or no Outcome line at all is open, because the
+    next chat reads the episode as it was written.
+  - "The store is keyed by the customer and outlives the thread, and
+    `search` returns ten items unless you pass `limit`. Seed it in the first
+    node, read it in `recall`, and write this chat and its facts to it in
+    `close`."
+
+scenario:
+  headline: "One gluten-free order became a preference the customer never stated"
+  who: "Customer support at a food delivery platform the size of Zomato"
+  situation: >-
+    The support agent keeps every customer's past chats and facts in a
+    LangGraph store. An order for a friend became a standing diet, recall
+    picked the past chat most like the new message, and an escalation was
+    written as resolved because the chat had closed.
+  stakes: >-
+    One customer in nine had a preference on file they never stated, and a
+    customer was told her problem was fixed while nobody was working on it.
+  metrics:
+    - { label: Unstated preferences on file, value: "1 in 9" }
+    - { label: Past chats recalled, value: "3" }
+    - { label: Agreement to promote a fact, value: "3 in 90 days" }
+
+diagram:
+  title: Where an episode becomes a fact, and what the next chat reads
+  caption: >-
+    The store keeps each customer's episodes and facts across threads. Recall
+    puts open chats first, and a fact needs the customer's word or three recent
+    episodes.
+  direction: lr
+  nodes:
+    - { id: load, label: "`load_memory`", sub: "yesterday's episodes and facts", kind: tool, tone: orange, at: [0, 0] }
+    - { id: customer, label: Customer message, sub: one chat on its own thread, kind: actor, tone: blue, at: [0, 2] }
+    - { id: store, label: "`InMemoryStore`", sub: "(episodes, customer), (facts, customer)", kind: store, tone: green, at: [1, 0] }
+    - { id: saver, label: "`InMemorySaver`", sub: "remembers the thread, never the person", kind: store, tone: neutral, at: [1, 3] }
+    - { id: recall, label: Recall, sub: "open first, then newest, three", kind: agent, tone: purple, at: [2, 1] }
+    - { id: similar, label: Most similar past chat, sub: a resolved pizza from last year, kind: output, tone: pink, at: [2, 3] }
+    - { id: model, label: "Model, one call", sub: "Reply, Did, Outcome, Stated", kind: model, tone: teal, at: [3, 1] }
+    - { id: close, label: Close, sub: "the episode, the stated check, promotion", kind: guard, tone: purple, at: [4, 1] }
+    - { id: invented, label: One order as a fact, sub: as you prefer gluten-free, kind: output, tone: pink, at: [4, 3] }
+    - { id: save, label: "`save_memory`", sub: what this chat wrote back, kind: tool, tone: green, at: [5, 1] }
+  edges:
+    - { from: load, to: store, label: seed the store, step: 1 }
+    - { from: customer, to: recall, label: the new message, step: 2 }
+    - { from: store, to: recall, label: every episode, step: 3 }
+    - { from: recall, to: model, label: Past and Known as data, step: 4 }
+    - { from: model, to: close, label: the reply's lines, step: 5 }
+    - { from: close, to: store, label: this chat and facts earned, tone: success }
+    - { from: close, to: save, label: once, step: 6 }
+    - { from: saver, to: recall, label: this thread only, tone: muted }
+    - { from: recall, to: similar, label: ranked by likeness, tone: danger }
+    - { from: close, to: invented, label: one episode promoted, tone: danger }
+
+approach:
+  goal: Keep what happened apart from what is true, and move one into the other only on evidence
+  branches:
+    - label: Read every episode, then choose three
+      detail: The store's search stops at ten unless told otherwise, in the order things were put.
+      leaves: [open chats first whatever their age, then the newest, never by likeness to the message]
+    - label: Write the chat as what happened
+      leaves: [resolved only when the model says resolved, asked and did cut to 240 characters, the transcript stays in the chat log]
+    - label: A fact needs a stated value or three episodes
+      leaves: ["a stated value is in the customer's own message", three agreeing episodes from the last 90 days, a stated key is never overruled by a promotion]
+    - label: Read old memory by the same rules
+      leaves: [a chat with no outcome is open, an inferred fact is not known, memory that will not load is a new customer]
+
+coach:
+  opening: >-
+    Before you build the graph, take the brief's three faults and say for each
+    one whether it happened when the memory was read or when it was written.
+  signals:
+    - id: no-window
+      when: { code_lacks: 'fromisoformat|\.days\b|timedelta' }
+      say: >-
+        Nothing in your code asks how long ago an episode happened. Should an
+        order from June still count toward a fact in October?
+    - id: trusts-stated
+      when: { code_lacks: '\.lower\(\)\s+in\s' }
+      say: >-
+        Your code writes the `Stated:` lines as the model sends them. Which of
+        those values did the customer actually write in this message?
+    - id: default-limit
+      when: { code_matches: '\.search\(', code_lacks: 'limit\s*=' }
+      say: >-
+        `search` returns ten items unless you pass `limit`, in the order they
+        were put. How many past chats does a regular customer have?
+    - id: hidden-one-order
+      when: { test_failed: one_order_is_not_a_preference }
+      say: >-
+        That customer ordered gluten-free once, for a friend, and the model sent
+        a `Stated:` line for it. What did your close write, and on whose word?
+    - id: hidden-window
+      when: { test_failed: three_recent_orders_make_a_preference }
+      say: >-
+        Two keys came close to a fact in that run. How many agreeing episodes
+        did each one have from the last 90 days?
+    - id: hidden-own-words
+      when: { test_failed: the_customers_own_words_beat_a_promotion }
+      say: >-
+        That customer stated a diet in this message, and their past orders say
+        something else. Which facts did your close write?
+    - id: hidden-open-first
+      when: { test_failed: an_open_chat_comes_first_whatever_its_age }
+      say: >-
+        That customer has twelve past chats and one of them is still open. How
+        many did your recall read, and where did it put the open one?
+    - id: hidden-written-open
+      when: { test_failed: a_chat_left_with_the_rider_team_is_written_open }
+      say: >-
+        The model's Outcome line in that run did not say resolved. What did
+        your close write as the outcome, and how long is the `asked` it kept?
+    - id: adversarial-old-memory
+      when: { test_failed: adversarial_memory_the_old_version_wrote }
+      say: >-
+        The old version wrote that customer's memory: one chat has a `status`
+        and no `outcome`, and one fact was inferred. What reached the prompt,
+        and in what order?
+    - id: adversarial-no-memory
+      when: { test_failed: adversarial_memory_that_will_not_load }
+      say: >-
+        `load_memory` answered nothing in that run. Did the customer still get
+        a reply, and was the chat still written back?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the first node: put each loaded episode and fact into the
+        store under the customer's namespaces, then read them back in `recall`.
+    - id: many-failed-runs
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The first hint separates what happened from
+        what is true, which is where every fault in the brief started.
+  wrap_up: >-
+    An episode is what happened, with a date and an outcome, and a fact is what
+    the agent may rely on. Read every episode and put open ones first, write a
+    chat as open until it is resolved, and let a fact in only on the customer's
+    word or on three recent episodes.
+
+tests:
+  - name: remembers_a_regular_and_what_she_told_us
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"customer": "C-2210", "thread": "T-9301", "today": "2026-10-07", "message": "Please add extra raita to tonight''s biryani."}' }
+      llm_script:
+        - { match: { contains: "- size: large (stated)" },
+            reply: "Reply: Done. Extra raita is on your large biryani tonight.\nDid: Added extra raita to tonight's order.\nOutcome: resolved" }
+        - { match: "*", reply: "Reply: Done. Extra raita is on tonight's order.\nDid: Added extra raita to tonight's order.\nOutcome: resolved" }
+      tools:
+        load_memory:
+          returns:
+            status: 200
+            episodes:
+              - { id: E-2001, when: "2026-08-14", asked: "My parcel arrived without the dessert I paid for.",
+                  did: "Refunded ₹90 for the missing dessert.", outcome: resolved, noted: {} }
+              - { id: E-2040, when: "2026-09-30", asked: "Can I change the delivery address before pickup?",
+                  did: "Updated the address before pickup.", outcome: resolved, noted: {} }
+            facts:
+              - { key: size, value: large, source: stated, since: "2026-03-14" }
+        save_memory: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [reply, recalled, facts_written, episode]
+            properties:
+              recalled: { const: [E-2040, E-2001] }
+              facts_written: { type: array, maxItems: 0 }
+              episode:
+                type: object
+                required: [id, when, outcome]
+                properties:
+                  id: { const: T-9301 }
+                  when: { const: "2026-10-07" }
+                  outcome: { const: resolved }
+        - { type: returns_matches, value: "large biryani" }
+        - { type: calls_tool_with, name: save_memory, args: { customer: C-2210 } }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: a_new_customer_says_she_is_vegetarian
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"customer": "C-3184", "thread": "T-9312", "today": "2026-10-07", "message": "Hi, this is my first order here. I am vegetarian, so please do not suggest chicken dishes."}' }
+      llm_script:
+        - { match: "*", reply: "Reply: Welcome! I will only suggest vegetarian dishes.\nDid: Welcomed a new customer and noted her diet.\nOutcome: resolved\nStated: diet=vegetarian" }
+      tools:
+        load_memory: { returns: { status: 200, episodes: [], facts: [] } }
+        save_memory: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [reply, recalled, facts_written, episode]
+            properties:
+              recalled: { type: array, maxItems: 0 }
+              facts_written: { const: [{ key: diet, value: vegetarian, source: stated, since: "2026-10-07" }] }
+              episode:
+                type: object
+                required: [id, outcome]
+                properties:
+                  id: { const: T-9312 }
+                  outcome: { const: resolved }
+        - type: calls_tool_with
+          name: save_memory
+          args: { customer: C-3184, facts: [{ key: diet, value: vegetarian, source: stated, since: "2026-10-07" }] }
+        - { type: llm_calls_at_most, value: 1 }
+
+  - name: one_order_is_not_a_preference
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"customer": "C-4471", "thread": "T-9325", "today": "2026-10-07", "message": "Same as last time please, it was lovely."}' }
+      llm_script:
+        - { match: { contains: "E-3310" },
+            reply: "Reply: Of course. The same gluten-free pasta is on its way.\nDid: Repeated the last order.\nOutcome: resolved\nStated: diet=gluten-free" }
+        - { match: "*", reply: "Reply: Of course. The same order is on its way.\nDid: Repeated the last order.\nOutcome: resolved" }
+      tools:
+        load_memory:
+          returns:
+            status: 200
+            episodes:
+              - { id: E-3310, when: "2026-09-26", asked: "Please make sure the pasta is gluten-free, it is for a friend.",
+                  did: "Marked the order gluten-free for the kitchen.", outcome: resolved, noted: { diet: gluten-free } }
+            facts: []
+        save_memory: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [recalled, facts_written]
+            properties:
+              recalled: { const: [E-3310] }
+              facts_written: { type: array, maxItems: 0 }
+        - { type: calls_tool_with, name: save_memory, args: { customer: C-4471, facts: [] } }
+
+  - name: three_recent_orders_make_a_preference
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"customer": "C-5032", "thread": "T-9340", "today": "2026-10-07", "message": "What should I get for dinner tonight?"}' }
+      llm_script:
+        - { match: "*", reply: "Reply: How about a masala dosa from Udupi Corner? It arrives in 25 minutes.\nDid: Suggested a dinner option.\nOutcome: resolved" }
+      tools:
+        load_memory:
+          returns:
+            status: 200
+            episodes:
+              - { id: E-4101, when: "2026-06-01", asked: "The gluten-free pizza base was soggy.",
+                  did: "Refunded ₹120.", outcome: resolved, noted: { diet: gluten-free } }
+              - { id: E-4188, when: "2026-08-15", asked: "Where is my dosa order?",
+                  did: "Shared the rider's live location.", outcome: resolved, noted: { cuisine: south-indian } }
+              - { id: E-4203, when: "2026-08-20", asked: "Can the gluten-free wrap come without sauce?",
+                  did: "Added a note for the kitchen.", outcome: resolved, noted: { diet: gluten-free } }
+              - { id: E-4290, when: "2026-09-03", asked: "The idli came without its chutney.",
+                  did: "Refunded ₹30.", outcome: resolved, noted: { cuisine: south-indian } }
+              - { id: E-4312, when: "2026-09-28", asked: "Can I get extra sambar with my dosa?",
+                  did: "Added extra sambar.", outcome: resolved, noted: { cuisine: south-indian } }
+              - { id: E-4330, when: "2026-09-30", asked: "Is the gluten-free brownie safe for coeliacs?",
+                  did: "Shared the kitchen's allergen sheet.", outcome: resolved, noted: { diet: gluten-free } }
+            facts: []
+        save_memory: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [facts_written]
+            properties:
+              facts_written: { const: [{ key: cuisine, value: south-indian, source: promoted, since: "2026-10-07" }] }
+
+  - name: the_customers_own_words_beat_a_promotion
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"customer": "C-5517", "thread": "T-9352", "today": "2026-10-07", "message": "Quick update: I have gone vegan, so no paneer or ghee from now on."}' }
+      llm_script:
+        - { match: "*", reply: "Reply: Noted. I will only suggest vegan dishes from now on.\nDid: Updated the customer's diet.\nOutcome: resolved\nStated: diet=vegan" }
+      tools:
+        load_memory:
+          returns:
+            status: 200
+            episodes:
+              - { id: E-5120, when: "2026-08-02", asked: "The paneer tikka was cold.",
+                  did: "Refunded ₹180.", outcome: resolved, noted: { diet: vegetarian } }
+              - { id: E-5163, when: "2026-09-05", asked: "Can I swap the raita for a salad?",
+                  did: "Swapped the raita for a salad.", outcome: resolved, noted: { diet: vegetarian } }
+              - { id: E-5201, when: "2026-09-27", asked: "The palak paneer had no paneer in it.",
+                  did: "Refunded ₹220.", outcome: resolved, noted: { diet: vegetarian } }
+            facts: []
+        save_memory: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [facts_written]
+            properties:
+              facts_written: { const: [{ key: diet, value: vegan, source: stated, since: "2026-10-07" }] }
+
+  - name: an_open_chat_comes_first_whatever_its_age
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"customer": "C-6620", "thread": "T-9367", "today": "2026-10-07", "message": "Ordering a pizza tonight, hope it comes hot this time!"}' }
+      llm_script:
+        - { match: { contains: "OPEN E-1092" },
+            reply: "Reply: Enjoy the pizza. Your missing order from 30 August is still with our rider team, and I have chased them again today.\nDid: Chased the rider team about the missing order.\nOutcome: open" }
+        - { match: { contains: "RESOLVED E-0731" },
+            reply: "Reply: Glad we sorted out your cold pizza last time! Enjoy tonight's order.\nDid: Wished the customer a good meal.\nOutcome: resolved" }
+        - { match: "*", reply: "Reply: Enjoy your pizza tonight!\nDid: Wished the customer a good meal.\nOutcome: resolved" }
+      tools:
+        load_memory:
+          returns:
+            status: 200
+            episodes:
+              - { id: E-0731, when: "2025-08-03", asked: "My pizza arrived cold and the cheese had gone hard.",
+                  did: "Refunded ₹420 for the cold pizza.", outcome: resolved, noted: {} }
+              - { id: E-0802, when: "2025-10-11", asked: "Can you send the invoice for my office lunch?",
+                  did: "Emailed the GST invoice.", outcome: resolved, noted: {} }
+              - { id: E-0855, when: "2025-12-24", asked: "The coupon FEAST50 would not apply.",
+                  did: "Applied the discount by hand.", outcome: resolved, noted: {} }
+              - { id: E-0913, when: "2026-02-14", asked: "The roses I added never came with my order.",
+                  did: "Refunded ₹150 for the roses.", outcome: resolved, noted: {} }
+              - { id: E-0960, when: "2026-04-02", asked: "How do I change my phone number?",
+                  did: "Sent the steps to change it in the app.", outcome: resolved, noted: {} }
+              - { id: E-0998, when: "2026-05-19", asked: "The pizza was the wrong size.",
+                  did: "Refunded the difference, ₹110.", outcome: resolved, noted: {} }
+              - { id: E-1031, when: "2026-06-30", asked: "Can I tip the rider after delivery?",
+                  did: "Explained tipping after delivery.", outcome: resolved, noted: {} }
+              - { id: E-1064, when: "2026-08-08", asked: "My card was charged twice for one order.",
+                  did: "Reversed the second charge.", outcome: resolved, noted: {} }
+              - { id: E-1092, when: "2026-08-30", asked: "The rider marked my order delivered but it never came.",
+                  did: "Escalated to the rider team.", outcome: open, noted: {} }
+              - { id: E-1120, when: "2026-09-12", asked: "My cashback did not show up.",
+                  did: "Credited the cashback.", outcome: resolved, noted: {} }
+              - { id: E-1151, when: "2026-09-25", asked: "Please make the office my default address.",
+                  did: "Changed the default address.", outcome: resolved, noted: {} }
+              - { id: E-1173, when: "2026-10-02", asked: "Is there a cheaper delivery plan?",
+                  did: "Explained the monthly delivery pass.", outcome: resolved, noted: {} }
+            facts: []
+        save_memory: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: prompt_contains, value: "OPEN E-1092" }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [recalled]
+            properties:
+              recalled: { const: [E-1092, E-1173, E-1151] }
+        - { type: returns_matches, value: "rider team" }
+        - { type: returns_lacks, value: "(?i)glad we sorted" }
+
+  - name: a_chat_left_with_the_rider_team_is_written_open
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"customer": "C-7104", "thread": "T-9380", "today": "2026-10-07", "message": "This is the third evening in a row. The app says order 55102 was delivered at 8:40, the rider''s phone is switched off, and nobody at the gate saw anyone. I paid ₹612 for food that never came, my kids went to bed hungry, and the last chat ended with a promise. Escalate this to someone who can actually act, and tell me who that is."}' }
+      llm_script:
+        - { match: "*", reply: "Reply: I am sorry. I have escalated order 55102 to our rider operations team, and a supervisor will call you within 24 hours.\nDid: Escalated order 55102 to rider operations for a call back within 24 hours.\nOutcome: pending with rider operations" }
+      tools:
+        load_memory:
+          returns:
+            status: 200
+            episodes:
+              - { id: E-6610, when: "2026-09-14", asked: "My order came 40 minutes late.",
+                  did: "Added a ₹50 voucher.", outcome: resolved, noted: {} }
+            facts: []
+        save_memory: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [episode]
+            properties:
+              episode:
+                type: object
+                required: [id, asked, did, outcome]
+                properties:
+                  id: { const: T-9380 }
+                  outcome: { const: open }
+                  asked: { type: string, maxLength: 240, pattern: "^This is the third evening" }
+                  did: { type: string, maxLength: 240, pattern: "rider operations" }
+        - { type: calls_tool_with, name: save_memory, args: { customer: C-7104 } }
+
+  - name: adversarial_memory_the_old_version_wrote
+    visibility: adversarial
+    fixture: schema_drift
+    annotation_md: |
+      The old version of the agent wrote this customer's memory. Its chat
+      about a refund for a spilled curry carries `status: escalated` and no
+      `outcome` at all, and one of its facts, a gluten-free diet, has the
+      source `inferred`: it is one of the guesses the review found in one
+      customer in nine.
+
+      A recall that looks for `outcome == "open"` files the escalation with
+      the resolved chats, and at seven weeks old it is the first to drop out
+      of the three. A prompt built from every fact tells the model the customer
+      prefers gluten-free, and the model opens with it. Read by the contract's
+      rules, the chat with no outcome is open and comes first, and the inferred
+      fact is not known, so the customer hears about her refund and nothing
+      about a diet she never stated.
+    spec:
+      kind: agent_run
+      input: { question: '{"customer": "C-8150", "thread": "T-9394", "today": "2026-10-07", "message": "Hello again, any news for me?"}' }
+      llm_script:
+        - { match: { contains: "gluten-free (inferred)" },
+            reply: "Reply: Hello again! As you prefer gluten-free, here are tonight's gluten-free picks.\nDid: Suggested gluten-free dishes.\nOutcome: resolved" }
+        - { match: { contains: "OPEN E-0915" },
+            reply: "Reply: Your refund for the spilled curry is still with our payments team. I have asked them for a date today.\nDid: Chased the payments team about the refund.\nOutcome: open" }
+        - { match: "*", reply: "Reply: Hello again! There is nothing new on your account.\nDid: Answered a greeting.\nOutcome: resolved" }
+      tools:
+        load_memory:
+          returns:
+            status: 200
+            episodes:
+              - { id: E-0915, when: "2026-08-21", asked: "My refund for the spilled curry never arrived.",
+                  did: "Raised it with the payments team.", status: escalated, noted: {} }
+              - { id: E-0978, when: "2026-09-09", asked: "Can you deliver to my gym?",
+                  did: "Added the gym as an address.", outcome: resolved, noted: {} }
+              - { id: E-1004, when: "2026-09-22", asked: "My coupon expired before I could use it.",
+                  did: "Extended the coupon by a week.", outcome: resolved, noted: {} }
+              - { id: E-1039, when: "2026-10-01", asked: "Is the restaurant open on Sunday?",
+                  did: "Confirmed its Sunday hours.", outcome: resolved, noted: {} }
+            facts:
+              - { key: diet, value: gluten-free, source: inferred, since: "2026-07-30" }
+              - { key: size, value: regular, source: stated, since: "2026-02-11" }
+        save_memory: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: prompt_lacks, value: "(?i)gluten" }
+        - { type: prompt_contains, value: "OPEN E-0915" }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [recalled]
+            properties:
+              recalled: { const: [E-0915, E-1039, E-1004] }
+        - { type: returns_matches, value: "payments team" }
+
+  - name: adversarial_memory_that_will_not_load
+    visibility: adversarial
+    fixture: empty_tool_result
+    annotation_md: |
+      The memory store answered `null`: no episodes, no facts and no error
+      body to read.
+
+      Code that reads `memory["episodes"]` raises, and the customer who asked
+      where her order is gets nothing at all. Memory that will not load is a
+      reason to answer as you would a new customer, with nothing recalled and
+      nothing promoted, and to write this chat back as usual so the next chat
+      has it.
+    spec:
+      kind: agent_run
+      input: { question: '{"customer": "C-9021", "thread": "T-9401", "today": "2026-10-07", "message": "Where is my order? It has been an hour."}' }
+      llm_script:
+        - { match: "*", reply: "Reply: Your order is with the rider and arrives in 12 minutes.\nDid: Shared the order's arrival time.\nOutcome: resolved" }
+      tools:
+        load_memory: { fixture: empty_tool_result }
+        save_memory: { returns: { status: 200 } }
+      budget: { max_llm_calls: 2, max_tool_calls: 6, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: terminates }
+        - type: valid_json_return
+          schema:
+            type: object
+            required: [recalled, facts_written]
+            properties:
+              recalled: { type: array, maxItems: 0 }
+              facts_written: { type: array, maxItems: 0 }
+        - { type: calls_tool_with, name: save_memory, args: { customer: C-9021 } }
+        - { type: returns_matches, value: "12 minutes" }
+
+reference_md: |
+  The three faults are one confusion. An episode is something that happened:
+  a date, what was asked, what was done, and whether it was resolved. A fact
+  is something the agent relies on in every later chat. The old memory let an
+  episode stand in for a fact twice, when a gluten-free order became a diet
+  and when a closed chat became a resolved one, and it let an old episode
+  stand in for the customer's present when a refund from last year was
+  recalled ahead of an escalation that was still open.
+
+  Recall is where that shows first. A customer's past chats matter to the new
+  message in one way above all: what is still unfinished. So open chats come
+  first whatever their age, then the newest, and three is the limit because
+  three is what one reply can use. Ranking by likeness to the message finds
+  old chats that share its words, which is how a pizza refund from fourteen
+  months earlier beat last month's escalation, and it gives whoever wrote the
+  most matching words a place in every later prompt. The order also needs
+  every episode in front of it. In langgraph 1.2.12 `search` returns ten items
+  unless it is given a `limit`, in the order they were put, so for a regular
+  customer it leaves out exactly the newest chats.
+
+  The close writes this chat the way it happened. An outcome is resolved only
+  when the model says so. An escalation, a "pending" or a missing Outcome line
+  is open, because the next chat reads the episode as it was written, and an
+  episode written resolved is one the agent will later call fixed. `asked` and `did` are cut
+  to 240 characters, so the episode stays a record of the chat and three of
+  them still fit in one prompt.
+
+  Facts have two ways in. The customer's own words are one: the model's
+  `Stated:` line is a claim about the message, and the message is right there
+  to check it against. Without that check, a model that reads a past
+  gluten-free order writes the diet as stated, and the promotion rule is
+  bypassed by the model it exists to hold back. The other way is agreement:
+  three episodes from the last 90 days with the same key and value. One order
+  is an anecdote and may be for a friend, three recent ones are a habit, and
+  an order from June says little about October. The customer's word outranks
+  the habit, so a key the customer has stated is never promoted over, and a
+  fact already known is not written again.
+
+  The store is what makes this a memory of a person. The checkpointer keeps
+  one thread's state, and the next chat opens a new thread; the store is
+  keyed by the customer and outlives both. In langgraph 1.2.12 `put` replaces
+  whatever was under a key and keeps no history, which is why a fact has to
+  earn its place before it is written. Memory the old version wrote is read
+  by the same rules: a chat with no `outcome` is open, and a fact whose source
+  is neither `stated` nor `promoted` was inferred, which is what one customer
+  in nine was carrying.
+
+complexity: C2
+
+interview_evidence:
+  round: oral
+  asked_as: |
+    What is the difference between episodic and semantic memory in an agent, and when should something the agent saw happen become something it treats as true?
+  source: |
+    Adapted from the FDE interview bank, docs/source-pack/09-interview-bank.json I016 and I018,
+    whose follow-up is an old episode that is semantically relevant but factually obsolete.
+    That bank labels every entry "Original interview-style practice; actual employer
+    frequency unverified", and this inherits the caveat. The promotion rule is author judgement.
+
+tools:
+  - name: load_memory
+    args: customer
+    returns: The customer's `episodes`, oldest first, and `facts`, as yesterday's store held them.
+  - name: save_memory
+    args: customer, episode, facts
+    returns: '`{"status": 200}` once this chat and its facts are written back.'
+example:
+  case: remembers_a_regular_and_what_she_told_us
+  expect: >-
+    Both past chats are resolved, so recall lists them newest first, `E-2040` then `E-2001`. The
+    model sees her stated size, and the close writes this chat as resolved with no new fact.
+traps:
+  - Writing a fact from one episode, or from a `Stated:` line whose value the customer never wrote in this message.
+  - Choosing the past chats most like the new message, so an old resolved one crowds out a chat that is still open.
+  - Writing a chat as resolved because it closed, when the model said it was still with another team.
+  - Reading the store with its default `limit`, which stops at the first ten episodes put.
