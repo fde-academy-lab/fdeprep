@@ -6,7 +6,7 @@ This folder is the project's record for anyone who does not read pull requests. 
 
 ## Where it stands on 30 September 2026
 
-The platform is built and has not yet been deployed. The beta runs on AWS for invited students, and [README route C](../../README.md#3c-route-c-the-beta-on-aws) is the runbook. Four integrations (the Bedrock judge, Transcribe, Polly and S3) have never made a live call, and proving each one once is the first job of the beta launch.
+The platform is built and has not yet been deployed. The beta runs on AWS for invited students, and [README route C](../../README.md#route-c-the-beta-on-aws) points at [DEPLOY.md](../../DEPLOY.md), the runbook. Four integrations (the Bedrock judge, Transcribe, Polly and S3) have never made a live call, and proving each one once is the first job of the beta launch.
 
 <!-- generated:numbers -->
 | Measure | Value | Source |
@@ -48,7 +48,7 @@ gantt
   S14 Voice interviewer v2, step 2 :s14, 2026-10-07, 6d
   S15 First cohort :s15, 2026-10-12, 50d
   S16 Second version :s16, 2026-12-01, 121d
-  S17 Redesign, one position and one next action :s17, 2026-10-08, 12d
+  S17 Redesign, one position and one next action :active, s17, 2026-10-08, 12d
 ```
 <!-- /generated:timeline -->
 
