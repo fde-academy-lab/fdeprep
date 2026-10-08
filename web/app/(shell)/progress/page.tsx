@@ -138,13 +138,19 @@ export default async function ProgressPage() {
                       <div className="mt-0.5 text-meta"><DifficultyMeter difficulty={row.difficulty} /></div>
                     </td>
                     <td className="px-4 py-2.5">
-                      {row.verdict === null ? (
-                        <span className="text-text-faint">Open</span>
-                      ) : (
+                      {row.verdict !== null ? (
                         <span className="inline-flex items-center gap-1.5 text-text-dim">
                           <StatusIcon kind={row.verdict === "pass" ? "pass" : "fail"} />
                           {row.verdict === "pass" ? "Passed" : "Not yet"}
                         </span>
+                      ) : row.lastAt ? (
+                        // Submitted, and the verdict has not come back yet.
+                        <span className="inline-flex items-center gap-1.5 text-text-dim">
+                          <StatusIcon kind="queued" label="Waiting for a verdict" />
+                          Waiting for a verdict
+                        </span>
+                      ) : (
+                        <span className="text-text-faint">Open</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-text-dim">{row.lastAt ? relativeDay(row.lastAt) : "Not run"}</td>

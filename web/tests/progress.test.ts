@@ -6,6 +6,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "../lib/db/pool.ts";
 import { attemptHistory, historyCsv, heatmap } from "../lib/progress/index.ts";
 import { COMPETENCIES } from "../lib/problems/vocabulary.ts";
+import { createSubmission } from "../lib/submissions/create.ts";
 import { DIFFICULTIES } from "../lib/policy/tiers.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 import {
@@ -140,6 +141,26 @@ describe("attempt history and its CSV export", () => {
     expect(row.submits).toBe(2);
     expect(row.hintsUsed).toBe(3);
     expect(row.verdict).toBe("pass");
+  });
+
+  it("reads a submit still waiting for its verdict as waiting, from when it was queued", async () => {
+    // A lost message leaves exactly this: queued, leased, never answered. The
+    // row used to show the earlier verdict, or Open with nothing at all.
+    await seedHandComputedAccount(learner);
+    const { rows: [problem] } = await db().query<{ id: string }>(
+      "select id from problem where slug = 'echo-the-question'");
+    const waiting = await createSubmission({
+      enrolmentId: learner.enrolmentId, cohortId: learner.cohortId, problemId: Number(problem!.id),
+      kind: "submit", body: "def run_agent(question, llm, tools):\n    return question\n",
+    });
+    const { rows: [queued] } = await db().query<{ queued_at: Date }>(
+      "select queued_at from submission where id = $1", [waiting.id]);
+
+    const row = (await attemptHistory(learner.enrolmentId))
+      .find((r) => r.slug === "echo-the-question")!;
+    expect(row.verdict).toBeNull();
+    expect(row.lastAt).toBe(queued!.queued_at.toISOString());
+    expect(row.submits).toBe(3);
   });
 
   it("exports a CSV with a header and one line per attempt", async () => {
