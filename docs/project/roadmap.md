@@ -30,7 +30,7 @@ The order you will see built is the one the product owner set on 30 September: t
 
 | Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
 |---|---|---|---|---|---|---|
-| S15 First cohort | The platform exists to produce one signal a placement team trusts, and today that signal is implied instead of computed. | 73 | 42 (28 to 58) | 136 | 8 Oct to 30 Nov 2026 | Medium |
+| S15 First cohort | The platform exists to produce one signal a placement team trusts. | 73 | 42 (28 to 58) | 136 | 8 Oct to 30 Nov 2026 | Medium |
 | S16 Second version | Each item answers a need the first cohort is expected to expose, and none of them is worth building before that cohort confirms it. | 50 | 58 (35 to 82) | 62 | 1 Dec to 31 Mar 2027 | Medium |
 <!-- /generated:roadmap -->
 
@@ -53,12 +53,12 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | Story | Title | Type | Points | Status | Done when |
 |---|---|---|---|---|---|
 | S10.1 | Keep the backlog as a file that CI checks | Task | 5 | Done | The pull requests of the build,<br>CI fails on a size off the scale, a bug that does not say how it was found, planned work without acceptance criteria, or a stale generated page. |
-| S10.2 | Sync the backlog to GitHub issues and the Project board | Task | 8 | In progress | A sync creates one issue per stage and story, nests each story under its stage, and closes delivered work as completed.<br>A second sync with nothing changed writes nothing.<br>Every card shows Stage, Level, Area, Priority, Points, Start, Finish, Pull request, Found by, Risk and Sprint. |
+| S10.2 | Sync the backlog to GitHub issues and the Project board | Task | 8 | In progress | A sync creates one issue per stage and story, nests each story under its stage, and closes delivered work as completed.<br>A second sync with nothing changed writes nothing.<br>Every card shows Stage, Level, Area, Priority, Points, Start, Finish, Pull request, Found by, Risk and Sprint.<br>Each of the three lines above is proven against a fake API in tests/test_project_sync.py; the first write to the live Project is S10.4. |
 | S10.3 | Write the project pages for management | Task | 5 | Done | docs/project holds the summary, the delivery history, the roadmap, the estimation method, quality, risks, decisions and setup.<br>Every figure is marked as a fact from git or GitHub, or as an estimate. |
 | S10.4 | Add the token, run the first sync and create the views | Task | 2 | Planned | The repository secret PROJECT_TOKEN exists and the first sync run is green.<br>The five views that docs/project/board-setup.md describes exist on the Project. |
 | S10.5 | Retire the skill script that bypassed the reviewed allowlists | Task | 1 | Done | scripts/sync-skills.sh is gone, and SETUP.md points at bootstrap.sh --with-skills, whose allowlists and pins were reviewed. |
 | S11.1 | Deploy route C: the stack, the web host, DNS, GitHub sign-in and HTTPS | Task | 8 | Planned | DEPLOY.md steps 0 to 6 are done and the site answers on its public address over HTTPS.<br>The first admin signs in through an invite minted on the host. |
-| S11.2 | Prove the Bedrock judge with one live submission | Task | 2 | Planned | One design submission comes back with a band from the live judge, and the judge's cost appears in the spend alarm's metric. |
+| S11.2 | Prove the Bedrock judge with one live submission | Task | 2 | Planned | One design submission comes back with a band from the live judge, and the judge's invocations appear on the stack's judge-spend alarm. The cost figure belongs to the Budget in S11.6. |
 | S11.3 | Prove Transcribe, Polly and S3 with one real voice session | Task | 3 | Planned | A spoken answer is transcribed live, a pressure-mode follow-up plays aloud, and the recording can be fetched from the bucket afterwards. |
 | S11.4 | Run the database restore drill once | Task | 3 | Planned | A backup restores into a scratch database, and the time it took is written in README section 4.<br>The written procedure exists in DEPLOY.md section 8.2 since 8 October 2026, and the timed drill waits for a deployment to run it on. |
 | S11.5 | Brief a second operator and run one practice drill | Task | 2 | Planned | A second person pauses grading, requeues a submission and reads an alarm without help. |
@@ -111,7 +111,7 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S15.5 | Build analytics: cohort views, the stuck list, calibration and panel health | Feature | 13 | Done | Faculty can see which topic a cohort failed without writing SQL. |
 | S15.6 | Issue the report card as a dated, hashed snapshot | Feature | 8 | Done | A report card never changes after it is issued, and the SHA-256 of its canonical JSON snapshot, printed on its Markdown export with the snapshot itself, proves it. |
 | S15.7 | Move the competency write into eval/, and make progress a pure reader | Task | 5 | Done | Only eval/ writes evaluation, evaluation_review and competency_score, writeResult and scoreVoiceOnce are the two named writers outside it and keep only their grade columns, and a scan of web/lib, web/app and web/scripts fails if any other file writes a grade. |
-| S15.8 | Compute the readiness signal with its four counts and three bands | Feature | 8 | Planned | Each learner has a readiness band computed from the four counts in docs/12, shown to the learner and to placement. |
+| S15.8 | Compute the readiness signal with its four counts and three bands | Feature | 8 | Done | Each learner has a readiness band computed in lib/progress/readiness.ts from clean cells over the cells the persona's track requires, with the four counts in docs/12, shown on Home and Progress to the learner and on the admin Overview and learner page to faculty, with tests that hold it equal across the three screens. |
 | S15.9 | Write more content where the cohort actually fails | Task | 13 | Planned | New problems target the three topics with the lowest pass rate in the first cohort. |
 | S16.1 | A problem family where the agent drives a real browser | Feature | 21 | Planned | A learner's agent fills a form or extracts data in a real browser, graded deterministically. |
 | S16.2 | An export built for placement instead of a CSV | Feature | 8 | Planned | A placement team reads a learner's readiness without re-interpreting a spreadsheet. |

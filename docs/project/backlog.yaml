@@ -1025,6 +1025,7 @@ stages:
           - A sync creates one issue per stage and story, nests each story under its stage, and closes delivered work as completed.
           - A second sync with nothing changed writes nothing.
           - Every card shows Stage, Level, Area, Priority, Points, Start, Finish, Pull request, Found by, Risk and Sprint.
+          - Each of the three lines above is proven against a fake API in tests/test_project_sync.py; the first write to the live Project is S10.4.
       - id: S10.3
         title: Write the project pages for management
         type: Task
@@ -1095,7 +1096,7 @@ stages:
         risk: High
         finish: 2026-10-04
         acceptance:
-          - One design submission comes back with a band from the live judge, and the judge's cost appears in the spend alarm's metric.
+          - One design submission comes back with a band from the live judge, and the judge's invocations appear on the stack's judge-spend alarm. The cost figure belongs to the Budget in S11.6.
       - id: S11.3
         title: Prove Transcribe, Polly and S3 with one real voice session
         type: Task
@@ -1715,8 +1716,9 @@ stages:
       readiness signal, and content aimed at what the cohort actually
       fails.
     why: >-
-      The platform exists to produce one signal a placement team trusts, and
-      today that signal is implied instead of computed.
+      The platform exists to produce one signal a placement team trusts.
+      Readiness is computed and shown; before this stage nothing filed it,
+      aggregated it across a cohort or proved who wrote it.
     estimate: {optimistic: 25, likely: 40, pessimistic: 70}
     rice: {reach: 180, impact: 2, confidence: 0.8}
     stories:
@@ -1736,6 +1738,7 @@ stages:
         points: 5
         area: Content
         finish: 2026-10-08
+        pr: 47
         acceptance:
           - Every C3 and C4 design problem declares its constraints, the validator refuses one that does not, and names_no_constraint fires on an answer that names none and stays silent on every strong exemplar.
       - id: S15.3
@@ -1745,6 +1748,7 @@ stages:
         points: 8
         area: Evaluation panel
         finish: 2026-10-08
+        pr: 47
         acceptance:
           - A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it.
       - id: S15.4
@@ -1763,6 +1767,7 @@ stages:
         points: 13
         area: Evaluation panel
         finish: 2026-10-08
+        pr: 47
         acceptance:
           - Faculty can see which topic a cohort failed without writing SQL.
       - id: S15.6
@@ -1772,6 +1777,7 @@ stages:
         points: 8
         area: Evaluation panel
         finish: 2026-10-08
+        pr: 47
         acceptance:
           - A report card never changes after it is issued, and the SHA-256 of its canonical JSON snapshot, printed on its Markdown export with the snapshot itself, proves it.
       - id: S15.7
@@ -1781,17 +1787,24 @@ stages:
         points: 5
         area: Evaluation panel
         finish: 2026-10-08
+        pr: 47
         acceptance:
           - Only eval/ writes evaluation, evaluation_review and competency_score, writeResult and scoreVoiceOnce are the two named writers outside it and keep only their grade columns, and a scan of web/lib, web/app and web/scripts fails if any other file writes a grade.
       - id: S15.8
         title: Compute the readiness signal with its four counts and three bands
         type: Feature
-        status: todo
+        status: done
         points: 8
         area: Evaluation panel
-        finish: 2026-11-30
+        finish: 2026-10-08
+        pr: 47
         acceptance:
-          - Each learner has a readiness band computed from the four counts in docs/12, shown to the learner and to placement.
+          - Each learner has a readiness band computed in lib/progress/readiness.ts from clean cells over the cells the persona's track requires, with the four counts in docs/12, shown on Home and Progress to the learner and on the admin Overview and learner page to faculty, with tests that hold it equal across the three screens.
+        outcome: >-
+          Found delivered when the backlog was reconciled against the code on
+          8 October 2026: readiness.ts and its tests landed with the redesign
+          in #45, and only this file still called it planned. Closed here so
+          the record matches the code.
       - id: S15.9
         title: Write more content where the cohort actually fails
         type: Task
