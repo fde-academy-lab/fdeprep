@@ -1821,9 +1821,12 @@ stages:
       - id: S17.4
         title: "Admin: the cohort Overview, stuck voice answers on Ops, titled tabs and the Roster dialogs"
         type: Feature
-        status: todo
+        status: done
         points: 5
         area: Web application
-        finish: 2026-10-19
+        finish: 2026-10-08
         acceptance:
-          - /admin opens an Overview of the cohort with readiness and last activity per learner, read from the same queries as Roster and Progress, Ops shows the stuck voice answers, and docs/01 S10 says faculty see the Overview.
+          - /admin opens an Overview of the cohort with four numbers and one row per learner, readiness from readinessForMany with its four counts, last activity from the fragment Roster reads, voice included, and the stuck count of three or more failed submits with no pass; a test over the seed checks every row's readiness against readinessFor and every learner's last activity against Roster and Ops, and docs/01 S10 says faculty see the Overview.
+          - A row opens /admin/learners/<id>, read-only, with the readiness line, the heatmap Progress draws from the same component, the attempts with a trace link each and the past answers with scores; faculty and admins open it, and a learner gets the admin layout's 404.
+          - Ops lists the seed's four stuck submissions and four stuck voice answers with why each waits, then the last seven days and the switches, and every admin tab's title equals its h1.
+          - No prompt(), confirm() or alert() is left under web/app; each is a dialog on the native dialog element with the route's refusal as its error line, and every admin control comes from components/ui/field.tsx. In a browser, Tab stays in each dialog, Escape closes it and focus returns to the button that opened it.
