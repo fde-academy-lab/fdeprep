@@ -52,7 +52,7 @@ Each stage has an optimistic, a likely and a pessimistic figure in person-days. 
 | S16 Second version | 50 | 30 | 55 | 100 | 58.3 | 11.7 |
 | S17 Redesign, one position and one next action | 26 | 6 | 8 | 13 | 8.5 | 1.2 |
 | All built stages | 360 |  |  |  | 203.3 | 14.4 |
-| All planned stages | 392 |  |  |  | 169.3 | 15.2 |
+| All planned stages | 405 |  |  |  | 169.3 | 15.2 |
 <!-- /generated:estimates -->
 
 ## How fast the build moved
