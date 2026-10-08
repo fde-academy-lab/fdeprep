@@ -10,9 +10,16 @@
 import type { Pool, PoolClient } from "pg";
 import { db } from "../db/pool.ts";
 import { readDegradedMode, type DegradedMode } from "../policy/settings.ts";
+import { MAX_JUDGE_ATTEMPTS } from "../voice/score.ts";
 
 /** docs/05 section 7, step 2 of the stuck-submission runbook. */
 export const STUCK_AFTER_MINUTES = 5;
+/**
+ * A finished voice answer with no score after this long means the scorer is
+ * not running. `npm run scorevoice` scores answers in the order they finished,
+ * a few seconds each, so an hour is far past a backlog.
+ */
+export const STUCK_VOICE_AFTER_MINUTES = 60;
 /** docs/05 section 6: the queue alarm fires above this, so the screen marks it. */
 export const QUEUE_DEPTH_ALARM = 50;
 
@@ -22,6 +29,20 @@ export interface StuckRow {
   slug: string;
   queuedAt: string;
   waitingMinutes: number;
+}
+
+export interface StuckVoiceRow {
+  id: number;
+  login: string;
+  questionTitle: string;
+  finishedAt: string;
+  waitingMinutes: number;
+  /**
+   * scorer_not_running: no attempt yet, and over an hour since the answer
+   * finished. judge_gave_up: the judge failed MAX_JUDGE_ATTEMPTS times and
+   * the answer's allowance was given back.
+   */
+  why: "scorer_not_running" | "judge_gave_up";
 }
 
 export interface OpsSnapshot {
@@ -36,6 +57,7 @@ export interface OpsSnapshot {
   /** Live-run model calls today, which is what the token-spend alarm tracks. */
   liveCallsToday: number;
   stuck: StuckRow[];
+  stuckVoice: StuckVoiceRow[];
   degraded: DegradedMode;
 }
 
@@ -72,6 +94,21 @@ export async function opsSnapshot(client: Pool | PoolClient = db()): Promise<Ops
         and s.queued_at < now() - make_interval(mins => $1)
       order by s.queued_at`, [STUCK_AFTER_MINUTES]);
 
+  const { rows: stuckVoice } = await client.query<{
+    id: string; login: string; title: string; finished_at: Date; waiting: string; gave_up: boolean;
+  }>(
+    `select v.id, u.github_login as login, q.title, v.finished_at,
+            extract(epoch from (now() - v.finished_at)) / 60 as waiting,
+            v.judge_attempts >= $2 as gave_up
+       from voice_session v
+       join enrolment e on e.id = v.enrolment_id
+       join app_user u on u.id = e.user_id
+       join voice_question q on q.id = v.voice_question_id
+      where v.finished_at is not null and v.scored_at is null
+        and (v.judge_attempts >= $2
+             or v.finished_at < now() - make_interval(mins => $1))
+      order by v.finished_at`, [STUCK_VOICE_AFTER_MINUTES, MAX_JUDGE_ATTEMPTS]);
+
   const queueDepth = depthOf("submissions");
 
   return {
@@ -89,6 +126,14 @@ export async function opsSnapshot(client: Pool | PoolClient = db()): Promise<Ops
       slug: row.slug,
       queuedAt: row.queued_at.toISOString(),
       waitingMinutes: Math.round(Number(row.waiting)),
+    })),
+    stuckVoice: stuckVoice.map((row) => ({
+      id: Number(row.id),
+      login: row.login,
+      questionTitle: row.title,
+      finishedAt: row.finished_at.toISOString(),
+      waitingMinutes: Math.round(Number(row.waiting)),
+      why: row.gave_up ? "judge_gave_up" : "scorer_not_running",
     })),
     degraded: await readDegradedMode(client),
   };

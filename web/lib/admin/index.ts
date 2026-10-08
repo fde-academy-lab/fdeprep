@@ -11,6 +11,7 @@ import type { Pool, PoolClient } from "pg";
 import { db, inTransaction } from "../db/pool.ts";
 import { send } from "../queue/shim.ts";
 import { setDegradedMode, type DegradedMode } from "../policy/settings.ts";
+import { lastActivitySql } from "./activity.ts";
 import type { Persona } from "../policy/roadmap.ts";
 import type { Scope } from "../policy/caps.ts";
 
@@ -67,9 +68,7 @@ export async function roster(
     `select e.id as enrolment_id, u.id as user_id, u.github_login as login,
             u.display_name, e.persona::text as persona, e.role::text as role,
             e.state::text as state,
-            (select max(s.queued_at) from submission s
-               join attempt a on a.id = s.attempt_id
-              where a.enrolment_id = e.id) as last_activity
+            ${lastActivitySql} as last_activity
        from enrolment e join app_user u on u.id = e.user_id
       where e.cohort_id = $1
       order by u.github_login`, [cohortId]);
