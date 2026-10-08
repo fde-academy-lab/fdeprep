@@ -45,6 +45,8 @@ export interface CatalogueRow {
   /** Whether this tier shows a solve rate at all. */
   solveRateShown: boolean;
   attemptCount: number;
+  /** Where the learner's path puts this problem, or null when no path carries it. */
+  ordinal: number | null;
 }
 
 export interface CataloguePage {
@@ -68,6 +70,16 @@ const SORTS: Record<Sort, string> = {
   recent: "p.created_at desc, p.id desc",
   least_attempted: "coalesce(stats.attempts, 0) asc, p.title",
 };
+
+/**
+ * The learner's own persona roadmap, joined as `road`. Every path order reads
+ * `road.ordinal`, the order lib/policy/roadmap.ts wrote, so Home, Problems,
+ * the palette and a chapter page cannot disagree about what comes first.
+ */
+const ROAD = `
+  left join track_item road on road.problem_id = p.id and road.track_id = (
+    select t.id from track t join enrolment e on t.slug = 'roadmap-' || e.persona::text
+     where e.id = $1)`;
 
 export async function listProblems(
   options: CatalogueFilters & { enrolmentId: number },
@@ -119,7 +131,7 @@ export async function listProblems(
     select p.id, p.slug, p.title, p.day, p.skill, cur.kit->'scenario'->>'headline' as headline,
            cur.kit->'concept'->>'topic' as topic, cur.kit->'concept'->>'question' as question,
            p.difficulty::text as difficulty, p.track,
-           p.artefact_type::text as artefact_type, p.est_minutes,
+           p.artefact_type::text as artefact_type, p.est_minutes, road.ordinal,
            coalesce(stats.attempts, 0) as attempts,
            coalesce(stats.solved, 0) as solved,
            mine.solved_at is not null as is_solved,
@@ -129,9 +141,7 @@ export async function listProblems(
       left join stats on stats.problem_id = p.id
       left join problem_version cur on cur.problem_id = p.id and cur.version = p.current_version
       left join attempt mine on mine.problem_id = p.id and mine.enrolment_id = $1
-      left join track_item road on road.problem_id = p.id and road.track_id = (
-        select t.id from track t join enrolment e on t.slug = 'roadmap-' || e.persona::text
-         where e.id = $1)
+      ${ROAD}
      ${where.length ? `where ${where.join(" and ")}` : ""}
      order by ${sort}
      limit ${perPage} offset ${(page - 1) * perPage}`;
@@ -181,7 +191,22 @@ function toRow(row: Record<string, any>): CatalogueRow {
       : null,
     solveRateShown: tierFor(difficulty).visibility.acceptanceRate,
     attemptCount: attempts,
+    ordinal: row["ordinal"] === null || row["ordinal"] === undefined ? null : Number(row["ordinal"]),
   };
+}
+
+/**
+ * The chapter page's Next card: the first unsolved row on the learner's path,
+ * so a navigator is not sent to an Easy problem their path leaves for last.
+ * Rows no path carries come after every row one does, in the order they were
+ * handed over, which is how a chapter with nothing on the path keeps the
+ * page's own order.
+ */
+export function nextOnPath<T extends Pick<CatalogueRow, "ordinal" | "state">>(
+  rows: readonly T[],
+): T | undefined {
+  const place = (row: T) => row.ordinal ?? Number.MAX_SAFE_INTEGER;
+  return [...rows].sort((a, b) => place(a) - place(b)).find((row) => row.state !== "solved");
 }
 
 export async function facets(): Promise<{ tracks: string[] }> {
@@ -204,7 +229,9 @@ export interface PaletteProblem {
  * Every problem in the pool, for the palette to search in the browser.
  *
  * Titles and tracks only, the same fields the catalogue already shows, so the
- * index carries nothing a learner could not read on S3.
+ * index carries nothing a learner could not read on S3. It comes in the order
+ * Problems calls Path order, so the palette's first unsolved rows are the
+ * ones Home and Problems open on.
  */
 export async function paletteIndex(enrolmentId: number): Promise<PaletteProblem[]> {
   const { rows } = await db().query<{
@@ -213,12 +240,12 @@ export async function paletteIndex(enrolmentId: number): Promise<PaletteProblem[
   }>(
     `select p.slug, p.title, p.track, p.difficulty::text as difficulty,
             p.artefact_type::text as artefact_type,
-            bool_or(a.solved_at is not null) is true as solved,
-            count(a.id) > 0 as attempted
+            mine.solved_at is not null as solved,
+            mine.id is not null as attempted
        from problem p
-       left join attempt a on a.problem_id = p.id and a.enrolment_id = $1
-      group by p.id
-      order by p.track, p.title`, [enrolmentId]);
+       left join attempt mine on mine.problem_id = p.id and mine.enrolment_id = $1
+       ${ROAD}
+      order by ${SORTS.roadmap}`, [enrolmentId]);
   return rows.map((row) => ({
     slug: row.slug,
     title: row.title,

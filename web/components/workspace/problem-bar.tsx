@@ -37,7 +37,7 @@ export function ProblemBar({ title, track, difficulty, palette, pages, actions, 
           Problems
         </Link>
         <ChevronRight aria-hidden className="hidden size-3.5 shrink-0 text-text-faint sm:block" />
-        <Link href={{ pathname: "/problems" as Route, query: { track } }}
+        <Link href={`/chapters/${track}` as Route}
               className="hidden items-center gap-1.5 whitespace-nowrap rounded-control px-1.5 py-1
                          hover:bg-surface-2 hover:text-text md:inline-flex">
           <TrackIcon track={track} className="size-3.5" />

@@ -1,9 +1,11 @@
 /** S10 Submissions: filterable by learner, problem, verdict and date, with a link to every trace. */
 import Link from "next/link";
+import type { Metadata } from "next";
 import { browseSubmissions } from "@/lib/admin/submissions";
 import { relativeDay } from "@/lib/progress/summary";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Submissions" };
 
 const VERDICTS = ["all", "open", "pass", "fail", "error", "timeout", "rejected", "cancelled"];
 

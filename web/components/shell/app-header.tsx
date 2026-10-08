@@ -34,7 +34,7 @@ function initials(name: string): string {
 export function AppHeader({ learner, problems }: { learner: Learner; problems: PaletteProblem[] }) {
   const sections = learner.role === "learner"
     ? SECTIONS
-    : [...SECTIONS, { href: "/admin/roster" as Route, label: "Admin", also: ["/admin"] }];
+    : [...SECTIONS, { href: "/admin" as Route, label: "Admin" }];
 
   return (
     <header className="sticky top-0 z-30 border-b border-border bg-bg/85 backdrop-blur-md
@@ -70,7 +70,7 @@ export function AppHeader({ learner, problems }: { learner: Learner; problems: P
                             shadow-[0_16px_40px_-12px_rgb(0_0_0/0.55)] rise-in">
               <div className="px-2.5 py-2">
                 <p className="truncate font-medium text-text">{learner.displayName}</p>
-                <p className="text-meta capitalize text-text-faint">
+                <p className="text-meta text-text-faint first-letter:uppercase">
                   {learner.role === "learner" ? `${learner.persona} path` : learner.role}
                 </p>
               </div>
@@ -78,12 +78,12 @@ export function AppHeader({ learner, problems }: { learner: Learner; problems: P
               <Link href="/progress"
                     className="flex items-center gap-2 rounded-control px-2.5 py-1.5 text-text-dim
                                hover:bg-surface-2 hover:text-text">
-                <Compass aria-hidden className="size-4" strokeWidth={1.75} /> Your progress
+                <Compass aria-hidden className="size-4" strokeWidth={1.75} /> Progress
               </Link>
               <Link href="/voice/sessions"
                     className="flex items-center gap-2 rounded-control px-2.5 py-1.5 text-text-dim
                                hover:bg-surface-2 hover:text-text">
-                <Mic aria-hidden className="size-4" strokeWidth={1.75} /> Voice history
+                <Mic aria-hidden className="size-4" strokeWidth={1.75} /> Past answers
               </Link>
               <form action="/api/auth/signout" method="post">
                 <button type="submit"

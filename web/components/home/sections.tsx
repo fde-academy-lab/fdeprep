@@ -349,7 +349,7 @@ export function PressurePanel() {
           <Mic aria-hidden className="size-4 text-text-dim" strokeWidth={1.75} /> Answer out loud
         </p>
         <p className="mt-1.5 text-meta leading-relaxed text-text-dim">
-          Interview questions answered out loud, with a pace band while you speak and a debrief
+          Spoken answers to interview questions, with a pace band while you speak and a debrief
           after. Nothing is transcribed onto the screen while you talk, and you can type an
           answer when you cannot speak.
         </p>

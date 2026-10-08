@@ -67,7 +67,7 @@ export default async function HomePage() {
       <div className="grid gap-10 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
         <section>
           <SectionHeading title="Up next"
-                          action={<Link href="/problems" className="text-text-dim hover:text-text">All problems</Link>} />
+                          action={<Link href="/problems" className="text-text-dim hover:text-text">Problems</Link>} />
           <UpNext items={upNext} teasers={teaserMap} />
         </section>
         <section>

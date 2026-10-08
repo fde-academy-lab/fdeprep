@@ -5,8 +5,9 @@
  */
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "../lib/db/pool.ts";
-import { listProblems } from "../lib/problems/catalogue.ts";
+import { listProblems, nextOnPath, paletteIndex, type SolveState } from "../lib/problems/catalogue.ts";
 import { nextUp, orderFor, roadmapFor, seedTracks, SHAPES } from "../lib/policy/roadmap.ts";
+import { firstUnsolved } from "../lib/ui/palette-search.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 
 const PERSONAS = ["builder", "navigator", "accelerator"] as const;
@@ -125,6 +126,51 @@ describe("the problems page", () => {
     expect(byTitle.rows.map((r) => r.slug)).toContain(rows[0]!.slug);
     const byChapter = await listProblems({ enrolmentId: builder, perPage: 100, search: rows[0]!.track });
     expect(byChapter.rows.map((r) => r.slug)).toContain(rows[0]!.slug);
+  });
+});
+
+describe("one path order on every screen", () => {
+  // Found 8 October 2026: the palette opened on stage-four problems sorted by
+  // chapter slug, and the chapter page offered a navigator an Easy problem
+  // their path leaves for last. Home, Problems, the palette and the chapter
+  // page now all read the learner's path, so they open on the same problem.
+  it("opens Home, Problems, the palette and the chapter page on one problem", async () => {
+    const navigator = learners["navigator"]!.enrolmentId;
+    const home = await nextUp(navigator);
+    expect(home.kind).toBe("start");
+    const start = home.items[0]!;
+
+    const problems = await listProblems({ enrolmentId: navigator, sort: "roadmap" });
+    const palette = firstUnsolved(await paletteIndex(navigator), 6);
+    // The chapter page's own query, then its Next card.
+    const chapter = await listProblems({
+      enrolmentId: navigator, track: start.track, perPage: 100, sort: "difficulty",
+    });
+
+    expect({
+      problems: problems.rows[0]!.slug,
+      palette: palette[0]!.slug,
+      chapter: nextOnPath(chapter.rows)!.slug,
+    }).toEqual({ problems: start.slug, palette: start.slug, chapter: start.slug });
+  });
+
+  it("offers the palette's six unsolved problems in path order", async () => {
+    const navigator = learners["navigator"]!.enrolmentId;
+    const roadmap = await roadmapFor(navigator);
+    await markSolved(navigator, roadmap.items[0]!.problemId);
+
+    const palette = firstUnsolved(await paletteIndex(navigator), 6);
+    expect(palette.map((p) => p.slug)).toEqual(roadmap.items.slice(1, 7).map((i) => i.slug));
+  });
+
+  it("puts a row the path does not carry after every row it does, in the order it came", () => {
+    // The chapter page hands its rows over in its own tier order, which is
+    // the order a chapter with nothing on the path falls back to.
+    const row = (slug: string, ordinal: number | null, state: SolveState = "untouched") =>
+      ({ slug, ordinal, state });
+    expect(nextOnPath([row("a", null), row("b", 7), row("c", 3)])?.slug).toBe("c");
+    expect(nextOnPath([row("a", null), row("b", null)])?.slug).toBe("a");
+    expect(nextOnPath([row("a", 1, "solved"), row("b", null)])?.slug).toBe("b");
   });
 });
 

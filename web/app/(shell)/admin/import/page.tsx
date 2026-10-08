@@ -1,8 +1,10 @@
 /** Screen S10, the import slice: validate, show the diff, then publish. */
+import type { Metadata } from "next";
 import { previewAll } from "./actions";
 import PublishButton from "./publish-button";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Problems" };
 
 export default async function ImportPage() {
   const reports = await previewAll();
@@ -11,7 +13,7 @@ export default async function ImportPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-8">
-      <h1 className="text-xl font-semibold">Import problems</h1>
+      <h1 className="text-xl font-semibold">Problems</h1>
       <p className="mt-1 text-text-dim">
         Reading every YAML file under problems/. Nothing is written until you publish.
       </p>

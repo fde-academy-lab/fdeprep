@@ -1701,3 +1701,38 @@ stages:
         finish: 2027-03-31
         acceptance:
           - A learner can read a brief, check progress and review a debrief on a phone.
+
+  - id: S17
+    name: Redesign, one position and one next action
+    kind: roadmap
+    horizon: now
+    start: 2026-10-08
+    finish: 2026-10-19
+    area: Web application
+    priority: P1
+    risk: Medium
+    summary: >-
+      Every screen opens on the learner's position and one next action. A
+      seed script fills the development database through eval/, each place
+      gets one name and every screen reads the same path order, the learner
+      screens drop the text that copied other pages, and admin gains an
+      Overview of the cohort.
+    why: >-
+      The design council found Home repeating Problems, the chapter pages
+      and the header, Voice, Past answers, Admin and the chapters each going
+      by two or three names, and the palette and the chapter pages leading
+      with different problems from the one Home and Problems open on.
+    estimate: {optimistic: 6, likely: 8, pessimistic: 13}
+    rice: {reach: 180, impact: 1, confidence: 0.8}
+    stories:
+      - id: S17.2
+        title: "One name per place, chapters in the palette, the crumb to the chapter page, and one path order"
+        type: Feature
+        status: done
+        points: 5
+        area: Web application
+        finish: 2026-10-08
+        acceptance:
+          - Home, Problems, Rehearsal, Voice, Past answers, Progress and Admin each carry one name in the navigation, the tab title, the h1 and the command palette, and no screen says Faculty admin, Voice history, Voice practice, Interview questions, Import problems or All problems.
+          - The palette lists the fourteen chapters in stage order between Go to and Problems to start with, and for a new navigator Home's start card, the first row of Problems in path order, the palette's first problem and the chapter page's Next card are one problem, which a test checks.
+          - The workspace crumb opens the chapter page, and every admin tab has its own tab title.

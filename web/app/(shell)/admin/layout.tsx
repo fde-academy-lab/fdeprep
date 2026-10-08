@@ -30,7 +30,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     <div className="mx-auto max-w-[1280px] px-4 pb-16 pt-8 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-3">
         {/* The section title; each admin page carries the page's one h1. */}
-        <p className="text-display font-semibold tracking-[-0.02em] text-text">Faculty admin</p>
+        <p className="text-display font-semibold tracking-[-0.02em] text-text">Admin</p>
         <span className="text-meta capitalize text-text-faint">
           {learner.displayName}, {learner.role}
         </span>

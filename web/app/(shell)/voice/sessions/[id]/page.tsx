@@ -14,7 +14,9 @@
  * no recording, and the page says so rather than showing zeros.
  */
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { db } from "@/lib/db/pool";
 import { clock } from "@/lib/voice/clock";
 import { DebriefNotFound, loadDebrief } from "@/lib/voice/debrief";
 import { deliveryLine } from "@/lib/voice/delivery";
@@ -36,6 +38,20 @@ const PACE_LABEL: Record<string, string> = {
   overrun: "overrun",
   never_reached: "never reached",
 };
+
+/** The tab carries the question's title, read from the learner's own session only. */
+export async function generateMetadata(
+  { params }: { params: Promise<{ id: string }> },
+): Promise<Metadata> {
+  const sessionId = Number((await params).id);
+  if (!Number.isSafeInteger(sessionId) || sessionId <= 0) return { title: "Past answers" };
+  const learner = await currentLearner();
+  const { rows } = await db().query<{ title: string }>(
+    `select q.title from voice_session s join voice_question q on q.id = s.voice_question_id
+      where s.id = $1 and s.enrolment_id = $2`,
+    [sessionId, learner.enrolmentId]);
+  return { title: rows[0]?.title ?? "Past answers" };
+}
 
 export default async function DebriefPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;

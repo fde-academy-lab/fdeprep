@@ -11,11 +11,13 @@
  * `held`, one panelist said so and another said something two steps away.
  */
 import Link from "next/link";
+import type { Metadata } from "next";
 import { disagreementQueue, type QueueFilter } from "@/lib/eval/review";
 import { relativeDay } from "@/lib/progress/summary";
 import { OverrideAction, ReviewActions } from "./review-button";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Disagreements" };
 
 const FILTERS: Array<{ value: QueueFilter; label: string }> = [
   { value: "open", label: "Open" },

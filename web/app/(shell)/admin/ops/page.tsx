@@ -6,10 +6,12 @@
  * whether anything is wrong, then the stuck list that the runbook's first
  * procedure acts on, then the two switches.
  */
+import type { Metadata } from "next";
 import { opsSnapshot, QUEUE_DEPTH_ALARM, STUCK_AFTER_MINUTES } from "@/lib/admin/ops";
 import { Requeue, Switches } from "./controls";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Ops" };
 
 export default async function OpsPage() {
   const snapshot = await opsSnapshot();

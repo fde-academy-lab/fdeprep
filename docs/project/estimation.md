@@ -50,8 +50,9 @@ Each stage has an optimistic, a likely and a pessimistic figure in person-days. 
 | S14 Voice interviewer v2, step 2 | 37 | 10 | 18 | 35 | 19.5 | 4.2 |
 | S15 First cohort | 73 | 25 | 40 | 70 | 42.5 | 7.5 |
 | S16 Second version | 50 | 30 | 55 | 100 | 58.3 | 11.7 |
+| S17 Redesign, one position and one next action | 5 | 6 | 8 | 13 | 8.5 | 1.2 |
 | All built stages | 360 |  |  |  | 203.3 | 14.4 |
-| All planned stages | 366 |  |  |  | 160.8 | 15.1 |
+| All planned stages | 371 |  |  |  | 169.3 | 15.2 |
 <!-- /generated:estimates -->
 
 ## How fast the build moved
@@ -89,6 +90,7 @@ Two readings for each planned epic. The first assumes the build's own pace holds
 | S14 Voice interviewer v2, step 2 | 37 | 0.9 | 20 |
 | S15 First cohort | 73 | 1.8 | 42 |
 | S16 Second version | 50 | 1.2 | 58 |
+| S17 Redesign, one position and one next action | 5 | 0.1 | 8 |
 <!-- /generated:forecast -->
 
 ## Review wait

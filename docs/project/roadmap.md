@@ -13,6 +13,7 @@ The order you will see built is the one the product owner set on 30 September: t
 
 | Epic | Why | Points | Person-days, expected (range) | RICE | Forecast window | Risk |
 |---|---|---|---|---|---|---|
+| S17 Redesign, one position and one next action | The design council found Home repeating Problems, the chapter pages and the header, Voice, Past answers, Admin and the chapters each going by two or three names, and the palette and the chapter pages leading with different problems from the one Home and Problems open on. | 5 | 8 (6 to 11) | 339 | 8 to 19 Oct 2026 | Medium |
 | S11 Beta launch | Four integrations have never made a live call, so without this the first learner to touch one becomes the test. | 29 | 6 (3 to 8) | 262 | 1 to 9 Oct 2026 | High |
 | S10 Delivery board | Management and non-technical teams need to see what was built, when, how big it was and what comes next. | 21 | 3 (2 to 4) | 63 | 30 Sep to 1 Oct 2026 | Low |
 
@@ -108,4 +109,5 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S16.3 | Run several cohorts and tracks at once | Feature | 8 | Planned | Two cohorts on different tracks run at the same time without either seeing the other. |
 | S16.4 | Peer review of design answers | Feature | 8 | Planned | A second learner can review a design answer, and the review is recorded apart from the grade. |
 | S16.5 | A mobile reading view without the workspace | Feature | 5 | Planned | A learner can read a brief, check progress and review a debrief on a phone. |
+| S17.2 | One name per place, chapters in the palette, the crumb to the chapter page, and one path order | Feature | 5 | Done | Home, Problems, Rehearsal, Voice, Past answers, Progress and Admin each carry one name in the navigation, the tab title, the h1 and the command palette, and no screen says Faculty admin, Voice history, Voice practice, Interview questions, Import problems or All problems.<br>The palette lists the fourteen chapters in stage order between Go to and Problems to start with, and for a new navigator Home's start card, the first row of Problems in path order, the palette's first problem and the chapter page's Next card are one problem, which a test checks.<br>The workspace crumb opens the chapter page, and every admin tab has its own tab title. |
 <!-- /generated:roadmap-stories -->

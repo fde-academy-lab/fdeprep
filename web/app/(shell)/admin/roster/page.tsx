@@ -3,6 +3,7 @@
  * bulk persona change from a CSV upload, and, for admins, the invites that let
  * a tester in (docs/01 section S10, amended 30 September 2026).
  */
+import type { Metadata } from "next";
 import Nav from "./upload";
 import { InviteForm, Withdraw } from "./invites";
 import { roster } from "@/lib/admin";
@@ -11,6 +12,7 @@ import { currentLearner } from "@/lib/session/current";
 import { relativeDay } from "@/lib/progress/summary";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Roster" };
 
 export default async function RosterPage() {
   const learner = await currentLearner();

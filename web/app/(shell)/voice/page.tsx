@@ -74,7 +74,7 @@ export default async function VoicePage() {
     <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-8 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="text-display font-semibold tracking-[-0.02em] text-text">Interview questions</h1>
+          <h1 className="text-display font-semibold tracking-[-0.02em] text-text">Voice</h1>
           <p className="mt-1 max-w-2xl text-text-dim">
             Answer out loud against the clock, or type the answer when you cannot speak. Every
             answer gets a debrief with the beats you covered and what a strong answer said.

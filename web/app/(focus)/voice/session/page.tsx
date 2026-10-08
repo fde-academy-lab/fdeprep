@@ -24,7 +24,8 @@ import { ArrowLeft, Keyboard, Mic, ShieldCheck, Wrench } from "lucide-react";
 import { consentState } from "@/lib/voice/consent";
 import { currentLearner } from "@/lib/session/current";
 import {
-  beatsAreAPathway, loadQuestion, nextQuestionSlug, QuestionNotFound, resolvePublishedQuestion,
+  beatsAreAPathway, loadQuestion, nextQuestionSlug, publishedQuestions, QuestionNotFound,
+  resolvePublishedQuestion,
 } from "@/lib/voice/question";
 import { voiceReadiness, type VoiceMode } from "@/lib/voice/start";
 import { typedWordLimit } from "@/lib/voice/typed";
@@ -36,7 +37,6 @@ import { Cockpit } from "./cockpit";
 import { TypedAnswer } from "./typed-answer";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Voice practice" };
 
 const MODES: VoiceMode[] = ["guided", "unguided", "pressure"];
 
@@ -50,6 +50,15 @@ type Params = Record<string, string | string[] | undefined>;
 
 function first(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
+}
+
+/** The question's title, or Voice for a link the page sends back to the picker. */
+export async function generateMetadata(
+  { searchParams }: { searchParams: Promise<Params> },
+): Promise<Metadata> {
+  const slug = first((await searchParams).q);
+  const question = (await publishedQuestions()).find((candidate) => candidate.slug === slug);
+  return { title: question?.title ?? "Voice" };
 }
 
 async function questionFor(slug: string | undefined) {

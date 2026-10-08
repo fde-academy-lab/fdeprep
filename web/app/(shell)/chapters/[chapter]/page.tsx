@@ -10,7 +10,7 @@ import Link from "next/link";
 import type { Metadata, Route } from "next";
 import { notFound } from "next/navigation";
 import { ArrowRight } from "lucide-react";
-import { listProblems, type CatalogueRow } from "@/lib/problems/catalogue";
+import { listProblems, nextOnPath, type CatalogueRow } from "@/lib/problems/catalogue";
 import { currentLearner } from "@/lib/session/current";
 import { CHAPTER_TOPICS, DIFFICULTIES, STAGES, TRACK_BLURBS, TRACK_NAMES, TRACKS, type Track }
   from "@/lib/problems/vocabulary";
@@ -51,7 +51,9 @@ export default async function ChapterPage({ params }: { params: Promise<{ chapte
   }));
   const loose = rows.filter((row) => !row.topic || !CHAPTER_TOPICS[chapter].includes(row.topic));
   const solved = rows.filter((row) => row.state === "solved").length;
-  const next = [...rows].sort(order).find((row) => row.state !== "solved");
+  // The learner's path picks what comes next; the page's order is the
+  // fallback for a chapter with nothing on the path.
+  const next = nextOnPath([...rows].sort(order));
 
   return (
     <main className="mx-auto max-w-[960px] px-4 pb-16 pt-8 sm:px-6">

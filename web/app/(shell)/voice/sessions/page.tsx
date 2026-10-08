@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ButtonLink } from "@/components/ui/button";
 
 export const dynamic = "force-dynamic";
-export const metadata: Metadata = { title: "Voice history" };
+export const metadata: Metadata = { title: "Past answers" };
 
 export default async function PastSessionsPage() {
   const learner = await currentLearner();
