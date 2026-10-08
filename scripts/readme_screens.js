@@ -18,7 +18,7 @@
  *
  * It needs Playwright with Chromium. `PLAYWRIGHT_MODULE` names the package
  * when it is installed somewhere other than node_modules, and `SCREENS` is a
- * comma-separated list to capture only some of the seven.
+ * comma-separated list to capture only some of the eight.
  *
  * Learner screens are captured as the seeded learner priya-raghavan, app_user
  * id 2, whose session cookie is minted here with the same HMAC the
@@ -34,7 +34,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const BASE = process.env.BASE ?? "http://localhost:3102";
-const OUT = process.env.OUT ?? path.join(__dirname, "..", "docs", "assets", "readme");
+const OUT = process.env.OUT ?? path.join(__dirname, "..", "docs", "images");
+/** The seeded learner's scored sessions to show: a guided answer, and an interview. */
+const DEBRIEF_SESSION = process.env.DEBRIEF_SESSION ?? "126";
 const SECRET = process.env.AUTH_SECRET ?? "readme-screenshots-only";
 const LEARNER_UID = 2;
 const WIDTH = 1180;
@@ -220,24 +222,38 @@ async function main() {
     await open(page, "/voice");
     await mark(page, [
       "main h1",
-      "main p.tnum",
+      'nav[aria-label="Filter the questions"]',
       "main table",
-      (p) => p.getByRole("link", { name: "Answer" }),
-      (p) => p.getByRole("link", { name: "Past answers" }),
+      { at: (p) => p.locator("th", { hasText: /^Answer$/ }), place: "above" },
+      (p) => p.getByRole("link", { name: "Meet the interviewers" }),
     ]);
-    await shoot(page, "voice", 960);
+    await shoot(page, "voice", 1100);
+  }
+
+  if (wanted("voice-lobby")) {
+    console.log("voice lobby");
+    await open(page, "/voice/session?q=improve-a-service-you-cannot-rewrite&interviewer=cto");
+    await mark(page, [
+      'nav[aria-label="Choose your interviewer"]',
+      (p) => p.locator('section[aria-label="Your interviewer"]').locator("xpath=preceding-sibling::div[1]"),
+      'section[aria-label="Your interviewer"]',
+      'section[aria-label="How to answer it"]',
+      'section[aria-label="Tips people overlook"]',
+      (p) => p.locator("h2", { hasText: "How you will answer" }),
+    ]);
+    await shoot(page, "voice-lobby", 1940);
   }
 
   if (wanted("voice-debrief")) {
     console.log("voice debrief");
-    // Session 126 is the seeded learner's scored guided answer.
-    await open(page, "/voice/sessions/126");
+    await open(page, `/voice/sessions/${DEBRIEF_SESSION}`);
     await mark(page, [
+      (p) => p.locator("main > p", { hasText: /^Asked by/ }),
       "section.results-pane",
       (p) => p.locator("h2", { hasText: /^Beats$/ }),
-      (p) => p.locator("h2", { hasText: "Territory not entered" }),
+      (p) => p.locator("h2", { hasText: /^Interview$/ }),
     ]);
-    await shoot(page, "voice-debrief", 1500);
+    await shoot(page, "voice-debrief", 2000);
   }
 
   if (wanted("progress")) {

@@ -2,14 +2,14 @@
 
 FDE Prep is a practice and assessment platform for people training to be forward deployed engineers who build AI agents: FDE Academy cohorts first, and anyone preparing for an agent engineering screen. A learner writes agent code, repairs system prompts, argues designs in writing and answers interview questions out loud, and every answer is graded the same way each time, so the readiness number a placement team reads means what it says.
 
-Stage: beta candidate. The last delivery was pull request #45 on 9 October 2026, in India time as every date in this repository. The platform runs end to end on a laptop and has not been deployed anywhere yet; the beta launch on AWS waits on an AWS account.
+Stage: beta candidate. Pull request #46, in review on 9 October 2026 (India time, as every date in this repository), adds interview mode with nine interviewers and ten problems on top of #45, which merged the same day. The platform runs end to end on a laptop and has not been deployed anywhere yet; the beta launch on AWS waits on an AWS account.
 
 | | |
 |---|---|
-| Built | 14 September to 9 October 2026, in 45 merged pull requests and 58 commits on `main`. A fact from git. |
-| Size | 32,084 lines of TypeScript in `web/` outside its tests, 1,802 in `voice/` and 1,216 in `infra/`; 4,618 lines of Python in `runner/`, `judge/` and `embed/`; 87,298 lines of problem YAML. A fact, counted with `wc -l` on 9 October 2026. |
-| Tests | 2,466 passed across four suites on 9 October 2026: 936 web, 1,465 Python with 65 more skipped where a model or a credential is absent, 28 voice and 37 infrastructure. |
-| Content | 163 problems in 14 chapters, of which 150 sit on the 30-day path and 13 are drills, and 14 voice questions. Each one validates in CI and was solved by its author before it shipped. A fact from `npm run import:content`. |
+| Built | 14 September to 9 October 2026, in 45 merged pull requests with the 46th in review, and 101 commits in this page's history. A fact from git, measured on 9 October 2026. |
+| Size | 36,874 lines of TypeScript in `web/` outside its tests, 1,802 in `voice/` and 1,231 in `infra/`; 5,440 lines of Python in `runner/`, `judge/` and `embed/`; 93,836 lines of problem YAML and 2,505 of voice questions and interviewers. A fact, counted with `wc -l` on 9 October 2026. |
+| Tests | 3,079 passed across four suites on 9 October 2026: 1,051 web, 1,963 Python with 69 more skipped where a model or a credential is absent, 28 voice and 37 infrastructure. |
+| Content | 173 problems in 14 chapters, of which 150 sit on the 30-day path and 23 are drills, 14 voice questions and 9 interviewers. Each one validates in CI, and every problem was solved by its author before it shipped. A fact from `npm run import:content` on 9 October 2026. |
 | State | Runs on a laptop with `docker compose up`, or with Node, Python and PostgreSQL. Deployable to AWS by following [DEPLOY.md](DEPLOY.md). |
 | Record | [docs/project](docs/project/README.md) holds the delivery history, the roadmap with estimates, the risks and the decisions. |
 
@@ -34,47 +34,53 @@ Stage: beta candidate. The last delivery was pull request #45 on 9 October 2026,
 
 ## How to use it
 
-Seven screens, in the order a learner meets them. The pictures come from `scripts/readme_screens.js`, which signs in as a seeded learner and captures each screen at 1,180 pixels wide, the narrowest width the product supports, so a later capture matches these. The numbers in each picture are the numbers in the text under it.
+Eight screens, in the order a learner meets them. The pictures come from `scripts/readme_screens.js`, which signs in as a seeded learner and captures each screen at 1,180 pixels wide, the narrowest width the product supports, so a later capture matches these. The numbers in each picture are the numbers in the text under it.
 
 ### 1. Open Home and take the next action
 
-![Home: a position strip, three Next up cards, four competency bars, the readiness line with its four counts, and the last five finished attempts](docs/assets/readme/home.png)
+![Home: a position strip, three Next up cards, four competency bars, the readiness line with its four counts, and the last five finished attempts](docs/images/home.png)
 
 Home opens on where you stand and one thing to do next. The strip (1) shows your track, your persona, the day you have reached on the 30-day storyline and how many problems you have solved. Next up (2) holds the three problems next on your path, with the one you left unfinished first. Your competencies (3) shows your two strongest and your two weakest. Readiness (4) is the number placement reads, with its four counts beside it. Recent activity (5) lists your last five finished attempts.
 
 ### 2. Find a problem on the chapter map
 
-![Problems: fourteen chapters in four stages, each row a chapter with its four tiers and a solved count, then the stage filters and the search bar](docs/assets/readme/problems.png)
+![Problems: fourteen chapters in four stages, each row a chapter with its four tiers and a solved count, then the stage filters and the search bar](docs/images/problems.png)
 
 Problems opens on the chapter map until you filter, search or sort. The four stages (1) run from Foundations to Forward deployed. Each row (2) is a chapter, with one square per tier and how much of it you have solved. The stage filters (3) and the search and filter bar (4) turn the map into a list, where every problem shows the question it answers under its title. Every problem is open to everyone, and your path decides the order.
 
 ### 3. Solve a code problem
 
-![The code workspace mid-attempt: the brief and the situation card on the left, a partial solution in the editor, the coach's sentence, and a result with both public cases passed and three of five hidden cases failed](docs/assets/readme/workspace.png)
+![The code workspace mid-attempt: the brief and the situation card on the left, a partial solution in the editor, the coach's sentence, and a result with both public cases passed and three of five hidden cases failed](docs/images/workspace.png)
 
 The left pane has three tabs (1): the brief, the guide with the approach map and the hints, and your attempts. The situation card (2) says who was hurt and what it cost before the brief states the task. Your solution (3) is a CodeMirror editor with no model behind it. Run (4) grades the public cases and Submit grades the whole battery. The coach (5) reads your code and says one sentence an author wrote. The result (6) names every public case, reports the hidden cases as a count and shows the gates in order. The picture shows a solution that copies every value the model returns onto the ticket: both public cases pass and three of five hidden cases fail, which is the lesson this problem exists to teach.
 
-### 4. Pick an interview question
+### 4. Pick a question and an interviewer
 
-![Voice: a table of fourteen questions grouped by competency, each with its difficulty, its clock and an Answer button, and the pressure allowance left this week](docs/assets/readme/voice.png)
+![Voice: filter chips for nine interviewers and five competencies, then a table of fourteen questions with the round of the loop each comes from, its difficulty, its clock and an Answer button](docs/images/voice.png)
 
-Voice is one table (3) of every published question by competency, with its difficulty and its clock. Answer (4) opens the session start screen, where you pick guided, unguided or pressure and see the allowance each mode has left. The line under the title (2) shows the pressure answers left this week, which share the rehearsal allowance. Past answers (5) holds every debrief.
+Voice is one table (3) of every published question, with the round of the interview loop it comes from, its difficulty and its clock. The filters (2) narrow it to one interviewer or one competency. Answer (4) opens the lobby for that question. Meet the interviewers (5) is the page that says who the nine are, what each listens for and which questions each asks.
 
-### 5. Read a debrief
+### 5. Read the lobby, then answer
 
-![A voice debrief: Score 79 with content, structure and pace; the replay with the cockpit's instruments; the five beats, each covered or missed with the time spent; and the territory not entered](docs/assets/readme/voice-debrief.png)
+![The voice lobby for one question with the CTO as interviewer: the interviewer chips, the pixel interview room, the interviewer card, the framework card, the tips, and the five ways to answer with the allowance each spends](docs/images/voice-lobby.png)
 
-A debrief opens on the score and its three axes (1): content from the rubric judge, structure and pace from the timeline. The replay runs the cockpit's five instruments over your answer. The beats (2) show which ones the judge found covered, the time each took and whether it stayed on budget. Territory not entered (3) lists the words a strong answer used at each beat that yours did not, with the sentence it used them in. Below the picture come the judge's sentence, the delivery numbers marked as not scored, the transcript and your recording.
+The lobby opens on the question's clock and the round it comes from. Asked by (1) picks one of the question's interviewers, and the room (2) seats them. The interviewer card (3) says who they are, what they listen for and how they open. How to answer it (4) is the framework card written for this question: answer first, evidence with a number, the trade-off to name and what to say when you do not know. Tips people overlook (5) and the problems the question builds on follow. How you will answer (6) lists guided, unguided, pressure, interview and typed, each with the allowance it spends; in interview mode the interviewer follows up on what you said for up to five rounds.
 
-### 6. Check your readiness
+### 6. Read a debrief
 
-![Progress: readiness at 17 percent with clean, passed, attempted and untouched counts; the competency heatmap of thirteen competencies by four tiers; the attempt history; the CSV export](docs/assets/readme/progress.png)
+![An interview debrief: asked by the CTO, the pixel room, Score 83 with content, structure and pace, the replay, the five beats with one missed, the judge's sentence, and the three follow-up rounds with who asked, the kind of question and the reply](docs/images/voice-debrief.png)
+
+A debrief says who asked (1), then the score and its three axes (2): content from the rubric judge, structure and pace from the main answer's timeline. The replay runs the cockpit's five instruments over the answer. The beats (3) show which ones the judge found covered, the time each took and whether it stayed on budget. After an interview, the Interview panel (4) lists each round: who asked, whether it was a stress probe or a level of why, the question and what you replied. The judge's sentence, any territory not entered, the delivery numbers marked as not scored, the transcript and the recording sit around them.
+
+### 7. Check your readiness
+
+![Progress: readiness at 17 percent with clean, passed, attempted and untouched counts; the competency heatmap of thirteen competencies by four tiers; the attempt history; the CSV export](docs/images/progress.png)
 
 Progress opens on the readiness line (1), the same object Home draws from the same query. The heatmap (2) is thirteen competencies by four tiers, and only a clean pass, with no hints and inside the call budget, counts toward readiness. The attempt history (3) lists every problem with its submits, its hints and its best budget. Export CSV (4) is the file a cohort tracker reads.
 
-### 7. Watch the cohort
+### 8. Watch the cohort
 
-![Admin Overview: four cohort numbers, then one row per learner with persona, day reached, readiness and its counts, last activity and the stuck count](docs/assets/readme/admin-overview.png)
+![Admin Overview: four cohort numbers, then one row per learner with persona, day reached, readiness and its counts, last activity and the stuck count](docs/images/admin-overview.png)
 
 Faculty and admins open Admin on the Overview, with the other sections as tabs (1). Four numbers (2) summarise the week. One row per learner follows, sortable by activity, readiness or stuck count from the column headers (3), and a row (4) opens that learner's page with the same heatmap, every attempt with its trace and every past answer.
 
@@ -82,12 +88,12 @@ Faculty and admins open Admin on the Overview, with the other sections as tabs (
 
 | Who | What they do with it |
 |---|---|
-| Learners in an FDE Academy cohort | They work the 30-day path, rehearse under screen conditions, answer questions out loud and read their own readiness. |
+| Learners in an FDE Academy cohort | They work the 30-day path, rehearse under screen conditions, answer questions out loud to an interviewer who follows up, and read their own readiness. |
 | Faculty | They read any learner's submissions and traces, work the queue of answers the panel argued over, correct a grade, and watch the cohort on the Overview. |
 | Placement teams | They read readiness with its four counts and the attempt history, exported as CSV today and as a dated report card once [docs/11](docs/11-ANALYTICS-AND-REPORT-CARD.md) is built. |
 | Operators | They publish content, run the worker and the voice scorer, watch the queue on Ops, pause grading, requeue a stuck submission and deploy from [DEPLOY.md](DEPLOY.md). |
 | Management | They read [docs/project](docs/project/README.md) for what was built, when, how big it was and what comes next. |
-| Anyone outside FDE Academy preparing for a forward deployed or agent engineering role | They run it on a laptop with `AUTH_DEV_LEARNER=1` and work the same 163 problems and 14 questions. The sign-in wall is the only thing they skip. |
+| Anyone outside FDE Academy preparing for a forward deployed or agent engineering role | They run it on a laptop with `AUTH_DEV_LEARNER=1` and work the same 173 problems, 14 questions and nine interviewers. The sign-in wall is the only thing they skip. |
 
 ## Key features
 
@@ -99,13 +105,16 @@ Faculty and admins open Admin on the Overview, with the other sections as tabs (
 | Trace replay | Every model call, tool call and observation in order, with flags such as a repeated identical tool call. | `/traces/[id]`, `web/lib/trace`; [docs/03](docs/03-RUNNER-AND-GRADING.md) section 6 |
 | Prompt surgery | Static rules with zero model calls, then probes run twice each for agreement, then the rubric judge. | `web/lib/gate`, `judge/`; [docs/03](docs/03-RUNNER-AND-GRADING.md) section 4.2 |
 | Design arguments and the defence | A written answer graded against three exemplars, and on Hard and Extreme a 120-word defence of the design after a pass. | `judge/prompts`, `web/app/(focus)/problems/[slug]`; [docs/03](docs/03-RUNNER-AND-GRADING.md) sections 4.3 and 4.4 |
+| The judge | One Lambda for every model call: prompt probes, the rubric judge, the voice beats and, since pull request #46, the follow-up and resume-claims events of interview mode, each call bounded and its token usage recorded. Every prompt is filled in one pass, so a learner's literal `{{NONCE}}` can no longer close the data delimiter. | `judge/`, `judge/prompts/`; [docs/03](docs/03-RUNNER-AND-GRADING.md) section 4, [docs/07](docs/07-VOICE-SCREEN.md) section 5a |
 | The evaluation panel | Three evaluators and one voice: deterministic checks and heuristics, a band from the nearest graded answers with no model call, and the judge's findings. Disagreement is reported and never averaged. | `web/lib/eval`; [docs/10](docs/10-EVALUATION-PANEL.md) |
 | Faculty review and override | A queue of the answers the panel argued over, a disposition with a note, and a correction that moves the verdict, the score and the heatmap and tells the learner. | `/admin/disagreements`; [docs/10](docs/10-EVALUATION-PANEL.md) section 7 |
-| The Voice Screen | Consent, a microphone check, a cockpit with five instruments, three modes, a typed fallback, and a debrief that scores content, structure and pace and reports delivery without scoring it. | `web/app/(focus)/voice`, `voice/`; [docs/07](docs/07-VOICE-SCREEN.md) |
+| The Voice Screen | Answer a spoken interview question in guided, unguided, pressure or interview mode, asked by one of nine interviewers or a panel of three. In interview mode the interviewer follows up on what you said for up to five rounds, and can ask about a resume you paste. Consent and a microphone check come first, the cockpit holds five instruments, and a typed answer is there when the microphone is not. | `/voice/session`, `web/app/(focus)/voice`, `voice/`; [docs/07](docs/07-VOICE-SCREEN.md) |
+| The interviewers | Read who the nine interviewers are, what each listens for and which questions each asks. | `/voice/interviewers`; [docs/07](docs/07-VOICE-SCREEN.md) section 2a |
+| The voice debrief | Read a voice debrief with beat timings, pace, filler counts, a rubric score and, after an interview, who asked each follow-up and what you replied. | `/voice/sessions/[id]`; [docs/07](docs/07-VOICE-SCREEN.md) section 6 |
 | Rehearsal | A timed sitting under screen conditions, two a week, with a report. | `/rehearsal`; [docs/00](docs/00-PRD.md) section 7.4 |
 | Progress and readiness | A heatmap of thirteen competencies by four tiers, a readiness percentage with its four counts and three bands, and a CSV export. | `web/lib/progress`; [docs/12](docs/12-PROGRESS-AND-READINESS.md) |
-| Admin and operations | A roster with CSV persona upload and one-time invites, submissions with every trace, Ops with queue depth, a degraded-mode switch, requeue and counter clears, each writing an audit row. | `/admin/*`; [docs/01](docs/01-WIREFRAMES.md) S10, [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 |
-| Content as code | Problems and questions are YAML in Git, validated in CI, published by one command and versioned, so a submission always points at the version it ran against. | `problems/`, `voice-questions/`; [docs/04](docs/04-PROBLEM-AUTHORING.md) |
+| Admin and operations | A roster with CSV persona upload and one-time invites, submissions with every trace, Ops with queue depth, today's interview rounds with their 95th percentile gap and fallback share, a degraded-mode switch, requeue and counter clears, each writing an audit row. | `/admin/*`; [docs/01](docs/01-WIREFRAMES.md) S10, [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 |
+| Content as code | Problems, questions and interviewers are YAML in Git, validated in CI, published by one command and versioned, so a submission always points at the version it ran against. The 173 problems cover the loop, tools, the harness, context, memory, orchestration, guardrails, human in the loop, evals, observability, the agentic PDLC and SDLC, end-to-end builds and client delivery. The ten newest add a peer handoff with Command, a critic loop that keeps the best draft, a map-reduce with Send, an A2A task handoff, episodic and procedural memory, rerank depth, a bounded graph walk, n8n against a graph or plain code, and a model change inside a sealed network. | `problems/`, `voice-questions/`, `voice-interviewers/`; [docs/04](docs/04-PROBLEM-AUTHORING.md) |
 | A delivery record | Every stage and story in one file that CI checks, rendered to pages for management and synced to a GitHub Project. | `docs/project/backlog.yaml`, `tools/project_sync.py` |
 
 ## Modes
@@ -129,7 +138,8 @@ Difficulty decides how much support a learner gets. It never decides which probl
 | Guided | The cockpit: a beat track, a pace band, the territory of the current beat, a microphone level and one nudge at a time. No transcript renders while you speak. | 6 a day |
 | Unguided | The question, the clock, the microphone level and a stop button. The debrief replays your answer with the instruments you did not have. | 6 a day |
 | Pressure | Guided, plus an authored follow-up spoken by Amazon Polly at a beat boundary, two at most, with the main clock paused while you answer it. Offered only where the question has follow-ups. | 2 a week, shared with rehearsals |
-| Typed | A text box on its own page, for a learner whose microphone or connection fails or who cannot speak where they are. Scored on content and structure, with no pace. Pressure is refused and offered as guided. | The allowance of its mode |
+| Interview | Guided, then the interviewer follows up out loud on what you said, up to five rounds, each reply on a sixty-second clock. The server plans every round from the interviewer's cadence, a why ladder (specify, evidence, mechanism, alternative, limit) with stress probes and resume questions, the judge words it under a four-second deadline, and the question's authored follow-ups ask instead when the judge is late or refused. A pasted resume becomes at most twelve claims for the session, and its text is never written. | 2 a week, shared with rehearsals |
+| Typed | A text box on its own page, for a learner whose microphone or connection fails or who cannot speak where they are. Scored on content and structure, with no pace. Pressure and interview are refused and offered as guided. | The allowance of its mode |
 | Timed practice | What the Voice page offers when the socket is not configured: the clock and the beats by their budgets. It records nothing and spends nothing. | None |
 
 ### Everything else that changes behaviour
@@ -137,7 +147,7 @@ Difficulty decides how much support a learner gets. It never decides which probl
 | Mode | What it is |
 |---|---|
 | Live run | [docs/00](docs/00-PRD.md) section 4 gives each learner ten runs a day against a real model through Bedrock, with a trace and never a verdict. The step protocol and its tables are built and tested in `web/lib/live`, and no screen offers it yet. |
-| Drills | A problem marked drill sits off the 30-day path in its chapter, labelled Drill, and Home's next action reaches it only after every unsolved problem on the path. 13 of the 163 problems are drills. |
+| Drills | A problem marked drill sits off the 30-day path in its chapter, labelled Drill, and Home's next action reaches it only after every unsolved problem on the path. 23 of the 173 problems are drills. |
 | Degraded mode | A switch on Ops that disables Submit and leaves Run working, so grading can stop without anyone losing an attempt. |
 | Development against production | `AUTH_DEV_LEARNER=1` signs you in as one development admin and is refused whenever `GITHUB_CLIENT_ID` is set or `NODE_ENV` is production. With `RUNNER_FUNCTION` unset the worker runs learner code as a subprocess on its own host, which a production worker refuses unless `RUNNER_LOCAL_OK=1` says you meant it. `VOICE_STT=scripted` drives the cockpit with no AWS credential, and `EVAL_DEGRADED_PANELISTS=pretrained` starts the worker without the embedding model. |
 | The organisation wall, or invites | By default a learner must be a member of the GitHub organisation and on a roster. `GITHUB_ORG_CHECK=off` replaces membership with one-time invites, which is how a beta admits testers from outside. GitHub stays the only identity either way. |
@@ -145,7 +155,7 @@ Difficulty decides how much support a learner gets. It never decides which probl
 
 ## Stages of development
 
-The build ran as ten stages from the specification to the beta candidate, then four more after it. A stage is what an enterprise team would call an epic. Dates are facts from git, in India time, and points are estimates on a relative scale that [docs/project/estimation.md](docs/project/estimation.md) explains.
+The build ran as ten stages from the specification to the beta candidate, then six more after it, with the beta launch waiting on an AWS account. A stage is what an enterprise team would call an epic. Dates are facts from git, in India time, and points are estimates on a relative scale that [docs/project/estimation.md](docs/project/estimation.md) explains.
 
 ```mermaid
 timeline
@@ -166,10 +176,11 @@ timeline
                 : S9 Beta on AWS
   section After the candidate
     30 Sep to 9 Oct 2026 : S12 Problem pages v2, 163 problems in 14 chapters
-                         : S13 Voice interviewer v2, step 1
+                         : S13 Voice interviewer v2, step 1, with nine interviewers
                          : S17 Redesign, one position and one next action
+    8 and 9 Oct 2026, pull request 46 : S14 Voice interviewer v2, step 2, interview mode
+                                      : S18 Agentic patterns and depth content, ten problems
     Planned : S11 Beta launch on AWS
-            : S14 Voice interviewer v2, step 2
             : S15 First cohort
             : S16 Second version
 ```
@@ -187,10 +198,12 @@ timeline
 |---|---|---|---|
 | S10 Delivery board | 30 September to 1 October 2026 | #41 | The backlog as a file that CI checks, and the pages under `docs/project`. The sync to the GitHub Project is in progress and waits on a repository token. |
 | S12 Problem pages v2 | 30 September to 9 October 2026 | #42, #43 and #45 | The catalogue grew from 92 to 163 problems in 14 chapters, told as a learner's first 30 days, with tools, worked examples, traps and the interview angle on every problem, LangGraph and LangChain inside the sandbox, and two multi-stage simulations of a funded agent project. 22 stories, all done. |
-| S13 Voice interviewer v2, step 1 | 30 September to 9 October 2026 | #44 and #45 | The question picker, Next question, typed answers, caps that bind, eight voice defects fixed and the depth panel in the debrief. Nine interviewer personas, a rewritten question bank and a framework per question stay planned. |
+| S13 Voice interviewer v2, step 1 | 30 September to 9 October 2026 | #44, #45 and #46 | The question picker, Next question, typed answers, caps that bind, eight voice defects fixed and the depth panel in the debrief, then in #46 the nine interviewers with their voices and probes, the question bank rewritten around six rounds of the interview loop, and a framework card and tips on every question. |
 | S17 Redesign, one position and one next action | 8 and 9 October 2026 | #45 | A seed that fills a database through `eval/`, readiness read everywhere from one query, one name per place, Home and Problems opening on one position and one next action, and the admin Overview. |
+| S14 Voice interviewer v2, step 2 | 8 and 9 October 2026 | #46 | Interview mode: follow-up rounds planned on the server and worded by the judge under a four-second deadline with the authored bank as the fallback, a pasted resume turned into claims and never written, a panel of three that takes turns, the pixel interview room in the lobby and the debrief, and docs/07 and the consent screen amended. Pricing and timing ten real sessions (S14.5) waits for the first deploy. |
+| S18 Agentic patterns and depth content | 8 and 9 October 2026 | #46 | Ten problems the catalogue was missing: a peer handoff with Command, a critic loop that keeps the best draft, a map-reduce with Send, an A2A task handoff, episodic and procedural memory, rerank depth, a bounded graph walk, n8n against a graph or plain code, and a model change inside a sealed network. Nine are drills. |
 | S11 Beta launch | Forecast 1 to 9 October 2026, waiting on an AWS account | [DEPLOY.md](DEPLOY.md) landed in #45 | Deploy route C, prove each of the four live integrations once, run the restore drill, brief a second operator, set the budget alarm and run the burst test. |
-| S14, S15 and S16 | Planned | None yet | Generated follow-ups and resume cross-questioning; a diagnostic that sets personas, analytics, the report card and content aimed at what the cohort fails; then a browser problem family, a placement export, several cohorts at once, peer review and a mobile reading view. |
+| S15 and S16 | Planned | None yet | A diagnostic that sets personas, analytics, the report card and content aimed at what the cohort fails; then a browser problem family, a placement export, several cohorts at once, peer review and a mobile reading view. |
 
 [docs/project/delivery-history.md](docs/project/delivery-history.md) has every story in every stage with the pull request that delivered it, and [docs/project/roadmap.md](docs/project/roadmap.md) has the planned stages with their estimates and RICE scores.
 
@@ -216,9 +229,9 @@ The specification lives in `docs/` and is authoritative. When this page and a do
 | [docs/02 Data model](docs/02-DATA-MODEL.md) | Every table, the rate limit policy rows, the competency states and retention. | Touching the schema or a query. |
 | [docs/03 Runner and grading](docs/03-RUNNER-AND-GRADING.md) | The execution model, the mock LLM contract, the fixture library, the gates per artefact, the result contract, the trace format, security, failure handling, the outbox, the lease and the step protocol. | Anything in `runner/` or `judge/`, and before touching grading anywhere. |
 | [docs/04 Problem authoring](docs/04-PROBLEM-AUTHORING.md) | The validator rules, the YAML schema, the kit on every problem, three worked problems and the authoring checklist. | Anything that reads or validates problem YAML. |
-| [docs/05 Deployment and operations](docs/05-DEPLOY-AND-OPS.md) | The architecture as amended for the beta, the environments, the CDK stack, the cost shape, the three alarms and the runbook. | Anything in `infra/` or `.github/workflows/`. |
+| [docs/05 Deployment and operations](docs/05-DEPLOY-AND-OPS.md) | The architecture as amended for the beta, the environments, the CDK stack, the cost shape, the three alarms, the runbook and the cost runbook for interview mode. | Anything in `infra/` or `.github/workflows/`. |
 | [docs/06 Build plan](docs/06-BUILD-PLAN.md) | Phases 0 to 8 with acceptance criteria, the standing rules and what to cut first. | The start of every phase. |
-| [docs/07 Voice Screen](docs/07-VOICE-SCREEN.md) | The question object, the cockpit, the three modes, scoring, the fairness rule, the technical design, the schema, privacy, caps and acceptance. | Anything in the voice module. |
+| [docs/07 Voice Screen](docs/07-VOICE-SCREEN.md) | The question object and its loop fields, the nine interviewers, the cockpit, the four modes with interview mode's rounds, scoring, the fairness rule, the technical design, the schema, privacy, caps and acceptance. | Anything in the voice module. |
 | [docs/08 Design system](docs/08-DESIGN-SYSTEM.md) | Type, colour, icons, motion, density, components and the accessibility floor. | Any styling, type, colour, icon or motion decision. |
 | [docs/09 Source pack reconciliation](docs/09-SOURCE-PACK-RECONCILIATION.md) | What an earlier build pack by a different model got right, what was corrected and why. | Before trusting anything in `docs/source-pack/`. |
 | [docs/10 Evaluation panel](docs/10-EVALUATION-PANEL.md) | Complexity against difficulty, the three panelists, the consolidator, bands, degradation, the evaluation record and the relevance gate. | Anything in `eval/`, and before changing how any answer is graded. |
@@ -269,16 +282,16 @@ Each deployable unit, its technology and what talks to what. The web application
 flowchart TB
   browser["Browser<br/>React 19, CodeMirror 6, an AudioWorklet<br/>Every learner, faculty and admin screen"]
   subgraph host["Web host: one EC2 instance, or a laptop"]
-    web["Web application<br/>Next.js 16 App Router, TypeScript<br/>Screens, API routes, the policy module, the evaluation panel"]
+    web["Web application<br/>Next.js 16 App Router, TypeScript<br/>Screens, API routes, the policy module, the evaluation panel, the interview rounds"]
     worker["Worker<br/>Node process, npm run worker<br/>Drains the queue, invokes the functions, commits results"]
-    scorer["Voice scorer<br/>Node process, npm run scorevoice<br/>Scores finished voice answers, deletes old audio"]
+    scorer["Voice scorer<br/>Node process, npm run scorevoice<br/>Scores finished voice answers, closes stale interviews, deletes old audio and resume claims"]
     db[("PostgreSQL 16<br/>Every table, the outbox and the queue")]
   end
   subgraph aws["AWS, built by cdk deploy"]
     runner["Runner<br/>Lambda container image, Python 3.12<br/>Runs learner code against the scripted model"]
-    judge["Judge<br/>Lambda container image, Python 3.12<br/>Prompt probes and the rubric judge"]
+    judge["Judge<br/>Lambda container image, Python 3.12<br/>Prompt probes, the rubric judge, the voice beats, follow-up rounds and resume claims"]
     socket["Voice socket<br/>API Gateway WebSocket, three Lambdas, a FIFO queue<br/>Streams audio to Amazon Transcribe"]
-    audio[("S3<br/>Learner audio, deleted after 30 days")]
+    audio[("S3<br/>Learner audio and generated follow-ups, deleted after 30 days")]
   end
   bedrock["Amazon Bedrock<br/>Claude"]
   transcribe["Amazon Transcribe"]
@@ -291,10 +304,11 @@ flowchart TB
   worker -->|"invokes with the problem and the solution"| runner
   worker -->|"invokes with the answer"| judge
   scorer -->|"invokes with the transcript"| judge
+  web -->|"invokes between interview turns, under a deadline"| judge
   judge -->|"calls"| bedrock
   socket -->|"transcribes with"| transcribe
-  web -->|"stores recordings in"| audio
-  web -->|"synthesises follow-ups with"| polly
+  web -->|"stores recordings and spoken lines in"| audio
+  web -->|"speaks questions and follow-ups with"| polly
 ```
 
 ### Components of grading
@@ -308,7 +322,7 @@ flowchart TB
   runnerw["Runner worker<br/>web/lib/queue/runner-worker.ts<br/>Builds the event from the problem version and the solution"]
   judgew["Judge worker<br/>web/lib/queue/judge-worker.ts<br/>Runs the static gate here, then invokes the judge"]
   runner["Runner<br/>runner/battery and runner/harness, Python<br/>Static gate, public, hidden and adversarial cases, the trace"]
-  judge["Judge<br/>judge/, Python<br/>Each probe twice, then the rubric judge against three exemplars"]
+  judge["Judge<br/>judge/, Python<br/>Each probe twice, the rubric judge against three exemplars, the voice beats, and the follow-up and resume-claims events of interview mode"]
   writer["Result writer<br/>web/lib/queue/result-writer.ts<br/>Compare-and-set on the lease, the fencing token and the body hash; refunds an error"]
   panel["Evaluation panel<br/>web/lib/eval<br/>Panelist 1 checks and heuristics, panelist 2 nearest graded answers, panelist 3 findings; one voice"]
   competency["Competency scoring<br/>web/lib/competency<br/>untouched, attempted, passed, clean"]
@@ -357,7 +371,7 @@ flowchart TB
       fifo["SQS FIFO frame queue"]
       streamfn["Stream Lambda<br/>transcribe:StartStreamTranscription"]
     end
-    bucket[("S3 learner audio<br/>voice/answers/ deleted after 30 days")]
+    bucket[("S3 learner audio<br/>voice/answers/ and voice/generated/ deleted after 30 days")]
     secret["Secrets Manager<br/>voice token signing key"]
     alarms["CloudWatch: runner throttled, runner failing, judge spend<br/>to one SNS topic"]
     bedrock["Amazon Bedrock"]
@@ -374,6 +388,7 @@ flowchart TB
   worker -->|"invokes"| runner
   worker -->|"invokes"| judge
   scorer -->|"invokes"| judge
+  web -->|"invokes between interview turns"| judge
   judge -->|"calls"| bedrock
   apigw -->|"checks the token with"| authorizer
   authorizer -->|"reads the key from"| secret
@@ -381,8 +396,8 @@ flowchart TB
   sockfn -->|"queues frames on"| fifo
   fifo -->|"batches frames to"| streamfn
   streamfn -->|"streams to"| transcribe
-  web -->|"stores recordings in"| bucket
-  web -->|"synthesises follow-ups with"| polly
+  web -->|"stores recordings and spoken lines in"| bucket
+  web -->|"speaks questions and follow-ups with"| polly
   runner -->|"reports metrics to"| alarms
   judge -->|"reports metrics to"| alarms
 ```
@@ -404,7 +419,7 @@ flowchart LR
     end
   end
   subgraph judgeb["The judge Lambda: Bedrock permission, executes nothing"]
-    judge["Judge<br/>Reads learner text wrapped as data, returns JSON checked against a schema"]
+    judge["Judge<br/>Reads learner text and resume text wrapped as data, fills each prompt in one pass, returns JSON checked against a schema"]
   end
   browser -->|"sends a claim, never a fact, to"| web
   web -->|"invokes with the problem and the solution"| harness
@@ -421,7 +436,7 @@ flowchart LR
 | Never trust learner-reported anything. | A pass count, a timing or a summary printed by learner code is a string. The runner judges correctness against values it generated itself. |
 | Client input is never authoritative. | A sandbox id, an execution role, a model id, a storage path, a difficulty and a cap allowance are all resolved on the server from the enrolment and the problem version. A read-only editor range is an affordance, and the real check runs on the server. |
 | An error verdict never consumes an allowance. | Infrastructure failures are the platform's problem, and a test proves it. |
-| Prompt injection reaches the judge as data. | Learner text is wrapped in delimiters and labelled as data, and judge output is parsed as JSON against a schema. A design answer asking for full marks scores on content. |
+| Prompt injection reaches the judge as data. | Learner text is wrapped in delimiters and labelled as data, and judge output is parsed as JSON against a schema. A design answer asking for full marks scores on content. Since pull request #46 every judge prompt is filled in one pass, so a learner's literal `{{NONCE}}` can no longer close the data delimiter, and a pasted resume becomes at most twelve claims whose text is never written to a table, a file or a log. |
 
 ### A code submission, from the click to the verdict
 
@@ -468,9 +483,14 @@ sequenceDiagram
   participant DB as PostgreSQL
   participant S as Voice socket
   participant T as Amazon Transcribe
-  participant C as Voice scorer
   participant J as Judge Lambda
-  B->>W: POST /api/voice/sessions with a mode and a question slug, after consent once
+  participant P as Amazon Polly
+  participant C as Voice scorer
+  B->>W: POST /api/voice/sessions with a mode, a question slug and an interviewer, after consent once
+  opt a resume is pasted, in interview mode
+    W->>J: voice_resume_claims, the text inside nonced delimiters as data
+    J-->>W: At most twelve claims, kept on the session row for the session and never the text
+  end
   W->>DB: Claim the mode's allowance and insert the session row in one transaction
   W-->>B: Session id, a signed token and the socket address
   B->>S: Connect with the token, then send 100 ms frames of 16 kHz PCM
@@ -480,17 +500,29 @@ sequenceDiagram
   B->>S: stop
   S-->>B: closed, after the last final
   B->>W: POST /api/voice/sessions/{id}/finish with the transcript, segments and timeline, tried up to three times
-  W->>DB: Finish the session, and give the unit back if the answer was under 30 s and 40 words
+  W->>DB: Finish the answer, and give the unit back if it was under 30 s and 40 words
+  opt interview mode, up to five rounds
+    loop each round, between turns
+      W->>W: Plan the round from the interviewer's cadence and the why ladder
+      W->>J: voice_follow_up with the answer so far as data, under a four-second deadline
+      J-->>W: The question in time, or nothing, and then the authored bank asks instead
+      W->>P: Speak the question in the interviewer's voice
+      W-->>B: The round: its audio, a sixty-second clock and its own socket token
+      B->>S: The reply, as frames on a new connection
+      B->>W: POST /api/voice/sessions/{id}/turns/{ordinal}/finish with the reply
+    end
+    W->>DB: Close the interview and delete any resume claims
+  end
   B->>W: Upload the recording through /api/voice/sessions/{id}/audio
   C->>DB: Find finished sessions with no score and fewer than three judge attempts
-  C->>J: Invoke with the transcript, the beat labels, the rubric and three exemplars
+  C->>J: Invoke with the transcript, the scored rounds, the beat labels, the rubric and three exemplars
   J-->>C: Content band and the beats covered
   C->>DB: Write content, structure and pace, and report delivery without scoring it
   B->>W: Open /voice/sessions/{id}
-  W-->>B: The debrief, with score, beats, territory not entered, the judge's sentence, delivery and transcript
+  W-->>B: The debrief, with score, beats, territory not entered, the judge's sentence, the rounds, delivery and transcript
 ```
 
-No model call happens while the learner is speaking. The live cues are string matches against beat anchors on partial transcripts, and the judge runs once, afterwards, on the final transcript.
+No model call happens while the learner is speaking, in the main answer or in a reply. The live cues are string matches against beat anchors on partial transcripts. The judge words a follow-up between turns, under a four-second deadline with the authored bank behind it, and scores once, afterwards, on the final transcript and the rounds.
 
 ### The life of a submission
 
@@ -523,6 +555,9 @@ stateDiagram-v2
   [*] --> open: the session route claims the mode's allowance and inserts the row
   [*] --> finished: a typed answer arrives already finished, with no clock
   open --> finished: finish stores the transcript, the segments and the cockpit's timeline
+  open --> answered: in interview mode, finish marks answer_finished_at and keeps the session open
+  answered --> answered: a round is planned, asked by the judge inside four seconds or by the authored bank, and replied inside sixty, up to five times
+  answered --> finished: Stop, the last round, the closing tab's beacon, or the scorer after fifteen minutes with no reply; the resume claims go with it
   finished --> did_not_count: under 30 s and 40 words, within six free a day; the unit goes back and the judge never runs
   finished --> awaiting_score: scored_at is null, so the scorer picks it up
   awaiting_score --> scored: the judge answers; content, structure and pace are written
@@ -536,7 +571,7 @@ stateDiagram-v2
 
 ### The core tables
 
-From `web/migrations/`, 21 files. Enum types are named as the migrations name them. The practice side first.
+From `web/migrations/`, 23 files. Enum types are named as the migrations name them. The practice side first.
 
 ```mermaid
 erDiagram
@@ -776,12 +811,16 @@ erDiagram
   voice_question ||--o{ voice_rubric_criterion : "is scored on"
   voice_question ||--o{ voice_exemplar : "is anchored by"
   voice_question ||--o{ voice_session : "is answered in"
+  voice_interviewer ||--o{ voice_session : "asks, named by slug"
+  voice_interviewer ||--o{ voice_turn : "asks, named by slug"
   enrolment ||--o{ voice_session : "answers"
   enrolment ||--o| voice_consent : "grants"
+  voice_session ||--o{ voice_turn : "continues in"
   voice_session ||--o{ voice_beat_result : "records"
   voice_session ||--o{ voice_nudge : "records"
   voice_session ||--o{ voice_interruption : "records"
   voice_follow_up ||--o{ voice_interruption : "is fired as"
+  voice_follow_up |o--o{ voice_turn : "is asked as, when the model is late"
   voice_session ||--o| voice_session_share : "is shared through"
 
   voice_question {
@@ -792,8 +831,31 @@ erDiagram
     difficulty difficulty
     int total_seconds
     text prompt_text
-    text prompt_audio_key
+    text round "one of six rounds of the loop"
+    text tests
+    text interviewers "array of slugs"
+    text builds_on "array of problem slugs"
+    jsonb framework
+    text tips "array"
+    int interview_rounds
     boolean is_published
+  }
+  voice_interviewer {
+    bigint id PK
+    text slug UK
+    text name
+    text role_line
+    text listens_for "array"
+    text opening_line
+    text follow_up_style
+    text stress_probes "array"
+    text cadence "array, one kind per round"
+    text voice_id
+    text voice_engine
+    text voice_language
+    text members "array, the panel only"
+    boolean is_published
+    timestamptz retired_at
   }
   voice_beat {
     bigint id PK
@@ -820,8 +882,12 @@ erDiagram
     bigint cohort_id FK
     voice_mode mode
     text input "spoken or typed"
+    text interviewer_slug
+    int interview_rounds
+    jsonb resume_claims "deleted at close or after a day"
     boolean spent_allowance
     timestamptz started_at
+    timestamptz answer_finished_at
     timestamptz finished_at
     text transcript
     jsonb transcript_segments
@@ -835,6 +901,33 @@ erDiagram
     timestamptz scored_at
     text audio_s3_key
     timestamptz audio_deleted_at
+  }
+  voice_turn {
+    bigint id PK
+    bigint voice_session_id FK
+    int ordinal
+    text interviewer_slug
+    text kind "why, stress or resume"
+    int depth "the level of why"
+    text source "generated, authored or probe"
+    text question_text
+    bigint authored_follow_up_id FK
+    text audio_key
+    text transcript
+    int generation_ms
+    int synthesis_ms
+    int gap_ms
+    int model_calls
+    int input_tokens
+    int output_tokens
+    text fallback_reason
+    text targets "faculty only"
+  }
+  voice_spoken_line {
+    bigint id PK
+    text voice_id
+    text text_sha256
+    text audio_key
   }
   voice_beat_result {
     bigint id PK
@@ -897,7 +990,7 @@ Every row has an identifier a test, a pull request or a document can cite, and n
 | FR10 | Prompt surgery: static rules with zero model calls, probes run twice for agreement, then the rubric judge. | [docs/03](docs/03-RUNNER-AND-GRADING.md) section 4.2 | Built |
 | FR11 | A panel of three evaluators with one consolidated voice, disagreement reported and never averaged, a faculty queue, and an override that moves the grade and tells the learner. | [docs/10](docs/10-EVALUATION-PANEL.md) | Built |
 | FR12 | A competency heatmap with four one-way states, a readiness signal with four counts and three bands, interview coverage beside it, and a CSV export. | [docs/02](docs/02-DATA-MODEL.md) section 7, [docs/12](docs/12-PROGRESS-AND-READINESS.md) | Built, except interview coverage beside the signal |
-| FR13 | The Voice Screen: consent, a microphone check, guided, unguided and pressure modes, typed answers, a question picker, a debrief, instrument replay, and audio deleted after 30 days. | [docs/07](docs/07-VOICE-SCREEN.md) | Built |
+| FR13 | The Voice Screen: consent, a microphone check, guided, unguided, pressure and interview modes, nine interviewers and a panel, follow-up rounds with the authored bank as the fallback, a pasted resume as claims for the session only, typed answers, a question picker, a debrief, instrument replay, and audio deleted after 30 days. | [docs/07](docs/07-VOICE-SCREEN.md) | Built |
 | FR14 | Admin: a roster with CSV persona upload and invites, submissions with every trace, Ops with queue depth and a degraded switch, requeue and counter clears with an audit row, disagreements, and the cohort Overview. | [docs/01](docs/01-WIREFRAMES.md) S10, [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 | Built, except that the import screen reads from disk and cannot run on a deployment |
 | FR15 | Content is YAML in Git, validated in CI, published by a command, and versioned so a submission points at the version it ran against. | [docs/04](docs/04-PROBLEM-AUTHORING.md), [docs/02](docs/02-DATA-MODEL.md) section 2 | Built |
 | FR16 | Every cap is a row in `rate_limit_policy` on a rolling window, editable without a deploy. | [docs/00](docs/00-PRD.md) section 4, [docs/02](docs/02-DATA-MODEL.md) section 6 | Built |
@@ -916,12 +1009,13 @@ Every row has an identifier a test, a pull request or a document can cite, and n
 | NFR5 | Cost: grading spends no model tokens, and token spend is bounded by the caps, with a budget alarm at 50 and 80 percent before the first learner signs in. | [docs/05](docs/05-DEPLOY-AND-OPS.md) section 5 | `tests/test_process_boundary.py` and `tests/test_isolation.py` prove learner code reaches no model. The alarm is launch task S11.6. |
 | NFR6 | Security: learner code runs in a Lambda with no route out and no credential, as a sandbox process with an allowlisted environment and no process allowance, behind a static gate, and learner text reaches the judge as data. | [docs/03](docs/03-RUNNER-AND-GRADING.md) section 7 | `tests/test_static_gate.py`, `tests/test_isolation.py`, `tests/test_judge_injection.py`, and `infra/test`, which asserts the runner's role holds no Bedrock, bucket or queue grant |
 | NFR7 | Fairness: an error verdict never consumes an allowance, a panelist that cannot run never lowers a score, and voice delivery is never scored. | `CLAUDE.md`, [docs/10](docs/10-EVALUATION-PANEL.md) section 9, [docs/07](docs/07-VOICE-SCREEN.md) section 6 | `web/tests/pipeline.test.ts`, `web/tests/panel.test.ts` and `web/tests/fairness.test.ts` |
-| NFR8 | Privacy: consent before the first recording, audio deleted after 30 days by the bucket's own rule, and faculty hear audio only when the learner shares it. | [docs/07](docs/07-VOICE-SCREEN.md) section 9 | `infra/test` and the voice tests under `web/tests`, which hold the two copies of the 30-day figure together |
+| NFR8 | Privacy: consent before the first recording, audio deleted after 30 days by the bucket's own rule, faculty hear audio only when the learner shares it, and a pasted resume's text is never written to a table, a file or a log. | [docs/07](docs/07-VOICE-SCREEN.md) section 9 | `infra/test`, the voice tests under `web/tests`, which hold the two copies of the 30-day figure together, and `web/tests/voice-resume.test.ts`, which plants a sentinel in a resume and finds it nowhere |
 | NFR9 | Rollback: every migration stays backward compatible for one release, and every result records the runner image tag that graded it. | `CLAUDE.md`, [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 | Review, and the `runner.image_tag` field of the result contract |
 | NFR10 | Observability: three alarms and no more, runner throttled, runner failing and judge spend, routed to one topic. | [docs/05](docs/05-DEPLOY-AND-OPS.md) section 6 | `infra/test` |
 | NFR11 | Accessibility: every control reachable by keyboard, 4.5 to 1 text contrast, no information carried by colour alone, and reduced motion respected. | [docs/08](docs/08-DESIGN-SYSTEM.md) section 8 | By hand. No automated check exists yet. |
 | NFR12 | Bounds: a 10-second wall clock per case, a 60-second Lambda timeout, source under 64 KB, output under 32 KB per test, and a trace under 256 KB. | [docs/03](docs/03-RUNNER-AND-GRADING.md) sections 1, 4.1 and 6 | `tests/test_timeout_and_trace.py` and `tests/test_static_gate.py` |
 | NFR13 | Panelist 2 latency: 70 ms at the 95th percentile for a complete 700-word answer on one core. | [docs/10](docs/10-EVALUATION-PANEL.md) section 5 | `scripts/bench_embeddings.py`, measured on 30 September 2026 |
+| NFR14 | Interview latency: six seconds at the 95th percentile from a reply ending to the next question being sent, of which four for the model, with the authored bank asking when the model is late. | [docs/07](docs/07-VOICE-SCREEN.md) section 5a, [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 | `npm run voice:cost` on the first deployed sessions, which is S14.5 and has not run; `web/tests/voice-interview.test.ts` proves five rounds still ask five questions with the judge failing on every call |
 
 ### Constraints
 
@@ -940,6 +1034,7 @@ Every row has an identifier a test, a pull request or a document can cite, and n
 | C11 | An original visual identity: no copied markup, stylesheet, component code or problem text. | [docs/08](docs/08-DESIGN-SYSTEM.md) section 1, `CLAUDE.md` |
 | C12 | Bedrock requests send thinking disabled beside temperature 0, because the two cannot be combined, and a model that cannot turn thinking off is refused at start. Checked against the Converse API reference on 14 September 2026. | [docs/03](docs/03-RUNNER-AND-GRADING.md) section 4.2 |
 | C13 | API Gateway WebSocket quotas: a 600-second idle timeout, a 7,200-second connection, 32 KB frames and 128 KB messages, none adjustable. Checked on 15 September 2026. | `infra/lib/voice-socket.ts` |
+| C14 | A follow-up is never generated while the learner speaks. It is asked between turns, which is why interview mode is a mode of its own and pressure mode keeps its authored interruptions. | [docs/project/decisions.md](docs/project/decisions.md) D12, [docs/07](docs/07-VOICE-SCREEN.md) section 5a |
 
 ### Assumptions
 
@@ -953,6 +1048,7 @@ Every row has an identifier a test, a pull request or a document can cite, and n
 | A6 | Every learner has a coding assistant, so the design compensates with hostile fixtures, the defence step and the trace rather than policing. | Nothing breaks. The defence step is extra work for an honest learner. | [docs/00](docs/00-PRD.md) sections 7.3 and 10 |
 | A7 | Speech runs near 138 words a minute, measured by reading exemplars aloud, and a typed answer is capped at 180. | Beat budgets are wrong in one direction and every voice question needs re-timing. | [docs/project/delivery-history.md](docs/project/delivery-history.md) S4, [docs/07](docs/07-VOICE-SCREEN.md) section 4 |
 | A8 | Panelist 2's band agrees with a human grader often enough to hold the lower band on a disagreement. | Faculty overrides record every case, and analytics will report how often the panel is overruled. | [docs/10](docs/10-EVALUATION-PANEL.md) section 7 |
+| A9 | The deployed judge answers a follow-up inside four seconds often enough that the authored bank is the exception. | The fallback share rises, learners hear the bank more than the model, and the judge needs provisioned concurrency, which is billed by the hour. | [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 |
 
 ## Running it on your machine
 
@@ -970,7 +1066,7 @@ docker compose up
 
 In a clone you already have, run `git checkout main` and `git pull` instead of the first two lines, and `docker compose up --build` so a changed image is rebuilt.
 
-Open <http://localhost:3000>. Four services come up in order: Postgres, then a one-shot `init` that installs dependencies, migrates, imports the content and fetches panelist 2's embedding model, then the web application and the worker. Expect `published 163 problems and 14 voice questions.` in the `init` log on a first run.
+Open <http://localhost:3000>. Four services come up in order: Postgres, then a one-shot `init` that installs dependencies, migrates, imports the content and fetches panelist 2's embedding model, then the web application and the worker. Expect `published 173 problems, 9 interviewers and 14 voice questions.` in the `init` log on a first run.
 
 The model fetch is the one step allowed to fail. On a laptop with no network the stack still comes up, because the worker carries `EVAL_DEGRADED_PANELISTS=pretrained` and starts without panelist 2, saying so in its log.
 
@@ -1014,14 +1110,14 @@ export DATABASE_URL="postgres://localhost/fdeprep"
 # 4. Schema
 npm run migrate
 
-# 5. Content: 163 problems and 14 voice questions
+# 5. Content: 173 problems, 9 interviewers and 14 voice questions
 npm run import:content
 
 # 6. The application
 AUTH_DEV_LEARNER=1 npm run dev
 ```
 
-Open <http://localhost:3000>. Step 5 prints `published 163 problems and 14 voice questions.`
+Open <http://localhost:3000>. Step 5 prints `published 173 problems, 9 interviewers and 14 voice questions.`
 
 `npm run dev` is slower than the deployed site by design. It compiles each screen the first time you open it and runs React's development build, which measured 3.6 to 6.4 MB of script per page against about 0.5 MB in a production build on 30 September 2026. Judge speed on a production build, `npm run build` then `npm start`, which needs the GitHub sign-in from the deploy section because `AUTH_DEV_LEARNER` refuses to run in production.
 
@@ -1052,7 +1148,7 @@ One process runs the whole pipeline: it dispatches queued submissions, runs the 
 cd web && DATABASE_URL="postgres://localhost/fdeprep" npm run db:seed
 ```
 
-The seed fills a fresh database with forty people in two cohorts and ninety days of submissions, voice answers, rehearsals, invites, reviews and audit rows, every grade written by `eval/` through the same path a learner's own work takes. It takes about two minutes, refuses to run twice unless you pass `--replace`, and refuses in production unless you pass `--yes`. It prints the readiness of three named learners and one login per archetype to open. The screenshots at the top of this page were taken against it.
+The seed fills a fresh database with forty people in two cohorts and ninety days of submissions, voice answers, rehearsals, invites, reviews and audit rows, every grade written by `eval/` through the same path a learner's own work takes. It takes about two minutes, refuses to run twice unless you pass `--replace`, and refuses in production unless you pass `--yes`. It prints the readiness of three named learners and one login per archetype to open. The screenshots at the top of this page were taken against it, with one interview session added through the product's own session functions and a stubbed judge, the way the seed scores every answer.
 
 ### The Voice Screen, which needs a third and a fourth terminal
 
@@ -1084,7 +1180,7 @@ Scoring calls the judge, and the judge calls Claude on Amazon Bedrock. Terminal 
 cd web && JUDGE_MODEL_ID=us.anthropic.claude-opus-5 AWS_REGION=us-east-1 npm run scorevoice
 ```
 
-Each scored answer is two model calls on that account. A typed answer needs neither the socket nor a microphone and is scored the same way.
+Each scored answer is two model calls on that account. A typed answer needs neither the socket nor a microphone and is scored the same way. The voice scorer also closes an interview left open for fifteen minutes and deletes resume claims a day old, so it runs wherever interview mode is used.
 
 ### Demonstrating it to a room
 
@@ -1105,8 +1201,8 @@ A five-minute path that shows the product's argument rather than its screens.
 ```bash
 createdb fdeprep_test
 export TEST_DATABASE_URL="postgres://localhost/fdeprep_test"
-cd web   && npm test                        # 936 tests
-cd ../   && .venv/bin/python -m pytest -q   # 1,465 tests, 65 skip, see below
+cd web   && npm test                        # 1,051 tests
+cd ../   && .venv/bin/python -m pytest -q   # 1,963 tests, 69 skip, see below
 cd voice && npm test                        # 28 tests
 cd ../infra && npm test                     # 37 tests
 ```
@@ -1278,18 +1374,20 @@ This route has not yet run end to end against a real account. The stack synthesi
 
 | Cadence | Task | How |
 |---|---|---|
-| Daily during a cohort | Glance at `/admin/ops` for queue depth, the runner error rate and the voice answers nobody has scored. | One screen, ten seconds. |
+| Daily during a cohort | Glance at `/admin/ops` for queue depth, the runner error rate, the voice answers nobody has scored and, with interview mode in use, today's rounds with their 95th percentile gap and fallback share. | One screen, ten seconds. |
 | After every content change | Republish. | `npm run import:content` against the production database. |
 | Weekly | Read the attempt notes on Extreme problems, and the Overview's stuck column. | They are the cheapest signal you have about whether a cohort is stuck on the concept or on Python. |
 | Per cohort | Run the roster checklist, step 6 of route A. | |
 
-A problem or a voice question is a YAML file, and nothing about content lives in the database except a published copy. Edit the file, run `npm run validate:problems` in `web/` (the same gate CI runs) and `npm run import:content` to publish. CI validates every problem and every voice question on every pull request, so a broken file cannot reach the import step. To author a new one, use the `problem-authoring` or `voice-question-authoring` skill in `.claude/skills/`; both enforce the rules that matter, including that a naive solution provably fails a hidden test.
+A problem, a voice question or an interviewer is a YAML file, and nothing about content lives in the database except a published copy. Edit the file, run `npm run validate:problems` or `npm run validate:voice` in `web/` (the same gates CI runs) and `npm run import:content` to publish. `npm run validate:voice` checks the interviewers, the voice questions and the references between them and to `problems/`. CI validates every problem, question and interviewer on every pull request, so a broken file cannot reach the import step. To author a new one, use the `problem-authoring` or `voice-question-authoring` skill in `.claude/skills/`; both enforce the rules that matter, including that a naive solution provably fails a hidden test.
 
 A schema change is a new file under `web/migrations/` and `npm run migrate`. Every migration stays backward compatible for one release: add a column before anything writes to it, and drop it a release later, so rollback remains possible.
 
 Judge prompts are files in `judge/prompts/`, versioned as `rubric.v1.md` and so on, never in the database, so changing how a cohort is graded is a code review. There is no mechanism yet for re-grading past submissions against a new prompt version, which matters if you change one mid-cohort; that is roadmap story S15.3.
 
 Degraded mode is the switch on `/admin/ops` that disables Submit and leaves Run working. Learners keep practising against public cases while grading is down, and nobody loses an attempt. Flip it the moment grading looks unhealthy rather than after you have diagnosed why.
+
+`npm run voice:cost -- --since <date> --in-per-mtok <rate> --out-per-mtok <rate>` prices interview sessions at the day's published rates and prints the 95th percentile gap between turns. [docs/05](docs/05-DEPLOY-AND-OPS.md) has the runbook, including when to give the judge provisioned concurrency.
 
 ## Fixing it when it breaks
 
@@ -1308,6 +1406,7 @@ Three questions, in order. Is the worker running? Most reported faults are a dea
 | An answer says "The transcriber failed at 0:00". | The socket runs Amazon Transcribe with no AWS credentials, or Transcribe refused the stream. The socket's terminal or log names the reason. | On a laptop, start the socket with `VOICE_STT=scripted`. On AWS, read the voice Lambda's log. |
 | "Your answer did not save" with Save again. | The finish request failed three times: the web process restarted, or the database was unreachable. The answer is held in that browser tab. | Fix the web process or the database, then the learner presses Save again. Closing the tab first loses the answer. |
 | A debrief says the judge could not score it after three tries. | The scorer has no `JUDGE_MODEL_ID`, no AWS credentials, or Bedrock refused the call. Its allowance was given back. | `journalctl -u fdeprep-scorer -n 20` on AWS, or terminal 4 locally, names the reason on each try. |
+| An interview round asks one of the question's authored follow-ups instead of a question about your answer. | The judge was late past four seconds, failed or was refused, so the authored bank asked. It costs the learner nothing. | `npm run voice:cost` shows the fallback share and the 95th percentile gap, and [docs/05](docs/05-DEPLOY-AND-OPS.md) section 7 says when to give the judge provisioned concurrency. |
 | A page shows "This page did not load" with a reference number. | That page threw on the server. The reference is the digest Next writes about twenty lines below the error in the web log. | On AWS, `journalctl -u fdeprep-web --no-pager \| grep -B25 REFERENCE` prints the error above it. Locally, the `npm run dev` terminal shows the same. |
 | The Voice page says no questions are published. | Content was never imported. | `npm run import:content`. |
 | `next build` fails on `/_global-error` with a null `useContext`. | `NODE_ENV` is set to `development` in the shell. | `NODE_ENV=production npx next build`. |
@@ -1328,7 +1427,7 @@ Four integrations are written, unit-tested against recorded fixtures, and have n
 |---|---|---|
 | Bedrock rubric judge | Code complete and tested against recorded replies; `JUDGE_LIVE=1` never run. | A model id, a region, an inference profile prefix or the thinking-mode combination is wrong, and every design and prompt submission errors. |
 | Amazon Transcribe streaming | Adapter written against the documented API, exercised only through the scripted adapter. | The live stream shape differs and the cockpit shows a dead microphone. |
-| Amazon Polly | Pressure-mode follow-up audio. Never synthesised. | Follow-ups arrive as silence. |
+| Amazon Polly | The interviewers' voices: the question, the opening line, pressure interruptions and interview rounds. Never synthesised. | Follow-ups arrive as silence, and an interview round shows its text in the listening phase instead. |
 | S3 audio storage | Written, never exercised against a real bucket. | Voice sessions finish and the audio is unreachable. |
 
 | Gap | Effect | Story |
@@ -1347,13 +1446,14 @@ Four integrations are written, unit-tested against recorded fixtures, and have n
 | The database restore. | A restore procedure that has never been run is not a restore procedure. S11.4. |
 | The 200-concurrent-submission burst against a deployment. `npm run burst` has only run locally. | Peak load is a projection. S11.7. |
 | A second operator's practice drill. | There is one operator, and that operator also writes the curriculum. The failure mode is a Tuesday evening where grading stops, 180 learners are blocked, and the one person who understands the queue is teaching. S11.5. |
+| Ten interview sessions priced and timed. | Interview mode's cost per session and the gap between turns are projections until `npm run voice:cost` reads sessions on a deployment. S14.5. |
 
 ## Quality
 
 | Suite | Tests on 9 October 2026 | Runs in CI as |
 |---|---|---|
-| Web, vitest, 66 files | 936 passed | Web typecheck and tests |
-| Python, pytest | 1,465 passed and 65 skipped: Bedrock tests without `JUDGE_LIVE=1`, MiniLM tests without the weights on disk, permission tests as root, and a per-problem step check on problems that have no steps | Runner tests |
+| Web, vitest, 73 files | 1,051 passed | Web typecheck and tests |
+| Python, pytest | 1,963 passed and 69 skipped: Bedrock tests without `JUDGE_LIVE=1`, MiniLM tests without the weights on disk, permission tests as root, and a per-problem step check on problems that have no steps | Runner tests |
 | Voice package, the Node test runner | 28 passed | Voice package tests |
 | Infrastructure, the Node test runner | 37 passed | Infrastructure synth and assertions |
 
@@ -1369,15 +1469,16 @@ Twenty-two bugs were found and fixed through the build. Reading a specification 
 
 | Path | What it is |
 |---|---|
-| `web/` | The Next.js application: 23 pages, 30 API routes and 21 migrations. |
+| `web/` | The Next.js application: 24 pages, 33 API routes and 23 migrations. |
 | `runner/` | The Python battery, harness and static gate. It executes learner code and reaches nothing else. |
-| `judge/` | The Bedrock judge, with its prompts as versioned files. |
+| `judge/` | The Bedrock judge, with its prompts as versioned files: the probes, the rubric, the defence, the voice beats, the follow-up and the resume claims. |
 | `embed/` | Panelist 2's encoder, run by the worker as a subprocess. |
 | `voice/` | The voice session socket, its speech-to-text adapters and the session protocol. |
 | `infra/` | CDK for the two Lambdas, their VPC, the learner audio bucket, the web host's role, the three alarms and the voice socket. |
 | `docker-compose.yml` | The one-command local stack: Postgres, content import, the application and the worker. |
-| `problems/` | 163 problems as YAML in 14 chapter folders, plus fixtures under `_fixtures/` that never publish. |
-| `voice-questions/` | 14 questions as YAML across five tracks. |
+| `problems/` | 173 problems as YAML in 14 chapter folders, plus fixtures under `_fixtures/` that never publish. |
+| `voice-questions/` | 14 questions as YAML across five tracks. Each names its round of the interview loop, what it tests, the interviewers who ask it, the problems it builds on, a framework card and two to four tips. |
+| `voice-interviewers/` | The nine interviewers as YAML: who each is, what they listen for, their opening line, follow-up style, stress probes, the cadence of their follow-up rounds and their Polly voice. The panel seats three of them, chair first. |
 | `docs/` | The specification, thirteen numbered documents, and `docs/project/`, the delivery record. |
 | `scripts/` | The embedding model fetch, the embedding benchmark, the runner smoke test, the README screenshots and the session bootstrap. |
 | `tests/` and `tools/` | The Python suite, and the backlog validator and the board sync. |

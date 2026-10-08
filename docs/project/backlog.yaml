@@ -1485,6 +1485,7 @@ stages:
         title: "Choose who interviews you: nine interviewer personas"
         type: Feature
         status: done
+        pr: 46
         points: 8
         area: Voice
         finish: 2026-10-08
@@ -1506,6 +1507,7 @@ stages:
         title: Rewrite the question bank around real FDE interview loops
         type: Task
         status: done
+        pr: 46
         points: 13
         area: Content
         finish: 2026-10-08
@@ -1523,6 +1525,7 @@ stages:
         title: Teach a framework and the tips people miss on every question
         type: Task
         status: done
+        pr: 46
         points: 8
         area: Content
         finish: 2026-10-08
@@ -1595,6 +1598,7 @@ stages:
         title: "Follow up like an interviewer: five levels of why, and stress probes"
         type: Feature
         status: done
+        pr: 46
         points: 13
         area: Voice
         risk: High
@@ -1616,6 +1620,7 @@ stages:
         title: Cross-question an optional resume, kept only for the session
         type: Feature
         status: done
+        pr: 46
         points: 8
         area: Voice
         risk: High
@@ -1636,6 +1641,7 @@ stages:
         title: Run a panel of interviewers who take turns
         type: Feature
         status: done
+        pr: 46
         points: 5
         area: Voice
         finish: 2026-10-08
@@ -1649,6 +1655,7 @@ stages:
         title: Draw the interview room in the lobby and the debrief
         type: Feature
         status: done
+        pr: 46
         points: 5
         area: Web application
         finish: 2026-10-08
@@ -1680,6 +1687,7 @@ stages:
         title: Amend docs/07 and the privacy notice
         type: Task
         status: done
+        pr: 46
         points: 3
         area: Docs and process
         finish: 2026-10-08
@@ -1932,10 +1940,19 @@ stages:
       - id: S17.5
         title: "Rewrite the README as the product's front page: how to use it, the spec at a glance, the architecture and the stages"
         type: Task
-        status: in_progress
+        status: done
+        pr: 46
         points: 8
         area: Docs and process
-        finish: 2026-10-09
+        finish: 2026-10-08
+        outcome: >-
+          README.md is the product's front page: what it is and who it is
+          for, eight labelled screenshots captured from the seeded database
+          by scripts/readme_screens.js, the spec at a glance, eleven Mermaid
+          diagrams validated before commit, the requirements as four tables
+          with the document each row comes from, the modes, the stages, the
+          local run, the three deploy routes, the fix table and the suites,
+          with every figure measured on the day it was written.
         acceptance:
           - README.md opens with what the product is, who it is for and seven labelled screenshots captured from the seeded development database, then the functional requirements, the non-functional requirements, the constraints and the assumptions as tables whose rows name the document each comes from.
           - The architecture is drawn in Mermaid that GitHub renders, as C4 context, container and component flowcharts, a deployment view, the trust boundaries, the code submission and voice answer sequences, the submission and voice session states and two entity relationship diagrams taken from the migrations, each validated before the commit.
@@ -1969,11 +1986,22 @@ stages:
       - id: S18.1
         title: "Teach the agentic patterns, frameworks and depth topics the catalogue was missing"
         type: Feature
-        status: in_progress
+        status: done
+        pr: 46
         points: 13
         area: Content
         start: 2026-10-08
-        finish: 2026-10-19
+        finish: 2026-10-08
+        outcome: >-
+          Ten problems landed in four chapters, validated in CI like the rest
+          of the catalogue: four orchestration drills, a peer handoff with
+          Command, a critic loop that keeps the best draft, a map-reduce with
+          Send and an A2A task handoff; two memory drills on episodic recall
+          and a procedural playbook; two context drills on rerank depth and a
+          bounded graph walk; and two design problems, n8n against a graph or
+          plain code, and a model change inside a sealed network. Nine are
+          drills and the n8n problem took the day-6 slot of
+          pick-a-framework-for-the-first-agent, which became a drill.
         acceptance:
           - Orchestration gains four drills. keep-the-chat-with-its-specialist (Hard) hands a chat between peer agents with Command and keeps an active agent that persists across turns and resets when a case closes. end-the-critic-loop-on-the-best-draft (Hard) ends an evaluator-optimizer loop on a decision and keeps the best draft. fan-out-one-worker-per-store-then-reduce (Hard) runs a map-reduce with Send whose reduce survives a failed branch inside the call budget. follow-a-task-handed-to-another-agent (Medium) follows a task handed to another organisation's agent through the A2A task states.
           - Memory gains two drills. recall-past-episodes-without-inventing-a-fact (Hard) keeps episodes in the LangGraph store and promotes a fact only when the customer states it or three episodes within 90 days agree. update-the-playbook-without-dropping-a-rule (Medium) updates a procedural playbook without touching a required step.
