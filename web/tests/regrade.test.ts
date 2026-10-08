@@ -13,7 +13,21 @@ import { existsSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { renderToStaticMarkup } from "react-dom/server";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Learner } from "../lib/session/current.ts";
+
+const session = vi.hoisted(() => ({ learner: null as Learner | null }));
+
+vi.mock("../lib/session/current.ts", async (original) => ({
+  ...(await original<typeof import("../lib/session/current.ts")>()),
+  currentLearner: async () => {
+    if (!session.learner) throw new Error("this check has no session");
+    return session.learner;
+  },
+}));
+
+import SubmissionRecordPage from "../app/(shell)/admin/submissions/[id]/page.tsx";
 import { closeDb, db } from "../lib/db/pool.ts";
 import { createSubmission } from "../lib/submissions/create.ts";
 import { dispatchOnce } from "../lib/queue/dispatcher.ts";
@@ -208,13 +222,13 @@ describe("a regrade", () => {
   });
 
   it("shows faculty both rows, newest first, each naming its prompt", async () => {
-    const { submissionId } = await graded(judged(88, "rubric.v1.md"));
+    const learner = await graded(judged(88, "rubric.v1.md"));
     await runRegrade({
       current: CURRENT, limit: 25, dryRun: false,
       rejudge: fakeJudge(() => judged(70, "rubric.v2.md")),
     });
 
-    const record = await evaluationHistory(submissionId);
+    const record = await evaluationHistory(learner.submissionId);
     expect(record!.evaluations.map((e) => [e.judgePrompt, e.band, e.newest])).toEqual([
       ["rubric.v2.md", "adequate", true],
       ["rubric.v1.md", "strong", false],
@@ -226,6 +240,20 @@ describe("a regrade", () => {
     const { rows } = await db().query<{ action: string }>(
       "select action from audit_log where action = 'evaluation.regrade'");
     expect(rows).toHaveLength(1);
+
+    // The page faculty open from Submissions and Disagreements.
+    const open = () => SubmissionRecordPage({
+      params: Promise.resolve({ id: String(learner.submissionId) }) });
+    session.learner = { enrolmentId: learner.enrolmentId, cohortId: learner.cohortId,
+                        userId: learner.userId, displayName: "Faculty", role: "faculty",
+                        persona: "navigator" };
+    const page = renderToStaticMarkup(await open()).replace(/<[^>]+>/g, " ");
+    expect(page.indexOf("rubric.v2.md")).toBeGreaterThan(-1);
+    expect(page.indexOf("rubric.v2.md")).toBeLessThan(page.indexOf("rubric.v1.md"));
+    expect(page).toContain("What the learner reads");
+
+    session.learner = { ...session.learner, role: "learner" };
+    await expect(open()).rejects.toMatchObject({ digest: "NEXT_HTTP_ERROR_FALLBACK;404" });
   });
 
   it("leaves a submission as it was when the judge does not complete", async () => {

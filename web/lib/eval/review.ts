@@ -68,6 +68,8 @@ export interface QueueRow {
   held: Band;
   /** Which panelist said what, because "weak" alone tells faculty nothing. */
   byPanelist: Partial<Record<PanelistName, Band>>;
+  /** The judge prompt panelist 3 graded with, or null where none is recorded. */
+  judgePrompt: string | null;
   review: {
     disposition: Disposition;
     note: string;
@@ -91,7 +93,7 @@ export interface QueueFilters {
 interface Row {
   id: string; submission_id: string; created_at: Date; complexity: string;
   confidence: Confidence; score: string | null; disagreement: Disagreement;
-  panel: Array<{ panelist: PanelistName; band?: Band }>;
+  panel: Array<{ panelist: PanelistName; band?: Band }>; judge_prompt: string | null;
   login: string; display_name: string; slug: string; title: string;
   disposition: Disposition | null; note: string | null;
   reviewer: string | null; reviewed_at: Date | null;
@@ -136,7 +138,7 @@ export async function disagreementQueue(
         order by submission_id, created_at desc, id desc
      )
      select e.id, e.submission_id, e.created_at, e.complexity, e.confidence,
-            e.score, e.disagreement, e.panel,
+            e.score, e.disagreement, e.panel, e.judge_prompt,
             u.github_login as login, u.display_name, p.slug, p.title,
             r.disposition, r.note, r.updated_at as reviewed_at,
             reviewer.github_login as reviewer
@@ -187,6 +189,7 @@ function present(row: Row): QueueRow {
     bands: row.disagreement.bands,
     held: row.disagreement.held,
     byPanelist,
+    judgePrompt: row.judge_prompt ?? null,
     review: row.disposition
       ? {
           disposition: row.disposition,
