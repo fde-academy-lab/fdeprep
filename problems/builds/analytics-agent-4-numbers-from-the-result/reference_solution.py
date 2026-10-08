@@ -3,8 +3,9 @@
 Stages 1 to 3 are unchanged apart from returning the outcome as a dict. What
 is new is the answer, and it has two owners. The figures are written out by
 this code from the rows. The model may add one sentence, which it writes from
-the columns and rows alone, and the sentence is kept only when every number
-in it is a number in the rows.
+the columns and rows alone, and the sentence is kept only when every word in
+it that holds a digit is in the rows: a number equal to a numeric cell, or a
+word of a text cell, whole. An empty result gets no sentence at all.
 
 The budget is three model calls, counted as they are made, so after a repair
 there is no call left for a sentence. The gateway can refuse the sentence
@@ -46,8 +47,10 @@ TABLE_LIST = re.compile(
     r'(?i)\b(?:from|join)\s+((?:"?[a-z_][\w.]*"?(?:\s+(?:as\s+)?[a-z_]\w*)?\s*,\s*)*"?[a-z_][\w.]*"?)'
 )
 CTE_NAME = re.compile(r"(?i)\b([a-z_]\w*)\s+as\s*\(")
-# A number that stands on its own: not the 3 in Q3 or the 8821 in a code.
-NUMBER = re.compile(r"(?<![\w.,])\d[\d,]*(?:\.\d+)?")
+# A whole word that is a number, with or without thousands separators.
+NUMBER = re.compile(r"-?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?")
+# Punctuation trimmed from either end of a word before it is compared.
+EDGES = "\"'()[],.;:!?"
 
 
 # Stage 1: keep only the tables the schema lists and does not mark deprecated.
@@ -155,12 +158,23 @@ def ask_database(sql: str, tools: dict):
 
 
 def repair_sql(question: str, tables: list, schema: dict, sql: str, error: str, llm) -> str:
+    # The picked tables and their columns are where the model can find the
+    # column the error says is missing, and they are all it may read.
     return llm(
         f"{REPAIR_PROMPT}<tables>\n{table_listing(tables, schema)}\n</tables>\n"
         f"<question>\n{question}\n</question>\n"
         f"<failed_query>\n{sql}\n</failed_query>\n"
         f"<database_error>\n{error}\n</database_error>"
     ).strip()
+
+
+def same_query(first: str, second: str) -> bool:
+    """True when two queries differ only in whitespace and letter case.
+
+    Folding case also folds string literals and quoted names, which this
+    schema never uses.
+    """
+    return " ".join(first.split()).casefold() == " ".join(second.split()).casefold()
 
 
 def query(question: str, llm, tools: dict) -> dict:
@@ -187,8 +201,10 @@ def query(question: str, llm, tools: dict) -> dict:
         if reason:
             out["reason"] = f"the repaired query was refused: {reason}"
             return out
-        out["sql"] = repaired
-        result, error, _ = ask_database(repaired, tools)
+        # A copy of the failed query earns the same error, so the first one stands.
+        if not same_query(repaired, sql):
+            out["sql"] = repaired
+            result, error, _ = ask_database(repaired, tools)
 
     if result is None:
         out.update(status="failed", reason=error)
@@ -205,22 +221,27 @@ def written_out(columns: list, rows: list) -> str:
     return "\n".join(lines)
 
 
-def figures(rows: list) -> set:
-    return {
-        float(cell)
-        for row in rows if isinstance(row, list)
-        for cell in row
-        if isinstance(cell, (int, float)) and not isinstance(cell, bool)
-    }
+def words(text) -> set:
+    return {word.strip(EDGES) for word in str(text).split()}
 
 
 def supported(sentence: str, rows: list) -> bool:
-    """True when every number in the sentence is a number in the rows."""
-    known = figures(rows)
-    return all(
-        float(found.rstrip(",").replace(",", "")) in known
-        for found in NUMBER.findall(sentence)
-    )
+    """True when every word of the sentence that holds a digit is in the rows.
+
+    A number has to equal a numeric cell once its separators are removed. Any
+    other word has to be a word of a text cell, so Q3-2026 is in the rows and
+    the 2026 inside it is not.
+    """
+    cells = [cell for row in rows if isinstance(row, list) for cell in row]
+    numbers = {float(cell) for cell in cells
+               if isinstance(cell, (int, float)) and not isinstance(cell, bool)}
+    texts = set().union(*(words(cell) for cell in cells if isinstance(cell, str)))
+    for word in words(sentence):
+        if not re.search(r"\d", word) or word in texts:
+            continue
+        if not (NUMBER.fullmatch(word) and float(word.replace(",", "")) in numbers):
+            return False
+    return True
 
 
 def summarise(question: str, columns: list, rows: list, llm) -> str:
@@ -239,7 +260,8 @@ def answer_for(question: str, out: dict, llm, calls_used: int) -> str:
         return f"The database could not answer this: {out['reason']}."
 
     table = written_out(out["columns"], out["rows"])
-    if calls_used >= MODEL_CALLS:
+    # An empty result gives the check nothing to hold a sentence to.
+    if not out["rows"] or calls_used >= MODEL_CALLS:
         return table
     try:
         sentence = summarise(question, out["columns"], out["rows"], llm)

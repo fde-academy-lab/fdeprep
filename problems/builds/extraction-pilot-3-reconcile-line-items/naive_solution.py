@@ -1,11 +1,13 @@
 """What an unprepared learner writes in four minutes.
 
-It adds the line items up and compares the sum with the total, which is the
-right idea done three wrong ways. The lines are whatever the model returned,
-so a line the model wrote to make the total balance counts as evidence that
-it balances. The sum is taken in floats, so a claim that adds up to the penny
-can miss by a hair and go to a person. And the invoice is indexed before
-anyone checks that it arrived.
+It is the first draft of this stage: read the invoice, keep each line item
+whose amount the invoice text contains, add the kept amounts in whole pence and
+compare the sum with the claim. The arithmetic is right and the line check is
+too loose. The invoice text holds the total, the VAT and every item's price, so
+the Total line copied as an item counts, the VAT line the repair adds counts,
+and so does a planted line that borrows another item's price. Each of those
+makes the books balance, and the claim is paid. It never reads the invoice's
+number either, so another customer's invoice that adds up is paid as well.
 """
 
 import json
@@ -14,8 +16,9 @@ import re
 FIELDS = ("policy_number", "claimant", "incident_date", "amount_claimed")
 POLICY_NUMBER = re.compile(r"^[A-Z]{2}-\d{6}$")
 AMOUNT = re.compile(r"^£\d[\d,]*(?:\.\d{2})?$")
+MONEY = re.compile(r"^£?\s*(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{2}))?$")
 
-NOT_IN_INVOICE = "line_items: {amount} is not in the invoice"
+NOT_A_GOODS_LINE = "line_items: {amount} matches no goods line on the invoice"
 NO_ITEMS = "line_items: missing"
 DOES_NOT_ADD_UP = "amount_claimed: does not match the line items"
 
@@ -24,8 +27,8 @@ EXTRACT = (
     "nothing else, with exactly these keys: policy_number, claimant, "
     "incident_date, amount_claimed, line_items.\n"
     "Copy each value exactly as it is written. amount_claimed is the total the "
-    "letter claims. line_items is a list with one object for each line of the "
-    "invoice, each with a description and an amount. When a value is not "
+    "letter claims. line_items is a list with one object for each line of goods "
+    "on the invoice, each with a description and an amount. When a value is not "
     "stated, use null.\n\n"
     "<letter>\n{letter}\n</letter>\n<invoice>\n{invoice}\n</invoice>\n"
 )
@@ -40,7 +43,8 @@ REPAIR = (
 
 
 def run_agent(question: str, llm, tools: dict) -> str:
-    invoice_text = tools["invoice"]()["text"]
+    invoice = tools["invoice"]() or {}
+    invoice_text = invoice.get("text") or ""
 
     prompt = EXTRACT.format(letter=question, invoice=invoice_text)
     reply = llm(prompt)
@@ -63,19 +67,38 @@ def _check(reply: str, letter: str, invoice_text: str):
     extracted = _parse(reply)
     record = _ground(extracted, letter)
     errors = _validate(record)
-    record["line_items"] = extracted.get("line_items") or []
-    return record, errors + _reconcile(record)
+    items, item_errors = _ground_items(extracted.get("line_items"), invoice_text)
+    record["line_items"] = items
+    return record, errors + item_errors + _reconcile(record)
+
+
+def _ground_items(items, invoice_text: str):
+    source = _normalise(invoice_text)
+    kept, errors = [], []
+    for item in items or []:
+        amount = item.get("amount") or ""
+        if source and _normalise(amount) in source:
+            kept.append({"description": item.get("description"), "amount": amount})
+        else:
+            errors.append(NOT_A_GOODS_LINE.format(amount=amount))
+    return kept, errors
 
 
 def _reconcile(record: dict) -> list:
     items = record["line_items"]
     if not items:
         return [NO_ITEMS]
-    if record["amount_claimed"] is None:
+    claimed = _pence(record["amount_claimed"])
+    if claimed is None or sum(_pence(item["amount"]) or 0 for item in items) != claimed:
         return [DOES_NOT_ADD_UP]
-    total = sum(float(item["amount"].replace("£", "").replace(",", "")) for item in items)
-    claimed = float(record["amount_claimed"].replace("£", "").replace(",", ""))
-    return [] if total == claimed else [DOES_NOT_ADD_UP]
+    return []
+
+
+def _pence(amount):
+    found = MONEY.match((amount or "").strip())
+    if found is None:
+        return None
+    return int(found.group(1).replace(",", "")) * 100 + int(found.group(2) or 0)
 
 
 def _parse(reply: str) -> dict:

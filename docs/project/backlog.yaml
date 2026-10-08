@@ -1352,6 +1352,17 @@ stages:
           - Agentic SDLC holds six problems on AI-DLC and BMAD, four of them code (ordering units of work, packing them into bolts, gating a bolt on its approval evidence, finding criteria with no spec or test) and two design (running Inception, choosing a BMAD planning path), Agentic PDLC gains two design problems, and evals gains an Extreme regression gate that tells a flaky case from a real regression.
           - Loop, harness and orchestration each gain a Hard LangGraph problem: ending a graph's loop at an edge, retrying a node only on errors worth retrying, and routing through a supervisor that keeps every specialist's answer.
           - Tools gains a Hard design problem on choosing between a crew, a graph and a plain loop against a client's numbers, and memory gains a Medium LangGraph problem that gives every customer their own checkpoint thread.
+      - id: S12.16
+        title: Deepen the last two stages of the analytics agent and extraction pilot builds
+        type: Feature
+        status: done
+        pr: 45
+        points: 5
+        area: Content
+        finish: 2026-10-08
+        acceptance:
+          - The analytics agent refuses a repaired query that only re-sends the failed one and repairs only against the tables it picked, and its last stage answers only with figures the result rows hold, with each later stage's starter code carrying the earlier stage's new working code.
+          - The extraction pilot counts a line item only when one goods line holds both its description and its amount, so a Total, VAT or another item's price cannot balance a claim, and the rescue plan's numbers follow the new routing.
           - Every new code problem's reference passes every gate and its naive solution fails a hidden test through the runner, the 30-day path is re-laid with the new problems on it, and docs/04 section 2.2 states what each tier asks for.
 
   - id: S13

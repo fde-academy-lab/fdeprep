@@ -3,9 +3,10 @@
 It keeps stages 1 to 3 and, once a result is in hand, asks the model to
 summarise the whole tool reply and hands the summary to the manager as the
 answer. A figure the model made up reaches the manager, an instruction riding
-along in the reply reaches the model, a failure is reported without the
-database's own words, and a refused summary call escapes run_agent even
-though the figures were already in hand.
+along in the reply reaches the model, an empty result costs a call and comes
+back as a guess about why, a failure is reported without the database's own
+words, and a refused summary call escapes run_agent even though the figures
+were already in hand.
 """
 
 import json
@@ -139,6 +140,10 @@ def repair_sql(question: str, tables: list, schema: dict, sql: str, error: str, 
     ).strip()
 
 
+def same_query(first: str, second: str) -> bool:
+    return " ".join(first.split()).casefold() == " ".join(second.split()).casefold()
+
+
 def run_agent(question: str, llm, tools: dict) -> str:
     schema = read_schema(tools)
     tables = pick_tables(question, schema, llm)
@@ -163,8 +168,9 @@ def run_agent(question: str, llm, tools: dict) -> str:
         if reason:
             out.update(reason=reason, answer=f"No query was run: {reason}.")
             return json.dumps(out)
-        out["sql"] = repaired
-        result, error, _ = ask_database(repaired, tools)
+        if not same_query(repaired, sql):
+            out["sql"] = repaired
+            result, error, _ = ask_database(repaired, tools)
 
     if result is None:
         out.update(status="failed", reason=error, answer="The database could not answer this.")

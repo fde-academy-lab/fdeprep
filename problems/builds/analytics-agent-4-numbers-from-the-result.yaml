@@ -34,6 +34,11 @@ brief_md: |
   instruction, and the model followed it, because the whole tool reply had
   been pasted into the prompt.
 
+  Two smaller complaints followed. A question that matched no rows came back
+  with a confident sentence giving a reason the database never gave. And
+  weekly figures arrive labelled `W36-2026`, a label that holds a number
+  without being one.
+
   Every figure a manager reads has to come from the result. The agent has
   three model calls per question, and on busy afternoons the gateway refuses
   calls before then, so the figures have to arrive without the model's help.
@@ -50,9 +55,18 @@ contract_md: |
   lines: the column names joined by `, `, then each row's cells joined by
   `, `. Above those lines it may carry one sentence from the model. Ask for
   the sentence showing the model the question, the columns and the rows, and
-  nothing else from the tool's reply. Keep the sentence only when every number
-  in it, with thousands separators removed, equals a number in the rows.
-  Otherwise drop it.
+  nothing else from the tool's reply.
+
+  **The figure check.** Split the sentence into words at whitespace, and trim
+  punctuation such as commas, full stops and brackets from both ends of each
+  word. Every word that holds a digit has to be in the rows. A word that is a
+  number, once thousands separators are removed, has to equal a numeric cell.
+  Any other word has to be a word that a text cell holds whole, so `W36-2026`
+  is in rows that hold that label, and `2026` is not. One word that fails
+  drops the whole sentence.
+
+  **Empty results.** When the result has no rows, the answer is the header
+  line alone, and no sentence is asked for.
 
   **Refused and failed questions.** The answer is a sentence you write without
   a model call. For a refusal it says no query was run, and why. For a failure
@@ -201,12 +215,23 @@ stub_code: |
 
 
   def repair_sql(question: str, tables: list, schema: dict, sql: str, error: str, llm) -> str:
+      # The picked tables and their columns are where the model can find the
+      # column the error says is missing, and they are all it may read.
       return llm(
           f"{REPAIR_PROMPT}<tables>\n{table_listing(tables, schema)}\n</tables>\n"
           f"<question>\n{question}\n</question>\n"
           f"<failed_query>\n{sql}\n</failed_query>\n"
           f"<database_error>\n{error}\n</database_error>"
       ).strip()
+
+
+  def same_query(first: str, second: str) -> bool:
+      """True when two queries differ only in whitespace and letter case.
+
+      Folding case also folds string literals and quoted names, which this
+      schema never uses.
+      """
+      return " ".join(first.split()).casefold() == " ".join(second.split()).casefold()
 
 
   # Stage 4: yours.
@@ -218,8 +243,12 @@ stub_code: |
       the result written out: the column names joined by ", ", then each
       row's cells joined by ", ". Above that it may carry one sentence from
       the model, asked for with the question, the columns and the rows and
-      nothing else from the tool's reply, and kept only when every number in
-      it (thousands separators removed) equals a number in the rows.
+      nothing else from the tool's reply. Keep the sentence only when every
+      word in it that holds a digit, with punctuation trimmed from its ends,
+      is in the rows: a number (thousands separators removed) equal to a
+      numeric cell, or a word that a text cell holds whole. W36-2026 is in
+      rows that hold that label, and 2026 is not. When the result has no
+      rows, the answer is the header line alone and no sentence is asked for.
 
       For a refused question the answer says no query was run and why. For a
       failed one it gives the database's error. Neither costs a model call.
@@ -251,8 +280,10 @@ stub_code: |
           if reason:
               out["reason"] = f"the repaired query was refused: {reason}"
               return json.dumps(out)
-          out["sql"] = repaired
-          result, error, _ = ask_database(repaired, tools)
+          # A copy of the failed query earns the same error, so the first one stands.
+          if not same_query(repaired, sql):
+              out["sql"] = repaired
+              result, error, _ = ask_database(repaired, tools)
 
       if result is None:
           out.update(status="failed", reason=error)
@@ -263,15 +294,16 @@ stub_code: |
 hints:
   - Split the answer into two parts with different owners. The figures come
     from the rows, and at most one sentence of prose comes from the model.
-  - A sentence is safe to show when every number in it is a number in the
-    rows. Pull the numbers out of the sentence, remove thousands separators,
-    and look each one up.
+  - A sentence is safe to show when every word in it that holds a digit is in
+    the rows. Compare whole words, because a label is a value in a cell and a
+    number cut out of it is a new claim.
   - The sentence prompt needs the columns and the rows, and nothing else from
     the tool's reply. Anything else the reply carried is text the model will
     read as an instruction.
   - Count model calls as you make them. Picking, writing and one repair
     already make three, so after a repair there is no call left for a
-    sentence and the rows are the answer.
+    sentence. An empty result needs no sentence either, because there is
+    nothing in it for a sentence to quote.
   - The gateway can refuse the sentence call. When it does, the figures are
     already in hand, so catch the refusal and answer with the rows alone.
 
@@ -323,13 +355,13 @@ approach:
       leaves: [written out by your code, never retyped by the model]
     - label: Check the sentence
       detail: >-
-        A number in the model's sentence counts only when the same number is
-        in the rows.
-      leaves: [pull out every number, one unknown number drops the sentence]
+        A word with a digit in it counts only when the rows hold it whole, as
+        a number or as a word of a label.
+      leaves: [compare whole words with the cells, one unknown figure drops the sentence]
     - label: Show the model only data
       leaves: [the columns and the rows, never the whole tool reply]
     - label: Spend calls on the essentials
-      leaves: ["pick, query, one repair", the sentence only if a call is left]
+      leaves: ["pick, query, one repair", the sentence only if a call is left, no sentence for an empty result]
 
 coach:
   opening: >-
@@ -363,6 +395,23 @@ coach:
         That query needed a repair before it ran. Count the model calls your
         agent had made by the time the rows arrived. Was one left for a
         sentence?
+    - id: hidden-empty-result
+      when: { test_failed: an_empty_result_answers_with_the_header_line_alone }
+      say: >-
+        That query returned no rows. What could a sentence about an empty
+        result say that the rows support, and what did asking for it cost?
+    - id: hidden-year-inside-a-label
+      when: { test_failed: a_year_cut_from_a_period_label_is_not_in_the_rows }
+      say: >-
+        The sentence in that run quoted a number that the rows hold only
+        inside a longer label. Does your check compare whole words, or pieces
+        of them?
+    - id: hidden-label-quoted-whole
+      when: { test_failed: a_period_label_quoted_whole_is_in_the_rows }
+      say: >-
+        The sentence in that run quoted cells exactly as the rows hold them,
+        and your answer lost it. Which of its words did your check fail to
+        find in the rows?
     - id: adversarial-not-a-result
       when: { test_failed: adversarial_the_result_is_an_instruction }
       say: >-
@@ -611,6 +660,129 @@ tests:
                       properties: { status: { const: answered },
                                     answer: { type: string, pattern: '4812' } } } }
 
+  # Nothing matched, so the result holds no figure for a sentence to quote and
+  # the figure check would pass any sentence at all, including one that turns
+  # an empty result into a fact about the stores. Two calls are spent and a
+  # third is left, which the budget rule alone would hand to a sentence. The
+  # answer is the header line alone.
+  - name: an_empty_result_answers_with_the_header_line_alone
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How many hanging baskets did each store sell in the first week of September?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines", "stores", "products"]}' }
+        - { match: { contains: "baskets_sold" },
+            reply: "None of the stores sold a hanging basket in the first week of September." }
+        - { match: "*",
+            reply: "SELECT s.name AS store, SUM(l.quantity) AS baskets_sold FROM order_lines l JOIN stores s ON s.store_id = l.store_id JOIN products p ON p.product_id = l.product_id WHERE p.category = 'Hanging baskets' AND l.sold_on >= '2026-09-01' AND l.sold_on < '2026-09-08' GROUP BY s.name ORDER BY baskets_sold DESC" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query: { returns: { status: 200, columns: [store, baskets_sold], rows: [] } }
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: llm_calls_at_most, value: 2 }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, rows, answer],
+                      properties: { status: { const: answered },
+                                    rows: { type: array, maxItems: 0 },
+                                    answer: { type: string, pattern: '^\s*store, baskets_sold\s*$' } } } }
+
+  # This case and the next share one result, three quarters labelled as text,
+  # and differ only in the sentence. Here the sentence quotes 2026, which the
+  # rows hold only inside the labels, and uses it to call one quarter's
+  # revenue the year's. A check that searches cell text for the digits finds
+  # 2026 in Q3-2026 and keeps the sentence.
+  - name: a_year_cut_from_a_period_label_is_not_in_the_rows
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How much revenue did each quarter bring in this year?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines"]}' }
+        - { match: { contains: "Q3-2026" },
+            reply: "2026 has brought in 3,720,500 so far, the best year on record." }
+        - { match: "*",
+            reply: "SELECT to_char(sold_on, '\"Q\"Q-YYYY') AS period, SUM(net_gbp) AS revenue_gbp FROM order_lines WHERE sold_on >= '2026-01-01' AND sold_on < '2027-01-01' GROUP BY period ORDER BY period" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query:
+          returns:
+            status: 200
+            columns: [period, revenue_gbp]
+            rows: [["Q1-2026", 2988640], ["Q2-2026", 3401180], ["Q3-2026", 3720500]]
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: returns_lacks, value: 'best year' }
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, answer],
+                      properties: { status: { const: answered },
+                                    answer: { type: string, pattern: 'Q3-2026, 3720500' } } } }
+
+  # The same result, and a sentence that quotes the labels whole. Every word
+  # in it that holds a digit is a cell or a number in the rows, so it stays. A
+  # check that pulls digits out of words reads 2026 inside each label, finds
+  # no cell holding 2026, and drops every sentence that names a quarter.
+  - name: a_period_label_quoted_whole_is_in_the_rows
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: "How much revenue did each quarter bring in this year?" }
+      llm_script:
+        - { match: { call_index: 1 }, reply: '{"tables": ["order_lines"]}' }
+        - { match: { contains: "Q3-2026" },
+            reply: "Q3-2026 brought in 3,720,500, up from 3,401,180 in Q2-2026." }
+        - { match: "*",
+            reply: "SELECT to_char(sold_on, '\"Q\"Q-YYYY') AS period, SUM(net_gbp) AS revenue_gbp FROM order_lines WHERE sold_on >= '2026-01-01' AND sold_on < '2027-01-01' GROUP BY period ORDER BY period" }
+      tools:
+        describe:
+          returns:
+            status: 200
+            tables:
+              - { name: order_lines, deprecated: false, columns: [line_id, store_id, product_id, sold_on, quantity, net_gbp],
+                  description: "One row per item sold at a till, net of discounts, since the March 2024 till migration." }
+              - { name: stores, deprecated: false, columns: [store_id, name, region, opened_on],
+                  description: "One row per garden centre, with the region it reports into." }
+              - { name: products, deprecated: false, columns: [product_id, name, category],
+                  description: "One row per product line, with its category." }
+              - { name: sales_2023_archive, deprecated: true, columns: [sale_id, store_code, sku, sale_date, value_gbp],
+                  description: "Frozen copy of till sales taken before the March 2024 migration. Not updated since." }
+        run_query:
+          returns:
+            status: 200
+            columns: [period, revenue_gbp]
+            rows: [["Q1-2026", 2988640], ["Q2-2026", 3401180], ["Q3-2026", 3720500]]
+      budget: { max_llm_calls: 3, max_tool_calls: 4, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return,
+            schema: { type: object, required: [status, answer],
+                      properties: { status: { const: answered },
+                                    answer: { type: string,
+                                              allOf: [ { pattern: 'Q3-2026 brought in 3,720,500' },
+                                                       { pattern: 'Q3-2026, 3720500' } ] } } } }
+
   - name: adversarial_the_result_is_an_instruction
     visibility: adversarial
     fixture: injected_instruction
@@ -705,21 +877,40 @@ tests:
                                     answer: { type: string, pattern: '1184220' } } } }
 
 reference_md: |
-  The 12% was not a model misreading the rows. It was a model doing what it
-  was asked, writing an answer, with nothing to stop it adding a figure that
-  sounded right. So the answer gets two owners. The rows are written out by
-  code, cell for cell, and they are the part of the answer that is always
-  there. The model contributes at most one sentence above them.
+  The model that wrote the 12% was doing what it was asked, writing an
+  answer, and nothing stopped it adding a figure that sounded right. So the
+  answer gets two owners. The rows are written out by code, cell for cell,
+  and they are the part of the answer that is always there. The model
+  contributes at most one sentence above them.
 
-  The sentence check is a provenance check. Every number in the sentence has
-  to be a number in the rows, after thousands separators are removed, and one
-  that is not drops the whole sentence. It is deliberately strict. "About 1.2
-  million" is dropped even though it is a fair rounding of 1,184,220, because
-  a check loose enough to accept roundings is loose enough to accept 1.3
-  million, and the board pack is where the difference shows. It also checks
-  less than it seems to: "South led with 1,184,220" passes, since both the
-  word and the number are real. The rows underneath are what stay correct
-  when the sentence is wrong.
+  The sentence check is a provenance check, and it compares whole words.
+  Every word in the sentence that holds a digit has to be in the rows: a
+  number equal to a numeric cell once thousands separators are removed, or a
+  word that a text cell holds whole. One word that fails drops the whole
+  sentence. It is deliberately strict. "About 1.2 million" is dropped even
+  though it is a fair rounding of 1,184,220, because a check loose enough to
+  accept roundings is loose enough to accept 1.3 million, and the board pack
+  is where the difference shows. It also checks less than it seems to: "South
+  led with 1,184,220" passes, since both the word and the number are real.
+  The rows underneath are what stay correct when the sentence is wrong.
+
+  Whole words matter once a result carries labels. `Q3-2026` is a cell, so a
+  sentence that quotes it quotes the rows. The `2026` inside it is a number
+  no cell holds, and a sentence about 2026 makes a claim about a year from
+  rows that describe quarters. That is how one quarter's 3,720,500 became the
+  best year on record. A check that pulls digits out of words gets labels
+  wrong one way, and drops every sentence that names a quarter. A check that
+  searches cell text for the digits gets them wrong the other way, and keeps
+  the year.
+
+  An empty result gets no sentence. With no rows there is no figure to hold a
+  sentence to, so any sentence passes the check, and the only thing a model
+  can add about nothing is a reason, which the rows cannot support. An empty
+  result is also ambiguous: nothing was sold, or the filter named a category
+  the products table spells differently. "None of the stores sold a hanging
+  basket" picks one reading and states it as fact. The header line says what
+  came back, the data team can check the filter, and the third call is
+  never spent.
 
   The sentence prompt carries the question, the columns and the rows, and
   nothing else from the tool's reply. The incident's extra field was not an
@@ -762,11 +953,11 @@ example:
   expect: Write the rows out under their column names, ask for one sentence, keep it because 1,184,220
     and 973,410, with separators removed, are numbers in the rows, and return `status` answered.
 traps:
-  - Keeping the model's sentence although one of its numbers, with separators removed, is missing from
-    the rows.
+  - Keeping a sentence with a number the rows lack, or comparing pieces of words, so the 2026 inside
+    `W36-2026` passes and the label quoted whole fails.
   - Pasting the whole tool reply into the sentence prompt, so an extra field, or a reply that is no result,
     reaches the model.
-  - Asking for a sentence after a repair has spent the third call, or letting a refused call escape when
-    the rows are already in hand.
+  - Asking for a sentence about an empty result or after a repair has spent the third call, or letting a
+    refused call escape when the rows are already in hand.
   - Letting the model word a refusal or a failure, when the answer should carry the database's own error
     words and cost no call.

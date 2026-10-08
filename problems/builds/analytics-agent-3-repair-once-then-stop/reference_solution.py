@@ -6,8 +6,10 @@ was wrong in words the model can act on. A timeout or a reply that is not a
 result carries no such message, so it ends in an honest failure at once.
 
 The repair is a new query written by the same model, and it passes through
-the same guard before it runs. There is one repair. A query that still fails
-after it is reported with the database's own words.
+the same guard, checked against the tables the picker chose, before it runs.
+A repair that only re-spaces or re-cases the failed query is the failed query,
+so it never runs. There is one repair. A query that still fails after it is
+reported with the database's own words.
 """
 
 import json
@@ -147,12 +149,23 @@ def ask_database(sql: str, tools: dict):
 
 
 def repair_sql(question: str, tables: list, schema: dict, sql: str, error: str, llm) -> str:
+    # The picked tables and their columns are where the model can find the
+    # column the error says is missing, and they are all it may read.
     return llm(
         f"{REPAIR_PROMPT}<tables>\n{table_listing(tables, schema)}\n</tables>\n"
         f"<question>\n{question}\n</question>\n"
         f"<failed_query>\n{sql}\n</failed_query>\n"
         f"<database_error>\n{error}\n</database_error>"
     ).strip()
+
+
+def same_query(first: str, second: str) -> bool:
+    """True when two queries differ only in whitespace and letter case.
+
+    Folding case also folds string literals and quoted names, which this
+    schema never uses.
+    """
+    return " ".join(first.split()).casefold() == " ".join(second.split()).casefold()
 
 
 def run_agent(question: str, llm, tools: dict) -> str:
@@ -178,8 +191,10 @@ def run_agent(question: str, llm, tools: dict) -> str:
         if reason:
             out["reason"] = f"the repaired query was refused: {reason}"
             return json.dumps(out)
-        out["sql"] = repaired
-        result, error, _ = ask_database(repaired, tools)
+        # A copy of the failed query earns the same error, so the first one stands.
+        if not same_query(repaired, sql):
+            out["sql"] = repaired
+            result, error, _ = ask_database(repaired, tools)
 
     if result is None:
         out.update(status="failed", reason=error)
