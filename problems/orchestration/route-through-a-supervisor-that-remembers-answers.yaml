@@ -7,7 +7,7 @@ difficulty: hard
 track: orchestration
 concept:
   topic: "Handoffs and routing"
-  question: "What must a supervisor know before it routes, and where does it go when the model names nobody?"
+  question: "What must a supervisor know before it routes, and where does a name with no node go?"
 est_minutes: 45
 competencies:
   - { slug: agent-loop, weight: 1.0 }
@@ -18,19 +18,19 @@ time_limit_s: 10
 allowed_imports: [json, re, typing, operator, langgraph]
 
 brief_md: |
-  The broadband arm of a telecom the size of Airtel answers support chats
-  with a LangGraph graph. A supervisor node asks the model where the chat
+  The broadband arm of a telecom the size of Airtel runs its support chats
+  as a LangGraph graph. A supervisor node asks the model where the chat
   goes next. Three specialist nodes, `billing`, `network` and
   `plan_change`, each call one back-office tool and add an answer, and the
   chat returns to the supervisor until the model says it is done.
 
   On Monday nine percent of chats went billing, network, billing, network,
   round and round until the recursion limit of 40 the team had set raised
-  an error. The supervisor's prompt never said who had already answered,
-  so the model kept sending customers back to ask again. Tuesday's fix
-  ended every chat at its third pass through the supervisor. A chat that
-  needs two specialists reaches its wrap-up on the third pass, so every one
-  of those was cut off and logged as unresolved.
+  an error, twenty model calls later. The supervisor's prompt never said
+  who had already answered, so the model kept sending customers back to
+  ask again. Tuesday's fix ended every chat at its third pass through the
+  supervisor. A chat that needs two specialists reaches its wrap-up on the
+  third pass, so every one of those was cut off and logged as unresolved.
 
   On Wednesday the model routed a chat to `fraud`. There is no fraud node,
   and the graph raised in front of the customer.
@@ -208,7 +208,8 @@ diagram:
   edges:
     - { from: customer, to: supervisor, label: message, step: 1 }
     - { from: supervisor, to: model, label: "prompt with answers so far", step: 2 }
-    - { from: supervisor, to: edge, label: a known key, step: 3 }
+    - { from: model, to: supervisor, label: "Route: <name>", step: 3 }
+    - { from: supervisor, to: edge, label: a known key, step: 4 }
     - { from: edge, to: specialists, label: one hop, tone: success }
     - { from: specialists, to: supervisor, label: answer line only, tone: success }
     - { from: specialists, to: notes, label: kept out, tone: muted }
@@ -235,12 +236,6 @@ coach:
     moment it routes: who has answered, how many hops are left, and which
     names are nodes.
   signals:
-    - id: no-reducer
-      when: { code_lacks: 'Annotated\[' }
-      say: >-
-        Each specialist returns only its own answer. Without a reducer on
-        `answered`, what happens to the answers already in it, and where
-        does the supervisor send the chat next?
     - id: no-human-node
       when: { code_lacks: 'add_node\(\s*["'']human' }
       say: >-
@@ -251,6 +246,12 @@ coach:
       say: >-
         Your code never asks `tools["limits"]()` for `max_hops`. A cap
         written into the code is Tuesday's fix waiting to happen again.
+    - id: no-reducer
+      when: { code_lacks: 'Annotated\[|\*\*state\[["'']answered["'']\]|state\[["'']answered["'']\]\s*\|' }
+      say: >-
+        Each specialist returns only its own answer. Without a reducer on
+        `answered`, what happens to the answers already in it, and where
+        does the supervisor send the chat next?
     - id: hidden-two-hops
       when: { test_failed: a_repeat_is_refused_and_two_hops_are_enough }
       say: >-
@@ -290,10 +291,10 @@ coach:
         Three runs have failed. The second hint is about the `path_map`, and
         it is where most supervisor graphs break.
   wrap_up: >-
-    A supervisor routes well when its state says who has answered and how
-    many hops are left, and when every reply becomes a key the edge knows
-    before the edge reads it. The edge looks things up; the supervisor
-    decides.
+    A supervisor routes well when it knows who has answered and how many
+    hops are left, and makes every reply a key the edge knows. The edge
+    looks things up; the supervisor decides, and every ask is a model call.
+    The design problem on a five-agent crew asks when that overhead pays.
 
 tests:
   - name: billing_answers_and_the_chat_closes

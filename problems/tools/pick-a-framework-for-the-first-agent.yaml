@@ -27,10 +27,10 @@ brief_md: |
   approving it.
 
   A vendor has pitched a crew of five CrewAI agents working in sequence: a
-  reader, a drafter, a coder for the diagnosis codes, a checker and a
-  formatter. They build on CrewAI 1.15.25. Their demo drafted the summary of
-  a three-day stay in 41 seconds, and their quote includes CrewAI's hosted
-  tracing for the audit.
+  reader, a drafter, a coder for the diagnosis codes, a checker that reads
+  the draft against the stay's notes, and a formatter. They build on CrewAI
+  1.15.25. Their demo drafted the summary of a three-day stay in 41 seconds,
+  and their quote includes CrewAI's hosted tracing for the audit.
 
   The hospital's team is two engineers for twelve weeks. They have shipped
   three agents as plain Python loops and nothing on a framework. Three
@@ -99,20 +99,43 @@ rubric:
       resume, so the text a doctor approved can differ from the text stored.
       Answers that map two or three constraints and leave the rest to "the
       framework handles it" have not done the work.
-  - label: Costs the crew's five roles in latency and audit, with arithmetic
+  - label: Names the constraint that decides it, what the choice costs, and when the team would turn back
+    weight: 15
+    descriptor_md: |
+      The brief's numbers rule out the crew and do not separate the other
+      two, so the decision is the approval against the team. A strong answer
+      says which one decided it and what the choice costs: the graph gives a
+      pause that survives a restart, already tested, for a dependency two
+      engineers learn, pin and upgrade; the loop gives a status column the
+      team already knows how to write, for about two weeks of the twelve.
+      Either choice earns full marks when the answer names the constraint,
+      the price, and the point at which the team would turn back, such as a
+      resume that is not clean by the end of week one, or a hand-written
+      pause still untested by week three. An answer that picks on
+      popularity, on what the vendor said, or on "the framework handles it"
+      has not decided anything.
+  - label: Prices every option on the desk path, with arithmetic, and dates any CrewAI claim
     weight: 20
     descriptor_md: |
-      Strong answers count the crew's calls between the doctor asking and the
-      draft appearing: five in sequence, two of which read the whole stay
-      (the reader and the checker), so about 7 + 2 + 2 + 7 + 2 = 20 seconds
-      at the median before any agent takes a second step, against a
-      20-second p95, and the vendor's own demo took 41 seconds. They see the
-      same arithmetic applies to any option that keeps five steps on the desk
-      path, LangGraph included, and that a fan-out to save time runs into
-      four calls per ward. They cost the audit too: five hand-offs are five
-      prompts and outputs to keep and replay, and hosted tracing sends
-      prompts, inputs and outputs to the vendor's platform. "Slower" or "more
-      complex" without a figure gives the client nothing to weigh.
+      Strong answers count the calls between the doctor asking and the draft
+      appearing, with the gateway's figures beside each. The crew runs five
+      roles in sequence and two of them read the whole stay, so about
+      7 + 2 + 2 + 7 + 2 = 20 seconds at the median before any agent takes a
+      second step, against a 20-second p95, and 12 + 4 + 4 + 12 + 4 = 36 at
+      p95; the vendor's own demo took 41. An answer that counts only the
+      reader as a long call (15 at the median, 28 at p95) has done the same
+      work. The same arithmetic applies to any option that keeps five steps
+      on the desk path, LangGraph included, and a fan-out to save time runs
+      into four calls per ward. Any claim about what CrewAI does is cited
+      with the page on docs.crewai.com and the date read: in a sequential
+      process the output of one task is the context for the next; a task's
+      `human_input` has the agent ask for review before it gives its final
+      answer; a pause that waits hours needs a Flow with `@human_feedback`
+      and a custom provider (CrewAI 1.8.0 and later) or the Enterprise
+      webhooks; and built-in tracing sends traces to CrewAI AMP, which the
+      tracing page says may contain prompts, inputs and outputs (read 8
+      October 2026). "Slower", "more complex", or rejecting the crew because
+      frameworks are bad, gives the client nothing to weigh.
   - label: Names the hand-built parts and why no framework carries them
     weight: 20
     descriptor_md: |
@@ -125,20 +148,6 @@ rubric:
       and a checkpoint is state saved so a run can resume, which nobody signs
       as an audit record. Good answers add the per-ward queue and the check
       for notes added after the draft.
-  - label: Rejects or accepts the vendor pitch on evidence, with any CrewAI claim dated
-    weight: 15
-    descriptor_md: |
-      Strong answers decide on the brief's numbers and on what CrewAI's own
-      documentation says, cited with the page or version and the date read.
-      On docs.crewai.com, read 8 October 2026: in a sequential process the
-      output of one task is the context for the next; a task's `human_input`
-      has the agent ask for review before it gives its final answer; a pause
-      that waits hours for a person needs a Flow with `@human_feedback` and
-      a custom provider (CrewAI 1.8.0 and later) or the Enterprise webhooks;
-      and built-in tracing sends traces to CrewAI AMP, which the tracing page
-      says may contain prompts, inputs and outputs. Rejecting the crew
-      because frameworks are bad, or accepting it because five specialists
-      sound thorough, is not evidence.
   - label: Ends the first four weeks on an exit criterion a doctor can check
     weight: 20
     descriptor_md: |
@@ -397,30 +406,33 @@ scenario:
     - { label: Team, value: 2 for 12 weeks }
 
 diagram:
-  title: From the stay's notes to a summary a doctor signs
+  title: The desk path the vendor pitched, under the brief's numbers
   caption: >-
-    Every step sits under one of the brief's numbers. The framework decides
-    how the steps are written and resumed, and leaves the numbers as they
-    are.
+    Five roles run one after another between the doctor asking and the
+    draft appearing, and each call takes what the gateway log says it takes.
   direction: lr
   nodes:
     - { id: notes, label: The stay's notes, sub: nurses add notes until discharge, kind: doc, tone: neutral, at: [0, 1] }
-    - { id: redact, label: Redaction, sub: identifiers stay in the network, kind: guard, tone: purple, at: [1, 1] }
-    - { id: gateway, label: Model gateway, sub: 4 concurrent calls per ward, kind: service, tone: orange, at: [2, 1] }
-    - { id: draft, label: The drafting agent, sub: "7 s median, 12 s p95 per long call", kind: agent, tone: teal, at: [3, 1] }
-    - { id: doctor, label: Doctor at the ward desk, sub: "waits under 20 s, edits 1 in 3", kind: actor, tone: blue, at: [4, 0] }
-    - { id: approval, label: Approval, sub: nothing leaves without it, kind: decision, tone: green, at: [4, 1] }
-    - { id: audit, label: Audit record, sub: "saw, said, who approved, when", kind: store, tone: pink, at: [3, 2] }
-    - { id: summary, label: Released summary, sub: to the patient and their GP, kind: output, tone: green, at: [5, 1] }
+    - { id: gateway, label: Model gateway, sub: 4 concurrent calls per ward, kind: service, tone: orange, at: [3, 0] }
+    - { id: reader, label: Reader, sub: "the whole stay: 7 s median, 12 s p95", kind: agent, tone: teal, at: [1, 1] }
+    - { id: drafter, label: Drafter, sub: "the reader's output: 2 s, 4 s p95", kind: agent, tone: teal, at: [2, 1] }
+    - { id: coder, label: Coder, sub: "diagnosis codes: 2 s, 4 s p95", kind: agent, tone: teal, at: [3, 1] }
+    - { id: checker, label: Checker, sub: "the draft against the notes: 7 s, 12 s p95", kind: agent, tone: teal, at: [4, 1] }
+    - { id: formatter, label: Formatter, sub: "2 s, 4 s p95", kind: agent, tone: teal, at: [5, 1] }
+    - { id: doctor, label: Doctor at the ward desk, sub: "under 20 s at p95, from asking to draft", kind: actor, tone: blue, at: [6, 1] }
+    - { id: tracing, label: Hosted tracing, sub: "in the vendor's quote, for the audit", kind: store, tone: pink, at: [1, 2] }
+    - { id: audit, label: Clinical audit, sub: "saw, said, who approved, when", kind: actor, tone: purple, at: [6, 2] }
   edges:
-    - { from: notes, to: redact, step: 1 }
-    - { from: redact, to: gateway, label: what the model may see, step: 2 }
-    - { from: gateway, to: draft, label: calls in sequence add up, tone: danger }
-    - { from: draft, to: approval, label: a draft held, step: 3 }
-    - { from: doctor, to: approval, label: approves or edits }
-    - { from: approval, to: summary, label: only once approved, tone: success, step: 4 }
-    - { from: draft, to: audit, label: prompt and output }
-    - { from: approval, to: audit, label: who and when }
+    - { from: notes, to: reader, label: the whole stay, step: 1 }
+    - { from: reader, to: drafter, step: 2 }
+    - { from: drafter, to: coder, step: 3 }
+    - { from: coder, to: checker, step: 4 }
+    - { from: checker, to: formatter, step: 5 }
+    - { from: formatter, to: doctor, label: 41 s in the demo, tone: danger, step: 6 }
+    - { from: gateway, to: coder, label: 4 slots for the whole ward, tone: muted }
+    - { from: reader, to: tracing, label: every prompt and output, tone: muted }
+    - { from: doctor, to: audit, label: "approves, edits 1 in 3" }
+    - { from: audit, to: tracing, label: "who approved, and when?", tone: danger }
 
 approach:
   goal: Choose the option whose mechanisms meet every constraint, and name what you still build
@@ -493,7 +505,7 @@ coach:
         ward and what happens if one falls short.
     - id: undated-crewai
       when:
-        code_matches: '(?i)crewai'
+        code_matches: '(?i)crewai[^.]{0,80}(tracing|human[ _]input|human[ _]feedback|memory|planning|hierarchical|delegat|pause)'
         code_lacks: '(?i)docs\.crewai\.com|read \d{1,2} \w+ 20\d\d'
       say: >-
         Your answer leans on what CrewAI does. Which page or version says so,

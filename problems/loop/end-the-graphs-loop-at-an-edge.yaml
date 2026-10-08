@@ -27,10 +27,14 @@ brief_md: |
   On Friday a buyer asked for 400 kg of EN19 bar. The supplier search
   returned an empty second page, and the model asked for that page again,
   and again. Nothing in the graph counted anything, so the run went round
-  until LangGraph's default recursion limit, 10,007 super-steps in langgraph
-  1.2.12, and raised `GraphRecursionError` forty minutes after the buyer
-  asked. The two suppliers it had found on the first page went with it,
-  because the graph kept no checkpoint.
+  until LangGraph's default recursion limit stopped it. That limit counts
+  super-steps, one for each node this graph runs, and in langgraph 1.2.12
+  it is 10,007 of them, so the run raised `GraphRecursionError` three hours
+  after the buyer asked. Every trip after the first added the same empty
+  page to the history `plan` sends the model, so the last call carried
+  3,334 copies of that page and cost more than any call before it. The two
+  suppliers the run had found on the first page were lost, because the
+  graph kept no checkpoint.
 
   The first fix set `recursion_limit` to 12, the number of model calls a
   run was allowed at the time. Friday's run stopped. So did every run that
@@ -187,7 +191,7 @@ hints:
     Catch the tool's exception in `act` and the model's in `plan`."
 
 scenario:
-  headline: "A supplier search asked for the same empty page for forty minutes"
+  headline: "A supplier search asked for the same empty page for three hours"
   who: "Procurement at a forging company the size of Bharat Forge"
   situation: >-
     The buying assistant is a LangGraph loop of plan, act and observe. On
@@ -195,11 +199,11 @@ scenario:
     default limit of 10,007 super-steps, and the run raised with nothing
     saved.
   stakes: >-
-    The buyer waited forty minutes for an error. The suppliers the run found
+    The buyer waited three hours for an error. The suppliers the run found
     in its first minute were lost, because the graph kept no checkpoint.
   metrics:
     - { label: Super-steps on Friday, value: "10,007" }
-    - { label: Minutes to the error, value: "40" }
+    - { label: Hours to the error, value: "3" }
     - { label: Super-steps per trip, value: "3" }
 
 diagram:
@@ -225,6 +229,7 @@ diagram:
     - { from: observe, to: edge, label: the whole state, step: 4 }
     - { from: edge, to: plan, label: round again, tone: muted }
     - { from: edge, to: answer, label: END, tone: success }
+    - { from: act, to: limit, label: one super-step per node, tone: muted }
     - { from: limit, to: saved, label: "`GraphRecursionError`", tone: danger }
     - { from: saved, to: answer, label: what the run found, tone: success }
 
@@ -696,7 +701,7 @@ complexity: C2
 interview_evidence:
   round: oral
   asked_as: |
-    Your LangGraph agent raised `GraphRecursionError` in production after forty minutes. Do you raise `recursion_limit`? What should actually stop the loop, and what do you keep when the limit fires?
+    Your LangGraph agent raised `GraphRecursionError` in production after three hours. Do you raise `recursion_limit`? What should actually stop the loop, and what do you keep when the limit fires?
   source: |
     Author judgement. No employer frequency data stands behind it.
 

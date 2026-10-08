@@ -26,19 +26,21 @@ brief_md: |
   to stop costing them quotes.
 
   The first week went badly in three ways. Carrier timeouts were never
-  retried, because LangGraph's default predicate does not retry a
-  `TimeoutError`, and one quote in nine was lost to a timeout a second try
-  would have cleared. The node raised every carrier error as one class of
-  its own, `CarrierError`, which the default predicate does retry, so each
-  request for a lane the carrier does not serve, `400 unknown lane`, went
-  out three times. And when a hold came back busy, the retry ran the whole
+  retried, because LangGraph's default `retry_on`, the rule that decides
+  which exceptions get another attempt, does not retry a `TimeoutError`,
+  and one quote in nine was lost to a timeout a second try would have
+  cleared. The node raised every carrier error as one class of its own,
+  `CarrierError`, which the default `retry_on` does retry, so each request
+  for a lane the carrier does not serve, `400 unknown lane`, went out three
+  times. And when a hold came back busy, the retry ran the whole
   node again: a second lookup, a new quote and a second hold. Some of the
   first holds had gone through anyway, and 41 loads ended up with two
   trucks.
 
   Write the graph again. Retry the lookup only on errors that can clear,
   hold the truck once, and fall back to the rate card only when the
-  carrier's attempts are spent.
+  carrier's attempts are spent: an estimate for a lane the carrier refused
+  is a price for a truck that will never come.
 
 contract_md: |
   Implement:
@@ -74,7 +76,7 @@ contract_md: |
   only sees exceptions, so a retryable error inside a 200 body has to be
   raised as an exception of your own. Pass `retry_on` yourself, with
   `initial_interval=0` and `jitter=False`: in langgraph 1.2.12 the default
-  predicate does not retry `TimeoutError`, and it imports `requests` the
+  `retry_on` does not retry `TimeoutError`, and it imports `requests` the
   first time it runs, which the sandbox does not have.
 
   A node whose attempts are spent raises out of the graph unless it has an
@@ -255,6 +257,14 @@ coach:
         Your retry policy has no `retry_on`. LangGraph's default does not
         retry a timeout, and in the sandbox it fails outright, because it
         imports `requests` the first time it runs.
+    - id: attempts-in-state
+      when:
+        test_failed: falls_back_to_the_rate_card_when_the_carrier_times_out
+        code_matches: '\[\s*["'']attempts["'']\s*\]|\.get\(\s*["'']attempts["'']'
+      say: >-
+        Compare the carrier calls in that run's trace with the attempts your
+        return reported. An attempt that raises never returns, so nothing it
+        wrote reaches state.
     - id: hidden-unknown-lane
       when: { test_failed: an_unknown_lane_is_asked_once }
       say: >-
@@ -586,6 +596,12 @@ reference_md: |
   A lookup that succeeds on its second attempt never reaches the handler,
   so the shipper never gets a carrier quote and a rate card estimate for
   the same truck.
+
+  Three of these failures have a problem of their own in this chapter: the
+  200 that carried an error, the 401 no retry could fix, and the refund
+  that went out twice. A retry policy on a node is where they meet,
+  because the policy sees exceptions only, retries whatever it is told to,
+  and re-runs every line of the node.
 
 complexity: C2
 
