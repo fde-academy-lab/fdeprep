@@ -58,6 +58,7 @@ The column counts come from the stories in [backlog.yaml](backlog.yaml), and the
 | S12.19 | Let a solution use LangChain core or pydantic without LangGraph in the sandbox | Running it | S12 Problem pages v2 | #45 | P1 High |
 | S13.8 | Fix the eight defects that made the voice screen unreliable | Reading | S13 Voice interviewer v2, step 1 | #44 | P1 High |
 | S13.9 | Keep the debrief up, and say what failed when an answer does not save | Running it | S13 Voice interviewer v2, step 1 | #45 | P1 High |
+| S14.7 | Fill every judge prompt in one pass, so a learner cannot close the data delimiter | Reading | S14 Voice interviewer v2, step 2 | #46 | P2 Medium |
 <!-- /generated:bugs -->
 
 ## What the pattern says

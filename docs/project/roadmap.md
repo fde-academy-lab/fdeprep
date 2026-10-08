@@ -24,7 +24,7 @@ The order you will see built is the one the product owner set on 30 September: t
 |---|---|---|---|---|---|---|
 | S13 Voice interviewer v2, step 1 | The first beta tester found the voice practice shallow and brittle: no way to move on, no fallback, and questions that did not connect. | 57 | 17 (11 to 23) | 339 | 30 Sep to 8 Oct 2026 | Medium |
 | S12 Problem pages v2 | The first beta tester found the problem names hard to follow and the function names lost in the prose around them. | 167 | 15 (9 to 20) | 194 | 30 Sep to 8 Oct 2026 | Medium |
-| S14 Voice interviewer v2, step 2 | Real interviewers dig into what you just said and into what your resume claims, and practice that cannot do either leaves the hardest part untested. | 37 | 20 (11 to 28) | 185 | 7 to 12 Oct 2026 | High |
+| S14 Voice interviewer v2, step 2 | Real interviewers dig into what you just said and into what your resume claims, and practice that cannot do either leaves the hardest part untested. | 39 | 20 (11 to 28) | 185 | 7 to 12 Oct 2026 | High |
 
 ### Later
 
@@ -104,6 +104,7 @@ The build so far delivered its work in bursts, and [estimation.md](estimation.md
 | S14.4 | Draw the interview room in the lobby and the debrief | Feature | 5 | Done | The lobby and the debrief show a pixel-art room with the chosen interviewer, and the live cockpit keeps its five-instrument limit. |
 | S14.5 | Measure the cost and latency of a session before rollout | Task | 3 | In progress | The model cost and the follow-up latency of ten sessions are recorded, priced from Bedrock's published rates on the day. |
 | S14.6 | Amend docs/07 and the privacy notice | Task | 3 | Done | docs/07 describes generated follow-ups and resume handling, and the consent screen says what happens to a resume. |
+| S14.7 | Fill every judge prompt in one pass, so a learner cannot close the data delimiter | Bug | 2 | Done | An answer that contains the prompt's own nonce placeholder, alone or inside a closing delimiter, reaches the rubric, defence, beat, follow-up and resume prompts as data with exactly one real closing delimiter, and a guard test fails if any judge module fills a placeholder one replacement at a time again. |
 | S15.1 | A baseline diagnostic that sets a learner's persona | Feature | 8 | Planned | A new learner's persona comes from a short diagnostic instead of an admin's hand. |
 | S15.2 | Author constraint lists, so the unnamed-constraint check can fire | Task | 5 | Done | Every C3 and C4 design problem declares its constraints, the validator refuses one that does not, and names_no_constraint fires on an answer that names none and stays silent on every strong exemplar. |
 | S15.3 | Re-grade past submissions against a new judge prompt version | Feature | 8 | Done | A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it. |

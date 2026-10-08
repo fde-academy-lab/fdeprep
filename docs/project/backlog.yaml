@@ -1700,6 +1700,23 @@ stages:
           what happens to a pasted resume and to what the interviewer says.
         acceptance:
           - docs/07 describes generated follow-ups and resume handling, and the consent screen says what happens to a resume.
+      - id: S14.7
+        title: Fill every judge prompt in one pass, so a learner cannot close the data delimiter
+        type: Bug
+        status: done
+        pr: 46
+        points: 2
+        area: Grading and judge
+        finish: 2026-10-08
+        found_by: Reading
+        acceptance:
+          - An answer that contains the prompt's own nonce placeholder, alone or inside a closing delimiter, reaches the rubric, defence, beat, follow-up and resume prompts as data with exactly one real closing delimiter, and a guard test fails if any judge module fills a placeholder one replacement at a time again.
+        outcome: >-
+          Found while building the follow-up prompt: the rubric and defence
+          prompts replaced their placeholders one after another, so a learner's
+          literal placeholder became the real nonce and could end the data
+          block early for typed answers, design answers, defences and the
+          voice rubric. Every judge prompt now fills in one pass.
 
   - id: S15
     name: First cohort
