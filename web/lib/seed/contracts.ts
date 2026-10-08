@@ -13,9 +13,10 @@
  * the runner both require, so a seeded result reads like one a learner could
  * have been sent.
  */
-import { bandScore, type Band } from "../policy/bands.ts";
+import type { Band } from "../policy/bands.ts";
 import { tierFor, type Difficulty } from "../policy/tiers.ts";
 import type { Outcome } from "./plan.ts";
+import type { Random } from "./random.ts";
 
 /** What a contract needs to know about its problem. */
 export interface ContractProblem {
@@ -41,9 +42,11 @@ export interface ContractContext {
   alreadyPassed: boolean;
   /** A few words of the body, quoted as rubric evidence the way the judge quotes. */
   quote: string;
+  /** Where a score or a count lands inside what the outcome fixes, so no two results read alike. */
+  random: Random;
 }
 
-/** A run that fails a public case: what the plan scripts before every submit. */
+/** A run that fails public cases. The last run before a clean submit may pass instead. */
 export type ContractOutcome = Outcome | "run_fail";
 
 const WEIGHTS = { public: 30, hidden: 70 };
@@ -55,6 +58,13 @@ const RUBRIC_WEIGHT = 60;
 /** "Prompt pass: static and probes pass, rubric score 84." */
 const PROMPT_RUBRIC = 84;
 const CASE_FAILED = "return value did not equal the expected string";
+/**
+ * Where a scripted rubric score lands inside its band. bandForScore in
+ * lib/policy/bands.ts reads every value in a range back as that band.
+ */
+const BAND_RANGE: Readonly<Record<Band, readonly [number, number]>> = {
+  strong: [84, 95], adequate: [55, 68], weak: [22, 38], off_question: [5, 15],
+};
 
 export function contractFor(
   problem: ContractProblem, outcome: ContractOutcome, context: ContractContext,
@@ -97,9 +107,11 @@ function codeContract(
 ): Record<string, unknown> {
   const { tests } = problem;
   const passed = outcome === "clean" || outcome === "hinted" || outcome === "over_budget";
-  const failsPublic = outcome === "run_fail" || (outcome === "fail" && tests.hidden.length === 0);
+  // A failing run misses one to three public cases, so its score moves.
+  const failing = outcome === "run_fail" ? context.random.int(1, Math.min(3, tests.public.length))
+    : outcome === "fail" && tests.hidden.length === 0 ? 1 : 0;
 
-  const publicGate = gate(tests.public, failsPublic ? 1 : 0, true);
+  const publicGate = gate(tests.public, failing, true);
   const hiddenRan = publicGate.status === "pass";
   const hiddenGate = hiddenRan
     ? gate(tests.hidden, outcome === "fail" ? 1 : 0, context.alreadyPassed)
@@ -110,8 +122,10 @@ function codeContract(
     : skipped(tests.adversarial.length);
 
   const budget = problem.callBudget;
+  // Inside the budget means one call up to the budget itself, never none: a
+  // pass that never called the model read "0 of 1 calls".
   const llmCalls = outcome === "over_budget" ? (budget ?? 0) + 2
-    : budget === null ? 2 : Math.floor(budget / 2);
+    : budget === null ? 2 : context.random.int(Math.min(1, budget), budget);
   const withinBudget = budget === null || llmCalls <= budget;
 
   let base = passed ? 100
@@ -221,16 +235,18 @@ function promptContract(
 }
 
 /**
- * A design answer lands the planned band through the judge's rubric score:
- * strong at 90, adequate at the adequate exemplar's own score or 63,
- * whichever is higher, so it clears the pass mark, and weak at 29, below it.
+ * A design answer lands the planned band through the judge's rubric score,
+ * drawn inside the band's range. An adequate one never lands under the
+ * adequate exemplar's own score, which is the pass mark, and a weak one sits
+ * below every pass mark the catalogue has (58 to 65 in October 2026).
  */
 function designContract(
   problem: ContractProblem, outcome: ContractOutcome, context: ContractContext,
 ): Record<string, unknown> {
   const band: Band = context.band ?? (outcome === "fail" ? "weak" : "strong");
-  const percent = band === "adequate" ? Math.max(bandScore("adequate"), problem.threshold ?? 0)
-    : bandScore(band);
+  const [low, high] = BAND_RANGE[band];
+  const floor = band === "adequate" ? Math.max(low, problem.threshold ?? 0) : low;
+  const percent = context.random.int(floor, Math.max(high, floor));
   const rubric = rubricGate(problem, percent, context.quote);
   const gates = {
     static: { status: "pass", checks: [] },

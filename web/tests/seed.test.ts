@@ -19,6 +19,7 @@ import { disagreementQueue } from "../lib/eval/review.ts";
 import { seedTracks } from "../lib/policy/roadmap.ts";
 import { heatmap } from "../lib/progress/index.ts";
 import { readinessFor } from "../lib/progress/readiness.ts";
+import { deleteMessage, send } from "../lib/queue/shim.ts";
 import { loadCatalogue } from "../lib/seed/catalogue.ts";
 import { plan, type AttemptAction, type SeedPlan } from "../lib/seed/plan.ts";
 import { removeSeed } from "../lib/seed/replace.ts";
@@ -26,7 +27,7 @@ import { runSeed, SeedRefused, type SeedReport } from "../lib/seed/run.ts";
 import { learnerOrNull } from "../lib/session/current.ts";
 import { importVoiceQuestion } from "../lib/voice/import.ts";
 import { NAMED, type Step } from "./fixtures/seed-readiness.ts";
-import { importFixtures, resetDatabase } from "./helpers.ts";
+import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 import { seedCommand } from "../scripts/seed.ts";
 
 const VOICE = path.join(import.meta.dirname, "..", "..", "voice-questions");
@@ -131,6 +132,18 @@ describe("the rows the plan promised", () => {
       "persona.change": 1, "platform.degraded_mode": 2, "cap.clear": 1,
       "evaluation.review": 2, "evaluation.override": 1,
     });
+  });
+
+  it("reports rows in the tables it wrote and leaves the catalogue out", () => {
+    const counts = new Map(report.counts.map((c) => [c.table, c.rows]));
+    expect(counts.get("submission")).toBe(seeded.expected.submissions);
+    expect(counts.get("voice_session")).toBe(seeded.expected.voiceSessions);
+    // The catalogue, and the global cap policies, which hang off cohort by a
+    // key the seed never fills.
+    for (const table of ["problem", "hint", "problem_test", "voice_exemplar", "schema_migration",
+                         "rate_limit_policy"]) {
+      expect(counts.has(table), table).toBe(false);
+    }
   });
 
   it("leaves degraded mode off after turning it on and off with a reason", async () => {
@@ -294,17 +307,12 @@ describe("what the admin screens read", () => {
 });
 
 describe("the seed refuses to grade somebody else's work", () => {
-  it("stops when a voice answer it did not write is waiting for the scorer", async () => {
-    const ruth = report.accounts.get("ruth-adeyemi")!;
-    const { rows } = await db().query<{ id: string }>(
-      `insert into voice_session
-         (enrolment_id, voice_question_id, cohort_id, mode, input, finished_at, transcript)
-       select $1, id, $2, 'guided', 'typed', now(), 'not the seed''s answer'
-         from voice_question limit 1 returning id`, [ruth.enrolmentId, ruth.cohortId]);
+  it("stops when a message it did not publish is waiting on a lane", async () => {
+    const id = await send("submissions", { submission_id: 0 });
     try {
       await expect(runSeed(seeded)).rejects.toBeInstanceOf(SeedRefused);
     } finally {
-      await db().query("delete from voice_session where id = $1", [rows[0]!.id]);
+      await deleteMessage(id);
     }
   });
 });
@@ -368,8 +376,22 @@ describe("--replace", () => {
     expect(await count("select count(*) as n from problem")).toBe(before.problems);
     expect(await removeSeed()).toBe(0);
 
+    // A voice answer from outside the seed, waiting for the scorer. The seed
+    // scores its own answers by id, so this one is still waiting afterwards.
+    // Its enrolment has ended so the development account still signs in first.
+    const other = await seedLearner({ githubId: 900_001 });
+    await db().query("update enrolment set state = 'ended' where id = $1", [other.enrolmentId]);
+    const { rows: [waiting] } = await db().query<{ id: string }>(
+      `insert into voice_session
+         (enrolment_id, voice_question_id, cohort_id, mode, input, finished_at, transcript)
+       select $1, id, $2, 'guided', 'typed', now(), 'not the seed''s answer'
+         from voice_question limit 1 returning id`, [other.enrolmentId, other.cohortId]);
+
     await runSeed(seeded);
     expect(await count("select count(*) as n from submission")).toBe(seeded.expected.submissions);
     expect((await learnerOrNull())?.role).toBe("admin");
+    expect(await count(
+      "select count(*) as n from voice_session where id = $1 and scored_at is null and judge_attempts = 0",
+      [waiting!.id])).toBe(1);
   }, 240_000);
 });

@@ -47,10 +47,12 @@ import type { Band } from "../policy/bands.ts";
 import type { Difficulty } from "../policy/tiers.ts";
 import { contractFor, defenceContract, type ContractOutcome, type ContractProblem } from "./contracts.ts";
 import { COHORTS, DEVELOPMENT, type Archetype, type CohortKey, type Person } from "./names.ts";
-import type {
-  Action, AttemptAction, RehearsalAction, SeedPlan, Sitting, VoiceAction,
+import {
+  DEFAULT_SEED, type Action, type AttemptAction, type RehearsalAction, type SeedPlan, type Sitting,
+  type VoiceAction,
 } from "./plan.ts";
 import { Random } from "./random.ts";
+import { seedRowCounts } from "./replace.ts";
 import { now, REWIND, rewindRows, rewindWindow, type RewindTable } from "./rewind.ts";
 
 const MINUTE = 60_000;
@@ -65,7 +67,7 @@ export interface Account { userId: number; enrolmentId: number; cohortId: number
 export interface SeedReport {
   accounts: Map<string, Account>;
   cohorts: Map<CohortKey, number>;
-  /** Rows per table across the whole database once the seed is done. */
+  /** The seed's own rows in each table, the ones --replace would remove. */
   counts: Array<{ table: string; rows: number }>;
   named: Array<{ login: string; displayName: string; readiness: Readiness }>;
   /** One login per archetype, for a reviewer to open. */
@@ -153,6 +155,11 @@ class Seeder {
   private readonly solved = new Set<string>();
   private readonly designPasses = new Map<string, { submissionId: number; at: number; body: string }>();
   private readonly people: Map<string, Person>;
+  /**
+   * Scores and call counts inside what the plan fixed. A stream of its own,
+   * so a draw here never moves one the plan made.
+   */
+  private readonly variety = new Random(DEFAULT_SEED + 1);
   private readonly started = Date.now();
   /** Counter windows opened during the current sitting, moved when it ends. */
   private deferred: Array<{ from: string; to: string; ms: number }> | null = null;
@@ -350,7 +357,12 @@ class Seeder {
                     problemId: material.id };
 
     for (let run = 0; run < action.runs; run += 1) {
-      await this.submit(login, material, "run", "run_fail", clock.next(8));
+      // The last run before a clean submit passes half the time, as a learner
+      // runs until it passes and then submits. Only there: a passing run is a
+      // clean cell, and the plan gives a clean cell to a clean submit alone.
+      const passes = run === action.runs - 1 && action.outcome === "clean" &&
+        this.variety.chance(0.5);
+      await this.submit(login, material, "run", passes ? "clean" : "run_fail", clock.next(8));
     }
     for (let hint = 0; hint < action.hints; hint += 1) {
       await this.block(clock.next(2), () => revealHint(where));
@@ -426,6 +438,7 @@ class Seeder {
       : contractFor(material, outcome, {
           hints: extra.hints ?? 0, band: extra.band, quote,
           alreadyPassed: this.solved.has(`${login}:${material.slug}`),
+          random: this.variety,
         });
 
     const created = await createSubmission({
@@ -593,14 +606,9 @@ class Seeder {
   /**
    * Four voice answers waiting on a scorer, then four submissions whose
    * message was lost, then the attempt an admin gave back for the oldest.
-   * The answers the judge gave up on go first: scoreVoiceOnce takes the
-   * oldest unscored answer, so they have to be the only ones waiting when it
-   * runs.
    */
   private async stuck(): Promise<void> {
-    const voice = [...this.plan.stuck.voice].sort((a, b) =>
-      (a.judge === "gives_up" ? 0 : 1) - (b.judge === "gives_up" ? 0 : 1));
-    for (const row of voice) {
+    for (const row of this.plan.stuck.voice) {
       const account = this.account(row.login);
       const question = await this.question(row.question);
       const text = sentencesUpTo(
@@ -613,7 +621,7 @@ class Seeder {
         });
         if (row.judge === "never") return;
         for (let attempt = 0; attempt < MAX_JUDGE_ATTEMPTS; attempt += 1) {
-          await scoreVoiceOnce({ limit: 1, invoke: async () =>
+          await scoreVoiceOnce({ sessionId: id, invoke: async () =>
             ({ status: "error", message: "The judge could not reach the model." }) });
         }
         const { rows } = await db().query<{ attempts: number; spent: boolean }>(
@@ -664,7 +672,7 @@ class Seeder {
     return {
       accounts: this.accounts,
       cohorts: this.cohorts,
-      counts: await tableCounts(),
+      counts: await seedRowCounts(),
       named: named.map((p) => ({
         login: p.login, displayName: p.displayName,
         readiness: readiness.get(this.account(p.login).enrolmentId)!,
@@ -775,28 +783,21 @@ const LEARNER_TEST = `def test_answers_with_text():
 `;
 
 /**
- * Refuse rather than grade somebody else's work. The seed reads the message
- * it just published and scores the voice answer it just finished, so another
- * message on a lane or another answer waiting for the scorer would be picked
- * up and given the seed's scripted result.
+ * Refuse rather than grade somebody else's work. The seed publishes each
+ * submission's message and takes it straight back off the lane, so another
+ * message waiting there would be picked up and given the seed's scripted
+ * result. Voice answers need no check: the seed scores its own by id, and an
+ * answer somebody else left waiting stays waiting.
  */
 async function assertIdle(): Promise<void> {
-  const { rows } = await db().query<{ outbox: number; lanes: number; voice: number }>(
+  const { rows } = await db().query<{ outbox: number; lanes: number }>(
     `select (select count(*) from outbox where sent_at is null)::int as outbox,
             (select count(*) from queue_message
-              where deleted_at is null and queue in ('submissions', 'judgements'))::int as lanes,
-            (select count(*) from voice_session
-              where finished_at is not null and scored_at is null
-                and judge_attempts < $1)::int as voice`, [MAX_JUDGE_ATTEMPTS]);
-  const { outbox, lanes, voice } = rows[0]!;
+              where deleted_at is null and queue in ('submissions', 'judgements'))::int as lanes`);
+  const { outbox, lanes } = rows[0]!;
   if (outbox + lanes > 0) {
     throw new SeedRefused(`${outbox + lanes} submissions are waiting on the queue, and the seed ` +
       "would pick them up as its own. Run npm run worker until the queue drains, then seed again.");
-  }
-  if (voice > 0) {
-    throw new SeedRefused(`${voice} voice answers are waiting for a score, and the seed's ` +
-      "scripted judge would score them. Run npm run scorevoice until none are waiting, or seed " +
-      "a fresh database.");
   }
 }
 
@@ -820,11 +821,11 @@ function fake(name: Panelist["name"], result: PanelistResult): Panelist {
   return { name, run: async () => result };
 }
 
-/** Score one finished answer, and check the scorer picked this one. */
+/** Score one finished answer by its id, and check it was scored. */
 async function scoreOnly(
   sessionId: number, invoke: (event: Record<string, unknown>) => Promise<Record<string, unknown>>,
 ): Promise<void> {
-  await scoreVoiceOnce({ limit: 1, invoke });
+  await scoreVoiceOnce({ sessionId, invoke });
   const { rows } = await db().query<{ scored: boolean }>(
     "select scored_at is not null as scored from voice_session where id = $1", [sessionId]);
   if (!rows[0]?.scored) throw new Error(`voice session ${sessionId} was not scored`);
@@ -938,22 +939,4 @@ function sentencesUpTo(text: string, limit: number): string {
     count += n;
   }
   return kept.length ? kept.join(" ") : words(text).slice(0, limit).join(" ");
-}
-
-/** Rows per table, named from the catalogue rather than from a list here. */
-async function tableCounts(): Promise<Array<{ table: string; rows: number }>> {
-  const { rows: tables } = await db().query<{ name: string }>(
-    `select c.relname as name from pg_class c join pg_namespace n on n.oid = c.relnamespace
-      where n.nspname = 'public' and c.relkind = 'r' order by c.relname`);
-  const counts: Array<{ table: string; rows: number }> = [];
-  for (const { name } of tables) {
-    const { rows } = await db().query<{ n: number }>(
-      `select count(*)::int as n from ${quoteIdent(name)}`);
-    if (rows[0]!.n > 0) counts.push({ table: name, rows: rows[0]!.n });
-  }
-  return counts;
-}
-
-function quoteIdent(name: string): string {
-  return `"${name.replaceAll('"', '""')}"`;
 }

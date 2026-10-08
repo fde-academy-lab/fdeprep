@@ -12,7 +12,9 @@
  * The rules, as applied below:
  *
  *   Every run the plan scripts fails a public case, so a problem with a run
- *   is at least attempted in each of its cells.
+ *   is at least attempted in each of its cells. The one exception is the last
+ *   run before a clean submit, which may pass and make the cell clean a few
+ *   minutes before the submit does, so it changes no cell.
  *   A pass with no hints and inside the call budget is clean. A pass with a
  *   hint revealed on the attempt, or over budget, is passed. A fail is
  *   attempted. An error or a timeout moves nothing. Cells only move up.

@@ -123,8 +123,9 @@ const ROWS: readonly Row[] = [
     role: "learner", state: "paused", archetype: "lapsed" },
   { login: "fatima-bello", displayName: "Fatima Bello", cohort: "c3", persona: "builder",
     role: "learner", state: "active", archetype: "new" },
+  // Voice only, so the roster the development admin opens shows last activity from voice.
   { login: "gmoss", displayName: "Gareth Moss", cohort: "c3", persona: "navigator",
-    role: "learner", state: "active", archetype: "new" },
+    role: "learner", state: "active", archetype: "new", voiceOnly: true },
   { login: "divya-pillai", displayName: "Divya Pillai", cohort: "c3", persona: "accelerator",
     role: "learner", state: "active", archetype: "new" },
   { login: "jcastillo-dev", displayName: "Jerome Castillo", cohort: "c3", persona: "navigator",

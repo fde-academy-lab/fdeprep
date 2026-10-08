@@ -70,7 +70,7 @@ export async function seedCommand(
     throw error;
   }
 
-  say("\nRows per table");
+  say("\nSeeded rows per table, the rows --replace removes");
   for (const { table, rows } of report.counts) say(`  ${table.padEnd(26)} ${rows}`);
   say("\nReadiness of the three named learners");
   for (const { login, displayName, readiness: r } of report.named) {

@@ -211,7 +211,12 @@ const OUTCOMES: Readonly<Record<Exclude<Archetype, "new">, Record<Outcome, numbe
   lapsed:   { clean: 36, hinted: 20, over_budget: 8, fail: 28, error: 4, timeout: 4 },
 };
 
-/** Chance of a sitting on a weekday. Sets the volume: the full plan lands near 1,100 submissions. */
+/**
+ * Chance of a sitting on a weekday, and a sixth of it at a weekend. Sets the
+ * volume: the full plan lands near 1,100 submissions. Steady's 0.18 is about
+ * one sitting a week, with a sitting in two weeks out of three, which is what
+ * the archetype's "a sitting most weeks" means.
+ */
 const WEEKDAY_ODDS: Readonly<Record<"steady" | "stalled" | "lapsed", number>> = {
   steady: 0.18, stalled: 0.25, lapsed: 0.28,
 };

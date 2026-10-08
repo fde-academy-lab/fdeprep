@@ -1746,6 +1746,7 @@ stages:
         finish: 2026-10-08
         acceptance:
           - npm run db:seed fills a fresh database with forty people in two cohorts and ninety days of submissions, voice answers, rehearsals, invites, reviews and audit rows, and every grade, band and competency state in it is written by eval/ through writeResult, saveEvaluation, scoreVoiceOnce, recordReview or the override, which a test that reads the seed's own source enforces.
+          - A steady learner has a sitting most weeks, at 0.18 a weekday, which is about one sitting a week, so after ninety days most of the cohort reads not_ready.
           - Readiness reads clean cells over the cells the persona's track requires, with the four counts and the docs/12 band, and for three seeded learners it equals a hand-computed fixture.
           - Roster last activity counts voice answers and rehearsals, Ops lists voice answers nobody scored, and an error, including a lease the worker reaps, is refunded to the counter window it came from and to no other.
       - id: S17.2
