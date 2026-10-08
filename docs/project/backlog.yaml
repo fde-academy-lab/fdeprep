@@ -1594,59 +1594,100 @@ stages:
       - id: S14.1
         title: "Follow up like an interviewer: five levels of why, and stress probes"
         type: Feature
-        status: todo
+        status: done
         points: 13
         area: Voice
         risk: High
-        finish: 2026-10-10
+        finish: 2026-10-08
+        outcome: >-
+          Interview mode asks up to five rounds after the main answer, each
+          planned by the server from the interviewer's cadence and the why
+          ladder and worded by the judge from the answer just given under a
+          four-second deadline. A late, failed or refused reply falls back to
+          the question's authored follow-ups and then the interviewer's
+          stress probes, all spoken when the session opened, and the session
+          carries on. The learner hears each round and never sees its text
+          while replying; the text shows only before the reply when no
+          speech could be made.
         acceptance:
           - Each follow-up is generated from the answer just given and the persona, capped per question, and never shown as text while the learner speaks.
           - When the model cannot answer in time, a prewritten follow-up takes its place and the session carries on.
       - id: S14.2
         title: Cross-question an optional resume, kept only for the session
         type: Feature
-        status: todo
+        status: done
         points: 8
         area: Voice
         risk: High
-        finish: 2026-10-11
+        finish: 2026-10-08
+        outcome: >-
+          A pasted resume of up to 12,000 characters becomes at most twelve
+          claims, extracted by the judge with the text inside delimiters
+          labelled as data. The text is never written to a table, a file or
+          a log, the claims are deleted when the session closes or after a
+          day, and resume rounds are labelled not scored and never reach the
+          scorer. A test plants a sentinel in a resume and finds it in no
+          table and no log line. Paste only: an upload would add a storage
+          path and a deletion to prove, for text a learner can copy.
         acceptance:
           - A pasted or uploaded resume becomes a list of claims for that session, the file is deleted at once, and nothing from it is used in scoring.
           - The resume reaches the model as data, so instructions written in it change nothing.
       - id: S14.3
         title: Run a panel of interviewers who take turns
         type: Feature
-        status: todo
+        status: done
         points: 5
         area: Voice
-        finish: 2026-10-11
+        finish: 2026-10-08
+        outcome: >-
+          A panel session rotates its rounds from the member after the chair
+          and back round the table, each member asking in their own voice and
+          follow-up style, and the debrief names who asked each round.
         acceptance:
           - A panel session rotates between two or three personas, and the debrief says which interviewer asked what.
       - id: S14.4
         title: Draw the interview room in the lobby and the debrief
         type: Feature
-        status: todo
+        status: done
         points: 5
         area: Web application
-        finish: 2026-10-12
+        finish: 2026-10-08
+        outcome: >-
+          The lobby, the debrief header and the interviewers page mount the
+          interview room, and the picker's interviewer chips show the
+          avatars. The cockpit, the rounds and the instruments import nothing
+          from the room, so the live screen keeps its five instruments. The
+          drawings replace the room's stubs at integration.
         acceptance:
           - The lobby and the debrief show a pixel-art room with the chosen interviewer, and the live cockpit keeps its five-instrument limit.
       - id: S14.5
         title: Measure the cost and latency of a session before rollout
         type: Task
-        status: todo
+        status: in_progress
         points: 3
         area: Delivery management
         finish: 2026-10-12
+        outcome: >-
+          Every round records its generation, synthesis, gap and late reply
+          times, its model calls and tokens and its fallback reason, npm run
+          voice:cost prices sessions at the rates given on the day, and the
+          Ops page shows today's rounds, the p95 gap and the fallback share.
+          The ten sessions wait for the first deploy, and provisioned
+          concurrency for the judge is decided from their p95.
         acceptance:
           - The model cost and the follow-up latency of ten sessions are recorded, priced from Bedrock's published rates on the day.
       - id: S14.6
         title: Amend docs/07 and the privacy notice
         type: Task
-        status: todo
+        status: done
         points: 3
         area: Docs and process
-        finish: 2026-10-12
+        finish: 2026-10-08
+        outcome: >-
+          docs/07 gains section 5a on interview mode, the 023 tables, the
+          privacy rows for a resume and for generated follow-ups, the
+          allowance row and four acceptance items. The consent screen says
+          what happens to a pasted resume and to what the interviewer says.
         acceptance:
           - docs/07 describes generated follow-ups and resume handling, and the consent screen says what happens to a resume.
 
