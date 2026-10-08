@@ -35,7 +35,7 @@ import { attemptHistory } from "../lib/problems/workspace.ts";
 import { publishImport } from "../lib/problems/import.ts";
 import { validateProblemYaml } from "../lib/problems/validate.ts";
 import { resolvePolicy } from "../lib/policy/index.ts";
-import { loadTrace } from "../lib/trace/store.ts";
+import { loadTrace, storeTrace } from "../lib/trace/store.ts";
 import { replayFor } from "../lib/trace/replay.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 
@@ -332,6 +332,31 @@ describe("what a learner reads back from a Run written before the fix", () => {
     const [past] = (await attemptHistory(learner.enrolmentId, id)).submissions;
     expect(past).toMatchObject({ kind: "run", publicPassed: 2, publicTotal: 2,
                                  hiddenPassed: null, hiddenTotal: null, score: null });
+  });
+
+  it("replays its public cases and none of the hidden ones it stored", async () => {
+    const { id, source } = await publish(WORKED);
+    const runId = await oldRun(id);
+    const [shown] = publicNames(source);
+    const step = (question: string) => [
+      { seq: 1, type: "llm_call", prompt: `Question: ${question}`, prompt_chars: 30,
+        response: "Action: track(id=9)", ms: 0 },
+      { seq: 2, type: "final", value: "done" },
+    ];
+    await storeTrace(db(), runId, { cases: [
+      { name: shown, trace: { steps: step("Where is order 7?"), flags: [], truncated: false } },
+      { name: "detects_error_in_success_body",
+        trace: { steps: step("Where is order 9?"), flags: ["soft_error"], truncated: true } },
+    ] });
+
+    const replay = await replayFor(runId);
+    expect(new Set(replay.steps.map((s) => s.caseName))).toEqual(new Set([shown]));
+    expect(replay.flags).toEqual([]);
+    expect(replay.truncated).toBe(false);
+    const text = JSON.stringify(replay);
+    for (const secret of ["detects_error_in_success_body", "Where is order 9?"]) {
+      expect(text).not.toContain(secret);
+    }
   });
 });
 
