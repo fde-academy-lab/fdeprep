@@ -169,6 +169,16 @@ export const SCREEN_CONDITIONS: Tier = {
 };
 
 /**
+ * Tiers whose clean cells are the evidence a real screen asks for.
+ *
+ * docs/12 section 2: screen_ready needs readiness of seventy percent or more
+ * and at least one clean cell at Hard or Extreme, because seventy percent made
+ * entirely of Easy cells is a learner who practised the easy half. The
+ * readiness reader asks this rather than naming tiers itself.
+ */
+export const SCREEN_EVIDENCE: readonly Difficulty[] = ["hard", "extreme"];
+
+/**
  * Build one value per tier, in ladder order.
  *
  * Anything shaped like a grid over the ladder, the heatmap above all, wants
