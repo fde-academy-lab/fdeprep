@@ -18,7 +18,7 @@
 # Every pull request adds or closes the story it delivers. CI checks this file.
 
 version: 1
-as_of: 2026-10-01
+as_of: 2026-10-08
 
 project:
   owner: fde-academy-lab
@@ -1737,6 +1737,17 @@ stages:
     estimate: {optimistic: 6, likely: 8, pessimistic: 13}
     rice: {reach: 180, impact: 1, confidence: 0.8}
     stories:
+      - id: S17.1
+        title: "Seed the development database through eval/, read readiness, and fix the data bugs it exposed"
+        type: Feature
+        status: done
+        points: 8
+        area: Web application
+        finish: 2026-10-08
+        acceptance:
+          - npm run db:seed fills a fresh database with forty people in two cohorts and ninety days of submissions, voice answers, rehearsals, invites, reviews and audit rows, and every grade, band and competency state in it is written by eval/ through writeResult, saveEvaluation, scoreVoiceOnce, recordReview or the override, which a test that reads the seed's own source enforces.
+          - Readiness reads clean cells over the cells the persona's track requires, with the four counts and the docs/12 band, and for three seeded learners it equals a hand-computed fixture.
+          - Roster last activity counts voice answers and rehearsals, Ops lists voice answers nobody scored, and an error is refunded to the counter window it came from rather than to every earlier one.
       - id: S17.2
         title: "One name per place, chapters in the palette, the crumb to the chapter page, and one path order"
         type: Feature
@@ -1748,3 +1759,21 @@ stages:
           - Home, Problems, Rehearsal, Voice, Past answers, Progress and Admin each carry one name in the navigation, the tab title, the h1 and the command palette, and no screen says Faculty admin, Voice history, Voice practice, Interview questions, Import problems or All problems.
           - The palette lists the fourteen chapters in stage order between Go to and Problems to start with, and for a new navigator Home's start card, the first row of Problems in path order, the palette's first problem and the chapter page's Next card are one problem, which a test checks.
           - The workspace crumb opens the chapter page, and every admin tab has its own tab title.
+      - id: S17.3
+        title: "Learner screens at S1 and S2: sign-in and invite, Home, Problems, Voice and Progress"
+        type: Feature
+        status: todo
+        points: 8
+        area: Web application
+        finish: 2026-10-14
+        acceptance:
+          - Sign-in and /invite/<token> are S1's single column, Home is S2 at the chapter page's measure, Voice is one table, Progress opens on the readiness line, no screen shows an environment variable name, and every empty state names its next action.
+      - id: S17.4
+        title: "Admin: the cohort Overview, stuck voice answers on Ops, titled tabs and the Roster dialogs"
+        type: Feature
+        status: todo
+        points: 5
+        area: Web application
+        finish: 2026-10-19
+        acceptance:
+          - /admin opens an Overview of the cohort with readiness and last activity per learner, read from the same queries as Roster and Progress, Ops shows the stuck voice answers, and docs/01 S10 says faculty see the Overview.

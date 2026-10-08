@@ -48,7 +48,7 @@ gantt
   S14 Voice interviewer v2, step 2 :s14, 2026-10-07, 6d
   S15 First cohort :s15, 2026-10-12, 50d
   S16 Second version :s16, 2026-12-01, 121d
-  S17 Redesign, one position and one next action :s17, 2026-10-08, 12d
+  S17 Redesign, one position and one next action :active, s17, 2026-10-08, 12d
 ```
 <!-- /generated:timeline -->
 
