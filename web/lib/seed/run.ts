@@ -439,6 +439,7 @@ class Seeder {
           hints: extra.hints ?? 0, band: extra.band, quote,
           alreadyPassed: this.solved.has(`${login}:${material.slug}`),
           random: this.variety,
+          run: kind === "run",
         });
 
     const created = await createSubmission({

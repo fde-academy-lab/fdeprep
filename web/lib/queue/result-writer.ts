@@ -15,6 +15,7 @@ import { rememberGraded } from "../eval/pretrained.ts";
 import { runPanel } from "../eval/panel.ts";
 import { saveEvaluation } from "../eval/record.ts";
 import { refund } from "../policy/caps.ts";
+import { keptToRun, NOT_ON_A_RUN, ranUnpublishedCases } from "../submissions/run-contract.ts";
 import { storeTrace } from "../trace/store.ts";
 
 export interface ResultMessage {
@@ -25,17 +26,55 @@ export interface ResultMessage {
   result: Record<string, any>;
 }
 
+/** What the learner reads when a runner sent the whole battery back for a Run. */
+export const RUN_SET_ASIDE =
+  "The runner checked this Run against more than the public tests, so its result was set " +
+  "aside and your Run was not counted. Run again, and if this message comes back, tell your " +
+  "cohort lead.";
+
+/**
+ * A Run result in which a hidden or adversarial case ran, which is what a
+ * runner image older than the kind sends. Its verdict, budget and timing all
+ * carry what those cases did, so none of it is kept: the Run becomes an
+ * error, which consumes nothing (docs/03 section 8), and no trace is stored.
+ */
+function setAside(result: Record<string, any>): Record<string, any> {
+  return {
+    verdict: "error",
+    score: null,
+    message: RUN_SET_ASIDE,
+    consumes_allowance: false,
+    runner: { image_tag: result["runner"]?.["image_tag"] ?? null },
+  };
+}
+
 /** True when the result was committed, false when it lost the compare-and-set. */
 export async function writeResult(message: ResultMessage): Promise<boolean> {
   return inTransaction(async (client) => {
+    // docs/00 section 4: a Run executes the public cases only, so its result
+    // keeps the static and public gates and nothing about the batteries it
+    // never runs. The runner keeps to that; this holds it for a Run row
+    // whatever runner image answered.
+    const { rows: [submission] } = await client.query<{ kind: string }>(
+      "select kind::text as kind from submission where id = $1", [message.submission_id]);
+    const run = submission?.kind === "run";
+    const overreached = run && message.result["verdict"] !== "error" &&
+      ranUnpublishedCases(message.result);
+    const received = overreached ? setAside(message.result)
+      : run ? keptToRun(message.result) : message.result;
+
     // The trace travels inline in the result because the runner has no S3 in
     // this build. It is split off here so submission.result stays the contract
     // docs/03 section 5 describes, which carries a reference and not a trace.
-    const { trace, ...contract } = message.result;
+    const { trace, ...contract } = received;
 
     const gates = (contract["gates"] ?? {}) as Record<string, any>;
     const budget = (contract["budget"] ?? {}) as Record<string, any>;
     const verdict = String(contract["verdict"] ?? "error");
+    // A Run row stores no count for a battery it never ran, rather than a zero
+    // that reads as a problem with no hidden tests.
+    const count = (gate: string, key: "passed" | "total") =>
+      run && (NOT_ON_A_RUN as readonly string[]).includes(gate) ? null : gates[gate]?.[key] ?? null;
 
     const { rows } = await client.query<{ id: string }>(
       `update submission set
@@ -58,15 +97,27 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
       [
         message.submission_id, verdict, JSON.stringify(contract),
         contract["score"] ?? null,
-        gates["public"]?.passed ?? null, gates["public"]?.total ?? null,
-        gates["hidden"]?.passed ?? null, gates["hidden"]?.total ?? null,
-        gates["adversarial"]?.passed ?? null, gates["adversarial"]?.total ?? null,
+        count("public", "passed"), count("public", "total"),
+        count("hidden", "passed"), count("hidden", "total"),
+        count("adversarial", "passed"), count("adversarial", "total"),
         budget["llm_calls"] ?? null, budget["tool_calls"] ?? null, budget["wall_ms"] ?? null,
         contract["trace_ref"] ?? null,
         message.lease_token, message.fencing_token, message.body_sha256,
       ]);
 
     if (!rows.length) return false;
+
+    if (overreached) {
+      // Ops reads runner_event for the runner error rate, and an image older
+      // than the kind is a deploy to fix rather than a learner to retry.
+      await client.query(
+        `insert into runner_event (submission_id, level, message, detail)
+         values ($1, 'error', 'runner ran hidden or adversarial cases on a Run', $2)`,
+        [message.submission_id, JSON.stringify({
+          image_tag: message.result["runner"]?.["image_tag"] ?? null,
+          fencing_token: message.fencing_token,
+        })]);
+    }
 
     // The trace travels inline in the result because the runner has no S3 in
     // this build. It is lifted out here so submission.result stays the contract
