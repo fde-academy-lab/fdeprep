@@ -1863,3 +1863,45 @@ stages:
           - A row opens /admin/learners/<id>, read-only, with the readiness line, the heatmap Progress draws from the same component, the attempts with a trace link each and the past answers with scores; faculty and admins open it, and a learner gets the admin layout's 404.
           - Ops lists the seed's four stuck submissions and four stuck voice answers with why each waits, then the last seven days and the switches, and every admin tab's title equals its h1.
           - No prompt(), confirm() or alert() is left under web/app; each is a dialog on the native dialog element with the route's refusal as its error line, and every admin control comes from components/ui/field.tsx. In a browser, Tab stays in each dialog, Escape closes it and focus returns to the button that opened it.
+
+  - id: S18
+    name: Agentic patterns and depth content
+    kind: roadmap
+    horizon: now
+    start: 2026-10-08
+    finish: 2026-10-19
+    area: Content
+    priority: P1
+    risk: Medium
+    summary: >-
+      Ten problems teach what the catalogue covered only in passing or not at
+      all: peer agents handing a chat on, a critic loop, a map-reduce with
+      Send, a task handed to another organisation's agent, episodic and
+      procedural memory, reranking, graph retrieval, choosing n8n against a
+      graph or plain code, and changing a model inside a sealed network.
+    why: >-
+      A coverage matrix of the catalogue against the agentic patterns,
+      frameworks and depth topics the product owner asked for found no problem
+      on evaluator-optimizer loops, reranking, graph retrieval, episodic or
+      procedural memory, n8n-style workflow tools or the agent-to-agent
+      boundary, and swarms, LangGraph's Send and running a model inside a
+      sealed network taught only in passing.
+    estimate: {optimistic: 6, likely: 8, pessimistic: 13}
+    rice: {reach: 180, impact: 1, confidence: 0.8}
+    stories:
+      - id: S18.1
+        title: "Teach the agentic patterns, frameworks and depth topics the catalogue was missing"
+        type: Feature
+        status: in_progress
+        points: 13
+        area: Content
+        start: 2026-10-08
+        finish: 2026-10-19
+        acceptance:
+          - Orchestration gains four drills. keep-the-chat-with-its-specialist (Hard) hands a chat between peer agents with Command and keeps an active agent that persists across turns and resets when a case closes. end-the-critic-loop-on-the-best-draft (Hard) ends an evaluator-optimizer loop on a decision and keeps the best draft. fan-out-one-worker-per-store-then-reduce (Hard) runs a map-reduce with Send whose reduce survives a failed branch inside the call budget. follow-a-task-handed-to-another-agent (Medium) follows a task handed to another organisation's agent through the A2A task states.
+          - Memory gains two drills. recall-past-episodes-without-inventing-a-fact (Hard) keeps episodes in the LangGraph store and promotes a fact only when the customer states it or three episodes within 90 days agree. update-the-playbook-without-dropping-a-rule (Medium) updates a procedural playbook without touching a required step.
+          - Context gains two drills. rerank-enough-candidates-to-find-the-answer (Medium) reranks to the depth the answer needs and falls back to the fused order on a reranker error. find-every-product-a-recalled-part-reaches (Medium) walks a parts graph with a frontier, a visited set, a hop limit and a lookup limit.
+          - Tools gains choose-n8n-a-graph-or-plain-code (Hard, design), which chooses n8n, a LangGraph graph or plain code per workflow against the client's numbers. fde-practice gains the drill change-the-model-inside-a-sealed-network (Hard, design), which measures a model change inside a sealed network and rolls it back inside the window.
+          - Every new code problem's reference passes every gate and its naive solution fails a hidden test through the runner, its stub fails a public test and every step check, and its coach is quiet on the reference and fires on the naive solution. The two design problems' strong exemplars and walkthroughs clear every heuristic.
+          - Nine of the ten are drills. choose-n8n-a-graph-or-plain-code takes the day-6 slot of pick-a-framework-for-the-first-agent, which becomes a drill, and python -m tools.storyline --check reports no other change.
+          - Every framework and vendor fact in a brief, a contract or a walkthrough names the version or page it was read from and the date it was read.

@@ -49,6 +49,7 @@ gantt
   S15 First cohort :s15, 2026-10-12, 50d
   S16 Second version :s16, 2026-12-01, 121d
   S17 Redesign, one position and one next action :s17, 2026-10-08, 12d
+  S18 Agentic patterns and depth content :active, s18, 2026-10-08, 12d
 ```
 <!-- /generated:timeline -->
 

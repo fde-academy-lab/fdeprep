@@ -1,0 +1,537 @@
+slug: find-every-product-a-recalled-part-reaches
+title: "Find every product a recalled part reaches"
+drill: true
+skill: Walk a parts graph breadth-first with a visited set, a hop limit and a lookup limit
+artefact_type: code
+difficulty: medium
+track: context
+concept:
+  topic: "In the window or retrieved"
+  question: "When the answer is three hops away, what does search miss and what bounds the walk?"
+est_minutes: 30
+competencies:
+  - { slug: retrieval, weight: 1.0 }
+  - { slug: failure-mode-analysis, weight: 0.5 }
+  - { slug: cost-and-latency, weight: 0.5 }
+call_budget: 2
+time_limit_s: 10
+allowed_imports: [json, re]
+
+brief_md: |
+  The quality team at a car maker the size of Tata Motors has a recall to
+  trace. On Monday a supplier recalled batch B-09 of a brake-line fitting,
+  part P-4471, and the team asked the assistant which variants and which
+  vehicles carry it. Every vehicle built with that batch gets a recall letter.
+
+  The parts database is a graph. A part is used in assemblies, an assembly can
+  sit inside a larger assembly or a service kit, an assembly is fitted to
+  variants, and each variant is built as a range of vehicles. From the fitting
+  to the vehicles is three hops.
+
+  The assistant has failed four ways. The first version answered from vector
+  search over the parts pages, which returned the fitting's own page, four
+  fittings that look like it, and no assembly. The second asked the model
+  which assemblies use the part: it named two, and one of them does not exist.
+  The third walked the graph with no limit, reached a mounting kit used in
+  1,900 assemblies, and ran for four minutes. The fourth went round in circles
+  on a service kit that a data-entry error lists inside its own sub-kit.
+
+  The quality team caps a walk at three hops, which reaches the vehicles, and
+  at 40 lookups, which answers inside ten seconds. They want every product the
+  batch reaches, the path that shows how it reaches it, and a plain statement
+  when a limit cut the walk short.
+
+contract_md: |
+  Implement:
+
+      def run_agent(question: str, llm, tools: dict) -> str
+
+  `question` is JSON: `{"part": "P-4471", "batch": "B-09"}`.
+
+  `tools["neighbours"](node=...)` reads one node's edges from the parts
+  database:
+
+      {"status": 200, "used_in": ["A-118"], "fitted_to": [], "built_as": []}
+
+  | List | What it holds | The type of each node in it |
+  |---|---|---|
+  | `used_in` | assemblies or service kits that contain this node | `assembly` |
+  | `fitted_to` | variants that carry this assembly | `variant` |
+  | `built_as` | ranges of vehicles built as this variant | `vehicles` |
+
+  A range of vehicles answers with three empty lists. A node the database
+  does not hold answers `{"error": "not_found"}`.
+
+  Walk breadth-first from the part:
+
+  1. Ask about the part first, then about each node in the order it was
+     reached, and never about the same node twice.
+  2. Read a reply's `used_in`, then `fitted_to`, then `built_as`, each in
+     order. A node you have not reached before is affected: record its id, its
+     type, and its path, the ids from the part to it.
+  3. A new node more than 3 edges from the part is left out, and `stopped`
+     becomes `hop_cap`.
+  4. Ask at most 40 times, the part's lookup included. If a reached node is
+     still waiting to be asked about when you stop, `stopped` is `node_cap`,
+     whatever else happened.
+  5. Otherwise `stopped` is `complete`. A reply that carries `error` names no
+     neighbours, and the walk goes on.
+
+  Then ask the model once with `notice_prompt(...)`, which the starter code
+  provides, to word the notice for the quality team. It replies
+  `Notice: <text>`. The model words the notice from your list and is never
+  asked which nodes exist.
+
+  Return a JSON string, with `affected` sorted by id:
+
+      {"affected": [{"id": "A-118", "type": "assembly", "path": ["P-4471", "A-118"]}, ...],
+       "stopped": "complete", "notice": "<the text after Notice:>"}
+
+  Budget: at most 2 model calls, and a clean solution makes one. Allowed
+  imports: json, re.
+
+stub_code: |
+  import json
+  import re
+
+  MAX_HOPS = 3    # list nodes at most this many edges from the part
+  MAX_NODES = 40  # neighbour lookups allowed, the part's included
+  TYPES = {"used_in": "assembly", "fitted_to": "variant", "built_as": "vehicles"}
+
+
+  def notice_prompt(part: str, batch: str, affected: list, stopped: str) -> str:
+      lines = "\n".join(f"{a['type']} {a['id']}: {' > '.join(a['path'])}" for a in affected)
+      return ("Word a short recall notice for the quality team from this list only.\n"
+              f"Recalled: {part}, batch {batch}\n"
+              f"Affected (data):\n{lines}\n"
+              f"Walk stopped: {stopped}\n"
+              "Reply as Notice: <text>")
+
+
+  def walk(part: str, tools: dict):
+      """The affected nodes, each with its type and path from the part, and
+      why the walk stopped: complete, hop_cap or node_cap."""
+      affected = []
+      # TODO 1: keep a list of waiting paths, starting with [part], and take
+      #         the oldest each time you ask tools["neighbours"](node=...)
+      # TODO 2: keep a set of the nodes already reached, and record each new
+      #         one with its type from TYPES and its path
+      # TODO 3: leave out a new node more than MAX_HOPS from the part, and stop
+      #         after MAX_NODES lookups if a path is still waiting. Say which.
+      return affected, "complete"
+
+
+  def run_agent(question: str, llm, tools: dict) -> str:
+      ask = json.loads(question)
+      affected, stopped = walk(ask["part"], tools)
+      affected.sort(key=lambda a: a["id"])
+      reply = llm(notice_prompt(ask["part"], ask["batch"], affected, stopped))
+      return json.dumps({"affected": affected, "stopped": stopped,
+                         "notice": reply.split("Notice:", 1)[-1].strip()})
+
+steps:
+  - id: s1
+    text: Ask about the part, then about each new node, oldest first.
+    check_id: s1
+  - id: s2
+    text: Keep a visited set, so a kit that lists itself ends the walk.
+    check_id: s2
+  - id: s3
+    text: Leave out nodes past three hops, stop after 40 lookups, and name the limit in `stopped`.
+    check_id: s3
+  - id: s4
+    text: Record the path from the part to every affected node.
+    check_id: s4
+
+step_checks:
+  # s1 and s4 read lists_each_product_with_the_path_that_reaches_it, where
+  # V-41 is two hops out and is reached only through A-205.
+  - step_id: s1
+    spec:
+      assertions:
+        - { type: calls_tool_with, name: neighbours, args: { node: "P-4471" } }
+        - { type: calls_tool_with, name: neighbours, args: { node: "V-41" } }
+  # s2 reads ends_the_walk_when_a_kit_contains_itself, where K-2 lists K-1
+  # again and five lookups reach every node once.
+  - step_id: s2
+    spec:
+      assertions:
+        - { type: terminates }
+        - { type: calls_tool_with, name: neighbours, args: { node: "K-2" } }
+        - { type: tool_calls_at_most, value: 5 }
+  # s3 has two cases of its own, because both limits are the hidden cases'
+  # job. In the first, A-33 is three hops out and lists V-34 at four. In the
+  # second, A-500 is used in 45 assemblies, so the 40th lookup comes with
+  # nodes still waiting.
+  - step_id: s3
+    spec:
+      cases:
+        - kind: agent_run
+          input: { question: '{"part": "P-5120", "batch": "B-11"}' }
+          llm_script:
+            - { match: { contains: "Walk stopped:" },
+                reply: "Notice: Batch B-11 of P-5120 reaches the products listed." }
+            - { match: "*", reply: "Notice: Batch B-11 reaches the products listed. The list is complete." }
+          tools:
+            neighbours:
+              by_arg:
+                arg: node
+                values:
+                  P-5120: { status: 200, used_in: ["K-31"], fitted_to: [], built_as: [] }
+                  K-31: { status: 200, used_in: ["K-32"], fitted_to: [], built_as: [] }
+                  K-32: { status: 200, used_in: ["A-33"], fitted_to: [], built_as: [] }
+                  A-33: { status: 200, used_in: [], fitted_to: ["V-34"], built_as: [] }
+                  V-34: { status: 200, used_in: [], fitted_to: [], built_as: ["VIN-34A"] }
+                default: { status: 200, used_in: [], fitted_to: [], built_as: [] }
+          budget: { max_llm_calls: 2, max_tool_calls: 80, wall_ms: 10000 }
+          assertions:
+            - { type: valid_json_return, schema: { type: object, required: [affected, stopped, notice], properties: { stopped: { const: "hop_cap" } } } }
+        - kind: agent_run
+          input: { question: '{"part": "P-5120", "batch": "B-11"}' }
+          llm_script:
+            - { match: { contains: "Walk stopped:" },
+                reply: "Notice: Batch B-11 of P-5120 reaches the products listed." }
+            - { match: "*", reply: "Notice: Batch B-11 reaches the products listed. The list is complete." }
+          tools:
+            neighbours:
+              by_arg:
+                arg: node
+                values:
+                  P-5120: { status: 200, used_in: ["A-500"], fitted_to: [], built_as: [] }
+                  A-500: { status: 200, fitted_to: [], built_as: [],
+                    used_in: ["A-601", "A-602", "A-603", "A-604", "A-605", "A-606", "A-607", "A-608", "A-609", "A-610",
+                      "A-611", "A-612", "A-613", "A-614", "A-615", "A-616", "A-617", "A-618", "A-619", "A-620",
+                      "A-621", "A-622", "A-623", "A-624", "A-625", "A-626", "A-627", "A-628", "A-629", "A-630",
+                      "A-631", "A-632", "A-633", "A-634", "A-635", "A-636", "A-637", "A-638", "A-639", "A-640",
+                      "A-641", "A-642", "A-643", "A-644", "A-645"] }
+                  V-88: { status: 200, used_in: [], fitted_to: [], built_as: ["VIN-88A"] }
+                  VIN-88A: { status: 200, used_in: [], fitted_to: [], built_as: [] }
+                default: { status: 200, used_in: [], fitted_to: ["V-88"], built_as: [] }
+          budget: { max_llm_calls: 2, max_tool_calls: 80, wall_ms: 10000 }
+          assertions:
+            - { type: valid_json_return, schema: { type: object, required: [affected, stopped, notice], properties: { stopped: { const: "node_cap" } } } }
+            - { type: tool_calls_at_most, value: 40 }
+  - step_id: s4
+    spec:
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [affected], properties: { affected: { allOf: [{ contains: { type: object, required: [id, path], properties: { id: { const: "V-41" }, path: { const: ["P-4471", "A-205", "V-41"] } } } }, { contains: { type: object, required: [id, path], properties: { id: { const: "VIN-32A" }, path: { const: ["P-4471", "A-118", "V-32", "VIN-32A"] } } } }] } } } }
+
+hints:
+  - Vector search ranks pages that look like the fitting's own page. The
+    question asks what is connected to the fitting, so start from the part and
+    follow its edges.
+  - A walk needs three things a search does not. A frontier of nodes waiting
+    to be asked about, a visited set, and a stop.
+  - Breadth-first reaches every node by its shortest path. Carry the path with
+    each waiting node, because you cannot rebuild it after the walk.
+  - Count lookups as you make them, and check a new node's distance from the
+    part before you add it. Whichever limit stopped you goes into `stopped`.
+
+scenario:
+  headline: "A recall question met look-alike search, an invented assembly and an endless walk"
+  who: The quality team at a car maker the size of Tata Motors
+  situation: >-
+    A supplier recalled batch B-09 of brake-line fitting P-4471. Vector search
+    found its page and four similar fittings. A model named two assemblies, one
+    invented. A walk with no limit ran four minutes, and another looped on a
+    kit listed inside its own sub-kit.
+  stakes: >-
+    Every vehicle built with the batch needs a recall letter. A variant missing
+    from the list leaves cars with a suspect brake line on the road.
+  metrics:
+    - { label: Hops to the vehicles, value: "3" }
+    - { label: Lookups allowed, value: "40" }
+    - { label: Longest walk so far, value: 4 min }
+
+diagram:
+  title: Three hops from a recalled fitting to the vehicles
+  caption: >-
+    Search finds pages like the fitting's page. The walk follows edges from the
+    part, remembers where it has been, and stops at three hops or 40 lookups.
+  direction: lr
+  nodes:
+    - { id: team, label: Quality team, sub: "which vehicles carry batch B-09?", kind: actor, tone: blue, at: [0, 1] }
+    - { id: search, label: Vector search, sub: "the fitting's page and look-alikes", kind: tool, tone: pink, at: [1, 0] }
+    - { id: part, label: Fitting P-4471, sub: recalled batch B-09, kind: doc, tone: orange, at: [1, 1] }
+    - { id: assembly, label: Assemblies and kits, sub: "`used_in`, kits can nest", kind: store, tone: neutral, at: [2, 1] }
+    - { id: variant, label: Variants, sub: "`fitted_to`", kind: store, tone: neutral, at: [3, 1] }
+    - { id: vehicles, label: Vehicle ranges, sub: "`built_as`, three hops out", kind: output, tone: green, at: [4, 1] }
+    - { id: walk, label: The walk, sub: "frontier, visited set, two limits", kind: agent, tone: purple, at: [2, 2] }
+    - { id: model, label: Model, sub: words the notice from the list, kind: model, tone: teal, at: [4, 2] }
+    - { id: hub, label: "Kit in 1,900 assemblies", sub: a walk with no limit, kind: decision, tone: pink, at: [3, 0] }
+  edges:
+    - { from: team, to: search, label: the first version, tone: danger }
+    - { from: team, to: part, label: the recall, step: 1 }
+    - { from: part, to: assembly, label: "`used_in`", step: 2 }
+    - { from: assembly, to: variant, label: "`fitted_to`", step: 3 }
+    - { from: variant, to: vehicles, label: "`built_as`", step: 4 }
+    - { from: walk, to: part, label: starts at the part, tone: muted }
+    - { from: hub, to: walk, label: four minutes, tone: danger }
+    - { from: walk, to: model, label: the list and its paths, tone: success }
+
+approach:
+  goal: List every product the recalled fitting reaches, with proof, in bounded time
+  branches:
+    - label: Search finds look-alikes
+      detail: Similarity ranks pages like the fitting's page, and the assemblies that use it look nothing like it.
+      leaves: [follow edges from the part, the model has never seen the graph]
+    - label: A walk has a frontier
+      leaves: ["oldest first, so each node gets its shortest path", carry the path with each waiting node]
+    - label: A visited set ends a loop
+      leaves: [ask about each node once, a kit can be listed inside itself]
+    - label: Two limits stop it
+      leaves: [three hops reach the vehicles, 40 lookups answer inside ten seconds, say which limit stopped you]
+
+coach:
+  opening: >-
+    Draw the three hops from the fitting to the vehicles before you write the
+    walk. Then decide what it keeps between lookups: what is waiting, what it
+    has seen, and what stops it.
+  signals:
+    - id: no-visited-set
+      when: { code_lacks: 'set\(|\{\s*part\s*\}|\bnot in\b' }
+      say: >-
+        Nothing in your walk remembers which nodes it has reached. What happens
+        when a service kit is listed inside its own sub-kit?
+    - id: no-lookup-limit
+      when: { code_lacks: 'MAX_NODES\s*(==|>=|<=|<|>)|(==|>=|<=|<|>)\s*MAX_NODES' }
+      say: >-
+        Nothing counts your lookups against `MAX_NODES`. How many lookups does
+        your walk make when it reaches a kit used in 1,900 assemblies?
+    - id: no-hop-limit
+      when: { code_lacks: 'MAX_HOPS\s*(==|>=|<=|<|>)|(==|>=|<=|<|>)\s*MAX_HOPS' }
+      say: >-
+        Nothing compares a node's distance from the part with `MAX_HOPS`. How
+        far does your walk go down a chain of kits nested inside kits?
+    - id: asks-the-model
+      when: { code_matches: '(?i)which\s+(assemblies|variants|vehicles|parts)' }
+      say: >-
+        The model has never seen the parts graph, and the second version's
+        model named an assembly that does not exist. Which of your lists came
+        from the graph?
+    - id: hidden-hub
+      when: { test_failed: stops_after_forty_lookups_at_a_shared_sub_assembly }
+      say: >-
+        In that run a sub-assembly is used in 60 assemblies. How many lookups
+        did your walk make, and what did `stopped` tell the quality team?
+    - id: hidden-chain
+      when: { test_failed: leaves_out_what_lies_past_three_hops }
+      say: >-
+        In that run the kits nest deeper than three hops. Which nodes past the
+        third hop reached your list?
+    - id: hidden-missing
+      when: { test_failed: keeps_walking_past_a_lookup_that_fails }
+      say: >-
+        In that run the database does not hold one of the assemblies. What does
+        your walk do with a reply that carries `error` and no lists?
+    - id: stuck
+      when: { idle_minutes: 5 }
+      say: >-
+        Start with the frontier: a list holding the path `[part]`. Take the
+        oldest path, ask about its last node, and add a longer path for each new
+        node the reply names.
+    - id: keep-failing
+      when: { failed_runs_at_least: 3 }
+      say: >-
+        Three runs have failed. The second hint names the three things a walk
+        needs that a search does not.
+  wrap_up: >-
+    Graph retrieval answers what is connected to a thing, which similarity
+    cannot. A walk needs a frontier, a visited set and a stop, and its answer
+    carries the path that shows why each product is affected.
+
+tests:
+  - name: lists_each_product_with_the_path_that_reaches_it
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"part": "P-4471", "batch": "B-09"}' }
+      llm_script:
+        - { match: { contains: "Walk stopped: complete" },
+            reply: "Notice: Batch B-09 of P-4471 reaches assemblies A-118 and A-205, variants V-32 and V-41, and vehicle ranges VIN-32A and VIN-41A. The list is complete." }
+        - { match: "*", reply: "Notice: Batch B-09 reaches the products listed. The list is complete." }
+      tools:
+        neighbours:
+          by_arg:
+            arg: node
+            values:
+              P-4471: { status: 200, used_in: ["A-118", "A-205"], fitted_to: [], built_as: [] }
+              A-118: { status: 200, used_in: [], fitted_to: ["V-32"], built_as: [] }
+              A-205: { status: 200, used_in: [], fitted_to: ["V-32", "V-41"], built_as: [] }
+              V-32: { status: 200, used_in: [], fitted_to: [], built_as: ["VIN-32A"] }
+              V-41: { status: 200, used_in: [], fitted_to: [], built_as: ["VIN-41A"] }
+            default: { status: 200, used_in: [], fitted_to: [], built_as: [] }
+      budget: { max_llm_calls: 2, max_tool_calls: 80, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [affected, stopped, notice], properties: { affected: { const: [{ id: "A-118", type: "assembly", path: ["P-4471", "A-118"] }, { id: "A-205", type: "assembly", path: ["P-4471", "A-205"] }, { id: "V-32", type: "variant", path: ["P-4471", "A-118", "V-32"] }, { id: "V-41", type: "variant", path: ["P-4471", "A-205", "V-41"] }, { id: "VIN-32A", type: "vehicles", path: ["P-4471", "A-118", "V-32", "VIN-32A"] }, { id: "VIN-41A", type: "vehicles", path: ["P-4471", "A-205", "V-41", "VIN-41A"] }] }, stopped: { const: "complete" } } } }
+        - { type: llm_calls_at_most, value: 1 }
+        - { type: returns_matches, value: "vehicle ranges VIN-32A and VIN-41A" }
+
+  - name: ends_the_walk_when_a_kit_contains_itself
+    visibility: public
+    spec:
+      kind: agent_run
+      input: { question: '{"part": "P-4471", "batch": "B-09"}' }
+      llm_script:
+        - { match: { contains: "Walk stopped: complete" },
+            reply: "Notice: Batch B-09 of P-4471 reaches service kits K-1 and K-2, variant V-50 and vehicle range VIN-50A. The list is complete." }
+        - { match: "*", reply: "Notice: Batch B-09 reaches the products listed. The list is complete." }
+      tools:
+        neighbours:
+          by_arg:
+            arg: node
+            values:
+              P-4471: { status: 200, used_in: ["K-1"], fitted_to: [], built_as: [] }
+              K-1: { status: 200, used_in: ["K-2"], fitted_to: ["V-50"], built_as: [] }
+              K-2: { status: 200, used_in: ["K-1"], fitted_to: [], built_as: [] }
+              V-50: { status: 200, used_in: [], fitted_to: [], built_as: ["VIN-50A"] }
+            default: { status: 200, used_in: [], fitted_to: [], built_as: [] }
+      budget: { max_llm_calls: 2, max_tool_calls: 80, wall_ms: 10000 }
+      assertions:
+        - { type: terminates }
+        - { type: tool_calls_at_most, value: 5 }
+        - { type: valid_json_return, schema: { type: object, required: [affected, stopped, notice], properties: { affected: { const: [{ id: "K-1", type: "assembly", path: ["P-4471", "K-1"] }, { id: "K-2", type: "assembly", path: ["P-4471", "K-1", "K-2"] }, { id: "V-50", type: "variant", path: ["P-4471", "K-1", "V-50"] }, { id: "VIN-50A", type: "vehicles", path: ["P-4471", "K-1", "V-50", "VIN-50A"] }] }, stopped: { const: "complete" } } } }
+
+  - name: stops_after_forty_lookups_at_a_shared_sub_assembly
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"part": "P-4471", "batch": "B-09"}' }
+      llm_script:
+        - { match: { contains: "Walk stopped: node_cap" },
+            reply: "Notice: The walk reached its lookup limit, so this list is partial. Treat every assembly that uses A-200 as affected until the rest are read." }
+        - { match: "*", reply: "Notice: Batch B-09 reaches the products listed. The list is complete." }
+      tools:
+        neighbours:
+          by_arg:
+            arg: node
+            values:
+              P-4471: { status: 200, used_in: ["A-200"], fitted_to: [], built_as: [] }
+              A-200: { status: 200, fitted_to: [], built_as: [],
+                used_in: ["A-301", "A-302", "A-303", "A-304", "A-305", "A-306", "A-307", "A-308", "A-309", "A-310",
+                  "A-311", "A-312", "A-313", "A-314", "A-315", "A-316", "A-317", "A-318", "A-319", "A-320",
+                  "A-321", "A-322", "A-323", "A-324", "A-325", "A-326", "A-327", "A-328", "A-329", "A-330",
+                  "A-331", "A-332", "A-333", "A-334", "A-335", "A-336", "A-337", "A-338", "A-339", "A-340",
+                  "A-341", "A-342", "A-343", "A-344", "A-345", "A-346", "A-347", "A-348", "A-349", "A-350",
+                  "A-351", "A-352", "A-353", "A-354", "A-355", "A-356", "A-357", "A-358", "A-359", "A-360"] }
+              V-77: { status: 200, used_in: [], fitted_to: [], built_as: ["VIN-77A"] }
+              VIN-77A: { status: 200, used_in: [], fitted_to: [], built_as: [] }
+            default: { status: 200, used_in: [], fitted_to: ["V-77"], built_as: [] }
+      budget: { max_llm_calls: 2, max_tool_calls: 80, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [affected, stopped, notice], properties: { stopped: { const: "node_cap" } } } }
+        - { type: tool_calls_at_most, value: 40 }
+        - { type: returns_lacks, value: '"VIN-77A"' }
+        - { type: returns_lacks, value: "The list is complete" }
+
+  - name: leaves_out_what_lies_past_three_hops
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"part": "P-4471", "batch": "B-09"}' }
+      llm_script:
+        - { match: { contains: "Walk stopped: hop_cap" },
+            reply: "Notice: Within three hops, batch B-09 of P-4471 reaches kits K-7 and K-8 and assembly A-9. Products further out were not read." }
+        - { match: "*", reply: "Notice: Batch B-09 reaches the products listed. The list is complete." }
+      tools:
+        neighbours:
+          by_arg:
+            arg: node
+            values:
+              P-4471: { status: 200, used_in: ["K-7"], fitted_to: [], built_as: [] }
+              K-7: { status: 200, used_in: ["K-8"], fitted_to: [], built_as: [] }
+              K-8: { status: 200, used_in: ["A-9"], fitted_to: [], built_as: [] }
+              A-9: { status: 200, used_in: [], fitted_to: ["V-9"], built_as: [] }
+              V-9: { status: 200, used_in: [], fitted_to: [], built_as: ["VIN-9A"] }
+            default: { status: 200, used_in: [], fitted_to: [], built_as: [] }
+      budget: { max_llm_calls: 2, max_tool_calls: 80, wall_ms: 10000 }
+      assertions:
+        - { type: valid_json_return, schema: { type: object, required: [affected, stopped, notice], properties: { affected: { const: [{ id: "A-9", type: "assembly", path: ["P-4471", "K-7", "K-8", "A-9"] }, { id: "K-7", type: "assembly", path: ["P-4471", "K-7"] }, { id: "K-8", type: "assembly", path: ["P-4471", "K-7", "K-8"] }] }, stopped: { const: "hop_cap" } } } }
+        - { type: returns_lacks, value: '"V-9"' }
+        - { type: tool_calls_at_most, value: 4 }
+
+  - name: keeps_walking_past_a_lookup_that_fails
+    visibility: hidden
+    spec:
+      kind: agent_run
+      input: { question: '{"part": "P-4471", "batch": "B-09"}' }
+      llm_script:
+        - { match: { contains: "Walk stopped: complete" },
+            reply: "Notice: Batch B-09 of P-4471 reaches assemblies A-118 and A-404, variant V-32 and vehicle range VIN-32A." }
+        - { match: "*", reply: "Notice: Batch B-09 reaches the products listed. The list is complete." }
+      tools:
+        neighbours:
+          by_arg:
+            arg: node
+            values:
+              P-4471: { status: 200, used_in: ["A-118", "A-404"], fitted_to: [], built_as: [] }
+              A-118: { status: 200, used_in: [], fitted_to: ["V-32"], built_as: [] }
+              V-32: { status: 200, used_in: [], fitted_to: [], built_as: ["VIN-32A"] }
+              VIN-32A: { status: 200, used_in: [], fitted_to: [], built_as: [] }
+            default: { error: "not_found" }
+      budget: { max_llm_calls: 2, max_tool_calls: 80, wall_ms: 10000 }
+      assertions:
+        - { type: no_exception }
+        - { type: valid_json_return, schema: { type: object, required: [affected, stopped, notice], properties: { affected: { const: [{ id: "A-118", type: "assembly", path: ["P-4471", "A-118"] }, { id: "A-404", type: "assembly", path: ["P-4471", "A-404"] }, { id: "V-32", type: "variant", path: ["P-4471", "A-118", "V-32"] }, { id: "VIN-32A", type: "vehicles", path: ["P-4471", "A-118", "V-32", "VIN-32A"] }] }, stopped: { const: "complete" } } } }
+
+reference_md: |
+  Vector search answers "what looks like this?", and a recall asks "what is
+  connected to this?". The assemblies that use a brake-line fitting have pages
+  about hoses, brackets and wheel arches, so no similarity score puts them
+  near the fitting's page. The connection lives in the parts graph, and the
+  way to read it is to follow edges.
+
+  The model is the wrong place to ask. It has never seen the graph, so its
+  list of assemblies is a guess written in a confident voice, and one invented
+  assembly sends a letter about a car nobody built while a real one goes
+  missing. Here the model words the notice from a list the code built, and
+  every entry carries the path that put it there.
+
+  A walk needs three things a search does not. The frontier is the list of
+  reached nodes still waiting to be asked about, taken oldest first, so each
+  node is reached by its shortest path from the part. The visited set ends the
+  loop that a data-entry error made: a kit listed inside its own sub-kit is
+  asked about once. The stop is two limits, because they fail differently. The
+  hop limit bounds depth and keeps a chain of nested kits from pulling in
+  products several assemblies further out. The lookup limit bounds width, and
+  a hub is what width looks like: one mounting kit in 1,900 assemblies turns a
+  walk into thousands of lookups at the second hop.
+
+  Saying which limit stopped the walk is part of the answer. `complete` means
+  the list is the whole recall. `hop_cap` means something sits further out
+  than the team chose to look, and `node_cap` means the list is partial, with
+  nodes reached and never asked about. A quality engineer reads those three
+  very differently, and a walk that reports the same word in all three cases
+  hides the difference that matters most.
+
+  The path is the evidence. A recall letter that says a vehicle is affected
+  has to say why: this fitting, in this assembly, on this variant, built in
+  this range. Breadth-first gives it for nothing, as long as each waiting node
+  carries its path, and rebuilding it afterwards means walking again. A node
+  whose own lookup fails is still affected, because its parent's reply named
+  it, and the walk goes on without its neighbours.
+
+complexity: C2
+
+interview_evidence:
+  round: written
+  asked_as: |
+    When would you put a graph behind retrieval instead of a vector index, and what stops the traversal?
+  source: |
+    Author judgement. No employer frequency data stands behind it.
+
+tools:
+  - name: neighbours
+    args: node
+    returns: '`used_in`, `fitted_to` and `built_as`, each a list of ids, or `{"error": "not_found"}` for a node the database does not hold.'
+example:
+  case: lists_each_product_with_the_path_that_reaches_it
+  expect: Ask about P-4471 first, reach two assemblies, two variants and two vehicle ranges once each
+    with the path that reached them, and return them sorted by id with `stopped` as complete.
+traps:
+  - Asking the model which assemblies use the part, when only the parts graph knows and the model names
+    ones that do not exist.
+  - Walking with no visited set, so a kit listed inside its own sub-kit keeps the walk going round.
+  - Walking with no limit on hops or lookups, so one kit shared by hundreds of assemblies turns a recall
+    question into minutes of lookups.
+  - Listing an affected product without the path that shows how the recalled part reaches it.
