@@ -452,9 +452,9 @@ The validator checks the fields exist and are non-empty. It cannot check that a 
 
 `analytics/` reports coverage across rounds, which is how you find out that the catalogue has drifted toward written problems while learners keep failing oral rounds.
 
-The catalogue declares 22 `written` and 3 `both`, and no problem declares `oral`. That is correct rather than a gap: a problem's artefact is code, a prompt or a written argument, and the oral round is covered by `voice-questions/` instead. The number is worth watching all the same, because it is the measurement that would show the two halves drifting apart.
+Measured on 8 October 2026 from `interview_evidence.round`, the field the validator reads, the 173 catalogue problems declare 76 `written`, 61 `both` and 36 `oral`. The 13 fixtures under `problems/_fixtures` all declare `written` and are left out of that count. When the catalogue held 25 problems it declared 22 `written` and 3 `both`, and none `oral`. The spoken round itself is practised in `voice-questions/`, and the split is worth watching, because it is the measurement that would show the two halves drifting apart.
 
-Fifteen of the 25 `asked_as` questions are adapted from `docs/source-pack/09-interview-bank.json`, which labels every entry "Original interview-style practice; actual employer frequency unverified". Each one that borrows from it inherits that caveat in its `source`. The other ten say "author judgement" and name no evidence, because there is none.
+On the same day, 66 of the 173 `source` fields name an entry in `docs/source-pack/09-interview-bank.json`, which labels every entry "Original interview-style practice; actual employer frequency unverified", and all 66 repeat that caveat. 115 say "author judgement", eight of them beside the nearest bank entry. When the catalogue held 25 problems, fifteen questions came from the bank and ten from author judgement.
 
 ---
 
