@@ -459,13 +459,21 @@ Fifteen of the 25 `asked_as` questions are adapted from `docs/source-pack/09-int
 
 ## 13. Module boundary
 
-`eval/` is the only writer of `evaluation` and of `competency_score`. Nothing else computes a grade, a band or a competency state.
+`eval/` is the only writer of `evaluation`, `evaluation_review` and `competency_score`. Nothing else computes a grade, a band or a competency state.
+
+**Amended 8 October 2026** to what story S15.7 built. The competency write is `web/lib/eval/competency.ts`, and two writers outside `eval/` keep a grade column, each for the reason given under the table.
 
 | Module | May | May not |
 |---|---|---|
-| `eval/` | Write `evaluation`, write `competency_score`, read anything. | Execute learner code. Render. Decide caps or scaffolding. |
-| `progress/` | Read `evaluation` and `competency_score`. | Write either. Recompute a grade. |
-| `analytics/` | Read `evaluation`, `submission`, `problem`. | Write anything a learner sees. Recompute a grade. |
+| `eval/` | Write `evaluation`, `evaluation_review` and `competency_score`. Write a submission's verdict and score when faculty correct a grade. Read anything. | Execute learner code. Render. Decide caps or scaffolding. |
+| `writeResult` in `web/lib/queue/result-writer.ts` | Write a submission's terminal verdict and score and an attempt's defence score, then call `eval/` for the competency cells and the evaluation row in the same transaction. | Write a grade table itself. |
+| `scoreVoiceOnce` in `web/lib/voice/judge.ts` | Write a voice session's score. | Write a grade table. |
+| `progress/` | Read `evaluation` and `competency_score`. | Write anything. Recompute a grade. |
+| `analytics/` | Read `evaluation`, `submission`, `problem` and `competency_score`. Append a `report_card` row, a dated copy of numbers `eval/` and `progress/` already produced. | Write a grade, a band or a competency state, or anything a learner sees on screen. Change a report card once issued. Recompute a grade. |
+
+`writeResult` stays outside `eval/` because `03` section 9.3 commits the verdict with a compare-and-set on the runner's lease, and moving the write would split the lease logic across two modules. `scoreVoiceOnce` stays because a voice session is not a submission and has no evaluation row. The lease reaper in `web/lib/queue/dispatcher.ts` also sets a verdict. It only ever sets `error`, which is the platform's failure and moves no cell, so it does not count as a third writer.
+
+`web/tests/writer-boundary.test.ts` enforces the table. It reads every file under `web/lib`, `web/app` and `web/scripts`, and fails on a grade table written from outside `eval/`, on a grade column set from anywhere but `eval/` and the two writers above, on any write at all under `progress/`, on any write under `analytics/` but a new report card, and on any update or delete of a report card. Migration 026 adds a second line behind it: a role, `fdeprep_reader`, with SELECT on every table and no write grant, created when the user running the migrations may create roles. Nothing runs under that role in this release.
 
 The rule that makes it worth enforcing: a heatmap that disagrees with a report card is a bug nobody can find, because two pieces of code computed the same number from the same rows in different ways. One writer removes the category.
 

@@ -230,7 +230,7 @@ Rehearsals are capped at two per week per learner so the result stays meaningful
 
 - Cohort heatmap, sortable by competency, so a weak column across the cohort becomes a session topic.
 - Per-learner drill-down: submissions, traces, hint reveals, attempt notes, defence answers.
-- Stuck list: learners with three or more failed submits on the same problem and no successful submit in seven days.
+- Stuck list: learners with three or more failed submits on the same problem and no successful submit. Amended 8 October 2026 to the definition in `11-ANALYTICS-AND-REPORT-CARD.md` section 4, which the Overview has used since story S17.4 and the Cohort screen uses too. This line also said "in seven days", the two documents disagreed, and the analytics spec decides.
 - Live ops: queue depth, runner error rate, live-run token spend for the day.
 
 Export is CSV, since the cohort trackers live in spreadsheets.

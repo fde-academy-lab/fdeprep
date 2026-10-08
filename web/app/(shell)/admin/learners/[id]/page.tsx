@@ -1,19 +1,24 @@
 /**
  * One learner, as faculty see them from a row of the Overview: their position,
  * the readiness line and the heatmap Progress shows them, the attempts with a
- * trace for each, and their past answers with scores. docs/00 section 8's
- * per-learner drill-down. Read-only for faculty and admins alike: the actions
- * stay on the screens that own them.
+ * trace for each, their past answers with scores, and the report cards issued
+ * for them. docs/00 section 8's per-learner drill-down.
+ *
+ * Read-only for faculty and admins alike, with one action: issuing a report
+ * card (docs/11 section 3), which lives here because a card is a dated copy
+ * of this page. Every other action stays on the screen that owns it.
  *
  * Learners never reach this route, because the admin layout refuses them.
  */
 import Link from "next/link";
 import type { Metadata, Route } from "next";
 import { notFound } from "next/navigation";
-import { History as HistoryIcon, Grid2x2, Mic } from "lucide-react";
+import { FileBadge, History as HistoryIcon, Grid2x2, Mic } from "lucide-react";
 import { permits } from "@/lib/admin/guard";
 import { latestTraces, learnerFacts } from "@/lib/admin/overview";
+import { issuedOn, reportCardsFor } from "@/lib/analytics/report-card";
 import { attemptHistory, heatmap } from "@/lib/progress";
+import { coverageFor } from "@/lib/progress/coverage";
 import { readinessFor } from "@/lib/progress/readiness";
 import { relativeDay } from "@/lib/progress/summary";
 import { currentLearner } from "@/lib/session/current";
@@ -26,6 +31,7 @@ import { PageHeading, SectionHeading } from "@/components/ui/page";
 import { StatStrip } from "@/components/ui/stat-strip";
 import { StatusIcon } from "@/components/ui/status";
 import { Cell, Head, NumCell, Row, Table } from "@/components/ui/table";
+import { IssueReportCard } from "./issue-report-card";
 
 export const dynamic = "force-dynamic";
 
@@ -65,8 +71,9 @@ export default async function LearnerPage(props: Props) {
   if (!learner) notFound();
   const id = learner.enrolmentId;
 
-  const [readiness, grid, history, traces, answers] = await Promise.all([
-    readinessFor(id), heatmap(id), attemptHistory(id), latestTraces(id), pastSessions(id),
+  const [readiness, coverage, grid, history, traces, answers, cards] = await Promise.all([
+    readinessFor(id), coverageFor(id), heatmap(id), attemptHistory(id), latestTraces(id),
+    pastSessions(id), reportCardsFor(id),
   ]);
   const now = new Date();
 
@@ -81,7 +88,7 @@ export default async function LearnerPage(props: Props) {
           : [{ label: "State", value: learner.state.charAt(0).toUpperCase() + learner.state.slice(1) }]),
       ]} />
 
-      <ReadinessLine readiness={readiness} heatmapLink={false} />
+      <ReadinessLine readiness={readiness} coverage={coverage} heatmapLink={false} />
 
       <CompetencyHeatmap grid={grid}>
         {untouched(grid) ? (
@@ -185,6 +192,47 @@ export default async function LearnerPage(props: Props) {
         ) : (
           <EmptyState icon={Mic} className="mt-4">
             No answers finished yet. A finished voice answer appears here with its score.
+          </EmptyState>
+        )}
+      </section>
+
+      <section aria-labelledby="report-cards">
+        <SectionHeading id="report-cards" title="Report cards"
+                        action={cards.length ? <IssueReportCard enrolmentId={id} /> : undefined} />
+        {cards.length ? (
+          <Table className="mt-4" head={
+            <Head>
+              <Cell head>Generated</Cell>
+              <NumCell head>Readiness</NumCell>
+              <NumCell head>Evaluations</NumCell>
+              <Cell head>SHA-256</Cell>
+              <Cell head>Issued by</Cell>
+              <Cell head><span className="sr-only">Download</span></Cell>
+            </Head>
+          }>
+            {cards.map((card) => (
+              <Row key={card.id}>
+                <Cell className="whitespace-nowrap text-text">{issuedOn(card.generatedAt)}</Cell>
+                <NumCell className="text-text-dim">{card.readiness.percent}%</NumCell>
+                <NumCell className="text-text-dim">{card.evaluations}</NumCell>
+                <Cell className="font-mono text-meta text-text-dim" title={card.sha256}>
+                  {card.sha256.slice(0, 12)}
+                </Cell>
+                <Cell className="text-text-dim">{card.issuedBy ?? "a script"}</Cell>
+                <Cell className="text-right">
+                  {/* A plain anchor: a download, which Link would prefetch. */}
+                  <a href={`/api/admin/report-cards/${card.id}`} download
+                     className="text-text-dim underline-offset-2 hover:text-text hover:underline">
+                    Markdown
+                  </a>
+                </Cell>
+              </Row>
+            ))}
+          </Table>
+        ) : (
+          <EmptyState icon={FileBadge} className="mt-4"
+                      action={<IssueReportCard enrolmentId={id} variant="primary" />}>
+            No report card issued yet. Issue one to give placement a dated copy of this page.
           </EmptyState>
         )}
       </section>

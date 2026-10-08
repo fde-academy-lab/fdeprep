@@ -1703,7 +1703,7 @@ stages:
     name: First cohort
     kind: roadmap
     horizon: later
-    start: 2026-10-12
+    start: 2026-10-08
     finish: 2026-11-30
     area: Evaluation panel
     priority: P2
@@ -1758,30 +1758,30 @@ stages:
       - id: S15.5
         title: "Build analytics: cohort views, the stuck list, calibration and panel health"
         type: Feature
-        status: todo
+        status: done
         points: 13
         area: Evaluation panel
-        finish: 2026-11-23
+        finish: 2026-10-08
         acceptance:
           - Faculty can see which topic a cohort failed without writing SQL.
       - id: S15.6
         title: Issue the report card as a dated, hashed snapshot
         type: Feature
-        status: todo
+        status: done
         points: 8
         area: Evaluation panel
-        finish: 2026-11-23
+        finish: 2026-10-08
         acceptance:
-          - A report card never changes after it is issued, and its hash proves it.
+          - A report card never changes after it is issued, and the SHA-256 of its canonical JSON snapshot, printed on its Markdown export with the snapshot itself, proves it.
       - id: S15.7
         title: Move the competency write into eval/, and make progress a pure reader
         type: Task
-        status: todo
+        status: done
         points: 5
         area: Evaluation panel
-        finish: 2026-11-16
+        finish: 2026-10-08
         acceptance:
-          - Only eval/ writes a grade, a band or a competency state, and a test fails if anything else does.
+          - Only eval/ writes evaluation, evaluation_review and competency_score, writeResult and scoreVoiceOnce are the two named writers outside it and keep only their grade columns, and a scan of web/lib, web/app and web/scripts fails if any other file writes a grade.
       - id: S15.8
         title: Compute the readiness signal with its four counts and three bands
         type: Feature

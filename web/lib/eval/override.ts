@@ -22,7 +22,7 @@
  */
 import type { Pool, PoolClient } from "pg";
 import { inTransaction } from "../db/pool.ts";
-import { recomputeForEnrolment } from "../competency/score.ts";
+import { recomputeForEnrolment } from "./competency.ts";
 import { BANDS, bandScore, type Band } from "../policy/bands.ts";
 import type { Evaluation } from "./consolidate.ts";
 import { latestEvaluation } from "./record.ts";

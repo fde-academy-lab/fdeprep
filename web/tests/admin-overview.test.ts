@@ -49,6 +49,9 @@ import SubmissionsPage, { metadata as submissionsMeta } from "../app/(shell)/adm
 import DisagreementsPage, { metadata as disagreementsMeta } from "../app/(shell)/admin/disagreements/page.tsx";
 import OpsPage, { metadata as opsMeta } from "../app/(shell)/admin/ops/page.tsx";
 import ImportPage, { metadata as importMeta } from "../app/(shell)/admin/import/page.tsx";
+import CohortPage, { metadata as cohortMeta } from "../app/(shell)/admin/cohort/page.tsx";
+import CalibrationPage, { metadata as calibrationMeta } from "../app/(shell)/admin/calibration/page.tsx";
+import PanelPage, { metadata as panelMeta } from "../app/(shell)/admin/panel/page.tsx";
 import TracePage from "../app/(shell)/traces/[id]/page.tsx";
 import { importFixtures, resetDatabase } from "./helpers.ts";
 
@@ -114,7 +117,7 @@ describe("who may open the Overview", () => {
   it("lets faculty open /admin and a learner's page, and gives a learner the layout's 404", async () => {
     signIn("meera-iyer", "faculty");
     const layout = await html(AdminLayout({ children: createElement("p", null, "page") }));
-    expect(text(layout)).toBe("Overview Roster Submissions Disagreements page");
+    expect(text(layout)).toBe("Overview Cohort Roster Submissions Disagreements Calibration page");
     const page = await html(OverviewPage(query()));
     expect(h1(page)).toBe("Overview");
     expect(text(page)).toContain("priya-raghavan");
@@ -133,7 +136,8 @@ describe("who may open the Overview", () => {
   it("shows an admin every tab", async () => {
     signIn("daniel-osei", "admin");
     const layout = await html(AdminLayout({ children: null }));
-    expect(text(layout)).toBe("Overview Roster Problems Submissions Disagreements Ops");
+    expect(text(layout)).toBe(
+      "Overview Cohort Roster Problems Submissions Disagreements Calibration Panel Ops");
   });
 
   it("refuses an unknown learner, staff, and a learner from another cohort", async () => {
@@ -267,12 +271,14 @@ describe("the Overview's table", () => {
 });
 
 describe("the other admin screens", () => {
-  it("lists the seed's four stuck submissions and four stuck voice answers on Ops", async () => {
+  it("lists the seed's four waiting submissions and four waiting voice answers on Ops", async () => {
     signIn("daniel-osei", "admin");
     const markup = await html(OpsPage());
-    const stuck = /<h2 id="stuck"[\s\S]*?<\/section>/.exec(markup)![0];
-    const voice = /<h2 id="stuck-voice"[\s\S]*?<\/section>/.exec(markup)![0];
-    expect(bodyRows(stuck)).toBe(4);
+    const waiting = /<h2 id="waiting"[\s\S]*?<\/section>/.exec(markup)![0];
+    const voice = /<h2 id="waiting-voice"[\s\S]*?<\/section>/.exec(markup)![0];
+    // docs/11 section 4 gives "stuck" to a learner and problem pair, so Ops says waiting.
+    expect(text(markup)).not.toMatch(/\bstuck\b/i);
+    expect(bodyRows(waiting)).toBe(4);
     expect(bodyRows(voice)).toBe(4);
     const why = visible(/<tbody[\s\S]*?<\/tbody>/.exec(voice)![0]);
     expect(why.match(/scorer not running|judge gave up/g)!.sort())
@@ -290,6 +296,9 @@ describe("the other admin screens", () => {
       [disagreementsMeta.title, DisagreementsPage(query())],
       [opsMeta.title, OpsPage()],
       [importMeta.title, ImportPage()],
+      [cohortMeta.title, CohortPage()],
+      [calibrationMeta.title, CalibrationPage()],
+      [panelMeta.title, PanelPage()],
     ];
     for (const [title, page] of pages) expect(h1(await html(page))).toBe(title);
 

@@ -8,7 +8,7 @@
 import type { Pool, PoolClient } from "pg";
 import { db } from "../db/pool.ts";
 import { attemptHistory, type Heatmap } from "./index.ts";
-import type { State } from "../competency/score.ts";
+import type { State } from "../eval/competency.ts";
 
 export interface CompetencyBar {
   slug: string;

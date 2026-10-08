@@ -1,5 +1,15 @@
 /**
- * Competency state transitions from docs/02 section 7.
+ * Competency state transitions from docs/02 section 7, and the one place that
+ * writes competency_score.
+ *
+ * eval/ is the only writer of a competency state (CLAUDE.md, docs/10 section
+ * 13), so the write lives here. It used to be lib/competency/score.ts, outside
+ * eval/, and moved for story S15.7. Two callers set it off: writeResult in
+ * lib/queue/result-writer.ts, inside the transaction that commits a verdict
+ * with the compare-and-set on the runner's lease, and the faculty override in
+ * ./override.ts. progress/ reads the cells and never computes one, and
+ * tests/writer-boundary.test.ts fails if anything outside lib/eval/ writes
+ * this table.
  *
  * Transitions are one-way and computed on every finished submission.
  *
@@ -19,6 +29,13 @@
  * should not mark someone as having attempted a competency. The heatmap is the
  * readiness signal the placement side reads, and a runner that died is not
  * evidence about a learner.
+ *
+ * Which kinds earn which state, docs/02 section 7 as amended 8 October 2026.
+ * Any kind can move a cell to attempted. Only a graded kind, the ones in
+ * GRADED_KINDS, earns passed or clean, because only a submit is the full
+ * battery under the submit caps (docs/00 section 4). Before this rule a Run
+ * that passed raised a cell to clean, and a defence pass, which reports no
+ * call count, turned a pass over the budget clean.
  */
 import type { PoolClient } from "pg";
 
@@ -35,18 +52,29 @@ export function isUpgrade(from: State, to: State): boolean {
 const EARNED = new Set(["pass", "fail"]);
 
 /**
+ * The kinds whose pass can earn passed or clean: a submit and a rehearsal
+ * submit, the full battery under the submit caps (docs/00 section 4). A Run
+ * is practice against the public cases, a live run carries no assertions, and
+ * a defence is scored against the attempt and never the problem (docs/03
+ * section 4.4), so a pass on any of them earns attempted at most.
+ */
+export const GRADED_KINDS: ReadonlySet<string> = new Set(["submit", "rehearsal_submit"]);
+
+/**
  * What this submission earns, before it is merged with what was already there.
  * Null when the verdict says nothing about the learner, which leaves the cell
- * exactly as it was.
+ * exactly as it was. `kind` is the submission's run_kind, and every caller
+ * names it, so no path can earn a state the rule above does not allow.
  */
 export function stateForSubmission(input: {
+  kind: string;
   verdict: string | null;
   hintsUsed: number;
   llmCalls: number | null;
   callBudget: number | null;
 }): State | null {
   if (!input.verdict || !EARNED.has(input.verdict)) return null;
-  if (input.verdict !== "pass") return "attempted";
+  if (input.verdict !== "pass" || !GRADED_KINDS.has(input.kind)) return "attempted";
   const withinBudget =
     input.callBudget === null || input.llmCalls === null || input.llmCalls <= input.callBudget;
   return input.hintsUsed === 0 && withinBudget ? "clean" : "passed";
@@ -60,12 +88,12 @@ export async function applyForSubmission(
   client: PoolClient, submissionId: number,
 ): Promise<Array<{ competencyId: number; from: State; to: State }>> {
   const { rows } = await client.query<{
-    enrolment_id: string; difficulty: string; verdict: string | null;
+    enrolment_id: string; difficulty: string; kind: string; verdict: string | null;
     hints_used: number; llm_calls: number | null; call_budget: number | null;
     competency_id: string;
   }>(
-    `select a.enrolment_id, p.difficulty::text as difficulty, s.verdict::text,
-            a.hints_used, s.llm_calls, v.call_budget, pc.competency_id
+    `select a.enrolment_id, p.difficulty::text as difficulty, s.kind::text as kind,
+            s.verdict::text, a.hints_used, s.llm_calls, v.call_budget, pc.competency_id
        from submission s
        join attempt a on a.id = s.attempt_id
        join problem_version v on v.id = s.problem_version_id
@@ -77,6 +105,7 @@ export async function applyForSubmission(
 
   for (const row of rows) {
     const earned = stateForSubmission({
+      kind: row.kind,
       verdict: row.verdict,
       hintsUsed: row.hints_used,
       llmCalls: row.llm_calls,
@@ -109,6 +138,8 @@ export async function applyForSubmission(
 export interface SubmissionFact {
   /** Whatever identifies the cell. `competency/difficulty` in practice. */
   key: string;
+  /** The submission's run_kind, which decides whether a pass can earn more than attempted. */
+  kind: string;
   verdict: string | null;
   hintsUsed: number;
   llmCalls: number | null;
@@ -150,18 +181,18 @@ export function bestStates(facts: readonly SubmissionFact[]): Map<string, State>
  * raise a maximum. What changes is that removing the basis for a state now
  * removes the state, which is the whole point of an override.
  *
- * docs/10 section 13 still holds: this is `eval/` and `competency/` writing
- * `competency_score`, and nothing in `progress/` or `analytics/` computes it.
+ * docs/10 section 13 still holds: this is `eval/` writing `competency_score`,
+ * and nothing in `progress/` or `analytics/` computes it.
  */
 export async function recomputeForEnrolment(
   client: PoolClient, enrolmentId: number,
 ): Promise<Array<{ competencyId: number; difficulty: string; from: State; to: State }>> {
   const { rows } = await client.query<{
-    competency_id: string; difficulty: string; verdict: string | null;
+    competency_id: string; difficulty: string; kind: string; verdict: string | null;
     hints_used: number; llm_calls: number | null; call_budget: number | null;
   }>(
-    `select pc.competency_id, p.difficulty::text as difficulty, s.verdict::text,
-            a.hints_used, s.llm_calls, v.call_budget
+    `select pc.competency_id, p.difficulty::text as difficulty, s.kind::text as kind,
+            s.verdict::text, a.hints_used, s.llm_calls, v.call_budget
        from submission s
        join attempt a on a.id = s.attempt_id
        join problem_version v on v.id = s.problem_version_id
@@ -171,6 +202,7 @@ export async function recomputeForEnrolment(
 
   const best = bestStates(rows.map((row) => ({
     key: `${row.competency_id}/${row.difficulty}`,
+    kind: row.kind,
     verdict: row.verdict,
     hintsUsed: row.hints_used,
     llmCalls: row.llm_calls,

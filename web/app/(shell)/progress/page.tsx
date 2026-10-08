@@ -9,6 +9,7 @@ import Link from "next/link";
 import type { Metadata, Route } from "next";
 import { Download, Grid2x2, History as HistoryIcon } from "lucide-react";
 import { attemptHistory, heatmap } from "@/lib/progress";
+import { coverageFor } from "@/lib/progress/coverage";
 import { readinessFor } from "@/lib/progress/readiness";
 import { currentLearner } from "@/lib/session/current";
 import { relativeDay } from "@/lib/progress/summary";
@@ -26,10 +27,11 @@ export const metadata: Metadata = { title: "Progress" };
 
 export default async function ProgressPage() {
   const learner = await currentLearner();
-  const [grid, history, readiness] = await Promise.all([
+  const [grid, history, readiness, coverage] = await Promise.all([
     heatmap(learner.enrolmentId),
     attemptHistory(learner.enrolmentId),
     readinessFor(learner.enrolmentId),
+    coverageFor(learner.enrolmentId),
   ]);
 
   return (
@@ -44,7 +46,7 @@ export default async function ProgressPage() {
         </a>
       } />
 
-      <ReadinessLine readiness={readiness} heatmapLink={false} />
+      <ReadinessLine readiness={readiness} coverage={coverage} heatmapLink={false} />
 
       <CompetencyHeatmap grid={grid}>
         {untouched(grid) ? (
