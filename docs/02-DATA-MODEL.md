@@ -387,6 +387,8 @@ One exception, added with the faculty override in `10` section 9.7. A correction
 
 Readiness counts `clean` only. A pass with four hints is progress and is not evidence.
 
+**Amended 8 October 2026: which kinds earn which state.** The table says submission, and `submission` holds every kind. Any finished submission whose verdict the learner earned, pass or fail, can move a cell to `attempted`. Only a graded kind, `submit` or `rehearsal_submit`, can earn `passed` or `clean`, because only a submit runs the full battery under the submit caps (`00-PRD.md` section 4). A Run is practice against the public cases, a live run carries no assertions, and a defence is scored against the attempt and never the problem (`03-RUNNER-AND-GRADING.md` section 4.4), so a pass on any of them leaves a cell at `attempted` at most. Until this date a passing Run raised a cell to `clean`, and a defence pass, which reports no call count, turned a pass over the budget `clean`. `GRADED_KINDS` in `web/lib/eval/competency.ts` holds the rule for every write and every recompute.
+
 ---
 
 ## 8. Rehearsals
