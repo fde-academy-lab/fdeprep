@@ -29,7 +29,7 @@ One-way. A `clean` cell never degrades because a later run was scruffy, and a ve
 
 ## 2. The readiness signal
 
-The platform exists to produce one signal the placement side can trust. `readinessFor` in `web/lib/progress/readiness.ts` computes it from the heatmap's cells, and Home, Progress and the admin Overview read it from there.
+The platform exists to produce one signal the placement side can trust. `readinessFor` in `web/lib/progress/readiness.ts` computes it from the heatmap's cells, and Home, Progress, the admin Overview and the report card read it from there.
 
 ```
 readiness = clean cells / cells the learner's track requires
@@ -121,7 +121,7 @@ Two oral attempts against fourteen written ones is a learner who will be surpris
 |---|---|
 | `progress/` never writes `evaluation` or `competency_score`. | `web/tests/writer-boundary.test.ts` fails on any write under `progress/`. Behind it, the role `fdeprep_reader` from migration 026 has no write grant, tested by a write it attempts and is refused. `progress/` does not run under that role in this release (amended 8 October 2026). |
 | `progress/` never recomputes a grade. | Review, plus the absence of any scoring import in the module, which the same test checks: `progress/` may import types from `eval/` and nothing that runs. |
-| Every number `progress/` shows, `analytics/` derives from the same rows. | A test reads the readiness number from both modules for the same learner and asserts equality. |
+| Every number `progress/` shows, `analytics/` derives from the same rows. | A test reads the readiness number from both modules for the same learner and asserts equality. `web/tests/report-card.test.ts` does it inside one transaction, including a change no other connection can see yet, and `web/tests/admin-overview.test.ts` does it for every Overview row. |
 
 ---
 

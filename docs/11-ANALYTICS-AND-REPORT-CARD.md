@@ -60,6 +60,22 @@ Every report card states: the number of problems attempted out of the catalogue,
 
 The report card is generated from the evaluation records at a point in time and stored as a row with its generated timestamp and a content hash. Regenerating produces a new row. An old card stays readable, because somebody has it in their inbox and it has to keep meaning what it meant.
 
+**Amended 8 October 2026** to what story S15.6 built. The table is `report_card`, in `02-DATA-MODEL.md` section 11. `web/lib/analytics/report-card.ts` builds the snapshot, stores it as canonical JSON (every key sorted, no whitespace) with its SHA-256, and renders it as Markdown. The database refuses a row whose hash is not its content's and refuses every update, so issuing again always adds a row. The snapshot holds no clock time: two cards issued from unchanged data hash the same, and a new evaluation changes the count inside it and so the hash. The time of issue is the row's `generated_at`, printed on the card beside the hash, and the card ends with the snapshot itself, so a reader can check the hash without asking the platform.
+
+Faculty and admins issue a card from the learner's page in the admin area, where every card issued is listed with a Markdown download. How the sections above were read:
+
+| Section | As built |
+|---|---|
+| Header | The evaluation count is every evaluation row on record for the learner, re-runs included. |
+| Readiness | `readinessFor` itself, so the card and Progress read one number, tested in one transaction. |
+| Competency detail | Per competency: submits and rehearsal submits with a verdict the learner earned, the best cell, the highest tier holding it, and whether it is clean, which is what without hints and within budget means. |
+| Evidence | Up to five passing submits, one per problem, hardest first and then by score, each with its verdict, its score as the learner saw it, its day and the path to its trace. |
+| Voice | Every answer finished and scored, the mean score, and the newest ten with content, structure and pace, and beats covered. Delivery never appears, per `07` section 6. |
+| Interview coverage | `coverageFor`, the line Home and Progress show. |
+| Caveats | Problems practised out of the published catalogue, how many scores are provisional because the newest evaluation is partial, and that general software ability is outside what the platform measures. |
+
+No panelist is named anywhere on a card, since a card leaves the platform and provenance stays with faculty.
+
 ---
 
 ## 4. Cohort views
@@ -151,6 +167,8 @@ The re-evaluation backlog is the one with teeth. A `partial` evaluation is a pro
 | Calibration report | Markdown. | The author, before the next cohort. |
 
 Every export carries the date it was generated and the count of rows it covers. An undated export of a live system is a number somebody will quote six months later.
+
+**Amended 8 October 2026**, story S15.6. The report card is Markdown only for now. A PDF needs a renderer this repository does not carry, and `CLAUDE.md` asks for a dependency to be proposed before it is added, so the PDF waits on that proposal. The Markdown carries the date, the evaluation count and the hash in its header.
 
 **Amended 8 October 2026**, story S15.5. The cohort standing CSV puts both on its first line, as a comment with no comma in it, `# Cohort standing for <cohort> generated <time> covering <n> learners`, so a spreadsheet keeps it in one cell and a reader that skips lines starting with `#` skips it. Its columns are the Overview's, with the interview coverage counts beside readiness. The calibration Markdown states both in its opening paragraph.
 

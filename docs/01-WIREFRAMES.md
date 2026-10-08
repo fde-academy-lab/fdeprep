@@ -306,6 +306,8 @@ Four screens, each a plain table with an action column.
 
 Ops says waiting for a submission with no verdict and a voice answer with no score, because stuck belongs to the learner and problem pair above.
 
+A learner's page from the Overview ends with their report cards: one row per card issued, with its date, readiness, evaluation count, the start of its hash and a Markdown download, and an Issue a report card button for faculty and admins. It is the page's one action, since a card is a dated copy of the page.
+
 Faculty see Roster read-only and Submissions in full. Everything else is admin only.
 
 ---

@@ -445,7 +445,33 @@ Traces are the largest object by volume. Cap a stored trace at 256KB and truncat
 
 ---
 
-## 11. The reader role (amended 8 October 2026)
+## 11. Report cards (amended 8 October 2026)
+
+A report card is a dated snapshot of one learner for a placement team, `11-ANALYTICS-AND-REPORT-CARD.md` section 3. Migration `024_report_card.sql`.
+
+```sql
+create table report_card (
+  id              bigint generated always as identity primary key,
+  enrolment_id    bigint not null references enrolment(id),
+  cohort_id       bigint not null references cohort(id),
+  issued_by       bigint references app_user(id),   -- null only when a script issued it
+  generated_at    timestamptz not null default now(),
+  content         text not null,                   -- the snapshot as canonical JSON
+  content_sha256  text not null,
+  check (content_sha256 = encode(sha256(convert_to(content, 'UTF8')), 'hex'))
+);
+```
+
+| Rule | Why |
+|---|---|
+| `content` is the snapshot with every key sorted and no whitespace, stored as text | The hash is over exactly these bytes, so anyone holding the card can check it, and equal data always hashes the same |
+| The check refuses a row whose hash is not its content's | A card whose hash does not match is not a card |
+| A trigger refuses every update, and issuing again inserts a new row | Somebody has the old card in their inbox, and it has to keep meaning what it meant |
+| The snapshot holds no clock time, and `generated_at` holds when it was issued | Two cards issued from unchanged data carry one hash; a new evaluation changes the count inside the snapshot, and so the hash |
+
+---
+
+## 12. The reader role (amended 8 October 2026)
 
 Migration `026_reader_role.sql` creates `fdeprep_reader`, a role that cannot log in and holds SELECT on every table in the schema and no other privilege. It also sets the default privileges, so a table a later migration creates is readable by it too. `progress/` and `analytics/` only read, per `10-EVALUATION-PANEL.md` section 13, and this is the role a connection that only reads would run as. Nothing runs under it in this release.
 
