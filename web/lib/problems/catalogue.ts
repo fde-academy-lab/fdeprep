@@ -6,6 +6,7 @@
  */
 import { db } from "../db/pool.ts";
 import { tierFor, type Difficulty } from "../policy/tiers.ts";
+import { TRACKS, type Track } from "./vocabulary.ts";
 
 export type SolveState = "solved" | "attempted" | "untouched";
 export type Sort = "roadmap" | "storyline" | "difficulty" | "recent" | "least_attempted";
@@ -208,6 +209,21 @@ export function nextOnPath<T extends Pick<CatalogueRow, "ordinal" | "state">>(
 ): T | undefined {
   const place = (row: T) => row.ordinal ?? Number.MAX_SAFE_INTEGER;
   return [...rows].sort((a, b) => place(a) - place(b)).find((row) => row.state !== "solved");
+}
+
+/**
+ * Where a chapter with no problems yet sends a learner: the chapter with
+ * problems closest to it in path order, the earlier one when two are as
+ * close, or null when no chapter has any.
+ */
+export function nearestWithProblems(chapter: Track, withProblems: readonly string[]): Track | null {
+  const at = TRACKS.indexOf(chapter);
+  for (let step = 1; step < TRACKS.length; step++) {
+    for (const candidate of [TRACKS[at - step], TRACKS[at + step]]) {
+      if (candidate && withProblems.includes(candidate)) return candidate;
+    }
+  }
+  return null;
 }
 
 export async function facets(): Promise<{ tracks: string[] }> {

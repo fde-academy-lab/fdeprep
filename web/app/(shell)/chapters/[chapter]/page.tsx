@@ -9,12 +9,17 @@
 import Link from "next/link";
 import type { Metadata, Route } from "next";
 import { notFound } from "next/navigation";
-import { ArrowRight } from "lucide-react";
-import { listProblems, nextOnPath, type CatalogueRow } from "@/lib/problems/catalogue";
+import { ArrowRight, PenLine } from "lucide-react";
+import {
+  facets, listProblems, nearestWithProblems, nextOnPath, type CatalogueRow,
+} from "@/lib/problems/catalogue";
 import { currentLearner } from "@/lib/session/current";
 import { CHAPTER_TOPICS, DIFFICULTIES, STAGES, TRACK_BLURBS, TRACK_NAMES, TRACKS, type Track }
   from "@/lib/problems/vocabulary";
+import { ButtonLink } from "@/components/ui/button";
 import { DifficultyMeter } from "@/components/ui/difficulty";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Page } from "@/components/ui/page";
 import { StatusIcon } from "@/components/ui/status";
 import { TrackIcon } from "@/components/ui/tracks";
 import { renderCode } from "@/components/ui/code";
@@ -54,40 +59,51 @@ export default async function ChapterPage({ params }: { params: Promise<{ chapte
   // The learner's path picks what comes next; the page's order is the
   // fallback for a chapter with nothing on the path.
   const next = nextOnPath([...rows].sort(order));
+  const nearest = rows.length ? null : nearestWithProblems(chapter, (await facets()).tracks);
+
+  const groups = [...topics, ...(loose.length ? [{ topic: "Other", rows: loose }] : [])]
+    .filter((group) => group.rows.length);
 
   return (
-    <main className="mx-auto max-w-[960px] px-4 pb-16 pt-8 sm:px-6">
-      <p className="text-meta font-medium text-text-faint">
-        {stage ? `${stage.name} stage` : "Chapter"}
-      </p>
-      <h1 className="mt-1 flex items-center gap-2.5 text-display font-semibold tracking-[-0.02em] text-text">
-        <TrackIcon track={chapter} className="size-6 text-text-dim" />
-        {TRACK_NAMES[chapter]}
-      </h1>
-      <p className="mt-2 max-w-[70ch] text-text-dim">{TRACK_BLURBS[chapter]}</p>
-      <p className="mt-3 text-meta text-text-faint">
-        <span className="tnum">{solved}</span> of <span className="tnum">{rows.length}</span> solved
-      </p>
-      {next ? (
-        <Link href={`/problems/${next.slug}` as Route}
-              className="mt-5 flex items-center justify-between gap-4 rounded-panel border border-border
-                         bg-surface px-4 py-3.5 hover:bg-surface-2">
-          <span className="min-w-0">
-            <span className="block text-meta text-text-faint">Next in this chapter</span>
-            <span className="block font-medium text-text">{next.title}</span>
-          </span>
-          <ArrowRight aria-hidden className="size-4 shrink-0 text-text-faint" />
-        </Link>
-      ) : rows.length ? (
-        <p className="mt-5 text-text-dim">Every problem in this chapter is solved. The next chapter is on your home page.</p>
-      ) : (
-        <p className="mt-5 text-text-dim">This chapter has no problems yet. Every other chapter is on the problems page.</p>
-      )}
+    <Page>
+      <div>
+        <p className="text-meta font-medium text-text-faint">
+          {stage ? `${stage.name} stage` : "Chapter"}
+        </p>
+        <h1 className="mt-1 flex items-center gap-2.5 text-display font-semibold tracking-[-0.02em] text-text">
+          <TrackIcon track={chapter} className="size-6 text-text-dim" />
+          {TRACK_NAMES[chapter]}
+        </h1>
+        <p className="mt-2 max-w-[70ch] text-text-dim">{TRACK_BLURBS[chapter]}</p>
+        <p className="mt-3 text-meta text-text-faint">
+          <span className="tnum">{solved}</span> of <span className="tnum">{rows.length}</span> solved
+        </p>
+        {next ? (
+          <Link href={`/problems/${next.slug}` as Route}
+                className="mt-5 flex items-center justify-between gap-4 rounded-panel border border-border
+                           bg-surface px-4 py-3.5 hover:bg-surface-2">
+            <span className="min-w-0">
+              <span className="block text-meta text-text-faint">Next in this chapter</span>
+              <span className="block font-medium text-text">{next.title}</span>
+            </span>
+            <ArrowRight aria-hidden className="size-4 shrink-0 text-text-faint" />
+          </Link>
+        ) : rows.length ? (
+          <p className="mt-5 text-text-dim">Every problem in this chapter is solved. The next chapter is on your home page.</p>
+        ) : nearest ? (
+          <EmptyState icon={PenLine} className="mt-5"
+                      action={<ButtonLink href={`/chapters/${nearest}` as Route} size="sm">
+                        Open {TRACK_NAMES[nearest]}
+                      </ButtonLink>}>
+            This chapter&apos;s problems are still being written. The nearest chapter with problems
+            is {TRACK_NAMES[nearest]}.
+          </EmptyState>
+        ) : null}
+      </div>
 
-      <div className="mt-10 space-y-9">
-        {[...topics, ...(loose.length ? [{ topic: "Other", rows: loose }] : [])]
-          .filter((group) => group.rows.length)
-          .map((group) => (
+      {groups.length ? (
+        <div className="space-y-9">
+          {groups.map((group) => (
             <section key={group.topic} aria-labelledby={`topic-${group.topic}`}>
               <h2 id={`topic-${group.topic}`} className="text-lead font-semibold text-text">{group.topic}</h2>
               <ol className="mt-3 divide-y divide-border overflow-hidden rounded-panel border border-border">
@@ -111,7 +127,8 @@ export default async function ChapterPage({ params }: { params: Promise<{ chapte
               </ol>
             </section>
           ))}
-      </div>
-    </main>
+        </div>
+      ) : null}
+    </Page>
   );
 }
