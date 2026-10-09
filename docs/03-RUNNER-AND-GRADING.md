@@ -15,12 +15,13 @@ Next.js API route
 Worker (on the web host, holding the database credential)
   -> dispatch the outbox row onto the queue, a Postgres table
   -> claim the message with a lease and a fencing token (section 9.3)
-  -> invoke the runner Lambda synchronously with the problem version and the
-     solution in the event
+  -> invoke the runner Lambda synchronously with the problem version, the
+     solution and the submission's kind in the event (section 1.2)
 
 Lambda runner (container image, Python 3.12, VPC with no route out)
   -> materialise a working directory in /tmp
-  -> run the battery
+  -> run the batteries the kind names: public only for a Run, the full
+     battery for a Submit
   -> return the result, trace included, in the reply
 
 Worker
@@ -49,6 +50,27 @@ Nothing about the model changes. A graph node calls the `llm` proxy like any oth
 | The static gate names four more hops: `logging`, `pickle`, `shutil` and `asyncio` | The route walk in `tests/test_static_gate.py` found public routes through them to `threading`, `pickle`, `shutil`, `socket` and `subprocess`, and now walks the framework submodules too |
 
 CrewAI was measured the same day and left out: 855 MB across 139 packages and 2.6 seconds of import per case. CrewAI is taught through design problems until it has a runner image of its own.
+
+### 1.2 The submission's kind
+
+Added 8 October 2026. The event carries the submission's `kind` beside the problem and the solution, and the kind decides which batteries run, as `00-PRD.md` section 4 and `01-WIREFRAMES.md` S4 always said.
+
+| `kind` | What the runner executes | What the result reports |
+|---|---|---|
+| `run` | It runs the static gate, the public cases and the step checks, a step's own cases included (section 5). It never runs a hidden or adversarial case, so neither battery's inputs are staged. | It reports the static and public gates and the steps. The hidden and adversarial gates read `skipped` with `passed` 0, `total` 0 and no cases, the score is null, and the budget and the trace cover the public cases only. The verdict is the verdict of the gates that ran. |
+| `submit`, `rehearsal_submit` | It runs the full battery of section 4.1. | It reports everything section 5 describes. |
+
+Until this amendment the worker built the event without the kind and the handler never read one, so every Run executed the public, hidden and adversarial cases and reported `pass` only when all three passed. At the Run allowance of 30 an hour that told a learner whether the hidden battery passed, which made Run an oracle for unpublished cases and stepped round the Extreme tier's one submit a day and its learner-test gate.
+
+| Rule | Why |
+|---|---|
+| The worker reads the kind from the submission row, which the outbox payload copies in the same transaction | The row is what spent the allowance, so the battery that runs is the one that was paid for, and a message that loses its copy cannot turn a Run into a Submit |
+| An event with no kind runs the full battery, for one release | That is what the handler did with every event before the kind existed, and it is what a Submit runs, so an older worker's Submit is graded as before |
+| A kind the runner does not grade, such as `defence` or `live`, is an `error` verdict | Guessing Submit would hand a Run the hidden battery, and guessing Run would pass a Submit on its public cases. An error consumes nothing (section 8) |
+| The result writer refuses a Run result in which a hidden or adversarial case ran, and stores any other Run result with no hidden or adversarial count and no score | A runner image older than the kind runs the whole battery, and rolling the runner image back is the documented response to a failing runner (`05-DEPLOY-AND-OPS.md`). The refused result becomes an `error` that consumes nothing, with no trace stored, because its verdict, budget and timing carry what the hidden cases did |
+| A Run is for code only, and `createSubmission` refuses one on a prompt or design problem | Neither has public tests, and their probes and rubric are their Submit battery, which a Run would otherwise buy at the Run allowance with the model calls behind it |
+| The results pane, the Attempts tab, the coach and the replay viewer read only the static and public gates and the public cases' trace from a Run | A Run row written before this amendment holds the whole battery's result and trace, and it should show a learner no more than a new one does |
+| A Run sent from inside a rehearsal carries no sitting id, and the sitting's one submit and its report count rehearsal submits only | A Run stored with the sitting's id used to count as the sitting's submit, so the rehearsal submit after it was refused and the report read the Run's verdict as the problem's |
 
 
 ---
@@ -220,6 +242,8 @@ Both prose parameters default to the parcel-tracking wording the library started
 6. Score.
 ```
 
+A Run stops after step 2 and reports no score; steps 3, 4 and 6 belong to a Submit and a rehearsal submit (section 1.2, added 8 October 2026). The step checks run on both.
+
 Import allowlist comes from `problem_version.contract_md` parsed at import time into a list, with `json`, `re`, `math`, `typing`, `dataclasses`, `collections` always allowed.
 
 The private attribute rule is the one that is not about the operating system.
@@ -384,6 +408,9 @@ Rules the front end relies on:
 - `cases` is empty for hidden and adversarial gates unless the learner has already passed the problem.
 - A gate that never ran has status `skipped`, never `fail`.
 - `score` is null until every gate has run or been skipped by a prior failure.
+- A Run's result carries nothing about the hidden and adversarial batteries, which a Run never runs: both gates read `skipped` with `passed` 0, `total` 0 and no cases, even once the problem is passed, and `score` is null, since the formula below needs the hidden ratio. Its `verdict` is `pass` when the static gate and every public case pass, `rejected` when the static gate refuses the code, `timeout` when a public case ran past its clock, and `fail` otherwise; `budget` and the trace cover the public cases. The submission row stores null in its hidden and adversarial columns and its score. Added 8 October 2026 with section 1.2; until then a Run's result was a Submit's.
+- What a learner reads of the hidden and adversarial gates follows the tier the result reads under, which the policy module names (`tierForResult` in `web/lib/policy/tiers.ts`): screen conditions for a rehearsal submit, and for every result on a problem while the learner sits a rehearsal that holds it, and the problem's own tier otherwise. Where that tier shows no hidden count, Extreme and screen conditions (`00-PRD.md` section 3.2), the view reports each of the two gates with its `status` alone, `passed` 0, `total` 0 and no cases, even once the problem is passed, and sets `unpublishedCounts` false. The result pane, the event stream, the polling route and the Attempts tab all read that one view. The stored contract and the submission row keep the counts for faculty. Added 8 October 2026: until then the view reported both counts on every tier and the Attempts tab printed the hidden one.
+- The trace replay is cut from the stored trace for its reader, on the server (`web/lib/trace/replay.ts`), as decided on 8 October 2026 and set out in `01-WIREFRAMES.md` S7. A learner reads each public case in full and each hidden or adversarial case as one anonymous row in the place it ran, which says how the case ended and holds no name, input, prompt, model reply, tool argument, output, message or flag. Where the tier shows the hidden count each case has its own row, such as "Hidden case 2 of 4: failed". Where it shows none, a battery's cases share one row, since a row per case would count them. Faculty and admins read every case in full. The stored trace keeps every case with its battery and outcome (section 6). This settles a disagreement: this section and `02-DATA-MODEL.md` withhold a hidden case's name, `01-WIREFRAMES.md` S4 shows an adversarial result "never with the fixture's script", and S7 makes the trace available after a failed Extreme submit, while the replay showed every case in full to whoever opened it.
 - `steps` lists every step of the problem in order once the public cases have run, and is empty when they did not. Added 29 September 2026, for the checklist docs/01 S4 specifies. A step is `pass` when any public case satisfied its `step_check` assertions. The spec never said which case a check reads: read against every public case, 16 of 43 reference solutions left a step red, and read against any case, none did, so authors had written them for the second reading. Hidden and adversarial cases never count, so a step never reports on a case the learner cannot see. Amended 30 September 2026: a step whose check the untouched stub also satisfies reports `unchecked` instead of `pass`, because the public cases cannot tell the learner's work from no work. At the time, 76 of the catalogue's 160 steps read green on the stub. The runner computes this by running the stub on the same public cases, once per problem version. Amended again the same day: a step whose work no public case exercises carries its own case. Its `step_check` spec is then a whole case, shaped like a test's and marked by `kind`, and the check runs on that case alone, on every Run, after the gates and whatever they said. It counts toward no gate, reaches no trace, and its input is staged like any case's while its assertions are not. Most such steps describe the lesson the hidden cases teach, and exercising it in a public case would make the naive solution fail the public gate, which docs/04 section 6 forbids. The stub runs the step's case too, so a step case the stub already handles still reads `unchecked`. A step may own several cases under `cases`, and it holds only when every one of them does. That is for a step that keeps some things and drops others: one case with one answer shows only one half, and on 30 September 2026 two build steps read green on code that never kept an order number or never sent a draft. The stub has to hold every case for such a step to read `unchecked`. CI requires the reference to leave every step `pass`: none `fail` and none `unchecked`.
 
 ### Scoring
@@ -398,6 +425,8 @@ score      = max(0, base - hint_pen - budget_pen)
 ```
 
 Weights: public 30, hidden 70 on Easy and Medium. On Hard and Extreme the adversarial battery is required for any score above 70.
+
+The hint count is the attempt's `hints_used`. The worker reads it from the database and sends it as `hints_revealed`, to the runner for a code submission and to the judge for a prompt, design or defence answer; the browser never supplies it. Amended 8 October 2026: until then the runner worker sent no count, the runner took 0, and no code score carried the penalty, whatever the learner had revealed.
 
 ---
 
@@ -442,6 +471,15 @@ Post-processing adds `flags` automatically:
 These flags are what make the trace teach. A learner who sees `repeated_identical_tool_call` diagnoses their own bug without a hint.
 
 Cap serialised trace size at 256KB. When over, keep the first 40 and last 40 steps, replace the middle with a marker step, and set `truncated: true`.
+
+A submission's trace holds one entry per case that ran, in the order it ran, and each entry wraps the shape above with the case's name, its battery and how it ended:
+
+```json
+{"cases": [{"name": "detects_error_in_success_body", "battery": "hidden", "status": "fail",
+            "trace": {"steps": [], "flags": [], "truncated": false}}]}
+```
+
+`battery` and `status` were added 8 October 2026 for the replay rule in section 5, because the stored result leaves a hidden case's name out until the learner passes. A trace stored before then has neither, and the replay reads each case's battery from the problem version's own case list, treating a case the list does not hold as hidden.
 
 ---
 

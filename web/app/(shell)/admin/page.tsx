@@ -6,10 +6,15 @@
  *
  * Sorting is a query parameter on a plain link, as the Problems filters are,
  * so the page works without JavaScript.
+ *
+ * The page checks the role itself, because the admin layout does not stop
+ * the page under it from rendering (S15.13).
  */
 import Link from "next/link";
 import type { Metadata, Route } from "next";
-import { ArrowDown, ArrowUp, Users } from "lucide-react";
+import { notFound } from "next/navigation";
+import { ArrowDown, ArrowUp, Download, Users } from "lucide-react";
+import { permits } from "@/lib/admin/guard";
 import {
   overview, sortRows, type OverviewSort, type SortDirection,
 } from "@/lib/admin/overview";
@@ -36,6 +41,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
   const direction: SortDirection = one(params, "dir") === "asc" ? "asc" : "desc";
 
   const learner = await currentLearner();
+  if (!permits(learner.role, "faculty")) notFound();
   const cohort = await overview(learner.cohortId);
   const rows = sortRows(cohort.rows, sort, direction);
 
@@ -67,7 +73,14 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
 
   return (
     <>
-      <PageHeading title="Overview" />
+      <PageHeading title="Overview" action={rows.length ? (
+        // A plain anchor: a download, which Link would prefetch. docs/11 section 7.
+        <a href="/api/admin/cohort/standing" download
+           className="inline-flex h-8 items-center gap-1.5 rounded-control border border-border-strong
+                      bg-surface-2 px-3 font-medium text-text hover:border-border-control hover:bg-surface-3">
+          <Download aria-hidden className="size-4" /> Export CSV
+        </a>
+      ) : undefined} />
       <StatStrip cells={cells} />
 
       {rows.length === 0 ? (

@@ -245,7 +245,7 @@ def _judge(event: dict[str, Any], transport: Transport) -> dict[str, Any]:
         base = outcome.percent
         verdict = "pass" if rubric_passed else "fail"
 
-    return _finish(gates, base, hints, transport, verdict=verdict)
+    return _graded_with(outcome.prompt, _finish(gates, base, hints, transport, verdict=verdict))
 
 
 def _finish(gates, base: float, hints: int, transport: Transport, verdict: str) -> dict[str, Any]:
@@ -258,6 +258,19 @@ def _finish(gates, base: float, hints: int, transport: Transport, verdict: str) 
         "consumes_allowance": True,
         "requeue": False,
     }
+
+
+def _graded_with(prompt: str | None, result: dict[str, Any]) -> dict[str, Any]:
+    """Name the file in judge/prompts/ that produced this grade. docs/10 section 10.
+
+    Additive, so a caller that never reads `judge_prompt` sees the response it
+    always did. Set only where a prompt graded the answer: a response a cheaper
+    check stopped names none, and a regrade cannot select a submission no model
+    ever graded.
+    """
+    if prompt:
+        result["judge_prompt"] = prompt
+    return result
 
 
 def _judge_defence_event(event: dict[str, Any], transport: Transport) -> dict[str, Any]:
@@ -277,7 +290,7 @@ def _judge_defence_event(event: dict[str, Any], transport: Transport) -> dict[st
                       f"({rejected}). Your defence was not counted. Try again.",
                       calls=transport.calls)
 
-    return {
+    return _graded_with(outcome.get("prompt"), {
         "verdict": "pass" if outcome["status"] == "pass" else "fail",
         "score": outcome["score"],
         "message": outcome["message"],
@@ -287,7 +300,7 @@ def _judge_defence_event(event: dict[str, Any], transport: Transport) -> dict[st
         "model_calls": transport.calls,
         "consumes_allowance": True,
         "requeue": False,
-    }
+    })
 
 
 def lambda_handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]:  # noqa: ARG001

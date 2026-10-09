@@ -1,11 +1,12 @@
 /**
  * The trusted side of the runner.
  *
- * It takes a submission message off the queue, assembles the event, hands it
- * to the battery and puts the result on the results queue. The battery itself
- * never touches the database, which is the separation docs/03 section 7 and
- * .claude/rules/01 both rest on: the component that executes learner code has
- * no database credential and no model credential.
+ * It takes a submission message off the queue, assembles the event, the
+ * submission's kind included, hands it to the battery and puts the result on
+ * the results queue. The battery itself never touches the database, which is
+ * the separation docs/03 section 7 and .claude/rules/01 both rest on: the
+ * component that executes learner code has no database credential and no
+ * model credential.
  *
  * Three roads to the same handler, runner.handler.lambda_handler, chosen in
  * this order:
@@ -85,8 +86,10 @@ async function handle(message: QueueMessage, options: WorkerOptions): Promise<vo
 }
 
 async function buildEvent(submissionId: number): Promise<Record<string, unknown> | null> {
-  const { rows } = await db().query<{ body: string; source_yaml: string; solved_at: Date | null }>(
-    `select s.body, v.source_yaml, a.solved_at
+  const { rows } = await db().query<{
+    body: string; kind: string; source_yaml: string; solved_at: Date | null; hints_used: number;
+  }>(
+    `select s.body, s.kind::text as kind, v.source_yaml, a.solved_at, a.hints_used
        from submission s
        join problem_version v on v.id = s.problem_version_id
        join attempt a on a.id = s.attempt_id
@@ -97,9 +100,22 @@ async function buildEvent(submissionId: number): Promise<Record<string, unknown>
   const { parse } = await import("yaml");
   return {
     submission_id: submissionId,
+    // The kind decides the batteries: a Run executes the public cases and the
+    // steps, a Submit the full battery (docs/00 section 4). It is read from
+    // the submission row, which createSubmission wrote in the transaction
+    // that spent the allowance and copied into the outbox payload, so the
+    // battery that runs is the one that was paid for. A message that lost
+    // its copy cannot turn a Run into a Submit.
+    kind: row.kind,
     problem: parse(row.source_yaml),
     solution: row.body,
     already_passed: row.solved_at !== null,
+    // docs/03 section 5: every score loses 5 points per hint revealed, capped
+    // at 25. The count is the attempt's, read here on the trusted side as the
+    // judge worker reads it, and never anything the browser sent. Until 8
+    // October 2026 this event carried none and the runner took 0, so no code
+    // score carried the penalty.
+    hints_revealed: row.hints_used,
   };
 }
 

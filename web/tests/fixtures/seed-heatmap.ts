@@ -6,7 +6,7 @@
  * that runs in production rather than by a shortcut that agrees with it.
  */
 import { db, inTransaction } from "../../lib/db/pool.ts";
-import { applyForSubmission } from "../../lib/competency/score.ts";
+import { applyForSubmission } from "../../lib/eval/competency.ts";
 import { SUBMISSIONS, type SeededSubmission } from "./heatmap.ts";
 
 export async function seedHandComputedAccount(

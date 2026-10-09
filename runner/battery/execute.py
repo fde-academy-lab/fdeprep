@@ -367,18 +367,36 @@ def _message(observed: Observed, failed: list[dict]) -> str | None:
     return "; ".join(parts) or f"{len(failed)} assertions failed"
 
 
-def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
+# The batteries each kind runs. docs/00 section 4 and docs/01 S4: a Run is the
+# public tests only, and a Submit, inside a rehearsal or out of one, is public,
+# hidden and adversarial under the per-tier caps. A battery a kind leaves out
+# is never staged, never executed and never reported, not even as a count.
+BATTERIES = {
+    "run": ("public",),
+    "submit": ("public", "hidden", "adversarial"),
+    "rehearsal_submit": ("public", "hidden", "adversarial"),
+}
+
+
+def run_battery(problem, source: str, *, kind: str = "submit", image_tag: str = "runner:dev",
                 already_passed: bool = False, hints_revealed: int = 0,
                 stage_observer: StageObserver | None = None) -> dict[str, Any]:
-    """Static, then public, then hidden, then adversarial. Each gate guards the next."""
+    """Static, then each battery the kind runs, in order. Each gate guards the next.
+
+    A Run stops after the public cases. Its steps are checked as on any run,
+    and it carries no score, because the score needs the hidden ratio and a
+    Run never measures it (docs/03 section 5).
+    """
+    if kind not in BATTERIES:
+        raise ValueError(f"no battery for the kind {kind!r}; expected one of {tuple(BATTERIES)}")
+    battery = BATTERIES[kind]
     started = time.monotonic()
 
     static = static_check(source, problem.allowed_imports)
     gates = {
         "static": {"status": static.status, "reasons": static.reasons},
-        "public": contract.empty_gate(len(problem.cases("public"))),
-        "hidden": contract.empty_gate(len(problem.cases("hidden"))),
-        "adversarial": contract.empty_gate(len(problem.cases("adversarial"))),
+        **{name: contract.empty_gate(len(problem.cases(name)) if name in battery else 0)
+           for name in ("public", "hidden", "adversarial")},
     }
 
     all_cases: list[dict] = []
@@ -387,7 +405,7 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
     stepped = static.status == "pass"
     if stepped:
         previous_passed = True
-        for visibility in ("public", "hidden", "adversarial"):
+        for visibility in battery:
             cases = problem.cases(visibility)
             if not previous_passed or not cases:
                 continue
@@ -407,6 +425,7 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
             for case in ran:
                 for step_id, ok in case.pop("_steps", {}).items():
                     held[step_id] = held.get(step_id, False) or ok
+                case["battery"] = visibility
             all_cases += ran
             reveal = visibility == "public" or already_passed
             gates[visibility] = contract.gate_from_cases(ran, reveal=reveal)
@@ -426,12 +445,13 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
     within_budget = worst_llm <= problem.call_budget
 
     verdict = contract.verdict_for(gates, [c["outcome"] for c in all_cases])
+    graded = kind != "run"
     return {
         "verdict": verdict,
         "score": contract.score(
             gates, difficulty=problem.difficulty,
             hints_revealed=hints_revealed, within_budget=within_budget,
-        ),
+        ) if graded else None,
         "gates": gates,
         # docs/01 S4: a step is green when its micro-check held, on any public
         # case or on the step's own case, and the untouched stub's did not.
@@ -449,7 +469,9 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
         },
         "trace_ref": None,
         "trace": _combined_trace(all_cases),
-        "competency_deltas": contract.competency_deltas(problem, verdict == "pass"),
+        # A Run's pass is a pass of the public cases, which is no evidence of
+        # the competency the hidden and adversarial cases exist to test.
+        "competency_deltas": contract.competency_deltas(problem, graded and verdict == "pass"),
         "runner": {
             "image_tag": image_tag,
             "duration_ms": int((time.monotonic() - started) * 1000),
@@ -458,7 +480,15 @@ def run_battery(problem, source: str, *, image_tag: str = "runner:dev",
 
 
 def _combined_trace(cases: list[dict]) -> dict[str, Any]:
-    """Phase 1 has no S3, so the trace travels inline for the CLI to print."""
+    """Every case that ran, in order, with its battery and how it ended.
+
+    Phase 1 has no S3, so the trace travels inline to the worker, which stores
+    it whole for faculty and for an appeal. The battery and the outcome sit
+    beside each case because the stored result leaves hidden and adversarial
+    names out until a pass, and the replay needs both to show a learner each
+    unpublished case as an anonymous row (docs/01 S7, docs/03 section 5).
+    """
     return {
-        "cases": [{"name": c["name"], "trace": c["trace"]} for c in cases],
+        "cases": [{"name": c["name"], "battery": c["battery"], "status": c["status"],
+                   "trace": c["trace"]} for c in cases],
     }

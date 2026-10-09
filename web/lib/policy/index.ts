@@ -26,6 +26,15 @@ export type { DegradedMode } from "./settings.ts";
 export { RateLimitError, consume, refund, allowanceFor, humanise } from "./caps.ts";
 export type { Allowance, Scope } from "./caps.ts";
 
+/**
+ * True while the attempt's learner sits an unfinished rehearsal that holds the
+ * attempt's problem, when every result on that problem reads under screen
+ * conditions (tierForResult). Expects the attempt aliased `a`.
+ */
+export const SITTING_SQL = `exists (select 1 from rehearsal r
+   where r.enrolment_id = a.enrolment_id and r.finished_at is null
+     and r.ends_at > now() and a.problem_id = any(r.problem_ids))`;
+
 /** Why a gated action is refused, in words the learner can act on. */
 export interface Gate {
   allowed: boolean;

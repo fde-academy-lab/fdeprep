@@ -264,6 +264,12 @@ interface LearnerState {
   person: Person;
   persona: Persona;
   solved: Set<string>;
+  /**
+   * Problems passed in a rehearsal. A passing rehearsal submit sets solved_at
+   * as a passing submit does, so the next rehearsal's draw skips them. The
+   * plan still lets a learner practise one afterwards, which is allowed.
+   */
+  solvedInRehearsal: Set<string>;
   pending: Map<string, Pending>;
   abandoned: Set<string>;
   /** Every problem with a submission against it, rehearsals included. */
@@ -329,7 +335,8 @@ export function plan(options: PlanOptions): SeedPlan {
 
     const archetype = person.archetype as Exclude<Archetype, "new">;
     const state: LearnerState = {
-      person, persona: person.persona, solved: new Set(), pending: new Map(),
+      person, persona: person.persona, solved: new Set(), solvedInRehearsal: new Set(),
+      pending: new Map(),
       abandoned: new Set(), touched: new Set(), testWritten: new Set(), stuckOn: null,
       stallAfter: scale === "test" ? random.int(2, 3) : random.int(1, 3), sittings: 0,
     };
@@ -553,10 +560,12 @@ function attemptAction(
  * Turn a drawn outcome into one this problem can produce.
  *
  * A judged problem has no runs, no budget and no timeout, and this plan gives
- * it no hints. A pass over budget is planned only where no defence follows:
- * the defence comes back with no call count, competency/score.ts reads a
- * missing count as within budget, and the over-budget pass would turn clean.
- * Hints are planned only where the tier opens them on failed runs alone.
+ * it no hints. A pass over budget is planned only where no defence follows.
+ * That rule kept a defence, which comes back with no call count, from turning
+ * the over-budget pass clean; since 8 October 2026 lib/eval/competency.ts lets
+ * a defence earn attempted at most, and the rule stays because TEST_SEED was
+ * chosen against the rows it plans. Hints are planned only where the tier
+ * opens them on failed runs alone.
  */
 function admissible(outcome: Outcome, problem: CatalogueProblem): Outcome {
   const tier = tierFor(problem.difficulty);
@@ -607,13 +616,14 @@ function rehearsalAction(
   finished: boolean, random: Random,
 ): RehearsalAction {
   const path = catalogue.paths[state.persona];
-  const unsolved = path.filter((slug) => !state.solved.has(slug));
+  const unsolved = path.filter((slug) => !state.solved.has(slug) && !state.solvedInRehearsal.has(slug));
   const drawn = (unsolved.length >= 3 ? unsolved : [...path]).slice(0, 3);
   const count = finished ? random.int(2, 3) : 1;
   const submits = drawn.slice(0, count).map((slug) => {
     const outcome: "clean" | "fail" = random.chance(0.75) ? "clean" : "fail";
     const problem = problems.get(slug)!;
     state.touched.add(slug);
+    if (outcome === "clean") state.solvedInRehearsal.add(slug);
     return problem.artefactType === "design"
       ? { slug, outcome, band: (outcome === "clean" ? "strong" : "weak") as Band }
       : { slug, outcome };

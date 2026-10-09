@@ -10,6 +10,10 @@ competencies:
   - { slug: evaluation-design, weight: 1.0 }
   - { slug: client-communication, weight: 0.5 }
 
+# Two terms from the brief that the strong exemplar names, so the validator's
+# constraints rule and names_no_constraint both run on this fixture.
+constraints: ["forty", "refund"]
+
 brief_md: |
   A fixture problem used to exercise the design workspace and the rubric judge.
   A client has 40 hand-written test conversations and a 95 percent pass rate on

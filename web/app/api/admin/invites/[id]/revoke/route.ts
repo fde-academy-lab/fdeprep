@@ -1,7 +1,8 @@
 /** Withdraw an invite nobody has used. Admin only, audited. */
 import { NextResponse } from "next/server";
 import { revokeInvite } from "@/lib/auth/invite";
-import { Forbidden, requireAdmin } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireAdmin } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export async function POST(
     }
     return NextResponse.json({ withdrawn: Number(id) });
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden) {
       return NextResponse.json({ message: error.message }, { status: error.status });
     }

@@ -164,6 +164,8 @@ Pane behaviour:
 | Submit | Full battery. Disabled with the reason when a cap is hit. Confirmation dialog on Extreme, stating that this is the only attempt today. |
 | Output pane | Public results named and expandable. Hidden results shown as a count. Adversarial results shown by fixture name with the assertion that failed, never with the fixture's script. |
 
+**Amended 8 October 2026.** The Output pane and the Attempts tab show the hidden and adversarial counts only where the tier shows a hidden count (`00-PRD.md` section 3.2). On Extreme, for a rehearsal submit, and for any result on a problem while the learner sits a rehearsal that holds it, each of those two batteries shows whether it passed, with no count and no case name. The server decides it in the results view, which every one of those readers reads (`03-RUNNER-AND-GRADING.md` section 5).
+
 Difficulty changes what renders, not which components exist.
 
 | Difficulty | Left pane contains |
@@ -252,6 +254,16 @@ Rules:
 - Annotations come from the fixture author and attach to a step index, so a hostile fixture can explain itself after the attempt ends.
 - On a failed Extreme submission the trace is available, because the learning happens there even though the attempt is spent.
 
+**Decided 8 October 2026: who reads which case.** The specs disagreed. `03-RUNNER-AND-GRADING.md` section 5 and `02-DATA-MODEL.md` withhold a hidden case's name, S4 shows an adversarial result "never with the fixture's script", and the rule above makes the trace available after a failed Extreme submit. The replay showed every case in full to whoever opened it, so a learner read each hidden and adversarial case's name, the prompts their code built from its input, the scripted model's replies and every tool argument and output. The decision:
+
+| Reader | A public case | A hidden or adversarial case |
+|---|---|---|
+| Learner | It shows in full, with its name, prompts, model replies, tool calls, outputs and flags. | It shows as one anonymous row in the place it ran, saying how it ended, such as "Hidden case 2 of 4: failed". The row holds no name, input, prompt, model reply, tool argument, output, message or flag. |
+| Learner, where the tier shows no hidden count | It shows in full. | A battery's cases share one row, such as "Adversarial cases: at least one failed", because a row per case would count them. This holds on Extreme, for a rehearsal submit, and for any result on a problem while the learner sits a rehearsal that holds it. |
+| Faculty and admins | It shows in full. | It shows in full, with its battery and its outcome. |
+
+The replay builder on the server (`web/lib/trace/replay.ts`) does the cutting, so nothing of an unpublished case reaches a learner's browser, and the stored trace keeps every case for faculty and for an appeal. A Run's replay holds its public cases and no row for any other, because a Run never runs one. The fixture author's annotation reaches a learner on the row that stands for its case once the attempt closes, on a pass or a give-up, which keeps the annotation rule above; faculty read it at any time. A case the problem version does not list reads as hidden. The header's call counts and the flags cover the cases the reader reads in full.
+
 ---
 
 ## S8. Rehearsal mode
@@ -295,7 +307,22 @@ Four screens, each a plain table with an action column.
 
 **Amended 8 October 2026: the Overview.** An Overview at `/admin` shows one row per learner with readiness and its four counts, last activity including voice, and the stuck count, derived from Roster and Submissions. Faculty see the Overview and a learner's row, read-only, because it derives from the two screens they already see.
 
+**Amended 8 October 2026: the analytics screens of `11-ANALYTICS-AND-REPORT-CARD.md`.** Each is plain tables, and each empty state names the next action.
+
+| Screen | Contents | Who |
+|---|---|---|
+| Overview | Gains Export CSV, the cohort standing with its date and row count. | Faculty and admins |
+| Cohort, `/admin/cohort` | The stuck list, one learner and problem pair per row; the competency gaps, with the lowest pass rate named in a sentence above the table; interview coverage by round. | Faculty and admins |
+| Calibration, `/admin/calibration` | Each problem signal with its number, its sample and what to check first, and how many graded answers panelist 2's index holds per problem. Downloads as Markdown. | Faculty and admins |
+| Panel, `/admin/panel` | Panel runs by state, the partial rate, re-evaluations owed, the disagreement rate, P3 latency, and panelist availability by the hour. | Admins |
+
+Ops says waiting for a submission with no verdict and a voice answer with no score, because stuck belongs to the learner and problem pair above.
+
+A learner's page from the Overview ends with their report cards: one row per card issued, with its date, readiness, evaluation count, the start of its hash and a Markdown download, and an Issue a report card button for faculty and admins. It is the page's one action, since a card is a dated copy of the page.
+
 Faculty see Roster read-only and Submissions in full. Everything else is admin only.
+
+**Amended 8 October 2026: the cohort is the boundary (S15.13).** Faculty see their own cohort's rows on Submissions and Disagreements, and open a submission's record, its trace and a voice debrief only for a learner in their cohort. They settle and correct their own cohort's grades only, and hear a recording only once the learner shares it. An admin sees every cohort. A learner opens their own work and nothing else, and an address naming a record outside the reader's reach answers as a page that does not exist.
 
 ---
 

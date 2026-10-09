@@ -17,7 +17,7 @@ export function palettePages(role: "learner" | "faculty" | "admin"): PalettePage
   ];
   if (role !== "learner") {
     pages.push({ href: "/admin" as Route, label: "Admin", icon: "admin",
-                 keywords: "roster submissions import ops" });
+                 keywords: "roster submissions import ops cohort stuck calibration panel" });
   }
   return pages;
 }

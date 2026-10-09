@@ -164,10 +164,12 @@ describe("the lease and fencing token from docs/03 section 9.3", () => {
     return { submission, message: message! };
   }
 
+  // A Run's result as the runner returns one: the public gate, and nothing
+  // about hidden or adversarial, which a Run never runs (docs/00 section 4).
   const RESULT = {
-    verdict: "pass", score: 100,
+    verdict: "pass", score: null,
     gates: { static: { status: "pass" }, public: { status: "pass", passed: 2, total: 2, cases: [] },
-             hidden: { status: "pass", passed: 2, total: 2, cases: [] },
+             hidden: { status: "skipped", passed: 0, total: 0, cases: [] },
              adversarial: { status: "skipped", passed: 0, total: 0, cases: [] } },
     budget: { llm_calls: 2, tool_calls: 1, wall_ms: 5, max_llm_calls: 6, within_budget: true },
     runner: { image_tag: "test", duration_ms: 5 },

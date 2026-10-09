@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
 import { GateError, saveLearnerTest } from "@/lib/attempts/actions";
-import { currentLearner } from "@/lib/session/current";
+import { signedOut } from "@/lib/http/failure";
+import { learnerOrNull } from "@/lib/session/current";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const learner = await currentLearner();
+  const learner = await learnerOrNull();
+  if (!learner) return signedOut();
   const { body } = (await request.json()) as { body?: string };
   try {
     return NextResponse.json(await saveLearnerTest({

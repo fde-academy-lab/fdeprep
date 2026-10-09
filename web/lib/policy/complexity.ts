@@ -76,6 +76,20 @@ export function isComplexity(value: unknown): value is Complexity {
 }
 
 /**
+ * Whether a design answer at this level is read against the brief's
+ * constraints. docs/10 sections 4 and 11.
+ *
+ * From C3 up the answer combines ideas or argues a trade-off under the
+ * client's constraints, so the problem declares the terms the answer has to
+ * engage with and `names_no_constraint` checks for them. C1 and C2 ask for one
+ * fact or one technique, where a list would check something the question
+ * never asked for.
+ */
+export function needsConstraints(complexity: Complexity): boolean {
+  return complexity === "C3" || complexity === "C4";
+}
+
+/**
  * What a problem gets when it carries no `complexity` of its own.
  *
  * Every problem in problems/ now declares one and the validator requires it,

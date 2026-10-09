@@ -15,8 +15,9 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
 import {
-  HEURISTICS, heuristicNames, runHeuristics, type HeuristicInput,
+  authoredContext, HEURISTICS, heuristicNames, runHeuristics, type HeuristicInput,
 } from "../lib/eval/heuristics.ts";
+import { isComplexity, needsConstraints } from "../lib/policy/complexity.ts";
 
 const PROBLEMS = path.join(import.meta.dirname, "..", "..", "problems");
 const VOICE = path.join(import.meta.dirname, "..", "..", "voice-questions");
@@ -47,9 +48,9 @@ describe("what each heuristic notices", () => {
   });
 
   it("names_no_constraint stays silent when the problem authored none", () => {
-    // It needs a constraint list to check against, and no problem in the
-    // catalogue declares one yet. A rule with nothing to compare against says
-    // nothing rather than guessing.
+    // It needs a constraint list to check against. Every C3 and C4 design
+    // problem declares one, and a problem below C3 need not. With nothing to
+    // compare against, the rule says nothing.
     expect(codes({ constraints: [], body: "I would add more tests and ship it." }))
       .not.toContain("names_no_constraint");
   });
@@ -152,10 +153,12 @@ describe("what a heuristic may and may not do", () => {
  * against content nobody will ever read.
  */
 describe("no heuristic fires on an authored reference", () => {
-  async function authored(): Promise<Array<{
-    label: string; artefactType: string; brief: string; body: string;
-  }>> {
-    const items: Array<{ label: string; artefactType: string; brief: string; body: string }> = [];
+  interface Authored {
+    label: string; artefactType: string; brief: string; body: string; constraints: string[];
+  }
+
+  async function authored(): Promise<Authored[]> {
+    const items: Authored[] = [];
 
     for (const root of [PROBLEMS, VOICE]) {
       for (const dir of await readdir(root, { withFileTypes: true })) {
@@ -166,15 +169,19 @@ describe("no heuristic fires on an authored reference", () => {
           const doc = parse(raw) as Record<string, any>;
           const artefactType = String(doc["artefact_type"] ?? "voice");
           const brief = String(doc["brief_md"] ?? doc["question_md"] ?? "");
+          // The problem's own list, read the way the panel reads it in production.
+          const { constraints } = authoredContext(doc);
           const reference = String(doc["reference_md"] ?? "");
           if (reference.trim()) {
-            items.push({ label: `${file} reference_md`, artefactType, brief, body: reference });
+            items.push({
+              label: `${file} reference_md`, artefactType, brief, body: reference, constraints,
+            });
           }
           for (const exemplar of (doc["exemplars"] ?? []) as Array<Record<string, any>>) {
             if (exemplar["band"] !== "strong") continue;
             const body = String(exemplar["body_md"] ?? exemplar["transcript"] ?? "");
             if (body.trim()) {
-              items.push({ label: `${file} strong exemplar`, artefactType, brief, body });
+              items.push({ label: `${file} strong exemplar`, artefactType, brief, body, constraints });
             }
           }
         }
@@ -202,9 +209,10 @@ describe("no heuristic fires on an authored reference", () => {
         complexity: "C4",
         body: item.body,
         brief: item.brief,
-        // No problem authors constraints yet. When one does, a reference that
-        // names none of them is a reference worth looking at.
-        constraints: [],
+        // The problem's own constraints. A strong exemplar or a walkthrough
+        // that names none of them would be the author's own answer failing
+        // the rule, so each list holds terms its strong exemplar names.
+        constraints: item.constraints,
         llmCalls: null,
         callBudget: null,
       });
@@ -219,5 +227,41 @@ describe("no heuristic fires on an authored reference", () => {
     // above by never running at all.
     const reachable = new Set(HEURISTICS.flatMap((h) => h.artefacts));
     expect([...reachable].sort()).toEqual(["code", "design", "prompt"]);
+  });
+});
+
+/**
+ * S15.2. Every C3 and C4 design problem declares the constraints its answer has
+ * to engage with. The sweep above proves no list fires on the author's own
+ * answer; this proves each list can fire at all, since a list holding a term
+ * that every answer contains would keep the rule silent for good.
+ */
+describe("the authored constraint lists", () => {
+  it("make names_no_constraint fire on an answer that names none of them", async () => {
+    const silent: string[] = [];
+    let lists = 0;
+
+    for (const dir of await readdir(PROBLEMS, { withFileTypes: true })) {
+      if (!dir.isDirectory() || dir.name === "_fixtures") continue;
+      for (const file of await readdir(path.join(PROBLEMS, dir.name))) {
+        if (!file.endsWith(".yaml")) continue;
+        const doc = parse(await readFile(path.join(PROBLEMS, dir.name, file), "utf8")) as
+          Record<string, any>;
+        const level: unknown = doc["complexity"];
+        if (doc["artefact_type"] !== "design" || !isComplexity(level)) continue;
+        if (!needsConstraints(level)) continue;
+        lists += 1;
+        const { constraints } = authoredContext(doc);
+        const answer = "I would add more tests and ship it.";
+        if (!codes({ complexity: level, constraints, body: answer }).includes("names_no_constraint")) {
+          silent.push(file);
+        }
+      }
+    }
+
+    expect(silent).toEqual([]);
+    // 28 problems on 8 October 2026. A number that drops means a list went
+    // missing, which the validator refuses, or the walk stopped finding them.
+    expect(lists).toBeGreaterThanOrEqual(28);
   });
 });

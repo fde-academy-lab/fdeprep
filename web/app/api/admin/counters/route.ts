@@ -1,7 +1,8 @@
 /** Clear a rate limit counter. Admin only, reason mandatory, written to audit_log. */
 import { NextResponse } from "next/server";
 import { clearCounter, COUNTER_SCOPES, enrolmentByLogin, ReasonRequired } from "@/lib/admin";
-import { Forbidden, requireAdmin } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireAdmin } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 import type { Scope } from "@/lib/policy";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
       body.reason ?? "", admin.userId);
     return NextResponse.json({ cleared });
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden || error instanceof ReasonRequired) {
       return NextResponse.json({ message: error.message }, { status: error.status });
     }

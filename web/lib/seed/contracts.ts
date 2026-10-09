@@ -40,6 +40,11 @@ export interface ContractContext {
   band?: Band;
   /** Whether the learner had passed this problem before, which reveals hidden case names. */
   alreadyPassed: boolean;
+  /**
+   * A Run, which executes the public cases only (docs/00 section 4): no hidden
+   * or adversarial count and no score, as the runner returns one.
+   */
+  run?: boolean;
   /** A few words of the body, quoted as rubric evidence the way the judge quotes. */
   quote: string;
   /** Where a score or a count lands inside what the outcome fixes, so no two results read alike. */
@@ -111,15 +116,16 @@ function codeContract(
   const failing = outcome === "run_fail" ? context.random.int(1, Math.min(3, tests.public.length))
     : outcome === "fail" && tests.hidden.length === 0 ? 1 : 0;
 
+  const run = context.run === true;
   const publicGate = gate(tests.public, failing, true);
-  const hiddenRan = publicGate.status === "pass";
+  const hiddenRan = !run && publicGate.status === "pass";
   const hiddenGate = hiddenRan
     ? gate(tests.hidden, outcome === "fail" ? 1 : 0, context.alreadyPassed)
-    : skipped(tests.hidden.length);
+    : skipped(run ? 0 : tests.hidden.length);
   const adversarialRan = hiddenRan && hiddenGate.status === "pass";
   const adversarialGate = adversarialRan
     ? gate(tests.adversarial, 0, context.alreadyPassed)
-    : skipped(tests.adversarial.length);
+    : skipped(run ? 0 : tests.adversarial.length);
 
   const budget = problem.callBudget;
   // Inside the budget means one call up to the budget itself, never none: a
@@ -137,7 +143,7 @@ function codeContract(
 
   return {
     verdict: passed ? "pass" : "fail",
-    score: round(Math.max(0, base - penalty)),
+    score: run ? null : round(Math.max(0, base - penalty)),
     gates: {
       static: { status: "pass", reasons: [] },
       public: publicGate,

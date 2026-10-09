@@ -292,6 +292,36 @@ create table learner_test (
 
 `body_sha256` exists so an identical resubmission can be detected and, on Extreme, rejected without spending the daily allowance.
 
+Amended 8 October 2026. A submission of kind `run` executes the public cases only (`03-RUNNER-AND-GRADING.md` section 1.2), so its row stores null in `hidden_passed`, `hidden_total`, `adv_passed`, `adv_total` and `score`. A Run is for code problems only, and one sent from inside a rehearsal stores no `rehearsal_id`, because the sitting's one submit and its report count rehearsal submits only. `attempt.solved_at` is set by the first passing `submit` or `rehearsal_submit`. Until this amendment only a `submit` set it, a line written before rehearsals existed. A rehearsal submit runs the same full battery under screen conditions, which show the traps once the attempt is solved (`00-PRD.md` section 3.2) and carry a defence step that opens on a solved attempt (`web/lib/policy/tiers.ts`), and a rehearsal pass could reach neither. A Run's pass is a pass of the public cases and never sets it, and neither does a defence.
+
+### Evaluations (amended 8 October 2026)
+
+A graded submission has one or more `evaluation` rows: the evaluation record of `10` section 10, built by migrations 014, 017 and 025. The table is append-only. A re-run after an outage, a regrade under a new judge prompt and a faculty correction each add a row, and the newest row is the one the learner's result follows.
+
+```sql
+create table evaluation (
+  id                bigserial primary key,
+  submission_id     bigint not null references submission (id) on delete cascade,
+  enrolment_id      bigint references enrolment (id) on delete cascade,
+  complexity        text not null,               -- C1 to C4, the level it was graded at
+  state             evaluation_state not null,   -- complete, partial, error
+  verdict           verdict,
+  score             numeric(6, 2),
+  score_provisional boolean not null default false,
+  confidence        panel_confidence not null,   -- high, medium, low
+  band              text,
+  panel             jsonb not null,              -- each panelist's status, findings and band
+  disagreement      jsonb,
+  feedback_md       text not null,               -- the one voice the learner reads
+  overridden_by     bigint references app_user (id),
+  override_note     text,
+  judge_prompt      text,                        -- the file in judge/prompts/ that graded it
+  created_at        timestamptz not null default now()
+);
+```
+
+`judge_prompt` names the prompt file the judge graded with, such as `rubric.v1.md`. It is empty where no judge prompt graded the answer: a code submission, an answer a cheaper check stopped, and every row written before migration 025, which fills in nothing it cannot know. The regrade command selects rows by it, and `05` section 7 has the drill.
+
 ---
 
 ## 5. Tracks and roadmaps
@@ -387,6 +417,8 @@ One exception, added with the faculty override in `10` section 9.7. A correction
 
 Readiness counts `clean` only. A pass with four hints is progress and is not evidence.
 
+**Amended 8 October 2026: which kinds earn which state.** The table says submission, and `submission` holds every kind. Any finished submission whose verdict the learner earned, pass or fail, can move a cell to `attempted`. Only a graded kind, `submit` or `rehearsal_submit`, can earn `passed` or `clean`, because only a submit runs the full battery under the submit caps (`00-PRD.md` section 4). A Run is practice against the public cases, a live run carries no assertions, and a defence is scored against the attempt and never the problem (`03-RUNNER-AND-GRADING.md` section 4.4), so a pass on any of them leaves a cell at `attempted` at most. Until this date a passing Run raised a cell to `clean`, and a defence pass, which reports no call count, turned a pass over the budget `clean`. `GRADED_KINDS` in `web/lib/eval/competency.ts` holds the rule for every write and every recompute.
+
 ---
 
 ## 8. Rehearsals
@@ -442,3 +474,37 @@ Log every persona change, cap override, problem publish and roster edit. The ops
 | Learner code bodies | Same as submissions |
 
 Traces are the largest object by volume. Cap a stored trace at 256KB and truncate the middle with a marker rather than storing an unbounded loop.
+
+---
+
+## 11. Report cards (amended 8 October 2026)
+
+A report card is a dated snapshot of one learner for a placement team, `11-ANALYTICS-AND-REPORT-CARD.md` section 3. Migration `024_report_card.sql`.
+
+```sql
+create table report_card (
+  id              bigint generated always as identity primary key,
+  enrolment_id    bigint not null references enrolment(id),
+  cohort_id       bigint not null references cohort(id),
+  issued_by       bigint references app_user(id),   -- null only when a script issued it
+  generated_at    timestamptz not null default now(),
+  content         text not null,                   -- the snapshot as canonical JSON
+  content_sha256  text not null,
+  check (content_sha256 = encode(sha256(convert_to(content, 'UTF8')), 'hex'))
+);
+```
+
+| Rule | Why |
+|---|---|
+| `content` is the snapshot with every key sorted and no whitespace, stored as text | The hash is over exactly these bytes, so anyone holding the card can check it, and equal data always hashes the same |
+| The check refuses a row whose hash is not its content's | A card whose hash does not match is not a card |
+| A trigger refuses every update, and issuing again inserts a new row | Somebody has the old card in their inbox, and it has to keep meaning what it meant |
+| The snapshot holds no clock time, and `generated_at` holds when it was issued | Two cards issued from unchanged data carry one hash; a new evaluation changes the count inside the snapshot, and so the hash |
+
+---
+
+## 12. The reader role (amended 8 October 2026)
+
+Migration `026_reader_role.sql` creates `fdeprep_reader`, a role that cannot log in and holds SELECT on every table in the schema and no other privilege. It also sets the default privileges, so a table a later migration creates is readable by it too. `progress/` and `analytics/` only read, per `10-EVALUATION-PANEL.md` section 13, and this is the role a connection that only reads would run as. Nothing runs under it in this release.
+
+A role belongs to the whole cluster, and creating one needs CREATEROLE. Where the user running the migrations may not create roles, the migration changes nothing and prints a notice naming the statements an operator would run by hand.

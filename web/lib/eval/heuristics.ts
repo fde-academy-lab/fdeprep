@@ -23,8 +23,10 @@ export interface HeuristicInput {
   body: string;
   /** The problem's brief, which is what `restates_the_brief` compares against. */
   brief: string;
-  /** Terms the author says the answer has to engage with. Empty on every
-   *  problem in the catalogue today, which is why that rule stays silent. */
+  /** Terms the author says the answer has to engage with, from the problem's
+   *  `constraints` list. Every C3 and C4 design problem declares one, and the
+   *  validator refuses one that does not. Empty everywhere else, which keeps
+   *  `names_no_constraint` silent. */
   constraints: readonly string[];
   llmCalls: number | null;
   callBudget: number | null;

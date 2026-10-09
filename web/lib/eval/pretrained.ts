@@ -69,6 +69,12 @@ export interface PretrainedOptions {
   client: Pool | PoolClient;
   /** Injected by tests, so the panel can be exercised without a 46MB download. */
   embed?: Embed;
+  /**
+   * The submission being graded again, whose own vector is already in the
+   * pool. A re-run leaves it out: an answer is its own nearest neighbour, and
+   * counted, it would vote for whatever band it was given last time.
+   */
+  excludeSubmissionId?: number;
 }
 
 export function pretrainedPanelist(options: PretrainedOptions): Panelist {
@@ -211,8 +217,9 @@ async function neighbourPool(
 ): Promise<{ ok: true; rows: Row[] } | { ok: false; reason: string }> {
   const { rows } = await options.client.query<Row>(
     `select band, vector, source from embedding
-      where problem_id = $1 and model = $2`,
-    [options.problemId, EMBEDDING_MODEL]);
+      where problem_id = $1 and model = $2
+        and ($3::bigint is null or submission_id is distinct from $3::bigint)`,
+    [options.problemId, EMBEDDING_MODEL, options.excludeSubmissionId ?? null]);
   if (rows.length) return { ok: true, rows };
 
   const exemplars = authoredExemplars(options.sourceYaml);

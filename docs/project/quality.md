@@ -58,6 +58,16 @@ The column counts come from the stories in [backlog.yaml](backlog.yaml), and the
 | S12.19 | Let a solution use LangChain core or pydantic without LangGraph in the sandbox | Running it | S12 Problem pages v2 | #45 | P1 High |
 | S13.8 | Fix the eight defects that made the voice screen unreliable | Reading | S13 Voice interviewer v2, step 1 | #44 | P1 High |
 | S13.9 | Keep the debrief up, and say what failed when an answer does not save | Running it | S13 Voice interviewer v2, step 1 | #45 | P1 High |
+| S14.7 | Fill every judge prompt in one pass, so a learner cannot close the data delimiter | Reading | S14 Voice interviewer v2, step 2 | #46 | P2 Medium |
+| S15.10 | Make a Run execute the public cases only, as the spec always said | Reading | S15 First cohort | #47 | P0 Critical |
+| S15.11 | Read the judge's own score field, so real evaluations stop going partial | Reading | S15 First cohort | #47 | P0 Critical |
+| S15.12 | Let only a submit earn a passed or clean competency cell | Reading | S15 First cohort | #47 | P0 Critical |
+| S15.13 | Check the session and the owner on every record route, and verify the cookie in the proxy | Reading | S15 First cohort | #47 | P0 Critical |
+| S15.14 | Show the hidden count only on a tier that shows one, in every reader of a result | Reading | S15 First cohort | #47 | P1 High |
+| S15.15 | Give a learner's replay each unpublished case as an anonymous outcome row | Reading | S15 First cohort | #47 | P0 Critical |
+| S15.16 | Read a problem's result from its submits only, so a Run's pass never reads Passed | Reading | S15 First cohort | #47 | P1 High |
+| S15.17 | Send the attempt's revealed hints to the runner, so a code score carries the penalty | Reading | S15 First cohort | #47 | P1 High |
+| S15.18 | Write no evaluation record for a Run | Reading | S15 First cohort | #47 | P2 Medium |
 <!-- /generated:bugs -->
 
 ## What the pattern says

@@ -153,7 +153,8 @@ describe("S2: Home", () => {
     expect(text(markup)).toContain("Track Agentic AI for FDEs Persona Navigator");
     expect(text(markup)).toContain("Your first problem");
     expect(text(markup)).toContain("Open the problem");
-    expect(text(markup)).toContain("Readiness Full heatmap 0% Not ready Clean 0 Passed 0 Attempted 0 Untouched");
+    expect(text(markup)).toContain("Readiness Full heatmap 0% Not ready Practised: written 0 · oral 0 " +
+      "Clean 0 Passed 0 Attempted 0 Untouched");
     expect(text(markup)).not.toMatch(/Next up|Recent activity|Welcome/);
     expect(words(markup) + HEADER_WORDS).toBeLessThan(120);
   });
@@ -165,7 +166,7 @@ describe("S2: Home", () => {
 
     expect(text(markup)).toContain("Next up Pick up where you left off");
     expect(markup.match(/aria-label="Open [^"]+"/g)).toHaveLength(3);
-    expect(text(recent)).toContain("Nothing finished yet. The run you started lands here with its result.");
+    expect(text(recent)).toContain("Nothing finished yet. Run or submit a problem and it lands here.");
     expect(recent.slice(recent.indexOf("Nothing finished"))).not.toMatch(/<a |<button/);
   });
 
@@ -337,7 +338,8 @@ describe("Progress", () => {
   it("opens on readiness at zero and offers one way to the path", async () => {
     const markup = await html(ProgressPage());
 
-    expect(text(markup)).toContain("Readiness 0% Not ready Clean 0 Passed 0 Attempted 0 Untouched");
+    expect(text(markup)).toContain("Readiness 0% Not ready Practised: written 0 · oral 0 " +
+      "Clean 0 Passed 0 Attempted 0 Untouched");
     expect(text(markup)).toContain("Every cell is empty. Pass a problem with no hints and inside its call " +
       "budget, and its competencies fill in here. Open your path");
     expect(text(markup)).toContain(

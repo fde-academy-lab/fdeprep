@@ -1,9 +1,20 @@
-/** S10 Submissions: filterable by learner, problem, verdict and date, with a link to every trace. */
+/**
+ * S10 Submissions: filterable by learner, problem, verdict and date, with a
+ * link to every trace.
+ *
+ * Faculty see their own cohort's submissions and admins every cohort's
+ * (lib/session/records.ts). The page checks the role itself, because the
+ * admin layout does not stop the page under it from rendering (S15.13).
+ */
 import Link from "next/link";
 import type { Metadata, Route } from "next";
+import { notFound } from "next/navigation";
 import { Inbox, SearchX } from "lucide-react";
+import { permits } from "@/lib/admin/guard";
 import { browseSubmissions, type BrowserPage, type BrowserRow } from "@/lib/admin/submissions";
 import { relativeDay } from "@/lib/progress/summary";
+import { currentLearner } from "@/lib/session/current";
+import { staffCohort } from "@/lib/session/records";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -82,6 +93,8 @@ function day(value: string): string {
 export default async function SubmissionsPage({ searchParams }: {
   searchParams: Promise<Params>;
 }) {
+  const viewer = await currentLearner();
+  if (!permits(viewer.role, "faculty")) notFound();
   const params = await searchParams;
   const filters = {
     login: one(params, "login").trim(),
@@ -96,6 +109,7 @@ export default async function SubmissionsPage({ searchParams }: {
     verdict: filters.verdict,
     since: filters.since || undefined,
     page: Number(one(params, "page")) || 1,
+    cohortId: staffCohort(viewer),
   });
   const now = new Date();
 
@@ -145,6 +159,7 @@ export default async function SubmissionsPage({ searchParams }: {
               <Cell head>Verdict</Cell>
               <NumCell head>Score</NumCell>
               <Cell head>Trace</Cell>
+              <Cell head>Evaluations</Cell>
             </Head>
           }>
             {page.rows.map((row) => {
@@ -167,6 +182,16 @@ export default async function SubmissionsPage({ searchParams }: {
                       <Link href={`/traces/${row.id}` as Route}
                             className="text-text-dim underline-offset-2 hover:text-text hover:underline">
                         Trace
+                      </Link>
+                    ) : null}
+                  </Cell>
+                  <Cell>
+                    {/* S15.3: every evaluation this submission has had, with the
+                        judge prompt that graded each. Only a verdict gets one. */}
+                    {row.verdict ? (
+                      <Link href={`/admin/submissions/${row.id}` as Route}
+                            className="text-text-dim underline-offset-2 hover:text-text hover:underline">
+                        Evaluations
                       </Link>
                     ) : null}
                   </Cell>

@@ -6,7 +6,8 @@
  * non-authoritative and gives coverage to the judge in the debrief. Nothing
  * stored here reaches a score, the competency heatmap, or the placement
  * export. The session id is checked against the learner's own enrolment, so a
- * browser cannot close somebody else's sitting.
+ * browser cannot close somebody else's sitting, and a session that is not the
+ * caller's answers as one that does not exist (S15.13).
  *
  * In interview mode (docs/07 section 5a) a main answer that counted leaves
  * the session open, and the reply carries the first follow-up round: who
@@ -23,6 +24,7 @@ import { jsonBody, signedOut, unexpected } from "@/lib/http/failure";
 import { finishSession, SessionNotOpen, type TimelineIn } from "@/lib/voice/persist";
 import { endInterview, pendingRound } from "@/lib/voice/turns";
 import { learnerOrNull } from "@/lib/session/current";
+import { ownVoiceSession } from "@/lib/session/records";
 
 export const dynamic = "force-dynamic";
 
@@ -32,6 +34,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   try {
     const learner = await learnerOrNull();
     if (!learner) return signedOut();
+    if (!(await ownVoiceSession(learner, Number(id)))) {
+      return NextResponse.json(
+        { message: "That voice session was not found. Open your answers from Past answers." },
+        { status: 404 });
+    }
 
     const body = await jsonBody<{
       transcript?: string;

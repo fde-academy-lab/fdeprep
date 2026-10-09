@@ -1025,6 +1025,7 @@ stages:
           - A sync creates one issue per stage and story, nests each story under its stage, and closes delivered work as completed.
           - A second sync with nothing changed writes nothing.
           - Every card shows Stage, Level, Area, Priority, Points, Start, Finish, Pull request, Found by, Risk and Sprint.
+          - Each of the three lines above is proven against a fake API in tests/test_project_sync.py; the first write to the live Project is S10.4.
       - id: S10.3
         title: Write the project pages for management
         type: Task
@@ -1095,7 +1096,7 @@ stages:
         risk: High
         finish: 2026-10-04
         acceptance:
-          - One design submission comes back with a band from the live judge, and the judge's cost appears in the spend alarm's metric.
+          - One design submission comes back with a band from the live judge, and the judge's invocations appear on the stack's judge-spend alarm. The cost figure belongs to the Budget in S11.6.
       - id: S11.3
         title: Prove Transcribe, Polly and S3 with one real voice session
         type: Task
@@ -1115,6 +1116,7 @@ stages:
         finish: 2026-10-06
         acceptance:
           - A backup restores into a scratch database, and the time it took is written in README section 4.
+          - The written procedure exists in DEPLOY.md section 8.2 since 8 October 2026, and the timed drill waits for a deployment to run it on.
       - id: S11.5
         title: Brief a second operator and run one practice drill
         type: Task
@@ -1698,12 +1700,29 @@ stages:
           what happens to a pasted resume and to what the interviewer says.
         acceptance:
           - docs/07 describes generated follow-ups and resume handling, and the consent screen says what happens to a resume.
+      - id: S14.7
+        title: Fill every judge prompt in one pass, so a learner cannot close the data delimiter
+        type: Bug
+        status: done
+        pr: 46
+        points: 2
+        area: Grading and judge
+        finish: 2026-10-08
+        found_by: Reading
+        acceptance:
+          - An answer that contains the prompt's own nonce placeholder, alone or inside a closing delimiter, reaches the rubric, defence, beat, follow-up and resume prompts as data with exactly one real closing delimiter, and a guard test fails if any judge module fills a placeholder one replacement at a time again.
+        outcome: >-
+          Found while building the follow-up prompt: the rubric and defence
+          prompts replaced their placeholders one after another, so a learner's
+          literal placeholder became the real nonce and could end the data
+          block early for typed answers, design answers, defences and the
+          voice rubric. Every judge prompt now fills in one pass.
 
   - id: S15
     name: First cohort
     kind: roadmap
     horizon: later
-    start: 2026-10-12
+    start: 2026-10-08
     finish: 2026-11-30
     area: Evaluation panel
     priority: P2
@@ -1714,8 +1733,9 @@ stages:
       readiness signal, and content aimed at what the cohort actually
       fails.
     why: >-
-      The platform exists to produce one signal a placement team trusts, and
-      today that signal is implied instead of computed.
+      The platform exists to produce one signal a placement team trusts.
+      Readiness is computed and shown; before this stage nothing filed it,
+      aggregated it across a cohort or proved who wrote it.
     estimate: {optimistic: 25, likely: 40, pessimistic: 70}
     rice: {reach: 180, impact: 2, confidence: 0.8}
     stories:
@@ -1731,19 +1751,21 @@ stages:
       - id: S15.2
         title: Author constraint lists, so the unnamed-constraint check can fire
         type: Task
-        status: todo
+        status: done
         points: 5
         area: Content
-        finish: 2026-10-26
+        finish: 2026-10-08
+        pr: 47
         acceptance:
-          - Every C3 and C4 problem declares its constraints, and names_no_constraint fires on an answer that names none.
+          - Every C3 and C4 design problem declares its constraints, the validator refuses one that does not, and names_no_constraint fires on an answer that names none and stays silent on every strong exemplar.
       - id: S15.3
         title: Re-grade past submissions against a new judge prompt version
         type: Feature
-        status: todo
+        status: done
         points: 8
         area: Evaluation panel
-        finish: 2026-11-09
+        finish: 2026-10-08
+        pr: 47
         acceptance:
           - A judge prompt change can re-grade earlier submissions, and each record says which prompt version graded it.
       - id: S15.4
@@ -1758,39 +1780,48 @@ stages:
       - id: S15.5
         title: "Build analytics: cohort views, the stuck list, calibration and panel health"
         type: Feature
-        status: todo
+        status: done
         points: 13
         area: Evaluation panel
-        finish: 2026-11-23
+        finish: 2026-10-08
+        pr: 47
         acceptance:
           - Faculty can see which topic a cohort failed without writing SQL.
       - id: S15.6
         title: Issue the report card as a dated, hashed snapshot
         type: Feature
-        status: todo
+        status: done
         points: 8
         area: Evaluation panel
-        finish: 2026-11-23
+        finish: 2026-10-08
+        pr: 47
         acceptance:
-          - A report card never changes after it is issued, and its hash proves it.
+          - A report card never changes after it is issued, and the SHA-256 of its canonical JSON snapshot, printed on its Markdown export with the snapshot itself, proves it.
       - id: S15.7
         title: Move the competency write into eval/, and make progress a pure reader
         type: Task
-        status: todo
+        status: done
         points: 5
         area: Evaluation panel
-        finish: 2026-11-16
+        finish: 2026-10-08
+        pr: 47
         acceptance:
-          - Only eval/ writes a grade, a band or a competency state, and a test fails if anything else does.
+          - Only eval/ writes evaluation, evaluation_review and competency_score, writeResult and scoreVoiceOnce are the two named writers outside it and keep only their grade columns, and a scan of web/lib, web/app and web/scripts fails if any other file writes a grade.
       - id: S15.8
         title: Compute the readiness signal with its four counts and three bands
         type: Feature
-        status: todo
+        status: done
         points: 8
         area: Evaluation panel
-        finish: 2026-11-30
+        finish: 2026-10-08
+        pr: 47
         acceptance:
-          - Each learner has a readiness band computed from the four counts in docs/12, shown to the learner and to placement.
+          - Each learner has a readiness band computed in lib/progress/readiness.ts from clean cells over the cells the persona's track requires, with the four counts in docs/12, shown on Home and Progress to the learner and on the admin Overview and learner page to faculty, with tests that hold it equal across the three screens.
+        outcome: >-
+          Found delivered when the backlog was reconciled against the code on
+          8 October 2026: readiness.ts and its tests landed with the redesign
+          in #45, and only this file still called it planned. Closed here so
+          the record matches the code.
       - id: S15.9
         title: Write more content where the cohort actually fails
         type: Task
@@ -1800,6 +1831,193 @@ stages:
         finish: 2026-11-30
         acceptance:
           - New problems target the three topics with the lowest pass rate in the first cohort.
+      - id: S15.10
+        title: Make a Run execute the public cases only, as the spec always said
+        type: Bug
+        status: done
+        pr: 47
+        points: 5
+        area: Grading and judge
+        priority: P0
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The worker built the runner's event without the submission kind and
+          the handler never read one, so every Run executed the public, hidden
+          and adversarial cases and reported pass only when all three passed.
+          At the Run allowance of 30 an hour that told a learner whether the
+          hidden battery passed, which made Run an oracle for unpublished cases
+          and stepped round the Extreme tier's one submit a day. The judge had
+          the same gap: a Run on a prompt or design problem bought the probes
+          and the rubric at the Run allowance.
+        acceptance:
+          - A Run executes the static gate, the public cases and the step checks, and never stages, executes or reports a hidden or adversarial case.
+          - A Run of code that passes public and fails hidden reports the public result, with no hidden or adversarial count, case name, message, trace or score.
+          - A Submit and a rehearsal submit still run the full battery, and a defence still goes to the judge.
+          - The result writer turns a Run result in which a hidden case ran into an error that consumes nothing, and a Run on a prompt or design problem is refused.
+          - A Run inside a rehearsal neither uses up the sitting's one submit nor reads as its result.
+          - A passing rehearsal submit marks the attempt solved, as a passing submit does.
+      - id: S15.11
+        title: Read the judge's own score field, so real evaluations stop going partial
+        type: Bug
+        status: done
+        pr: 47
+        points: 2
+        area: Evaluation panel
+        priority: P0
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          Panelist 3 read the rubric gate's score field, and the judge writes
+          percent there and puts a defence's score at the top of its result.
+          So every real design, prompt and defence evaluation recorded the
+          model's panelist as unavailable and went partial, and the free
+          re-run each one was owed had no drain to pay it.
+        acceptance:
+          - Panelist 3 takes its band from the field the judge writes for the rubric and for a defence, and a test feeds it the judge's own result shapes.
+      - id: S15.12
+        title: Let only a submit earn a passed or clean competency cell
+        type: Bug
+        status: done
+        pr: 47
+        points: 2
+        area: Evaluation panel
+        priority: P0
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The competency write applied every finished submission, so a passing
+          Run raised a cell to clean at the Run allowance, and a defence pass
+          could turn passed into clean, both feeding the readiness signal.
+        acceptance:
+          - A passing Run, live run or defence leaves a cell at attempted at most, and a passing submit or rehearsal submit still earns its state, tested through the real write path.
+      - id: S15.13
+        title: Check the session and the owner on every record route, and verify the cookie in the proxy
+        type: Bug
+        status: done
+        pr: 47
+        points: 5
+        area: Auth and access
+        priority: P0
+        finish: 2026-10-09
+        found_by: Reading
+        summary: >-
+          The submission view and its event stream answered anyone holding a
+          cookie named fdeprep_session, with any value, because neither route
+          checked the session or the owner and the proxy only checked that the
+          cookie existed. Counting through ids read every learner's results,
+          which after a pass carry hidden and adversarial case names and the
+          probe messages. The audit that followed found faculty reading and
+          correcting other cohorts' traces, grades and recordings, a problem
+          import faculty could publish through, and voice follow-ups spoken
+          and cached for questions nobody had published. One rule in
+          web/lib/session/records.ts now decides who reads whose work, and the
+          proxy verifies the cookie's signature.
+        acceptance:
+          - A forged, edited, expired or empty cookie gets exactly what no cookie gets, from the proxy and from every route, tested with real signed and forged cookies.
+          - A learner asking for another learner's submission, its event stream, its trace, its debrief or its recording gets the answer an id nobody holds gets.
+          - Faculty read their own cohort's submissions, traces, evaluations and debriefs, hear a recording only once the learner shares it, and settle and correct only their own cohort's grades; an admin reads every cohort.
+          - A test walks every route under web/app/api and fails on a handler that neither resolves the session through learnerOrNull, requireAdmin or requireFaculty nor sits on its commented list of public routes.
+          - Both problem import actions refuse anyone but an admin.
+          - A follow-up on an unpublished question, or one its file dropped, answers as an unknown id before Polly is asked anything or anything is cached, tested by counting synthesis calls and stored objects.
+      - id: S15.14
+        title: Show the hidden count only on a tier that shows one, in every reader of a result
+        type: Bug
+        status: done
+        pr: 47
+        points: 3
+        area: Grading and judge
+        priority: P1
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          docs/00 section 3.2 says Extreme and screen conditions show nothing
+          about the tests. The results view returned the hidden and
+          adversarial counts on every tier and the Attempts tab printed them,
+          so an Extreme submit or a rehearsal submit read its hidden count, and
+          the result pane drew the adversarial count on Extreme.
+        acceptance:
+          - The policy module names the tier a result reads under, screen conditions for a rehearsal submit and for every result on a problem while a sitting holds it, and the results view applies it, so the result pane, the event stream, the polling route and the Attempts tab read one answer.
+          - On Extreme and under screen conditions the hidden and adversarial gates report whether they passed and no count or case name, even after a pass, while Easy, Medium and Hard keep the hidden count.
+          - The submission row keeps every count for faculty.
+      - id: S15.15
+        title: Give a learner's replay each unpublished case as an anonymous outcome row
+        type: Bug
+        status: done
+        pr: 47
+        points: 5
+        area: Grading and judge
+        priority: P0
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The runner put every case that ran into the trace, the writer stored
+          it whole and the replay returned every case's steps to whoever
+          opened it, so a learner read each hidden and adversarial case's name,
+          the prompts their code built from its input, the scripted model's
+          replies and every tool argument and output. That is enough to
+          publish a problem's hidden battery.
+        acceptance:
+          - A learner's replay shows each public case in full and each hidden or adversarial case as one anonymous row in the place it ran, saying how it ended, one row per battery where the tier shows no hidden count.
+          - Nothing of an unpublished case reaches a learner's browser, because the replay builder cuts the trace on the server, and a case the problem does not list as public reads as unpublished.
+          - Faculty and admins read every case in full with its battery and outcome, and the stored trace keeps every case.
+          - The fixture author's note reaches the learner on its case's row once the attempt closes.
+      - id: S15.16
+        title: Read a problem's result from its submits only, so a Run's pass never reads Passed
+        type: Bug
+        status: done
+        pr: 47
+        points: 3
+        area: Evaluation panel
+        priority: P1
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The attempt history behind Progress, Home, the CSV export and the
+          faculty learner page took the latest submission of any kind for its
+          result and the lowest call count of any passing submission for its
+          best budget, so a Run that passed the public cases read Passed, and
+          its call count over the public cases alone read as the budget to
+          beat.
+        acceptance:
+          - The result, the submit count and the best budget read submits and rehearsal submits only.
+          - A problem worked on with Runs and never submitted reads "Not submitted yet" on Progress, Home and the faculty learner page and "not submitted yet" in the CSV, and progress/ still writes nothing.
+      - id: S15.17
+        title: Send the attempt's revealed hints to the runner, so a code score carries the penalty
+        type: Bug
+        status: done
+        pr: 47
+        points: 2
+        area: Grading and judge
+        priority: P1
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          docs/03 section 5 takes 5 points off every score for each hint
+          revealed. The judge worker sent the count, and the runner worker
+          never did, so the runner took 0 and no code score carried the
+          penalty.
+        acceptance:
+          - The runner worker reads the attempt's revealed hints from the database and sends them with every event, and nothing the browser sends sets them.
+          - A submit after two hints scores exactly 10 points below the same code submitted before them, through the real runner.
+      - id: S15.18
+        title: Write no evaluation record for a Run
+        type: Bug
+        status: done
+        pr: 47
+        points: 2
+        area: Evaluation panel
+        priority: P2
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The result writer ran the panel over every finished submission and
+          panelist 1 read a missing score as 0, so each Run left an evaluation
+          record scored 0, which the report card's evaluation count and the
+          panel's health numbers counted.
+        acceptance:
+          - A Run gets no evaluation record while a submit, a rehearsal submit and a defence each get one, and the Run still moves its competency cell to attempted.
+          - A result with no score gives an evaluation with no score.
 
   - id: S16
     name: Second version

@@ -17,7 +17,7 @@ The platform is built and has not yet been deployed. The beta runs on AWS for in
 | Commits | 285, counting each pull request's own commits | GitHub and git |
 | Lines changed | +152,496 and -4,832 | GitHub |
 | Test cases declared at the end | 276 Python, 716 web, 26 voice, 37 infrastructure | Git |
-| Bugs found and fixed | 22 | This file |
+| Bugs found and fixed | 32 | This file |
 | Delivered size | 360 points | Estimate |
 | Human-team equivalent | 203 person-days expected, 174 to 232 at two standard deviations | Estimate |
 <!-- /generated:numbers -->
@@ -46,7 +46,7 @@ gantt
   S12 Problem pages v2 :s12, 2026-09-30, 9d
   S13 Voice interviewer v2, step 1 :s13, 2026-09-30, 9d
   S14 Voice interviewer v2, step 2 :active, s14, 2026-10-07, 6d
-  S15 First cohort :s15, 2026-10-12, 50d
+  S15 First cohort :active, s15, 2026-10-08, 54d
   S16 Second version :s16, 2026-12-01, 121d
   S17 Redesign, one position and one next action :s17, 2026-10-08, 12d
   S18 Agentic patterns and depth content :s18, 2026-10-08, 12d

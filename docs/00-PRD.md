@@ -26,12 +26,14 @@ The platform exists to produce one number the placement side can trust: is this 
 | Role | How they get in | What they can do |
 |---|---|---|
 | Learner | GitHub OAuth, must be a member of the `FDE-Academy-Hub` organisation and present in the cohort roster | Solve problems, see their own progress, run rehearsals |
-| Faculty | Same OAuth, flagged in the roster | Everything a learner can do, plus read any learner's submissions and traces |
+| Faculty | Same OAuth, flagged in the roster | Everything a learner can do, plus read the submissions and traces of learners in their own cohort |
 | Admin | Same OAuth, flagged in the roster | Author and import problems, manage rosters, set caps, read the ops dashboard |
 
 Offboarding a learner is removing them from the GitHub organisation. There is no second user list to keep in step.
 
 **Amended 30 September 2026, for a controlled beta.** The beta's testers hold GitHub accounts outside the organisation, so the organisation check can be switched off with `GITHUB_ORG_CHECK=off`, and an invite stands in for it. An admin makes a one-time invite link on the Roster screen and sends it by hand; signing in with GitHub through it enrols that account in the invite's cohort with the invite's role and persona. An invite can name one GitHub login, can expire and can be withdrawn. With the check off, only someone already enrolled or holding a valid invite gets in, and offboarding is ending the enrolment. There is still no password and no second user list: GitHub remains the only identity.
+
+**Amended 9 October 2026: the cohort is the boundary (S15.13).** Faculty read the submissions, traces, evaluations and voice debriefs of learners in their own cohort, and settle and correct those learners' grades only. An admin reads every cohort's. A learner reads their own work and nothing else, and a record outside the reader's reach answers as one that does not exist. The Faculty row said any learner's, which let faculty of one cohort read and correct another cohort's work. `web/lib/session/records.ts` decides the rule in one place.
 
 ### Personas
 
@@ -230,7 +232,7 @@ Rehearsals are capped at two per week per learner so the result stays meaningful
 
 - Cohort heatmap, sortable by competency, so a weak column across the cohort becomes a session topic.
 - Per-learner drill-down: submissions, traces, hint reveals, attempt notes, defence answers.
-- Stuck list: learners with three or more failed submits on the same problem and no successful submit in seven days.
+- Stuck list: learners with three or more failed submits on the same problem and no successful submit. Amended 8 October 2026 to the definition in `11-ANALYTICS-AND-REPORT-CARD.md` section 4, which the Overview has used since story S17.4 and the Cohort screen uses too. This line also said "in seven days", the two documents disagreed, and the analytics spec decides.
 - Live ops: queue depth, runner error rate, live-run token spend for the day.
 
 Export is CSV, since the cohort trackers live in spreadsheets.

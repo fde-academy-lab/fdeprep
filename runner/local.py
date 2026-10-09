@@ -1,7 +1,9 @@
-"""python -m runner.local <problem.yaml> <solution.py>
+"""python -m runner.local <problem.yaml> <solution.py> [--kind run]
 
 This is how problems get authored, so the default output is the readable
-report and --json prints the contract the front end will render from.
+report and --json prints the contract the front end will render from. The
+default kind is submit, the full battery; --kind run shows what a learner's
+Run reports, which is the public cases and the steps.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ import json
 import pathlib
 import sys
 
-from runner.battery.execute import run_battery
+from runner.battery.execute import BATTERIES, run_battery
 from runner.problem import ProblemError, load_problem
 
 TICK = {"pass": "PASS", "fail": "FAIL", "skipped": "SKIP"}
@@ -24,9 +26,10 @@ def _bar(label: str, gate: dict) -> str:
     return f"  {status:4}  {label:<12} -"
 
 
-def report(problem, result: dict, *, show_trace: bool) -> str:
+def report(problem, result: dict, *, show_trace: bool, kind: str = "submit") -> str:
     out: list[str] = []
-    out.append(f"{problem.slug}  ({problem.difficulty}, budget {problem.call_budget})")
+    out.append(f"{problem.slug}  ({problem.difficulty}, budget {problem.call_budget}, "
+               f"kind {kind})")
     out.append("")
 
     gates = result["gates"]
@@ -35,6 +38,9 @@ def report(problem, result: dict, *, show_trace: bool) -> str:
         for reason in gates["static"]["reasons"]:
             out.append(f"          {reason}")
     for name in ("public", "hidden", "adversarial"):
+        if name not in BATTERIES[kind]:
+            out.append(f"  {'':4}  {name:<12} not run: a Run executes the public cases only")
+            continue
         out.append(_bar(name, gates[name]))
         for case in gates[name]["cases"]:
             mark = TICK.get(case["status"], case["status"])
@@ -57,10 +63,12 @@ def report(problem, result: dict, *, show_trace: bool) -> str:
     flags = sorted({f for c in result["trace"]["cases"] for f in c["trace"].get("flags", [])})
     if flags:
         out.append(f"  flags     {', '.join(flags)}")
+    if result["steps"]:
+        out.append("  steps     " + ", ".join(f"{s['id']} {s['status']}" for s in result["steps"]))
 
     out.append("")
     out.append(f"  verdict   {result['verdict']}")
-    out.append(f"  score     {result['score']}")
+    out.append(f"  score     {'none: a Run is not scored' if result['score'] is None else result['score']}")
     out.append(f"  runner    {result['runner']['image_tag']}, "
                f"{result['runner']['duration_ms']}ms")
 
@@ -105,6 +113,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--passed", action="store_true",
                         help="render as a learner who has already passed, which reveals hidden cases")
     parser.add_argument("--hints", type=int, default=0, help="hints revealed, for scoring")
+    parser.add_argument("--kind", choices=tuple(BATTERIES), default="submit",
+                        help="the submission kind: run executes the public cases and the steps, "
+                             "submit and rehearsal_submit the full battery (default submit)")
     parser.add_argument("--image-tag", default="runner:dev")
     args = parser.parse_args(argv)
 
@@ -121,14 +132,14 @@ def main(argv: list[str] | None = None) -> int:
 
     result = run_battery(
         problem, args.solution.read_text(encoding="utf-8"),
-        image_tag=args.image_tag, already_passed=args.passed,
+        kind=args.kind, image_tag=args.image_tag, already_passed=args.passed,
         hints_revealed=args.hints,
     )
 
     if args.json:
         print(json.dumps(result, indent=2, ensure_ascii=False))
     else:
-        print(report(problem, result, show_trace=args.trace))
+        print(report(problem, result, show_trace=args.trace, kind=args.kind))
 
     return 0 if result["verdict"] == "pass" else 1
 

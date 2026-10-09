@@ -14,6 +14,8 @@ competencies:
   - { slug: agent-loop, weight: 0.5 }
   - { slug: client-communication, weight: 0.5 }
 
+constraints: ["nine seconds", "model spend", "four checks", "23", "400"]
+
 brief_md: |
   A home insurer the size of Aviva has a home-claims team that runs an intake agent. It reads a new
   claim, checks that the policy covers the peril, checks the claims system for

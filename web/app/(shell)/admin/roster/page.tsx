@@ -4,11 +4,14 @@
  * a tester in (docs/01 section S10, amended 30 September 2026).
  *
  * Faculty get the table and no buttons. Both actions write, and both routes
- * are admin only.
+ * are admin only. The page checks the role itself, because the admin layout
+ * does not stop the page under it from rendering (S15.13).
  */
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { Ticket, Users } from "lucide-react";
 import { roster } from "@/lib/admin";
+import { permits } from "@/lib/admin/guard";
 import { listInvites } from "@/lib/auth/invite";
 import { currentLearner } from "@/lib/session/current";
 import { relativeDay } from "@/lib/progress/summary";
@@ -27,6 +30,7 @@ const date = (iso: string) => new Date(iso).toLocaleDateString("en-GB",
 
 export default async function RosterPage() {
   const learner = await currentLearner();
+  if (!permits(learner.role, "faculty")) notFound();
   const admin = learner.role === "admin";
   const rows = await roster(learner.cohortId);
   const invites = admin ? await listInvites(learner.cohortId) : [];

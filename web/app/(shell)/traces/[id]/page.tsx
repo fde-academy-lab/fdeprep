@@ -2,9 +2,10 @@
  * Screen S7, the trace replay viewer.
  *
  * docs/01 S7: on a failed Extreme submission the trace is available, because
- * the learning happens there even though the attempt is spent. So this page
- * never withholds the trace. What waits is the fixture author's annotation,
- * which the replay module gates.
+ * the learning happens there even though the attempt is spent. The replay
+ * module decides how much of it each reader gets: a learner reads the public
+ * cases and one anonymous row per unpublished case, and faculty and admins
+ * read every case.
  */
 import Link from "next/link";
 import type { Metadata, Route } from "next";
@@ -16,6 +17,7 @@ import { replayFor } from "@/lib/trace/replay";
 import { permits } from "@/lib/admin/guard";
 import { db } from "@/lib/db/pool";
 import { currentLearner } from "@/lib/session/current";
+import { readableSubmission } from "@/lib/session/records";
 import Replay from "./replay";
 
 export const dynamic = "force-dynamic";
@@ -28,22 +30,25 @@ export default async function TracePage({ params }: { params: Promise<{ id: stri
 
   const learner = await currentLearner();
 
-  // The enrolment comes from the session, so a learner cannot read another
-  // learner's trace by changing the number in the address bar. Faculty and
-  // admins read any learner's traces (docs/00 section 2), which is what the
-  // Trace links on Submissions and on a learner's admin page open.
+  // The viewer comes from the session, so a learner cannot read another
+  // learner's trace by changing the number in the address bar. Faculty read
+  // their own cohort's traces and admins any cohort's (docs/00 section 2,
+  // lib/session/records.ts), which is what the Trace links on Submissions and
+  // on a learner's admin page open. Until 8 October 2026 faculty read every
+  // cohort's here (S15.13).
+  if (!(await readableSubmission(learner, submissionId))) notFound();
   const { rows } = await db().query<{ slug: string; title: string; wall_ms: number | null }>(
     `select p.slug, p.title, s.wall_ms
        from submission s
-       join attempt a on a.id = s.attempt_id
        join problem_version v on v.id = s.problem_version_id
        join problem p on p.id = v.problem_id
-      where s.id = $1 and (a.enrolment_id = $2 or $3)`,
-    [submissionId, learner.enrolmentId, permits(learner.role, "faculty")]);
+      where s.id = $1`,
+    [submissionId]);
   const owner = rows[0];
   if (!owner) notFound();
 
-  const replay = await replayFor(submissionId);
+  const replay = await replayFor(submissionId,
+    { audience: permits(learner.role, "faculty") ? "faculty" : "learner" });
 
   return (
     <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-8 sm:px-6">

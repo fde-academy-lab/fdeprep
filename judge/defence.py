@@ -35,6 +35,8 @@ def judge_defence(
             "message": f"The defence runs to {words} words against a cap of {WORD_CAP}. "
                        f"Cut {words - WORD_CAP} words and submit again.",
             "criteria": [],
+            # The cap stopped it before any model call, so no prompt graded it.
+            "prompt": None,
         }
 
     criteria = [{"id": "d1", "label": criterion["label"], "weight": int(criterion["weight"]),
@@ -50,4 +52,5 @@ def judge_defence(
                       "evidence_quote": c.evidence_quote,
                       "quote_grounded": outcome.grounded[c.criterion_id]}
                      for c in outcome.criteria],
+        "prompt": outcome.prompt,
     }

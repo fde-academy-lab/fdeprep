@@ -22,7 +22,7 @@
  */
 import type { Pool, PoolClient } from "pg";
 import { inTransaction } from "../db/pool.ts";
-import { recomputeForEnrolment } from "../competency/score.ts";
+import { recomputeForEnrolment } from "./competency.ts";
 import { BANDS, bandScore, type Band } from "../policy/bands.ts";
 import type { Evaluation } from "./consolidate.ts";
 import { latestEvaluation } from "./record.ts";
@@ -49,6 +49,11 @@ export class NotOverridable extends Error {
   constructor(message: string) {
     super(message);
     this.name = "NotOverridable";
+  }
+
+  /** An evaluation that does not exist, and one the reviewer may not see, alike. */
+  static missing(evaluationId: number): NotOverridable {
+    return new NotOverridable(`Evaluation ${evaluationId} does not exist.`);
   }
 }
 
@@ -115,7 +120,7 @@ export async function overrideBand(
         where e.id = $1`, [input.evaluationId]);
 
     const row = rows[0];
-    if (!row) throw new NotOverridable(`Evaluation ${input.evaluationId} does not exist.`);
+    if (!row) throw NotOverridable.missing(input.evaluationId);
     if (row.state === "error") {
       throw new NotOverridable(
         `Evaluation ${input.evaluationId} is an error, so there is no grade to correct. ` +
@@ -131,14 +136,16 @@ export async function overrideBand(
 
     // A new row rather than an edit, and written here rather than through
     // saveEvaluation so the rise-only floor does not apply. See the module note.
+    // The judge prompt comes across with the panel it belongs to: the seats
+    // are the corrected row's, so the prompt their judge graded with is too.
     const inserted = await tx.query<{ id: string }>(
       `insert into evaluation
          (submission_id, enrolment_id, complexity, state, verdict, score,
           score_provisional, confidence, band, panel, disagreement, feedback_md,
-          overridden_by, override_note)
+          overridden_by, override_note, judge_prompt)
        select $1, e.enrolment_id, e.complexity, 'complete',
               coalesce($2::verdict, e.verdict), $3, false, 'high', $4,
-              $5::jsonb, null, e.feedback_md, $6, $7
+              $5::jsonb, null, e.feedback_md, $6, $7, e.judge_prompt
          from evaluation e where e.id = $8
        returning id`,
       [submissionId, verdict, score, input.band,

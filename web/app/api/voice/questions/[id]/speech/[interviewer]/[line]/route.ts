@@ -29,8 +29,8 @@ export async function GET(
   _request: Request,
   { params }: { params: Promise<{ id: string; interviewer: string; line: string }> },
 ) {
-  // The proxy only checks that a cookie is present. This is the check that
-  // the cookie is real, and it comes before anything that could call Polly.
+  // The proxy has checked the cookie's signature. This is the check that it
+  // names somebody enrolled, and it comes before anything that could call Polly.
   if (!(await learnerOrNull())) {
     return NextResponse.json(
       { message: "Your session has ended. Sign in again to continue." }, { status: 401 });

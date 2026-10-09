@@ -14,6 +14,13 @@
  * cached once per voice and text in voice_spoken_line. Without it the
  * deployment's own voice speaks it, as before, cached on the follow-up row.
  * The slug picks a voice from the server's own list and nothing more.
+ *
+ * Only a follow-up still in its question's file, on a question that is
+ * published, is spoken. An id nobody holds, a question that is not published
+ * and a follow-up the file dropped get the same 404, before Polly is asked
+ * anything and before anything is cached. Until 9 October 2026 this spoke and
+ * cached any question's follow-ups by id (S15.13). The docs give staff no
+ * preview of unpublished voice content, so the rule has no exception.
  */
 import { NextResponse } from "next/server";
 import { db } from "@/lib/db/pool";
@@ -23,25 +30,30 @@ import { ensureFollowUpAudio, followUpAudio, spokenLineAudio } from "@/lib/voice
 
 export const dynamic = "force-dynamic";
 
-/** The follow-up in the chosen interviewer's voice, or null when there is no
- *  such follow-up or no speech is configured. */
-async function inInterviewersVoice(questionId: number, followUpId: number, slug: string) {
-  const interviewer = await resolveInterviewer(slug);
+/** The follow-up's words, when anyone may hear them, or null. */
+async function speakable(questionId: number, followUpId: number): Promise<string | null> {
+  if (!Number.isSafeInteger(questionId) || !Number.isSafeInteger(followUpId)) return null;
   const { rows } = await db().query<{ text: string }>(
-    `select text from voice_follow_up
-      where id = $1 and voice_question_id = $2 and retired_at is null`,
+    `select f.text from voice_follow_up f
+       join voice_question q on q.id = f.voice_question_id
+      where f.id = $1 and f.voice_question_id = $2 and f.retired_at is null and q.is_published`,
     [followUpId, questionId]);
+  return rows[0]?.text ?? null;
+}
+
+/** The follow-up in the chosen interviewer's voice, or null when no speech is configured. */
+async function inInterviewersVoice(text: string, slug: string) {
+  const interviewer = await resolveInterviewer(slug);
   const voice = await speakingVoice(interviewer);
-  if (!rows[0] || !voice) return null;
-  return spokenLineAudio(rows[0].text, voice);
+  return voice ? spokenLineAudio(text, voice) : null;
 }
 
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string; followUpId: string }> },
 ) {
-  // The proxy only checks that a cookie is present. This is the check that
-  // the cookie is real, and it comes before anything that could call Polly.
+  // The proxy has checked the cookie's signature. This is the check that it
+  // names somebody enrolled, and it comes before anything that could call Polly.
   if (!(await learnerOrNull())) {
     return NextResponse.json(
       { message: "Your session has ended. Sign in again to continue." }, { status: 401 });
@@ -52,8 +64,13 @@ export async function GET(
 
   let audio: Awaited<ReturnType<typeof followUpAudio>>;
   try {
+    const text = await speakable(questionId, Number(followUpId));
+    if (text === null) {
+      return NextResponse.json(
+        { message: "That follow-up is not available, so it is shown as text." }, { status: 404 });
+    }
     if (interviewer) {
-      audio = await inInterviewersVoice(questionId, Number(followUpId), interviewer);
+      audio = await inInterviewersVoice(text, interviewer);
     } else {
       await ensureFollowUpAudio(questionId);
       audio = await followUpAudio(questionId, Number(followUpId));

@@ -181,6 +181,26 @@ export const SCREEN_CONDITIONS: Tier = {
 };
 
 /**
+ * The tier a finished submission's result reads under, which decides what a
+ * learner reads of its hidden and adversarial cases (docs/00 section 3.2).
+ *
+ * A rehearsal submit ran under screen conditions whatever the problem's own
+ * tier. So does every result on a problem while the learner sits a rehearsal
+ * that holds it, the rule the coach already keeps, because a sitting shows
+ * nothing about the tests and its Attempts tab lists the practice submits made
+ * before it. Every other result reads under the problem's tier.
+ *
+ * Added 8 October 2026. Until then the results view and the Attempts tab
+ * reported the hidden and adversarial counts on every tier.
+ */
+export function tierForResult(
+  difficulty: Difficulty, options: { kind: string; sitting: boolean },
+): Tier {
+  return options.kind === "rehearsal_submit" || options.sitting
+    ? SCREEN_CONDITIONS : tierFor(difficulty);
+}
+
+/**
  * Tiers whose clean cells are the evidence a real screen asks for.
  *
  * docs/12 section 2: screen_ready needs readiness of seventy percent or more
@@ -189,6 +209,34 @@ export const SCREEN_CONDITIONS: Tier = {
  * readiness reader asks this rather than naming tiers itself.
  */
 export const SCREEN_EVIDENCE: readonly Difficulty[] = ["hard", "extreme"];
+
+/**
+ * The tier-specific thresholds in docs/11 section 5, which the calibration
+ * report reads. Null where the signal does not apply at that tier.
+ *
+ * A first-attempt pass rate above 90 percent is worth a look from Medium up,
+ * where a problem that nearly everybody passes first time is easier than its
+ * tier or has guessable hidden tests. Easy is meant to be passed. A hint
+ * reveal rate above 80 percent is worth a look on Easy, where the stub and the
+ * step checklist should carry a learner without one.
+ */
+export interface CalibrationThresholds {
+  firstPassAbove: number | null;
+  hintRevealAbove: number | null;
+}
+
+const CALIBRATION: Readonly<Record<Difficulty, CalibrationThresholds>> = {
+  easy: { firstPassAbove: null, hintRevealAbove: 0.8 },
+  medium: { firstPassAbove: 0.9, hintRevealAbove: null },
+  hard: { firstPassAbove: 0.9, hintRevealAbove: null },
+  extreme: { firstPassAbove: 0.9, hintRevealAbove: null },
+};
+
+export function calibrationFor(difficulty: Difficulty): CalibrationThresholds {
+  const thresholds = CALIBRATION[difficulty];
+  if (!thresholds) throw new Error(`no calibration thresholds for difficulty ${difficulty}`);
+  return thresholds;
+}
 
 /**
  * Build one value per tier, in ladder order.
