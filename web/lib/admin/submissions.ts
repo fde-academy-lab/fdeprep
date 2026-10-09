@@ -15,6 +15,12 @@ export interface SubmissionFilters {
   since?: string;
   page?: number;
   perPage?: number;
+  /**
+   * The cohort the list is limited to, from the viewer's session and never
+   * from the address: staffCohort in lib/session/records.ts, which is the
+   * viewer's own for faculty and null for an admin, who reads every cohort.
+   */
+  cohortId?: number | null;
 }
 
 export interface BrowserRow {
@@ -61,6 +67,7 @@ export async function browseSubmissions(
     else add("s.verdict = $?::verdict", filters.verdict);
   }
   if (filters.since) add("s.queued_at >= $?::timestamptz", filters.since);
+  if (filters.cohortId !== undefined && filters.cohortId !== null) add("e.cohort_id = $?", filters.cohortId);
 
   const clause = where.length ? `where ${where.join(" and ")}` : "";
 

@@ -9,13 +9,21 @@
  *
  * Read the row left to right and the question answers itself: this learner got
  * `held`, one panelist said so and another said something two steps away.
+ *
+ * Faculty see their own cohort's queue and admins every cohort's
+ * (lib/session/records.ts). The page checks the role itself, because the
+ * admin layout does not stop the page under it from rendering (S15.13).
  */
 import Link from "next/link";
 import type { Metadata, Route } from "next";
+import { notFound } from "next/navigation";
 import { Scale, SearchX } from "lucide-react";
+import { permits } from "@/lib/admin/guard";
 import { disagreementQueue, type Disposition, type QueueFilter } from "@/lib/eval/review";
 import { BAND_WORD } from "@/lib/policy/bands";
 import { relativeDay } from "@/lib/progress/summary";
+import { currentLearner } from "@/lib/session/current";
+import { staffCohort } from "@/lib/session/records";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { EmptyState } from "@/components/ui/empty-state";
 import { Field, Input, Select } from "@/components/ui/field";
@@ -52,6 +60,8 @@ function isFilter(value: string): value is QueueFilter {
 export default async function DisagreementsPage({ searchParams }: {
   searchParams: Promise<Params>;
 }) {
+  const viewer = await currentLearner();
+  if (!permits(viewer.role, "faculty")) notFound();
   const params = await searchParams;
   const chosen = one(params, "show");
   const disposition: QueueFilter = isFilter(chosen) ? chosen : "open";
@@ -60,6 +70,7 @@ export default async function DisagreementsPage({ searchParams }: {
   const queue = await disagreementQueue({
     disposition,
     slug: slug || undefined,
+    cohortId: staffCohort(viewer),
   });
 
   return (

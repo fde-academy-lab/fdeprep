@@ -56,6 +56,8 @@ vi.mock("@aws-sdk/client-s3", async (importOriginal) => {
 
 import { mintSession, SESSION_TTL_S } from "../lib/auth/session.ts";
 import { closeDb, db } from "../lib/db/pool.ts";
+import type { Evaluation } from "../lib/eval/consolidate.ts";
+import { saveEvaluation } from "../lib/eval/record.ts";
 import { mayRead } from "../lib/session/records.ts";
 import { importVoiceQuestion } from "../lib/voice/import.ts";
 import * as submissionRoute from "../app/api/submissions/[id]/route.ts";
@@ -64,9 +66,13 @@ import * as audioRoute from "../app/api/voice/sessions/[id]/audio/route.ts";
 import * as shareRoute from "../app/api/voice/sessions/[id]/share/route.ts";
 import * as finishRoute from "../app/api/voice/sessions/[id]/finish/route.ts";
 import * as turnAudioRoute from "../app/api/voice/sessions/[id]/turns/[ordinal]/audio/route.ts";
+import * as overrideRoute from "../app/api/admin/evaluations/[id]/override/route.ts";
+import * as reviewRoute from "../app/api/admin/evaluations/[id]/review/route.ts";
 import TracePage from "../app/(shell)/traces/[id]/page.tsx";
 import DebriefPage from "../app/(shell)/voice/sessions/[id]/page.tsx";
 import SubmissionRecordPage from "../app/(shell)/admin/submissions/[id]/page.tsx";
+import SubmissionsPage from "../app/(shell)/admin/submissions/page.tsx";
+import DisagreementsPage from "../app/(shell)/admin/disagreements/page.tsx";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 
 const SECRET = "record-access-signing-secret";
@@ -92,6 +98,7 @@ let otherFaculty: Seeded;   // Fin, faculty of cohort 4
 let admin: Seeded;          // Ada, an admin enrolled in cohort 4
 let submissionId = 0;
 let sessionId = 0;
+let evaluationId = 0;
 
 const saved = {
   secret: process.env.AUTH_SECRET,
@@ -163,6 +170,13 @@ const writes = {
     { transcript: "", segments: [], timeline: { beats: [], nudges: [] } }), params(id)),
 };
 
+const staffActions = {
+  review: (id: number) => reviewRoute.POST(post(`/api/admin/evaluations/${id}/review`,
+    { disposition: "upheld", note: "The held band matches the answer." }), params(id)),
+  override: (id: number) => overrideRoute.POST(post(`/api/admin/evaluations/${id}/override`,
+    { band: "adequate", note: "The answer names the stop condition the rubric asks for." }), params(id)),
+};
+
 async function setShared(shared: boolean): Promise<void> {
   if (shared) {
     await db().query(
@@ -221,6 +235,21 @@ beforeAll(async () => {
      returning id`, [attempt!.id, problem!.version_id, JSON.stringify(result)]);
   submissionId = Number(submission!.id);
 
+  // A grade the panel argued over, so the review and the override have
+  // something to act on.
+  const evaluation: Evaluation = {
+    submissionId, complexity: "C4", state: "complete", verdict: "pass", score: 40,
+    scoreProvisional: false, confidence: "low", band: "weak",
+    panel: [
+      { panelist: "static", status: "ran", ms: 3, findings: [], verdict: "pass", scoreContribution: 40 },
+      { panelist: "pretrained", status: "ran", ms: 180, findings: [], band: "weak" },
+      { panelist: "llm", status: "ran", ms: 900, findings: [], band: "strong" },
+    ],
+    disagreement: { bands: ["weak", "strong"], held: "weak" },
+    feedbackMd: "One voice.",
+  };
+  evaluationId = await saveEvaluation(evaluation, owner.enrolmentId, db());
+
   // The owner's spoken answer, finished, with its recording in the bucket.
   await importVoiceQuestion(await readFile(path.join(VOICE, QUESTION), "utf8"), QUESTION);
   const { rows: [question] } = await db().query<{ id: string }>("select id from voice_question limit 1");
@@ -263,6 +292,8 @@ describe("a forged cookie gets what no cookie gets", () => {
       [name, () => call(name === "submission" || name === "events" ? submissionId : sessionId)]),
     ...Object.entries(writes).map(([name, call]): [string, () => Promise<Response>] =>
       [name, () => call(sessionId)]),
+    ...Object.entries(staffActions).map(([name, call]): [string, () => Promise<Response>] =>
+      [name, () => call(evaluationId)]),
   ];
 
   for (const [name, call] of routes) {
@@ -380,6 +411,18 @@ describe("faculty of the owner's cohort", () => {
     }
     expect(aws.objects.has("voice/answers/record-access.webm")).toBe(true);
   });
+
+  it("find the learner's rows on Submissions and on Disagreements", async () => {
+    signIn(faculty);
+    expect(text(await html(SubmissionsPage({ searchParams: Promise.resolve({}) })))).toContain("bea-owner");
+    expect(text(await html(DisagreementsPage({ searchParams: Promise.resolve({ show: "all" }) }))))
+      .toContain("bea-owner");
+  });
+
+  it("settle the disagreement", async () => {
+    signIn(faculty);
+    expect((await staffActions.review(evaluationId)).status).toBe(200);
+  });
 });
 
 describe("faculty of another cohort", () => {
@@ -400,6 +443,25 @@ describe("faculty of another cohort", () => {
     await expect(DebriefPage(params(sessionId))).rejects.toMatchObject(NOT_FOUND);
     await expect(SubmissionRecordPage(params(submissionId))).rejects.toMatchObject(NOT_FOUND);
   });
+
+  it("cannot review or correct a grade in another cohort, and learn nothing by trying", async () => {
+    signIn(otherFaculty);
+    for (const [name, call] of Object.entries(staffActions)) {
+      const answer = await observed(await call(evaluationId), evaluationId);
+      expect(answer.status, name).toBe(404);
+      expect(answer, name).toEqual(await observed(await call(MISSING), MISSING));
+    }
+    const { rows } = await db().query(
+      "select 1 from audit_log where actor_id = $1", [otherFaculty.userId]);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("do not find the learner on Submissions or on Disagreements", async () => {
+    signIn(otherFaculty);
+    expect(text(await html(SubmissionsPage({ searchParams: Promise.resolve({}) })))).not.toContain("bea-owner");
+    expect(text(await html(DisagreementsPage({ searchParams: Promise.resolve({ show: "all" }) }))))
+      .not.toContain("bea-owner");
+  });
 });
 
 describe("an admin, who reads every cohort", () => {
@@ -410,6 +472,7 @@ describe("an admin, who reads every cohort", () => {
     expect(text(await html(TracePage(params(submissionId))))).toContain("Trace replay");
     expect(text(await html(SubmissionRecordPage(params(submissionId))))).toContain(`Submission ${submissionId}`);
     expect((await reads.audio(sessionId)).status).toBe(200);
+    expect(text(await html(SubmissionsPage({ searchParams: Promise.resolve({}) })))).toContain("bea-owner");
   });
 });
 
@@ -428,5 +491,14 @@ describe("the owner", () => {
     expect(debrief).toContain(TRANSCRIPT);
     expect(debrief).toContain("Let faculty hear this one session.");
     expect(debrief).toContain("Answer it again");
+  });
+});
+
+// Last, because a correction settles the disagreement and takes the row off
+// the queue the checks above read.
+describe("a correction", () => {
+  it("is open to faculty of the learner's cohort", async () => {
+    signIn(faculty);
+    expect((await staffActions.override(evaluationId)).status).toBe(200);
   });
 });

@@ -6,10 +6,15 @@
  *
  * Sorting is a query parameter on a plain link, as the Problems filters are,
  * so the page works without JavaScript.
+ *
+ * The page checks the role itself, because the admin layout does not stop
+ * the page under it from rendering (S15.13).
  */
 import Link from "next/link";
 import type { Metadata, Route } from "next";
+import { notFound } from "next/navigation";
 import { ArrowDown, ArrowUp, Download, Users } from "lucide-react";
+import { permits } from "@/lib/admin/guard";
 import {
   overview, sortRows, type OverviewSort, type SortDirection,
 } from "@/lib/admin/overview";
@@ -36,6 +41,7 @@ export default async function OverviewPage({ searchParams }: { searchParams: Pro
   const direction: SortDirection = one(params, "dir") === "asc" ? "asc" : "desc";
 
   const learner = await currentLearner();
+  if (!permits(learner.role, "faculty")) notFound();
   const cohort = await overview(learner.cohortId);
   const rows = sortRows(cohort.rows, sort, direction);
 
