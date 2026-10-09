@@ -30,7 +30,7 @@ const LOOK: Record<StepType, { icon: LucideIcon; label: string }> = {
   refused: { icon: Ban, label: "Refused call" },
   error: { icon: CircleAlert, label: "Error" },
   marker: { icon: MapPin, label: "Marker" },
-  withheld: { icon: EyeOff, label: "Unpublished case" },
+  withheld: { icon: EyeOff, label: "Hidden or adversarial case" },
 };
 
 const words = (name: string | null) => (name ?? "").replace(/_/g, " ");
@@ -98,7 +98,7 @@ export default function Replay({ replay }: { replay: ReplayData }) {
                 ) : null}
                 {firstWithheld ? (
                   <p className="px-4 pb-1 pt-3 text-meta font-medium text-text-faint">
-                    Cases you cannot see
+                    Hidden and adversarial cases
                   </p>
                 ) : null}
                 <button id={`trace-step-${position}`} type="button" onClick={() => setIndex(position)}

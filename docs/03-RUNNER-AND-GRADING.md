@@ -479,7 +479,7 @@ A submission's trace holds one entry per case that ran, in the order it ran, and
             "trace": {"steps": [], "flags": [], "truncated": false}}]}
 ```
 
-`battery` and `status` were added 8 October 2026 for the replay rule in section 5, because the stored result leaves a hidden case's name out until the learner passes. A trace stored before then has neither, and the replay reads each case's battery from the problem version's own case list, treating a case the list does not hold as unpublished.
+`battery` and `status` were added 8 October 2026 for the replay rule in section 5, because the stored result leaves a hidden case's name out until the learner passes. A trace stored before then has neither, and the replay reads each case's battery from the problem version's own case list, treating a case the list does not hold as hidden.
 
 ---
 

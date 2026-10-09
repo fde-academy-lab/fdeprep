@@ -15,7 +15,7 @@
  *
  * A case is public to a learner only when the problem version lists it as
  * public and the runner, where it says, ran it in the public battery. A case
- * the problem does not list is read as unpublished.
+ * the problem does not list is read as hidden.
  *
  * Two kinds of annotation reach a step and they are gated differently.
  *
@@ -152,8 +152,9 @@ export async function replayFor(
       const ran = batteryOf(raw["battery"]);
       const readable = faculty || (known?.visibility === "public" && (ran === null || ran === "public"));
       const battery = readable ? known?.visibility ?? ran
-        // An unpublished case's row never says public, whichever source did.
-        : [known?.visibility ?? null, ran].find((b) => b !== null && b !== "public") ?? null;
+        // An unpublished case's row never says public, whichever source did,
+        // and a case neither source places reads as hidden.
+        : [known?.visibility ?? null, ran].find((b) => b !== null && b !== "public") ?? "hidden";
       return {
         name, battery,
         status: statusOf(raw["status"]) ?? settled(battery ? gates[battery] : undefined),
@@ -174,7 +175,7 @@ export async function replayFor(
   const groups = new Map<string, Entry[]>();
   for (const entry of visible) {
     if (entry.readable) continue;
-    const key = entry.battery ?? "unpublished";
+    const key = label(entry.battery);
     groups.set(key, [...(groups.get(key) ?? []), entry]);
   }
 
@@ -201,7 +202,7 @@ export async function replayFor(
       continue;
     }
 
-    const group = groups.get(entry.battery ?? "unpublished")!;
+    const group = groups.get(label(entry.battery))!;
     if (counted) {
       steps.push(withheldRow(steps.length, entry, {
         summary: `${label(entry.battery)} case ${group.indexOf(entry) + 1} of ${group.length}: ` +
@@ -251,8 +252,9 @@ function withheldRow(
   };
 }
 
+/** An unpublished case's battery as its row names it. Every such case is hidden or adversarial. */
 function label(battery: Battery | null): string {
-  return battery === "adversarial" ? "Adversarial" : battery === "hidden" ? "Hidden" : "Unpublished";
+  return battery === "adversarial" ? "Adversarial" : "Hidden";
 }
 
 function outcome(status: "pass" | "fail" | null): string {

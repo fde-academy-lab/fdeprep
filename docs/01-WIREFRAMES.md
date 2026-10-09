@@ -262,7 +262,7 @@ Rules:
 | Learner, where the tier shows no hidden count | It shows in full. | A battery's cases share one row, such as "Adversarial cases: at least one failed", because a row per case would count them. This holds on Extreme, for a rehearsal submit, and for any result on a problem while the learner sits a rehearsal that holds it. |
 | Faculty and admins | It shows in full. | It shows in full, with its battery and its outcome. |
 
-The replay builder on the server (`web/lib/trace/replay.ts`) does the cutting, so nothing of an unpublished case reaches a learner's browser, and the stored trace keeps every case for faculty and for an appeal. A Run's replay holds its public cases and no row for any other, because a Run never runs one. The fixture author's annotation reaches a learner on its case's row once the attempt closes, on a pass or a give-up, which keeps the annotation rule above; faculty read it at any time. The header's call counts and the flags cover the cases the reader reads in full.
+The replay builder on the server (`web/lib/trace/replay.ts`) does the cutting, so nothing of an unpublished case reaches a learner's browser, and the stored trace keeps every case for faculty and for an appeal. A Run's replay holds its public cases and no row for any other, because a Run never runs one. The fixture author's annotation reaches a learner on the row that stands for its case once the attempt closes, on a pass or a give-up, which keeps the annotation rule above; faculty read it at any time. A case the problem version does not list reads as hidden. The header's call counts and the flags cover the cases the reader reads in full.
 
 ---
 

@@ -267,7 +267,7 @@ describe("a learner's replay on a tier that shows the hidden count", () => {
     // What the page draws from it: the rows under their own heading, and no
     // secret, since none reached the props.
     const page = renderToStaticMarkup(createElement(ReplayView, { replay }));
-    expect(page).toContain("Cases you cannot see");
+    expect(page).toContain("Hidden and adversarial cases");
     expect(page).toContain("Hidden case 2 of 2: failed");
     expect(page).not.toContain("secret question");
   });
@@ -299,8 +299,8 @@ describe("a learner's replay on a tier that shows the hidden count", () => {
     const replay = await replayFor(id);
 
     expect(shownCases(replay)).toEqual(["public_one"]);
-    expect(withheld(replay)).toHaveLength(1);
-    expect(withheld(replay)[0]!.battery).toBeNull();
+    expect(withheld(replay).map((s) => [s.battery, s.summary]))
+      .toEqual([["hidden", "Hidden case 1 of 1: passed"]]);
     expect(JSON.stringify(replay)).not.toContain("stray secret");
     expect(JSON.stringify(replay)).not.toContain("not_in_the_problem");
   });
