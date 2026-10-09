@@ -1908,8 +1908,9 @@ stages:
           cookie existed. Counting through ids read every learner's results,
           which after a pass carry hidden and adversarial case names and the
           probe messages. The audit that followed found faculty reading and
-          correcting other cohorts' traces, grades and recordings, and a
-          problem import faculty could publish through. One rule in
+          correcting other cohorts' traces, grades and recordings, a problem
+          import faculty could publish through, and voice follow-ups spoken
+          and cached for questions nobody had published. One rule in
           web/lib/session/records.ts now decides who reads whose work, and the
           proxy verifies the cookie's signature.
         acceptance:
@@ -1918,6 +1919,7 @@ stages:
           - Faculty read their own cohort's submissions, traces, evaluations and debriefs, hear a recording only once the learner shares it, and settle and correct only their own cohort's grades; an admin reads every cohort.
           - A test walks every route under web/app/api and fails on a handler that neither resolves the session through learnerOrNull, requireAdmin or requireFaculty nor sits on its commented list of public routes.
           - Both problem import actions refuse anyone but an admin.
+          - A follow-up on an unpublished question, or one its file dropped, answers as an unknown id before Polly is asked anything or anything is cached, tested by counting synthesis calls and stored objects.
 
   - id: S16
     name: Second version
