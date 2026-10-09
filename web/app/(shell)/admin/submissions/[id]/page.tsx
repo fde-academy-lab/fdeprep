@@ -15,6 +15,7 @@ import { permits } from "@/lib/admin/guard";
 import { evaluationHistory, type HistoryRow, type HistorySeat } from "@/lib/eval/history";
 import { BAND_WORD } from "@/lib/policy/bands";
 import { currentLearner } from "@/lib/session/current";
+import { readableSubmission } from "@/lib/session/records";
 import { EmptyState } from "@/components/ui/empty-state";
 import { PageHeading } from "@/components/ui/page";
 import { StatStrip } from "@/components/ui/stat-strip";
@@ -66,6 +67,10 @@ export default async function SubmissionRecordPage(props: Props) {
   const viewer = await currentLearner();
   const id = Number((await props.params).id);
   if (!permits(viewer.role, "faculty") || !Number.isInteger(id)) notFound();
+  // Faculty read their own cohort's record and admins any cohort's
+  // (lib/session/records.ts), and anything else is the 404 of a number
+  // nobody holds (S15.13).
+  if (!(await readableSubmission(viewer, id))) notFound();
 
   const record = await evaluationHistory(id);
   if (!record) notFound();

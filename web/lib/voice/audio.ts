@@ -11,7 +11,8 @@
  *   Immediate, irreversible, and the score stays: nothing here touches a
  *   score column. |
  * | Faculty access is not automatic | readAudio refuses unless the reader is
- *   the learner or the learner has shared that session. |
+ *   the learner, or the learner has shared that session and the reader is
+ *   faculty of the learner's cohort or an admin. |
  * | No audio leaves the account | The object never leaves S3 except through
  *   this application, which streams it. No signed URL is minted, so no
  *   address that works without this application exists. |
@@ -19,6 +20,7 @@
 import { DeleteObjectCommand, GetObjectCommand, PutObjectCommand, S3Client }
   from "@aws-sdk/client-s3";
 import { db } from "../db/pool.ts";
+import { mayRead, type Viewer } from "../session/records.ts";
 
 /** docs/07 section 9. Matched by the lifecycle rule in infra/, which is what
  *  actually deletes; this is the number the copy quotes so the two cannot
@@ -83,34 +85,33 @@ export async function storeAudio(input: {
 /**
  * Who may hear a recording.
  *
- * The learner, always. Faculty and admin only when the learner has shared
- * that one session and not withdrawn it. Everyone else, never. docs/07
- * section 9 is explicit that faculty access is not automatic, so this refuses
- * by default and the share is the only thing that opens it.
+ * The learner, always. Faculty of the learner's cohort and admins only when
+ * the learner has shared that one session and not withdrawn it. Everyone
+ * else, never. docs/07 section 9 is explicit that faculty access is not
+ * automatic, so this refuses by default and the share is the only thing that
+ * opens it. Until 8 October 2026 a share opened it to faculty of every cohort
+ * (S15.13); who may read the session at all is lib/session/records.ts.
  */
-export async function mayHear(input: {
-  sessionId: number;
-  enrolmentId: number;
-  role: "learner" | "faculty" | "admin";
-}): Promise<boolean> {
-  const { rows } = await db().query<{ owner: boolean; shared: boolean }>(
-    `select s.enrolment_id = $2 as owner,
+export async function mayHear(input: { sessionId: number; viewer: Viewer }): Promise<boolean> {
+  const { rows } = await db().query<{ enrolment_id: string; cohort_id: string; shared: boolean }>(
+    `select s.enrolment_id, e.cohort_id,
             coalesce(sh.id is not null and sh.withdrawn_at is null, false) as shared
        from voice_session s
+       join enrolment e on e.id = s.enrolment_id
        left join voice_session_share sh on sh.voice_session_id = s.id
       where s.id = $1`,
-    [input.sessionId, input.enrolmentId],
+    [input.sessionId],
   );
   const row = rows[0];
   if (!row) return false;
-  if (row.owner) return true;
-  return row.shared && (input.role === "faculty" || input.role === "admin");
+  const owner = { enrolmentId: Number(row.enrolment_id), cohortId: Number(row.cohort_id) };
+  if (owner.enrolmentId === input.viewer.enrolmentId) return true;
+  return row.shared && input.viewer.role !== "learner" && mayRead(input.viewer, owner);
 }
 
 export async function readAudio(input: {
   sessionId: number;
-  enrolmentId: number;
-  role: "learner" | "faculty" | "admin";
+  viewer: Viewer;
 }): Promise<{ body: Uint8Array; contentType: string } | null> {
   if (!(await mayHear(input))) {
     throw new AudioForbidden(
