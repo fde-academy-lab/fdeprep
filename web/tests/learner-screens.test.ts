@@ -166,7 +166,7 @@ describe("S2: Home", () => {
 
     expect(text(markup)).toContain("Next up Pick up where you left off");
     expect(markup.match(/aria-label="Open [^"]+"/g)).toHaveLength(3);
-    expect(text(recent)).toContain("Nothing finished yet. The run you started lands here with its result.");
+    expect(text(recent)).toContain("Nothing finished yet. Run or submit a problem and it lands here.");
     expect(recent.slice(recent.indexOf("Nothing finished"))).not.toMatch(/<a |<button/);
   });
 

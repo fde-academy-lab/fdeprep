@@ -77,23 +77,31 @@ export function topAndBottom(grid: Heatmap, limit = 4): CompetencyBar[] {
 export interface ActivityRow {
   slug: string;
   title: string;
+  /** The latest submit's verdict, as the attempt history reads it. */
   verdict: string | null;
+  /** False on a problem worked on with Runs and never submitted. */
+  submitted: boolean;
   whenLabel: string;
   submits: number;
 }
 
-/** The last few finished attempts, newest first. */
+/**
+ * The last few problems worked on, newest first: each one a submit settled,
+ * and each one worked on with Runs and never submitted, which reads as not
+ * submitted yet. A submit still waiting for its verdict waits for it here.
+ */
 export async function recentActivity(
   enrolmentId: number, limit = 5, client: Pool | PoolClient = db(),
 ): Promise<ActivityRow[]> {
   const rows = await attemptHistory(enrolmentId, client);
   return rows
-    .filter((row) => row.verdict !== null)
+    .filter((row) => row.verdict !== null || (!row.submitted && row.lastAt !== null))
     .slice(0, limit)
     .map((row) => ({
       slug: row.slug,
       title: row.title,
       verdict: row.verdict,
+      submitted: row.submitted,
       whenLabel: row.lastAt ? relativeDay(row.lastAt) : "",
       submits: row.submits,
     }));

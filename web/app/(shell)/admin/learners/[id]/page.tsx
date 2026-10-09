@@ -128,13 +128,13 @@ export default async function LearnerPage(props: Props) {
                         <StatusIcon kind={row.verdict === "pass" ? "pass" : "fail"} />
                         {row.verdict === "pass" ? "Passed" : "Not yet"}
                       </span>
-                    ) : row.lastAt ? (
+                    ) : row.submitted ? (
                       <span className="inline-flex items-center gap-1.5 text-text-dim">
                         <StatusIcon kind="queued" label="Waiting for a verdict" />
                         Waiting for a verdict
                       </span>
                     ) : (
-                      <span className="text-text-faint">Open</span>
+                      <span className="text-text-faint">{row.lastAt ? "Not submitted yet" : "Open"}</span>
                     )}
                   </Cell>
                   <Cell className="text-text-dim">{row.lastAt ? relativeDay(row.lastAt) : "Not run"}</Cell>
