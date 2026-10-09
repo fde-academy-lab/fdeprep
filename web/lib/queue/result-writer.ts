@@ -10,7 +10,7 @@
 import { parse } from "yaml";
 import { inTransaction } from "../db/pool.ts";
 import { applyForSubmission } from "../eval/competency.ts";
-import { complexityOf, panelistsFor } from "../eval/from-result.ts";
+import { complexityOf, EVALUATED_KINDS, panelistsFor } from "../eval/from-result.ts";
 import { rememberGraded } from "../eval/pretrained.ts";
 import { runPanel } from "../eval/panel.ts";
 import { saveEvaluation } from "../eval/record.ts";
@@ -167,8 +167,11 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
     // docs/10: the panel reads the gates the runner and the judge already ran
     // and writes one evaluation record. Inside this transaction so the two
     // normally land together, behind a savepoint so a panel failure costs the
-    // evaluation and never the verdict.
-    await evaluate(client, message.submission_id, contract);
+    // evaluation and never the verdict. Only a graded kind gets one: a Run
+    // carries no score, and eval/ says which kinds are graded.
+    if (EVALUATED_KINDS.has(submission?.kind ?? "")) {
+      await evaluate(client, message.submission_id, contract);
+    }
 
     await client.query(
       `insert into runner_event (submission_id, level, message, detail)

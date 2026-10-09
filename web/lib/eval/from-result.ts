@@ -12,6 +12,7 @@
  */
 import { parse } from "yaml";
 import { bandForScore } from "../policy/bands.ts";
+import { GRADED_KINDS } from "./competency.ts";
 import { authoredContext, runHeuristics } from "./heuristics.ts";
 import { pretrainedPanelist, type PretrainedOptions } from "./pretrained.ts";
 import { defaultComplexity, isComplexity, type Complexity } from "../policy/complexity.ts";
@@ -39,6 +40,18 @@ export interface ResultContract {
 
 /** Gates the runner and the judge own. Everything here is deterministic. */
 const STATIC_GATES = ["static", "public", "hidden", "adversarial", "probes"];
+
+/**
+ * The submission kinds that get an evaluation record.
+ *
+ * docs/10 turns a submission into a graded evaluation, and docs/02 section 4
+ * gives a graded submission its rows: a submit and a rehearsal submit, the
+ * full battery, and a defence, scored against the attempt. A Run is practice
+ * against the public cases and carries no score (docs/03 section 1.2). Until
+ * 8 October 2026 the result writer evaluated every finished submission and
+ * each Run left a record scored 0, which the report card counted.
+ */
+export const EVALUATED_KINDS: ReadonlySet<string> = new Set([...GRADED_KINDS, "defence"]);
 
 /** The one gate where a model's judgement lives. */
 const MODEL_GATE = "rubric";
@@ -146,7 +159,9 @@ export function staticPanelist(
         ms: 0,
         findings,
         verdict: verdict === "pass" ? "pass" : "fail",
-        scoreContribution: contract.score ?? null ? Number(contract.score) : 0,
+        // A result with no score contributes none. Reading null as 0 gave a
+        // Run's record a score of 0 before Runs stopped being evaluated.
+        scoreContribution: scoreOf(contract),
       };
     },
   };
@@ -279,4 +294,11 @@ function safeParse(source: string): unknown {
 
 function numberOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/** The result's score as a number, or undefined where it has none. */
+function scoreOf(contract: ResultContract): number | undefined {
+  if (contract.score === null || contract.score === undefined) return undefined;
+  const score = Number(contract.score);
+  return Number.isFinite(score) ? score : undefined;
 }
