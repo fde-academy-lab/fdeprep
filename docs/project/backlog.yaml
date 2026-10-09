@@ -1891,6 +1891,104 @@ stages:
           could turn passed into clean, both feeding the readiness signal.
         acceptance:
           - A passing Run, live run or defence leaves a cell at attempted at most, and a passing submit or rehearsal submit still earns its state, tested through the real write path.
+      - id: S15.14
+        title: Show the hidden count only on a tier that shows one, in every reader of a result
+        type: Bug
+        status: done
+        pr: 47
+        points: 3
+        area: Grading and judge
+        priority: P1
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          docs/00 section 3.2 says Extreme and screen conditions show nothing
+          about the tests. The results view returned the hidden and
+          adversarial counts on every tier and the Attempts tab printed them,
+          so an Extreme submit or a rehearsal submit read its hidden count, and
+          the result pane drew the adversarial count on Extreme.
+        acceptance:
+          - The policy module names the tier a result reads under, screen conditions for a rehearsal submit and for every result on a problem while a sitting holds it, and the results view applies it, so the result pane, the event stream, the polling route and the Attempts tab read one answer.
+          - On Extreme and under screen conditions the hidden and adversarial gates report whether they passed and no count or case name, even after a pass, while Easy, Medium and Hard keep the hidden count.
+          - The submission row keeps every count for faculty.
+      - id: S15.15
+        title: Give a learner's replay each unpublished case as an anonymous outcome row
+        type: Bug
+        status: done
+        pr: 47
+        points: 5
+        area: Grading and judge
+        priority: P0
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The runner put every case that ran into the trace, the writer stored
+          it whole and the replay returned every case's steps to whoever
+          opened it, so a learner read each hidden and adversarial case's name,
+          the prompts their code built from its input, the scripted model's
+          replies and every tool argument and output. That is enough to
+          publish a problem's hidden battery.
+        acceptance:
+          - A learner's replay shows each public case in full and each hidden or adversarial case as one anonymous row in the place it ran, saying how it ended, one row per battery where the tier shows no hidden count.
+          - Nothing of an unpublished case reaches a learner's browser, because the replay builder cuts the trace on the server, and a case the problem does not list as public reads as unpublished.
+          - Faculty and admins read every case in full with its battery and outcome, and the stored trace keeps every case.
+          - The fixture author's note reaches the learner on its case's row once the attempt closes.
+      - id: S15.16
+        title: Read a problem's result from its submits only, so a Run's pass never reads Passed
+        type: Bug
+        status: done
+        pr: 47
+        points: 3
+        area: Evaluation panel
+        priority: P1
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The attempt history behind Progress, Home, the CSV export and the
+          faculty learner page took the latest submission of any kind for its
+          result and the lowest call count of any passing submission for its
+          best budget, so a Run that passed the public cases read Passed, and
+          its call count over the public cases alone read as the budget to
+          beat.
+        acceptance:
+          - The result, the submit count and the best budget read submits and rehearsal submits only.
+          - A problem worked on with Runs and never submitted reads "Not submitted yet" on Progress, Home and the faculty learner page and "not submitted yet" in the CSV, and progress/ still writes nothing.
+      - id: S15.17
+        title: Send the attempt's revealed hints to the runner, so a code score carries the penalty
+        type: Bug
+        status: done
+        pr: 47
+        points: 2
+        area: Grading and judge
+        priority: P1
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          docs/03 section 5 takes 5 points off every score for each hint
+          revealed. The judge worker sent the count, and the runner worker
+          never did, so the runner took 0 and no code score carried the
+          penalty.
+        acceptance:
+          - The runner worker reads the attempt's revealed hints from the database and sends them with every event, and nothing the browser sends sets them.
+          - A submit after two hints scores exactly 10 points below the same code submitted before them, through the real runner.
+      - id: S15.18
+        title: Write no evaluation record for a Run
+        type: Bug
+        status: done
+        pr: 47
+        points: 2
+        area: Evaluation panel
+        priority: P2
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The result writer ran the panel over every finished submission and
+          panelist 1 read a missing score as 0, so each Run left an evaluation
+          record scored 0, which the report card's evaluation count and the
+          panel's health numbers counted.
+        acceptance:
+          - A Run gets no evaluation record while a submit, a rehearsal submit and a defence each get one, and the Run still moves its competency cell to attempted.
+          - A result with no score gives an evaluation with no score.
 
   - id: S16
     name: Second version

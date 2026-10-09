@@ -62,6 +62,11 @@ The column counts come from the stories in [backlog.yaml](backlog.yaml), and the
 | S15.10 | Make a Run execute the public cases only, as the spec always said | Reading | S15 First cohort | #47 | P0 Critical |
 | S15.11 | Read the judge's own score field, so real evaluations stop going partial | Reading | S15 First cohort | #47 | P0 Critical |
 | S15.12 | Let only a submit earn a passed or clean competency cell | Reading | S15 First cohort | #47 | P0 Critical |
+| S15.14 | Show the hidden count only on a tier that shows one, in every reader of a result | Reading | S15 First cohort | #47 | P1 High |
+| S15.15 | Give a learner's replay each unpublished case as an anonymous outcome row | Reading | S15 First cohort | #47 | P0 Critical |
+| S15.16 | Read a problem's result from its submits only, so a Run's pass never reads Passed | Reading | S15 First cohort | #47 | P1 High |
+| S15.17 | Send the attempt's revealed hints to the runner, so a code score carries the penalty | Reading | S15 First cohort | #47 | P1 High |
+| S15.18 | Write no evaluation record for a Run | Reading | S15 First cohort | #47 | P2 Medium |
 <!-- /generated:bugs -->
 
 ## What the pattern says
