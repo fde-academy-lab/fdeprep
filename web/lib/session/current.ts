@@ -12,9 +12,10 @@
  * role, a difficulty or a cap allowance. It supplies a signature over a user
  * id, and that is all.
  *
- * proxy.ts turns away a request with no cookie before it reaches a page, so
- * the redirect below is for the rarer cases: a cookie that expired between the
- * proxy and here, or one somebody edited.
+ * proxy.ts turns away a request whose cookie is missing or does not verify
+ * before it reaches a page, so the redirect below is for the rarer cases: a
+ * cookie that expired between the proxy and here, a user whose enrolment ended
+ * while the cookie stayed valid, or a request the proxy never saw.
  */
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";

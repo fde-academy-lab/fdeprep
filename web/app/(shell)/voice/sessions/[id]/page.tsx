@@ -12,6 +12,12 @@
  *
  * A typed answer has no clock, so it has no replay, no pace, no delivery and
  * no recording, and the page says so rather than showing zeros.
+ *
+ * Who reads it is lib/session/records.ts: the learner, faculty of their
+ * cohort and admins, since docs/07 section 9 and the consent screen promise
+ * faculty the transcript and the score. Staff read it as it stands. The
+ * recording controls and the links to answer again are the learner's, and
+ * staff hear the recording only once the learner shares it (S15.13).
  */
 import Link from "next/link";
 import type { Metadata, Route } from "next";
@@ -28,6 +34,7 @@ import { nextQuestionSlug } from "@/lib/voice/question";
 import { PANEL, seatedFor } from "@/lib/voice/interviewers";
 import type { DebriefRound } from "@/lib/voice/turns";
 import { currentLearner } from "@/lib/session/current";
+import { readableVoiceSession } from "@/lib/session/records";
 import { ButtonLink } from "@/components/ui/button";
 import { InterviewRoom } from "@/components/voice/room/room";
 import { AudioControls } from "./controls";
@@ -42,38 +49,53 @@ const PACE_LABEL: Record<string, string> = {
   never_reached: "never reached",
 };
 
-/** The tab carries the question's title, read from the learner's own session only. */
+/**
+ * The session the address names, when the signed-in viewer may read it, and
+ * whether it is the viewer's own. Null for a session that does not exist and
+ * for one the viewer may not read alike, so the two give the same 404.
+ */
+async function find(params: Promise<{ id: string }>) {
+  const learner = await currentLearner();
+  // An address with no session number in it names no session. Sent to the
+  // database it was a type error and a 500.
+  const sessionId = Number((await params).id);
+  if (!Number.isSafeInteger(sessionId) || sessionId <= 0) return null;
+  const owner = await readableVoiceSession(learner, sessionId);
+  if (!owner) return null;
+  return { learner, sessionId, owner, own: owner.enrolmentId === learner.enrolmentId };
+}
+
+/** The tab carries the question's title, for a session the viewer may read. */
 export async function generateMetadata(
   { params }: { params: Promise<{ id: string }> },
 ): Promise<Metadata> {
-  const sessionId = Number((await params).id);
-  if (!Number.isSafeInteger(sessionId) || sessionId <= 0) return { title: "Past answers" };
-  const learner = await currentLearner();
+  const found = await find(params);
+  if (!found) return { title: "Past answers" };
   const { rows } = await db().query<{ title: string }>(
     `select q.title from voice_session s join voice_question q on q.id = s.voice_question_id
-      where s.id = $1 and s.enrolment_id = $2`,
-    [sessionId, learner.enrolmentId]);
+      where s.id = $1`,
+    [found.sessionId]);
   return { title: rows[0]?.title ?? "Past answers" };
 }
 
 export default async function DebriefPage({ params }: { params: Promise<{ id: string }> }) {
-  const { id } = await params;
-  const learner = await currentLearner();
-  // An address with no session number in it names no session. Sent to the
-  // database it was a type error and a 500.
-  const sessionId = Number(id);
-  if (!Number.isSafeInteger(sessionId) || sessionId <= 0) notFound();
+  const found = await find(params);
+  if (!found) notFound();
+  const { learner, sessionId, owner, own } = found;
 
   // Faculty and admins also see how each follow-up round was made. The
   // learner sees who asked and what, in one voice.
   const staff = learner.role !== "learner";
   let debrief;
   try {
-    debrief = await loadDebrief(sessionId, learner.enrolmentId, { staff });
+    debrief = await loadDebrief(sessionId, owner.enrolmentId, { staff });
   } catch (error) {
     if (error instanceof DebriefNotFound) notFound();
     throw error;
   }
+  // The learner hears their own recording. Anyone else hears it only once the
+  // learner has shared this session, which the audio route checks again.
+  const audible = debrief.audio.available && (own || debrief.audio.shared);
   const seated = debrief.interviewer ? await seatedFor(debrief.interviewer.slug) : [];
 
   const typed = debrief.input === "typed";
@@ -114,17 +136,19 @@ export default async function DebriefPage({ params }: { params: Promise<{ id: st
                                                                  role: person.title }))} />
         </div>
       ) : null}
-      <div className="mt-4 flex flex-wrap gap-2.5">
-        <ButtonLink href={`/voice/session?${again.toString()}` as Route} size="sm">
-          Answer it again
-        </ButtonLink>
-        {next && next !== debrief.question.slug ? (
-          <ButtonLink href={`/voice/session?q=${next}&mode=${debrief.mode}`} size="sm" variant="ghost">
-            Next question
+      {own ? (
+        <div className="mt-4 flex flex-wrap gap-2.5">
+          <ButtonLink href={`/voice/session?${again.toString()}` as Route} size="sm">
+            Answer it again
           </ButtonLink>
-        ) : null}
-        <ButtonLink href="/voice" size="sm" variant="ghost">All questions</ButtonLink>
-      </div>
+          {next && next !== debrief.question.slug ? (
+            <ButtonLink href={`/voice/session?q=${next}&mode=${debrief.mode}`} size="sm" variant="ghost">
+              Next question
+            </ButtonLink>
+          ) : null}
+          <ButtonLink href="/voice" size="sm" variant="ghost">All questions</ButtonLink>
+        </div>
+      ) : null}
 
       <section className="results-pane mt-6 border border-border bg-surface p-4">
         {debrief.scored && debrief.score ? (
@@ -163,7 +187,7 @@ export default async function DebriefPage({ params }: { params: Promise<{ id: st
             beats={replayBeats}
             nudges={debrief.nudges}
             durationMs={debrief.durationMs}
-            audioUrl={debrief.audio.available ? `/api/voice/sessions/${debrief.sessionId}/audio` : null}
+            audioUrl={audible ? `/api/voice/sessions/${debrief.sessionId}/audio` : null}
             showsNudges={debrief.mode !== "unguided"}
           />
         </div>
@@ -286,13 +310,13 @@ export default async function DebriefPage({ params }: { params: Promise<{ id: st
         </Panel>
       ) : null}
 
-      <Panel title={typed ? "Your answer" : "Transcript"}>
+      <Panel title={typed ? (own ? "Your answer" : "The answer") : "Transcript"}>
         <p className="whitespace-pre-wrap text-text-dim">
           {debrief.transcript || "Nothing was transcribed."}
         </p>
       </Panel>
 
-      {typed ? null : (
+      {typed ? null : own ? (
         <Panel title="Your recording">
           <AudioControls
             sessionId={debrief.sessionId}
@@ -302,9 +326,25 @@ export default async function DebriefPage({ params }: { params: Promise<{ id: st
             retentionDays={RETENTION_DAYS}
           />
         </Panel>
+      ) : (
+        <Panel title="Recording">
+          <p className="text-text-dim">{recordingForStaff(debrief.audio)}</p>
+        </Panel>
       )}
     </main>
   );
+}
+
+/**
+ * What faculty read where the learner reads their recording controls. The
+ * share is the learner's to give (docs/07 section 9), so the next action
+ * named is asking for it.
+ */
+function recordingForStaff(audio: { available: boolean; deletedAt: string | null; shared: boolean }): string {
+  if (audio.deletedAt) return "The learner deleted this recording. The transcript and the score stay.";
+  if (!audio.available) return "No recording was stored for this session. The replay above runs on its own clock.";
+  if (audio.shared) return "The learner shared this recording with faculty, and it plays in the replay above.";
+  return "The learner has not shared this recording. Ask them to share it from their debrief if you need to hear it.";
 }
 
 /** "A, B and C", the way the panel's members are named in a sentence. */

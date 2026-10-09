@@ -5,7 +5,8 @@
  * saying what it said then, with its date and its hash. Faculty and admins,
  * and only a card from the viewer's cohort.
  */
-import { Forbidden, requireFaculty } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireFaculty } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 import { reportCard, reportCardMarkdown } from "@/lib/analytics/report-card";
 import { publicOrigin } from "@/lib/http/public-url";
 
@@ -35,6 +36,7 @@ export async function GET(
       },
     });
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden) return plain(error.message, error.status);
     throw error;
   }

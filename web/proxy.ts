@@ -1,19 +1,25 @@
 /**
- * Turn away anyone with no session before a page renders.
+ * Turn away anyone without a verified session before a page renders.
  *
- * This is a redirect, not the security boundary. Next's own guidance is that
- * proxy code runs separately from render code and may be pushed to a CDN, so
- * it does not read the database and does not verify the signature. It checks
- * that a cookie is present and nothing more.
+ * The proxy checks the cookie's signature and expiry with Web Crypto and the
+ * signing secret (lib/auth/session-web.ts), so a forged or expired cookie
+ * gets exactly what a missing one gets: a redirect to sign in for a page, a
+ * 401 for an API call. Until 8 October 2026 it checked only that a cookie with
+ * the right name existed, and two routes took that as enough (S15.13).
  *
- * Verification happens in lib/session/current.ts, on the server, with the
- * database in reach. A forged cookie gets past here and is refused there,
- * which is the right split: this saves a render, that decides access.
+ * The routes hold the boundary. Next's guidance is that proxy code may run
+ * apart from the rest of the application, so this file reads no database: it
+ * cannot know whether the enrolment is still active or whose record a route is
+ * about to read. Every route and page verifies the cookie again through
+ * lib/session/current.ts and checks who may read the record it loads
+ * (lib/session/records.ts). tests/route-sessions.test.ts fails on any API
+ * route that leaves that to this file.
  */
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { SESSION_COOKIE } from "./lib/auth/session.ts";
+import { SESSION_COOKIE, verifiedSessionUid } from "./lib/auth/session-web.ts";
 import { devLearnerEnabled } from "./lib/auth/config.ts";
+import { SIGNED_OUT } from "./lib/http/failure.ts";
 
 /** Reachable with no session: the sign-in screen and the OAuth round trip
  *  itself, or signing in would require being signed in. */
@@ -21,12 +27,16 @@ import { devLearnerEnabled } from "./lib/auth/config.ts";
 // signed in yet; it says whether the link is still good and nothing more.
 const OPEN = ["/signin", "/api/auth/", "/invite/"];
 
-export function proxy(request: NextRequest): NextResponse {
+export async function proxy(request: NextRequest): Promise<NextResponse> {
   const { pathname } = request.nextUrl;
   if (OPEN.some((prefix) => pathname === prefix || pathname.startsWith(prefix))) {
     return NextResponse.next();
   }
-  if (request.cookies.has(SESSION_COOKIE)) return NextResponse.next();
+
+  // The secret is read from the environment on every request, as
+  // lib/auth/config.ts reads it, and a deployment without one verifies nothing.
+  const cookie = request.cookies.get(SESSION_COOKIE)?.value;
+  if (await verifiedSessionUid(cookie, process.env.AUTH_SECRET) !== null) return NextResponse.next();
 
   // A laptop running without a GitHub application has no cookie to present and
   // never will, so turning it away here would leave every screen shut with no
@@ -38,8 +48,7 @@ export function proxy(request: NextRequest): NextResponse {
   // A fetch cannot do anything with a redirect to an HTML page, so the two
   // answer differently. Both refuse.
   if (pathname.startsWith("/api/")) {
-    return NextResponse.json(
-      { message: "Your session has ended. Sign in again to continue." }, { status: 401 });
+    return NextResponse.json({ message: SIGNED_OUT }, { status: 401 });
   }
 
   const signin = new URL("/signin", request.url);

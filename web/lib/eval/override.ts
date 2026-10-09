@@ -50,6 +50,11 @@ export class NotOverridable extends Error {
     super(message);
     this.name = "NotOverridable";
   }
+
+  /** An evaluation that does not exist, and one the reviewer may not see, alike. */
+  static missing(evaluationId: number): NotOverridable {
+    return new NotOverridable(`Evaluation ${evaluationId} does not exist.`);
+  }
 }
 
 export interface OverrideInput {
@@ -115,7 +120,7 @@ export async function overrideBand(
         where e.id = $1`, [input.evaluationId]);
 
     const row = rows[0];
-    if (!row) throw new NotOverridable(`Evaluation ${input.evaluationId} does not exist.`);
+    if (!row) throw NotOverridable.missing(input.evaluationId);
     if (row.state === "error") {
       throw new NotOverridable(
         `Evaluation ${input.evaluationId} is an error, so there is no grade to correct. ` +

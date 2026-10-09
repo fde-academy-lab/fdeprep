@@ -88,6 +88,12 @@ export interface QueueFilters {
   disposition?: QueueFilter;
   slug?: string;
   limit?: number;
+  /**
+   * The cohort the queue and its open count are limited to, from the viewer's
+   * session: staffCohort in lib/session/records.ts, the viewer's own for
+   * faculty and null for an admin, who settles any cohort's (S15.13).
+   */
+  cohortId?: number | null;
 }
 
 interface Row {
@@ -129,6 +135,11 @@ export async function disagreementQueue(
     params.push(filters.slug);
     where.push(`p.slug = $${params.length}`);
   }
+  const cohort = filters.cohortId ?? null;
+  if (cohort !== null) {
+    params.push(cohort);
+    where.push(`en.cohort_id = $${params.length}`);
+  }
   params.push(Math.min(500, Math.max(1, filters.limit ?? 100)));
 
   const { rows } = await client.query<Row>(
@@ -163,8 +174,12 @@ export async function disagreementQueue(
         order by submission_id, created_at desc, id desc
      )
      select count(*) from newest e
+       join submission s  on s.id = e.submission_id
+       join attempt    a  on a.id = s.attempt_id
+       join enrolment  en on en.id = a.enrolment_id
        left join evaluation_review r on r.evaluation_id = e.id
-      where e.disagreement is not null and r.id is null`);
+      where e.disagreement is not null and r.id is null
+        and ($1::bigint is null or en.cohort_id = $1)`, [cohort]);
 
   return { rows: rows.map(present), open: Number(counted[0]!.count) };
 }

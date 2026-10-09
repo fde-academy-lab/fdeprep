@@ -13,9 +13,9 @@ import { ArrowLeft, Route as Route_ } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ButtonLink } from "@/components/ui/button";
 import { replayFor } from "@/lib/trace/replay";
-import { permits } from "@/lib/admin/guard";
 import { db } from "@/lib/db/pool";
 import { currentLearner } from "@/lib/session/current";
+import { readableSubmission } from "@/lib/session/records";
 import Replay from "./replay";
 
 export const dynamic = "force-dynamic";
@@ -28,18 +28,20 @@ export default async function TracePage({ params }: { params: Promise<{ id: stri
 
   const learner = await currentLearner();
 
-  // The enrolment comes from the session, so a learner cannot read another
-  // learner's trace by changing the number in the address bar. Faculty and
-  // admins read any learner's traces (docs/00 section 2), which is what the
-  // Trace links on Submissions and on a learner's admin page open.
+  // The viewer comes from the session, so a learner cannot read another
+  // learner's trace by changing the number in the address bar. Faculty read
+  // their own cohort's traces and admins any cohort's (docs/00 section 2,
+  // lib/session/records.ts), which is what the Trace links on Submissions and
+  // on a learner's admin page open. Until 8 October 2026 faculty read every
+  // cohort's here (S15.13).
+  if (!(await readableSubmission(learner, submissionId))) notFound();
   const { rows } = await db().query<{ slug: string; title: string; wall_ms: number | null }>(
     `select p.slug, p.title, s.wall_ms
        from submission s
-       join attempt a on a.id = s.attempt_id
        join problem_version v on v.id = s.problem_version_id
        join problem p on p.id = v.problem_id
-      where s.id = $1 and (a.enrolment_id = $2 or $3)`,
-    [submissionId, learner.enrolmentId, permits(learner.role, "faculty")]);
+      where s.id = $1`,
+    [submissionId]);
   const owner = rows[0];
   if (!owner) notFound();
 

@@ -10,6 +10,7 @@
  *
  * The invite link rides through the same flow, so its cookie is here too.
  */
+import { NextRequest } from "next/server";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { GET as start } from "../app/api/auth/start/route.ts";
 import { GET as callback } from "../app/api/auth/callback/route.ts";
@@ -119,15 +120,11 @@ describe("the sign-in round trip behind a proxy", () => {
 });
 
 describe("the invite page", () => {
-  it("opens without a session, since the person has not signed in yet", () => {
+  it("opens without a session, since the person has not signed in yet", async () => {
     const saved = process.env.AUTH_DEV_LEARNER;
     delete process.env.AUTH_DEV_LEARNER;
     try {
-      const request = new Request(`https://prep.example.com/invite/${TOKEN}`);
-      const response = proxy(Object.assign(request, {
-        nextUrl: new URL(`https://prep.example.com/invite/${TOKEN}`),
-        cookies: { has: () => false },
-      }) as never);
+      const response = await proxy(new NextRequest(`https://prep.example.com/invite/${TOKEN}`));
       expect(response.headers.get("location")).toBeNull();
       expect(response.status).toBe(200);
     } finally {

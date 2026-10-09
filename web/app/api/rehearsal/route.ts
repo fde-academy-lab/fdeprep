@@ -2,12 +2,14 @@
 import { NextResponse } from "next/server";
 import { startRehearsal } from "@/lib/rehearsal";
 import { RateLimitError } from "@/lib/policy";
-import { currentLearner } from "@/lib/session/current";
+import { signedOut } from "@/lib/http/failure";
+import { learnerOrNull } from "@/lib/session/current";
 
 export const dynamic = "force-dynamic";
 
 export async function POST() {
-  const learner = await currentLearner();
+  const learner = await learnerOrNull();
+  if (!learner) return signedOut();
   try {
     const session = await startRehearsal(learner.enrolmentId);
     return NextResponse.json({ id: session.id }, { status: 201 });

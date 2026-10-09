@@ -1891,6 +1891,35 @@ stages:
           could turn passed into clean, both feeding the readiness signal.
         acceptance:
           - A passing Run, live run or defence leaves a cell at attempted at most, and a passing submit or rehearsal submit still earns its state, tested through the real write path.
+      - id: S15.13
+        title: Check the session and the owner on every record route, and verify the cookie in the proxy
+        type: Bug
+        status: done
+        pr: 47
+        points: 5
+        area: Auth and access
+        priority: P0
+        finish: 2026-10-08
+        found_by: Reading
+        summary: >-
+          The submission view and its event stream answered anyone holding a
+          cookie named fdeprep_session, with any value, because neither route
+          checked the session or the owner and the proxy only checked that the
+          cookie existed. Counting through ids read every learner's results,
+          which after a pass carry hidden and adversarial case names and the
+          probe messages. The audit that followed found faculty reading and
+          correcting other cohorts' traces, grades and recordings, a problem
+          import faculty could publish through, and voice follow-ups spoken
+          and cached for questions nobody had published. One rule in
+          web/lib/session/records.ts now decides who reads whose work, and the
+          proxy verifies the cookie's signature.
+        acceptance:
+          - A forged, edited, expired or empty cookie gets exactly what no cookie gets, from the proxy and from every route, tested with real signed and forged cookies.
+          - A learner asking for another learner's submission, its event stream, its trace, its debrief or its recording gets the answer an id nobody holds gets.
+          - Faculty read their own cohort's submissions, traces, evaluations and debriefs, hear a recording only once the learner shares it, and settle and correct only their own cohort's grades; an admin reads every cohort.
+          - A test walks every route under web/app/api and fails on a handler that neither resolves the session through learnerOrNull, requireAdmin or requireFaculty nor sits on its commented list of public routes.
+          - Both problem import actions refuse anyone but an admin.
+          - A follow-up on an unpublished question, or one its file dropped, answers as an unknown id before Polly is asked anything or anything is cached, tested by counting synthesis calls and stored objects.
 
   - id: S16
     name: Second version

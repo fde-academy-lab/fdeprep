@@ -310,6 +310,8 @@ A learner's page from the Overview ends with their report cards: one row per car
 
 Faculty see Roster read-only and Submissions in full. Everything else is admin only.
 
+**Amended 8 October 2026: the cohort is the boundary (S15.13).** Faculty see their own cohort's rows on Submissions and Disagreements, and open a submission's record, its trace and a voice debrief only for a learner in their cohort. They settle and correct their own cohort's grades only, and hear a recording only once the learner shares it. An admin sees every cohort. A learner opens their own work and nothing else, and an address naming a record outside the reader's reach answers as a page that does not exist.
+
 ---
 
 ## Visual direction

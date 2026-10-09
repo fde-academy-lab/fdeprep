@@ -8,7 +8,8 @@
  * is refused in a sentence that names who can see it, which is docs/11
  * acceptance 7.
  */
-import { Forbidden, requireFaculty } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireFaculty } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 import { standingCsv } from "@/lib/analytics/standing";
 
 export const dynamic = "force-dynamic";
@@ -24,6 +25,7 @@ export async function GET() {
       },
     });
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden) {
       return new Response(
         "The cohort standing is for faculty and admins. Your own readiness is on Progress.\n",

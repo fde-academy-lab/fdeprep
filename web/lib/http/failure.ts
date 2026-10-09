@@ -15,10 +15,15 @@
  */
 import { NextResponse } from "next/server";
 
-/** The proxy's own words for the same refusal, so the two read alike. */
+/** One sentence for a request with no session that verifies, wherever it is refused. */
+export const SIGNED_OUT = "Your session has ended. Sign in again to continue.";
+
+/**
+ * The proxy's own answer to an API call with no verified session, so a route
+ * that refuses a forged cookie answers exactly as the proxy does.
+ */
 export function signedOut(): NextResponse {
-  return NextResponse.json(
-    { message: "Your session has ended. Sign in again to continue." }, { status: 401 });
+  return NextResponse.json({ message: SIGNED_OUT }, { status: 401 });
 }
 
 /** Logs what failed and where, and answers 500 with the learner's sentence. */

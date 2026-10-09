@@ -62,6 +62,7 @@ The column counts come from the stories in [backlog.yaml](backlog.yaml), and the
 | S15.10 | Make a Run execute the public cases only, as the spec always said | Reading | S15 First cohort | #47 | P0 Critical |
 | S15.11 | Read the judge's own score field, so real evaluations stop going partial | Reading | S15 First cohort | #47 | P0 Critical |
 | S15.12 | Let only a submit earn a passed or clean competency cell | Reading | S15 First cohort | #47 | P0 Critical |
+| S15.13 | Check the session and the owner on every record route, and verify the cookie in the proxy | Reading | S15 First cohort | #47 | P0 Critical |
 <!-- /generated:bugs -->
 
 ## What the pattern says
