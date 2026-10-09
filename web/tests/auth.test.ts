@@ -12,12 +12,14 @@
  * who cannot get in needs to know which of the three walls they hit, because
  * the fix is different each time and only one of them is theirs.
  */
+import { NextRequest } from "next/server";
 import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { closeDb, db } from "../lib/db/pool.ts";
 import {
   authorizeUrl, exchangeCode, fetchViewer, isActiveOrgMember, GithubRejected,
 } from "../lib/auth/github.ts";
 import { SESSION_COOKIE, SESSION_TTL_S, SessionRejected, mintSession, readSession } from "../lib/auth/session.ts";
+import { verifiedSessionUid } from "../lib/auth/session-web.ts";
 import { resolveAccess } from "../lib/auth/access.ts";
 import { devLearnerEnabled, githubConfigured } from "../lib/auth/config.ts";
 import { proxy } from "../proxy.ts";
@@ -300,63 +302,124 @@ describe("the proxy", () => {
   // older tests call route handlers with no request scope and so no cookie.
   // The proxy's job is refusing people, so these tests turn it off and the one
   // test about the development learner turns it back on.
-  const saved = process.env.AUTH_DEV_LEARNER;
+  const saved = { dev: process.env.AUTH_DEV_LEARNER, secret: process.env.AUTH_SECRET };
   beforeEach(() => {
     delete process.env.AUTH_DEV_LEARNER;
+    process.env.AUTH_SECRET = SECRET;
   });
   afterAll(() => {
-    if (saved !== undefined) process.env.AUTH_DEV_LEARNER = saved;
+    if (saved.dev !== undefined) process.env.AUTH_DEV_LEARNER = saved.dev;
+    if (saved.secret === undefined) delete process.env.AUTH_SECRET;
+    else process.env.AUTH_SECRET = saved.secret;
   });
 
-  const ask = (path: string, cookie?: string) => {
-    const request = new Request(`https://app.example${path}`, {
-      headers: cookie ? { cookie } : undefined,
-    });
-    // NextRequest's shape, as much of it as the proxy touches.
-    return proxy(Object.assign(request, {
-      nextUrl: new URL(`https://app.example${path}`),
-      cookies: { has: (name: string) => Boolean(cookie?.includes(`${name}=`)) },
-    }) as never);
-  };
+  const ask = (path: string, cookie?: string) => proxy(new NextRequest(`https://app.example${path}`, {
+    headers: cookie === undefined ? undefined : { cookie: `${SESSION_COOKIE}=${cookie}` },
+  }));
 
-  it("sends a signed-out visitor to the sign-in screen", () => {
-    const response = ask("/problems");
+  /** What a visitor can observe: the status, where it sends them and what it says. */
+  const seen = async (response: Response) => ({
+    status: response.status,
+    location: response.headers.get("location"),
+    body: await response.text(),
+  });
+
+  it("sends a signed-out visitor to the sign-in screen", async () => {
+    const response = await ask("/problems");
     expect(response.status).toBe(307);
     const location = new URL(response.headers.get("location")!);
     expect(location.pathname).toBe("/signin");
     expect(location.searchParams.get("next")).toBe("/problems");
   });
 
-  it("answers a signed-out API call with 401 rather than a redirect", () => {
+  it("answers a signed-out API call with 401 rather than a redirect", async () => {
     // A fetch cannot parse an HTML sign-in page, so the submit button would
     // fail with something meaningless instead of saying the session ended.
-    const response = ask("/api/submissions");
+    const response = await ask("/api/submissions");
     expect(response.status).toBe(401);
+    expect((await response.json()).message).toBe("Your session has ended. Sign in again to continue.");
   });
 
-  it("lets the sign-in screen and the OAuth round trip through", () => {
+  it("lets the sign-in screen and the OAuth round trip through", async () => {
     for (const path of ["/signin", "/api/auth/start", "/api/auth/callback"]) {
-      expect(ask(path).status, path).toBe(200);
+      expect((await ask(path)).status, path).toBe(200);
     }
   });
 
-  it("lets a request carrying a session cookie through", () => {
-    expect(ask("/problems", `${SESSION_COOKIE}=anything`).status).toBe(200);
+  it("lets a request carrying a session this application signed through", async () => {
+    const cookie = mintSession({ uid: 17 }, SECRET);
+    expect((await ask("/problems", cookie)).status).toBe(200);
+    expect((await ask("/api/submissions/1", cookie)).status).toBe(200);
+  });
+
+  // The hole reported on 8 October 2026: the proxy let through any cookie
+  // with the right name, whatever its value, and two routes trusted that.
+  it("answers a cookie it cannot verify exactly as it answers no cookie", async () => {
+    const genuine = mintSession({ uid: 17 }, SECRET);
+    const [, signature] = genuine.split(".");
+    const edited = Buffer.from(JSON.stringify({ uid: 1, exp: 9_999_999_999 })).toString("base64url");
+    const nowS = Math.floor(Date.now() / 1000);
+    const forged = {
+      "any value at all": "anything",
+      "an edited claim under a real signature": `${edited}.${signature}`,
+      "a cookie signed with another secret": mintSession({ uid: 17 }, "someone-elses-secret"),
+      "a cookie that expired": mintSession({ uid: 17 }, SECRET, nowS - SESSION_TTL_S - 1),
+      "an empty value": "",
+    };
+    for (const path of ["/problems", "/traces/4", "/api/submissions/4", "/api/submissions/4/events"]) {
+      const none = await seen(await ask(path));
+      expect(none.status, path).toBe(path.startsWith("/api/") ? 401 : 307);
+      for (const [name, cookie] of Object.entries(forged)) {
+        expect(await seen(await ask(path, cookie)), `${path}, ${name}`).toEqual(none);
+      }
+    }
+  });
+
+  it("refuses every cookie when no signing secret is set, rather than trusting one", async () => {
+    const cookie = mintSession({ uid: 17 }, SECRET);
+    delete process.env.AUTH_SECRET;
+    expect((await ask("/api/submissions/1", cookie)).status).toBe(401);
+  });
+
+  it("reads a cookie the same way the server does, so the two never disagree", async () => {
+    // lib/auth/session.ts reads the cookie with node:crypto on the server and
+    // lib/auth/session-web.ts reads it with Web Crypto in the proxy. A cookie
+    // one accepts and the other refuses is a hole or a lockout.
+    const nowS = 2_000_000_000;
+    const genuine = mintSession({ uid: 17 }, SECRET, nowS);
+    const [payload, signature] = genuine.split(".");
+    const cases = [
+      genuine, `${payload}.${signature}x`, `${payload}x.${signature}`, `${payload}.`, `.${signature}`,
+      `${payload}.${signature}.extra`, "nodot", "", "!!!.???",
+      mintSession({ uid: 17 }, "someone-elses-secret", nowS),
+      mintSession({ uid: 17 }, SECRET, nowS - SESSION_TTL_S - 1),
+    ];
+    for (const cookie of cases) {
+      let server: number | null;
+      try {
+        server = readSession(cookie, SECRET, nowS).uid;
+      } catch (error) {
+        if (!(error instanceof SessionRejected)) throw error;
+        server = null;
+      }
+      expect(await verifiedSessionUid(cookie, SECRET, nowS), cookie).toBe(server);
+    }
+    expect(await verifiedSessionUid(genuine, SECRET, nowS)).toBe(17);
   });
 
   // The bug this test exists for: with the development learner on there is no
   // cookie and never will be, so a proxy that only checks for one shuts every
   // screen on a laptop and leaves no way to open one. SETUP.md documents that
   // workflow, so it has to work.
-  it("lets a request through when the development learner is on", () => {
+  it("lets a request through when the development learner is on", async () => {
     process.env.AUTH_DEV_LEARNER = "1";
-    expect(ask("/problems").status).toBe(200);
+    expect((await ask("/problems")).status).toBe(200);
   });
 
-  it("does not put a full URL in the next parameter", () => {
+  it("does not put a full URL in the next parameter", async () => {
     // An absolute value here is an open redirect: sign in, get bounced to
     // somebody else's site carrying whatever the page leaks.
-    const location = new URL(ask("/progress").headers.get("location")!);
+    const location = new URL((await ask("/progress")).headers.get("location")!);
     expect(location.searchParams.get("next")).toBe("/progress");
     expect(location.searchParams.get("next")).not.toContain("://");
   });

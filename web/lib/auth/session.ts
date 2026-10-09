@@ -11,7 +11,9 @@
  */
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export const SESSION_COOKIE = "fdeprep_session";
+// Defined beside the proxy's Web Crypto reading of the same cookie, so the
+// proxy imports nothing that needs node:crypto.
+export { SESSION_COOKIE } from "./session-web.ts";
 
 /**
  * Twelve hours. Long enough that nobody signs in twice in a working day, short
