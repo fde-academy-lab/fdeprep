@@ -425,6 +425,7 @@ def run_battery(problem, source: str, *, kind: str = "submit", image_tag: str = 
             for case in ran:
                 for step_id, ok in case.pop("_steps", {}).items():
                     held[step_id] = held.get(step_id, False) or ok
+                case["battery"] = visibility
             all_cases += ran
             reveal = visibility == "public" or already_passed
             gates[visibility] = contract.gate_from_cases(ran, reveal=reveal)
@@ -479,7 +480,15 @@ def run_battery(problem, source: str, *, kind: str = "submit", image_tag: str = 
 
 
 def _combined_trace(cases: list[dict]) -> dict[str, Any]:
-    """Phase 1 has no S3, so the trace travels inline for the CLI to print."""
+    """Every case that ran, in order, with its battery and how it ended.
+
+    Phase 1 has no S3, so the trace travels inline to the worker, which stores
+    it whole for faculty and for an appeal. The battery and the outcome sit
+    beside each case because the stored result leaves hidden and adversarial
+    names out until a pass, and the replay needs both to show a learner each
+    unpublished case as an anonymous row (docs/01 S7, docs/03 section 5).
+    """
     return {
-        "cases": [{"name": c["name"], "trace": c["trace"]} for c in cases],
+        "cases": [{"name": c["name"], "battery": c["battery"], "status": c["status"],
+                   "trace": c["trace"]} for c in cases],
     }

@@ -122,6 +122,9 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
     // The trace travels inline in the result because the runner has no S3 in
     // this build. It is lifted out here so submission.result stays the contract
     // docs/03 section 5 describes, which carries a reference and not a trace.
+    // It is stored whole, every case with its battery and outcome, because
+    // faculty and an appeal read every case. A learner's replay is cut from it
+    // in lib/trace/replay.ts, on the server, and holds no unpublished case.
     await storeTrace(client, message.submission_id, trace);
 
     // docs/03 section 8: infrastructure failures are the platform's problem.

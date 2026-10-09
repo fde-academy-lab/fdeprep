@@ -5,14 +5,17 @@
  * right, the way a debugger lays out a call stack and its frame.
  *
  * Client-side because walking steps is the whole interaction and a round trip
- * per step would make it unusable. The trace arrives whole from the server,
- * already gated, so nothing here decides what the learner may see. J and K,
- * or the arrow keys, walk it.
+ * per step would make it unusable. The trace arrives from the server already
+ * gated for its reader, so nothing here decides what the learner may see: a
+ * learner's replay holds the public cases and one anonymous row for each
+ * unpublished case, or for each unpublished battery on a tier that counts
+ * nothing, and the row holds how its case ended. J and K, or the arrow keys,
+ * walk it.
  */
 import { useEffect, useState } from "react";
 import {
-  Ban, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, CircleAlert, Cpu, Eye, Flag, MapPin,
-  Wrench, type LucideIcon,
+  Ban, ChevronFirst, ChevronLast, ChevronLeft, ChevronRight, CircleAlert, Cpu, Eye, EyeOff, Flag,
+  MapPin, Wrench, type LucideIcon,
 } from "lucide-react";
 import type { Replay as ReplayData, ReplayStep, StepType } from "@/lib/trace/replay";
 import { Kbd } from "@/components/ui/kbd";
@@ -27,7 +30,18 @@ const LOOK: Record<StepType, { icon: LucideIcon; label: string }> = {
   refused: { icon: Ban, label: "Refused call" },
   error: { icon: CircleAlert, label: "Error" },
   marker: { icon: MapPin, label: "Marker" },
+  withheld: { icon: EyeOff, label: "Unpublished case" },
 };
+
+const words = (name: string | null) => (name ?? "").replace(/_/g, " ");
+
+/** The battery and the outcome beside a case's name, where the server sent them. */
+function caseNote(step: ReplayStep): string {
+  return [
+    step.battery,
+    step.caseStatus === "pass" ? "passed" : step.caseStatus === "fail" ? "failed" : null,
+  ].filter(Boolean).join(", ");
+}
 
 export default function Replay({ replay }: { replay: ReplayData }) {
   const [index, setIndex] = useState(0);
@@ -67,7 +81,10 @@ export default function Replay({ replay }: { replay: ReplayData }) {
           {replay.steps.map((entry, position) => {
             const look = LOOK[entry.type] ?? LOOK.marker;
             const Icon = look.icon;
-            const newCase = position === 0 || replay.steps[position - 1]!.caseName !== entry.caseName;
+            const before = replay.steps[position - 1];
+            const withheld = entry.type === "withheld";
+            const newCase = !withheld && (!before || before.caseName !== entry.caseName);
+            const firstWithheld = withheld && before?.type !== "withheld";
             return (
               <li key={entry.index}>
                 {/* A submission runs several cases and their steps run on from
@@ -75,7 +92,13 @@ export default function Replay({ replay }: { replay: ReplayData }) {
                     restarted, which is a different bug from the one it has. */}
                 {newCase ? (
                   <p className="px-4 pb-1 pt-3 text-meta font-medium text-text-faint">
-                    Case {entry.caseName.replace(/_/g, " ")}
+                    Case {words(entry.caseName)}
+                    {caseNote(entry) ? <span className="font-normal">, {caseNote(entry)}</span> : null}
+                  </p>
+                ) : null}
+                {firstWithheld ? (
+                  <p className="px-4 pb-1 pt-3 text-meta font-medium text-text-faint">
+                    Cases you cannot see
                   </p>
                 ) : null}
                 <button id={`trace-step-${position}`} type="button" onClick={() => setIndex(position)}
@@ -90,7 +113,10 @@ export default function Replay({ replay }: { replay: ReplayData }) {
                   </span>
                   <Icon aria-hidden className="size-4 shrink-0 text-text-dim" strokeWidth={1.75} />
                   <span className="sr-only">{look.label}</span>
-                  <span className="min-w-0 grow truncate font-mono text-meta text-text">{entry.summary}</span>
+                  <span className={cn("min-w-0 grow truncate text-meta",
+                                      withheld ? "text-text-dim" : "font-mono text-text")}>
+                    {entry.summary}
+                  </span>
                   {entry.flags.length ? (
                     <span className="shrink-0 rounded-full border border-warn/40 px-1.5 text-[11px] text-warn">
                       {entry.flags.length === 1 ? entry.flags[0]!.replace(/_/g, " ") : `${entry.flags.length} flags`}
@@ -103,19 +129,25 @@ export default function Replay({ replay }: { replay: ReplayData }) {
         </ol>
       </section>
 
-      {step ? <Selected step={step} attemptClosed={replay.attemptClosed} /> : null}
+      {step ? (
+        <Selected step={step}
+                  notesWait={replay.audience === "learner" && !replay.attemptClosed} />
+      ) : null}
     </div>
   );
 }
 
-function Selected({ step, attemptClosed }: { step: ReplayStep; attemptClosed: boolean }) {
+function Selected({ step, notesWait }: { step: ReplayStep; notesWait: boolean }) {
   const look = LOOK[step.type] ?? LOOK.marker;
   const Icon = look.icon;
+  if (step.type === "withheld") return <Withheld step={step} notesWait={notesWait} />;
   return (
     <section className="results-pane relative min-h-0 overflow-y-auto bg-bg p-5">
       <p className="flex items-center gap-2 font-semibold text-text">
         <Icon aria-hidden className="size-4 text-text-dim" /> {look.label}
-        <span className="font-normal text-text-faint">in case {step.caseName.replace(/_/g, " ")}</span>
+        <span className="font-normal text-text-faint">
+          in {step.battery && step.battery !== "public" ? `${step.battery} ` : ""}case {words(step.caseName)}
+        </span>
       </p>
 
       {step.flags.length ? (
@@ -146,18 +178,48 @@ function Selected({ step, attemptClosed }: { step: ReplayStep; attemptClosed: bo
         </p>
       ) : null}
 
-      {step.fixtureAnnotation ? (
-        <div className="mt-4 rounded-panel border border-border bg-surface px-4 py-3">
-          <p className="text-meta font-medium text-text-faint">From the problem author</p>
-          <p className="mt-1 text-text">{renderCode(step.fixtureAnnotation)}</p>
-        </div>
-      ) : !attemptClosed ? (
-        <p className="mt-4 text-meta text-text-faint">
-          The author&apos;s notes on the adversarial cases open once this attempt closes, on a
-          pass or a give-up.
-        </p>
-      ) : null}
+      <AuthorNote step={step} notesWait={notesWait} />
     </section>
+  );
+}
+
+/**
+ * The row for a case the reader may not read: how it ended, and the fixture
+ * author's note once the attempt closes. Its name, input, prompts, model
+ * replies and tool calls never reached this page.
+ */
+function Withheld({ step, notesWait }: { step: ReplayStep; notesWait: boolean }) {
+  return (
+    <section className="results-pane relative min-h-0 overflow-y-auto bg-bg p-5">
+      <p className="flex items-center gap-2 font-semibold text-text">
+        <EyeOff aria-hidden className="size-4 text-text-dim" /> {step.summary}
+      </p>
+      <p className="mt-3 text-text-dim">
+        Hidden and adversarial cases are unpublished. The replay shows how they ended, and
+        their names, inputs, prompts, model replies and tool calls stay with faculty.
+      </p>
+      <AuthorNote step={step} notesWait={notesWait} />
+    </section>
+  );
+}
+
+function AuthorNote({ step, notesWait }: { step: ReplayStep; notesWait: boolean }) {
+  if (step.fixtureAnnotation) {
+    return (
+      <div className="mt-4 rounded-panel border border-border bg-surface px-4 py-3">
+        <p className="text-meta font-medium text-text-faint">From the problem author</p>
+        {step.fixtureAnnotation.split(/\n\s*\n/).map((paragraph, index) => (
+          <p key={index} className="mt-1 text-text">{renderCode(paragraph.trim(), `note-${index}`)}</p>
+        ))}
+      </div>
+    );
+  }
+  if (!notesWait) return null;
+  return (
+    <p className="mt-4 text-meta text-text-faint">
+      The author&apos;s notes on the adversarial cases open once this attempt closes, on a
+      pass or a give-up.
+    </p>
   );
 }
 

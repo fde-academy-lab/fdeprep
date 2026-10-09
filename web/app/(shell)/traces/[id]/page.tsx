@@ -2,9 +2,10 @@
  * Screen S7, the trace replay viewer.
  *
  * docs/01 S7: on a failed Extreme submission the trace is available, because
- * the learning happens there even though the attempt is spent. So this page
- * never withholds the trace. What waits is the fixture author's annotation,
- * which the replay module gates.
+ * the learning happens there even though the attempt is spent. The replay
+ * module decides how much of it each reader gets: a learner reads the public
+ * cases and one anonymous row per unpublished case, and faculty and admins
+ * read every case.
  */
 import Link from "next/link";
 import type { Metadata, Route } from "next";
@@ -43,7 +44,8 @@ export default async function TracePage({ params }: { params: Promise<{ id: stri
   const owner = rows[0];
   if (!owner) notFound();
 
-  const replay = await replayFor(submissionId);
+  const replay = await replayFor(submissionId,
+    { audience: permits(learner.role, "faculty") ? "faculty" : "learner" });
 
   return (
     <main className="mx-auto max-w-[1280px] px-4 pb-16 pt-8 sm:px-6">
