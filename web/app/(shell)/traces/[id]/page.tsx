@@ -14,6 +14,7 @@ import { ArrowLeft, Route as Route_ } from "lucide-react";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ButtonLink } from "@/components/ui/button";
 import { replayFor } from "@/lib/trace/replay";
+import { permits } from "@/lib/admin/guard";
 import { db } from "@/lib/db/pool";
 import { currentLearner } from "@/lib/session/current";
 import { readableSubmission } from "@/lib/session/records";
