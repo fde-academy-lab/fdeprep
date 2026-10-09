@@ -73,6 +73,7 @@ import DebriefPage from "../app/(shell)/voice/sessions/[id]/page.tsx";
 import SubmissionRecordPage from "../app/(shell)/admin/submissions/[id]/page.tsx";
 import SubmissionsPage from "../app/(shell)/admin/submissions/page.tsx";
 import DisagreementsPage from "../app/(shell)/admin/disagreements/page.tsx";
+import { previewAll, publishAll } from "../app/(shell)/admin/import/actions.ts";
 import { importFixtures, resetDatabase, seedLearner } from "./helpers.ts";
 
 const SECRET = "record-access-signing-secret";
@@ -491,6 +492,23 @@ describe("the owner", () => {
     expect(debrief).toContain(TRANSCRIPT);
     expect(debrief).toContain("Let faculty hear this one session.");
     expect(debrief).toContain("Answer it again");
+  });
+});
+
+describe("the problem import, an admin action", () => {
+  // Every export of a "use server" file is an endpoint a browser can call,
+  // whether or not the page that shows its button is open to the caller.
+  it("refuses faculty and learners in both actions, and publishes nothing", async () => {
+    const { rows: [before] } = await db().query<{ n: number }>("select count(*)::int as n from problem_version");
+    for (const who of [faculty, owner]) {
+      signIn(who);
+      await expect(previewAll()).rejects.toThrow("This action is admin only.");
+      await expect(publishAll()).rejects.toThrow("This action is admin only.");
+    }
+    signIn(null);
+    await expect(publishAll()).rejects.toMatchObject(TO_SIGN_IN);
+    const { rows: [after] } = await db().query<{ n: number }>("select count(*)::int as n from problem_version");
+    expect(after!.n).toBe(before!.n);
   });
 });
 
