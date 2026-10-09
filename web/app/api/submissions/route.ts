@@ -3,7 +3,8 @@ import {
   createSubmission, DuplicateSubmissionError, GateRefused, RateLimitError, type RunKind,
 } from "@/lib/submissions/create";
 import { dispatchOnce } from "@/lib/queue/dispatcher";
-import { currentLearner } from "@/lib/session/current";
+import { signedOut } from "@/lib/http/failure";
+import { learnerOrNull } from "@/lib/session/current";
 
 // An allowlist rather than a cast. The client names which kind it wants and
 // the server decides whether that kind is allowed right now: every gate behind
@@ -11,7 +12,8 @@ import { currentLearner } from "@/lib/session/current";
 const KINDS = new Set<RunKind>(["run", "submit", "defence", "rehearsal_submit"]);
 
 export async function POST(request: Request) {
-  const learner = await currentLearner();
+  const learner = await learnerOrNull();
+  if (!learner) return signedOut();
   const payload = (await request.json()) as
     { problemId?: number; kind?: RunKind; body?: string; rehearsalId?: number | null };
 

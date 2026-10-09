@@ -4,7 +4,8 @@
  */
 import { NextResponse } from "next/server";
 import { createInvite, InviteInvalid, type InvitePersona, type InviteRole } from "@/lib/auth/invite";
-import { Forbidden, requireAdmin } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireAdmin } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 import { publicUrl } from "@/lib/http/public-url";
 
 export const dynamic = "force-dynamic";
@@ -36,6 +37,7 @@ export async function POST(request: Request) {
       expiresAt: created.expiresAt,
     }, { status: 201 });
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden || error instanceof InviteInvalid) {
       return NextResponse.json({ message: error.message }, { status: error.status });
     }

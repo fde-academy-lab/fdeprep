@@ -26,6 +26,8 @@ vi.mock("../lib/session/current.ts", async (original) => ({
     if (!session.learner) throw new Error("this check has no session");
     return session.learner;
   },
+  // The export routes' guards resolve the session here and answer 401 to null.
+  learnerOrNull: async () => session.learner,
 }));
 
 vi.mock("next/navigation", async (original) => ({

@@ -4,8 +4,28 @@
  * docs/01 S10: "Faculty see Roster read-only and Submissions in full.
  * Everything else is admin only." Every mutating route calls this, and it reads
  * the role from the session rather than from anything the request carries.
+ *
+ * The guards are for route handlers. They throw SignedOut rather than
+ * redirecting, because a fetch cannot read the sign-in page a redirect lands
+ * on, and each route answers SignedOut with signedOut() from
+ * lib/http/failure.ts, which is what the proxy answers too. Pages call
+ * currentLearner and permits instead.
  */
-import { currentLearner, type Learner } from "../session/current.ts";
+import { SIGNED_OUT } from "../http/failure.ts";
+import { learnerOrNull, type Learner } from "../session/current.ts";
+
+/**
+ * Nobody with a verified session: no cookie, or one that is forged, expired
+ * or names nobody enrolled. tests/route-sessions.test.ts holds every route to
+ * answering it as the proxy answers a missing cookie.
+ */
+export class SignedOut extends Error {
+  readonly status = 401;
+  constructor() {
+    super(SIGNED_OUT);
+    this.name = "SignedOut";
+  }
+}
 
 /**
  * A refusal that names who may do it, so a learner who reaches a staff route
@@ -32,8 +52,14 @@ export function permits(role: Learner["role"], level: "admin" | "faculty"): bool
   return level === "faculty" && role === "faculty";
 }
 
+async function signedIn(): Promise<Learner> {
+  const learner = await learnerOrNull();
+  if (!learner) throw new SignedOut();
+  return learner;
+}
+
 export async function requireAdmin(): Promise<Learner> {
-  const learner = await currentLearner();
+  const learner = await signedIn();
   if (!permits(learner.role, "admin")) throw new Forbidden();
   return learner;
 }
@@ -49,7 +75,7 @@ export async function requireAdmin(): Promise<Learner> {
  * anything that moves a counter.
  */
 export async function requireFaculty(): Promise<Learner> {
-  const learner = await currentLearner();
+  const learner = await signedIn();
   if (!permits(learner.role, "faculty")) throw new Forbidden("faculty");
   return learner;
 }

@@ -1,7 +1,8 @@
 /** Bulk persona change from a CSV. Admin only, every change audited. */
 import { NextResponse } from "next/server";
 import { applyPersonaCsv, parsePersonaCsv } from "@/lib/admin";
-import { Forbidden, requireAdmin } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireAdmin } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,7 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ ...result, errors: [...parsed.errors, ...result.errors] });
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden) {
       return NextResponse.json({ message: error.message }, { status: error.status });
     }

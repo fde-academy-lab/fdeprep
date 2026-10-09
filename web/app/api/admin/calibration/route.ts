@@ -2,7 +2,8 @@
  * The calibration report as Markdown, for the author before the next cohort.
  * docs/11 sections 5 and 7. Faculty and admins only, like the screen.
  */
-import { Forbidden, requireFaculty } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireFaculty } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 import { calibrationMarkdown, calibrationReport } from "@/lib/analytics/calibration";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,7 @@ export async function GET() {
       },
     });
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden) {
       return new Response(
         "The calibration report is for faculty and admins. Ask your cohort lead if you need it.\n",

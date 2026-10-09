@@ -1,6 +1,7 @@
 /** Correct a grade the panel got wrong. docs/00 section 3.1, docs/10 section 9.7. */
 import { NextResponse } from "next/server";
-import { Forbidden, requireFaculty } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireFaculty } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 import {
   NotOverridable, NoteRequired, UnknownBand, overrideBand,
 } from "@/lib/eval/override";
@@ -24,6 +25,7 @@ export async function POST(
     });
     return NextResponse.json({ evaluationId });
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden || error instanceof NoteRequired ||
         error instanceof NotOverridable || error instanceof UnknownBand) {
       return NextResponse.json({ message: error.message }, { status: error.status });

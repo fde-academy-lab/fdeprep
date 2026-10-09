@@ -1,7 +1,8 @@
 /** Throw or clear degraded mode. Admin only, reason mandatory when turning it on. */
 import { NextResponse } from "next/server";
 import { ReasonRequired, toggleDegradedMode } from "@/lib/admin";
-import { Forbidden, requireAdmin } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireAdmin } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 
 export const dynamic = "force-dynamic";
 
@@ -12,6 +13,7 @@ export async function POST(request: Request) {
     const mode = await toggleDegradedMode(body.on === true, body.reason ?? null, admin.userId);
     return NextResponse.json(mode);
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden || error instanceof ReasonRequired) {
       return NextResponse.json({ message: error.message }, { status: error.status });
     }

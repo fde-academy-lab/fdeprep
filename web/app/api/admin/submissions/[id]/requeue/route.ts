@@ -1,7 +1,8 @@
 /** Requeue a stuck submission. docs/05 section 7, the first runbook procedure. */
 import { NextResponse } from "next/server";
 import { NotApplicable, ReasonRequired, requeueSubmission } from "@/lib/admin";
-import { Forbidden, requireAdmin } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireAdmin } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export async function POST(
     await requeueSubmission(Number(id), body.reason ?? "", admin.userId);
     return NextResponse.json({ requeued: Number(id) });
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden || error instanceof ReasonRequired ||
         error instanceof NotApplicable) {
       return NextResponse.json({ message: error.message }, { status: error.status });

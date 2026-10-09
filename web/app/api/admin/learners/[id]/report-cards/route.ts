@@ -6,7 +6,8 @@
  * two dated rows. The issuer comes from the session, never from the request.
  */
 import { NextResponse } from "next/server";
-import { Forbidden, requireFaculty } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireFaculty } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 import { learnerFacts } from "@/lib/admin/overview";
 import { issueReportCard } from "@/lib/analytics/report-card";
 
@@ -27,6 +28,7 @@ export async function POST(
     const card = await issueReportCard({ enrolmentId: learner.enrolmentId, issuedBy: viewer.userId });
     return NextResponse.json({ id: card.id, sha256: card.sha256, generatedAt: card.generatedAt });
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden) {
       return NextResponse.json({ message: error.message }, { status: error.status });
     }

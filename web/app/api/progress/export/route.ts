@@ -6,12 +6,14 @@
  * string, so one learner cannot export another's history by changing a number.
  */
 import { historyCsv } from "@/lib/progress";
-import { currentLearner } from "@/lib/session/current";
+import { signedOut } from "@/lib/http/failure";
+import { learnerOrNull } from "@/lib/session/current";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const learner = await currentLearner();
+  const learner = await learnerOrNull();
+  if (!learner) return signedOut();
   const csv = await historyCsv(learner.enrolmentId);
   const day = new Date().toISOString().slice(0, 10);
 

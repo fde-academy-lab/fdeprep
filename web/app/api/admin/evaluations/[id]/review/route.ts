@@ -1,6 +1,7 @@
 /** Record what a reviewer concluded about a panel disagreement. docs/10 section 9.7. */
 import { NextResponse } from "next/server";
-import { Forbidden, requireFaculty } from "@/lib/admin/guard";
+import { Forbidden, SignedOut, requireFaculty } from "@/lib/admin/guard";
+import { signedOut } from "@/lib/http/failure";
 import {
   NoteRequired, NothingToReview, UnknownDisposition, recordReview,
   type Disposition,
@@ -24,6 +25,7 @@ export async function POST(
     });
     return NextResponse.json({ reviewed: Number(id) });
   } catch (error) {
+    if (error instanceof SignedOut) return signedOut();
     if (error instanceof Forbidden || error instanceof NoteRequired ||
         error instanceof NothingToReview || error instanceof UnknownDisposition) {
       return NextResponse.json({ message: error.message }, { status: error.status });
