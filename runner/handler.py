@@ -63,6 +63,9 @@ def lambda_handler(event: dict[str, Any], context: Any = None) -> dict[str, Any]
         return _error(f"the event names the kind {kind!r}, and this runner grades only "
                       f"{', '.join(BATTERIES)}")
 
+    # The worker reads the attempt's revealed hints from the database and sends
+    # them for the hint penalty in docs/03 section 5. An event from a worker
+    # older than 8 October 2026 carries none and scores as it always did.
     result = run_battery(
         problem,
         source,

@@ -10,7 +10,7 @@
 import { parse } from "yaml";
 import { inTransaction } from "../db/pool.ts";
 import { applyForSubmission } from "../eval/competency.ts";
-import { complexityOf, panelistsFor } from "../eval/from-result.ts";
+import { complexityOf, EVALUATED_KINDS, panelistsFor } from "../eval/from-result.ts";
 import { rememberGraded } from "../eval/pretrained.ts";
 import { runPanel } from "../eval/panel.ts";
 import { saveEvaluation } from "../eval/record.ts";
@@ -122,6 +122,9 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
     // The trace travels inline in the result because the runner has no S3 in
     // this build. It is lifted out here so submission.result stays the contract
     // docs/03 section 5 describes, which carries a reference and not a trace.
+    // It is stored whole, every case with its battery and outcome, because
+    // faculty and an appeal read every case. A learner's replay is cut from it
+    // in lib/trace/replay.ts, on the server, and holds no unpublished case.
     await storeTrace(client, message.submission_id, trace);
 
     // docs/03 section 8: infrastructure failures are the platform's problem.
@@ -164,8 +167,11 @@ export async function writeResult(message: ResultMessage): Promise<boolean> {
     // docs/10: the panel reads the gates the runner and the judge already ran
     // and writes one evaluation record. Inside this transaction so the two
     // normally land together, behind a savepoint so a panel failure costs the
-    // evaluation and never the verdict.
-    await evaluate(client, message.submission_id, contract);
+    // evaluation and never the verdict. Only a graded kind gets one: a Run
+    // carries no score, and eval/ says which kinds are graded.
+    if (EVALUATED_KINDS.has(submission?.kind ?? "")) {
+      await evaluate(client, message.submission_id, contract);
+    }
 
     await client.query(
       `insert into runner_event (submission_id, level, message, detail)

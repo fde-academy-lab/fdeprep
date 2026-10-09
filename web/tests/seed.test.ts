@@ -202,10 +202,17 @@ describe("eval/ wrote every grade", () => {
       `select count(*) as n from evaluation e join submission s on s.id = e.submission_id
         where not ((e.verdict is null and s.verdict in ('error', 'timeout'))
                    or e.verdict = s.verdict)`)).toBe(0);
+    // docs/10 section 10: every graded submission has its record, and a Run,
+    // which carries no score, has none.
     expect(await count(
       `select count(*) as n from submission s
-        where s.verdict is not null
+        where s.verdict is not null and s.kind in ('submit', 'rehearsal_submit', 'defence')
           and not exists (select 1 from evaluation e where e.submission_id = s.id)`)).toBe(0);
+    expect(await count("select count(*) as n from submission where kind = 'run'"))
+      .toBeGreaterThan(0);
+    expect(await count(
+      `select count(*) as n from evaluation e join submission s on s.id = e.submission_id
+        where s.kind = 'run'`)).toBe(0);
   });
 
   it("backs every competency cell with an earned submission", async () => {

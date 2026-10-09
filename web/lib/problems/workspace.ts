@@ -7,8 +7,9 @@
  * on the server and speaks through the coach route one nudge at a time.
  */
 import { db } from "../db/pool.ts";
+import { SITTING_SQL } from "../policy/index.ts";
 import type { Difficulty } from "../policy/tiers.ts";
-import { trimSteps, type StepView } from "../submissions/view.ts";
+import { countsUnpublished, trimSteps, type StepView } from "../submissions/view.ts";
 import type { Approach, Build, Concept, Diagram, Kit, KitExample, KitTool, Scenario } from "./kit.ts";
 
 export interface WorkspaceKit {
@@ -166,8 +167,12 @@ export async function buildStages(buildId: string, enrolmentId: number): Promise
 export async function attemptHistory(
   enrolmentId: number, problemId: number,
 ): Promise<AttemptHistory> {
-  const attempt = await db().query<{ id: string; attempt_note: string | null }>(
-    "select id, attempt_note from attempt where enrolment_id = $1 and problem_id = $2",
+  const attempt = await db().query<{
+    id: string; attempt_note: string | null; difficulty: Difficulty; sitting: boolean;
+  }>(
+    `select a.id, a.attempt_note, p.difficulty::text as difficulty, ${SITTING_SQL} as sitting
+       from attempt a join problem p on p.id = a.problem_id
+      where a.enrolment_id = $1 and a.problem_id = $2`,
     [enrolmentId, problemId]);
   const row = attempt.rows[0];
   if (!row) return { note: "", hints: [], submissions: [], steps: [] };
@@ -187,13 +192,12 @@ export async function attemptHistory(
   // A Run lists its public count and nothing about hidden, and no score, since
   // it executes the public cases only (docs/00 section 4). Run rows written
   // before 8 October 2026 hold the whole battery's counts and a score, and
-  // they stop here.
+  // they stop here. A submit lists the hidden count where the tier its result
+  // reads under shows one, which is the view's own rule.
   const submissions = await db().query<Record<string, any>>(
     `select id, kind::text as kind, verdict::text as verdict,
             case when kind = 'run' then null else score end as score, queued_at,
-            public_passed, public_total,
-            case when kind = 'run' then null else hidden_passed end as hidden_passed,
-            case when kind = 'run' then null else hidden_total end as hidden_total, llm_calls
+            public_passed, public_total, hidden_passed, hidden_total, llm_calls
        from submission where attempt_id = $1
       order by queued_at desc, id desc limit 20`, [row.id]);
 
@@ -209,18 +213,21 @@ export async function attemptHistory(
     note: row.attempt_note ?? "",
     steps: trimSteps(lastRun.rows[0]?.steps),
     hints: hints.rows.map((h) => ({ ordinal: h.ordinal, bodyMd: h.body_md })),
-    submissions: submissions.rows.map((s) => ({
-      id: Number(s["id"]),
-      kind: s["kind"],
-      verdict: s["verdict"],
-      score: s["score"] === null ? null : Number(s["score"]),
-      queuedAt: (s["queued_at"] as Date).toISOString(),
-      publicPassed: s["public_passed"],
-      publicTotal: s["public_total"],
-      hiddenPassed: s["hidden_passed"],
-      hiddenTotal: s["hidden_total"],
-      llmCalls: s["llm_calls"],
-    })),
+    submissions: submissions.rows.map((s) => {
+      const counted = countsUnpublished(row.difficulty, s["kind"], row.sitting);
+      return {
+        id: Number(s["id"]),
+        kind: s["kind"],
+        verdict: s["verdict"],
+        score: s["score"] === null ? null : Number(s["score"]),
+        queuedAt: (s["queued_at"] as Date).toISOString(),
+        publicPassed: s["public_passed"],
+        publicTotal: s["public_total"],
+        hiddenPassed: counted ? s["hidden_passed"] : null,
+        hiddenTotal: counted ? s["hidden_total"] : null,
+        llmCalls: s["llm_calls"],
+      };
+    }),
   };
 }
 

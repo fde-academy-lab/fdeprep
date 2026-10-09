@@ -6,8 +6,9 @@
  * learner's own work goes through:
  *
  *   a submission      createSubmission, dispatchOnce, receive, writeResult
- *                     (the verdict, the score, the competency cells and the
- *                     evaluation, all inside writeResult's transaction)
+ *                     (the verdict, the score, the competency cells and, for
+ *                     every kind but a Run, the evaluation, all inside
+ *                     writeResult's transaction)
  *   a disagreement    runPanel over scripted panelists, then saveEvaluation
  *   a voice score     scoreVoiceOnce with a scripted judge reply
  *   a review          recordReview, and overrideBand for the one correction

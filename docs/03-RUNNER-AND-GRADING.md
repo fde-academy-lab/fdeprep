@@ -409,6 +409,8 @@ Rules the front end relies on:
 - A gate that never ran has status `skipped`, never `fail`.
 - `score` is null until every gate has run or been skipped by a prior failure.
 - A Run's result carries nothing about the hidden and adversarial batteries, which a Run never runs: both gates read `skipped` with `passed` 0, `total` 0 and no cases, even once the problem is passed, and `score` is null, since the formula below needs the hidden ratio. Its `verdict` is `pass` when the static gate and every public case pass, `rejected` when the static gate refuses the code, `timeout` when a public case ran past its clock, and `fail` otherwise; `budget` and the trace cover the public cases. The submission row stores null in its hidden and adversarial columns and its score. Added 8 October 2026 with section 1.2; until then a Run's result was a Submit's.
+- What a learner reads of the hidden and adversarial gates follows the tier the result reads under, which the policy module names (`tierForResult` in `web/lib/policy/tiers.ts`): screen conditions for a rehearsal submit, and for every result on a problem while the learner sits a rehearsal that holds it, and the problem's own tier otherwise. Where that tier shows no hidden count, Extreme and screen conditions (`00-PRD.md` section 3.2), the view reports each of the two gates with its `status` alone, `passed` 0, `total` 0 and no cases, even once the problem is passed, and sets `unpublishedCounts` false. The result pane, the event stream, the polling route and the Attempts tab all read that one view. The stored contract and the submission row keep the counts for faculty. Added 8 October 2026: until then the view reported both counts on every tier and the Attempts tab printed the hidden one.
+- The trace replay is cut from the stored trace for its reader, on the server (`web/lib/trace/replay.ts`), as decided on 8 October 2026 and set out in `01-WIREFRAMES.md` S7. A learner reads each public case in full and each hidden or adversarial case as one anonymous row in the place it ran, which says how the case ended and holds no name, input, prompt, model reply, tool argument, output, message or flag. Where the tier shows the hidden count each case has its own row, such as "Hidden case 2 of 4: failed". Where it shows none, a battery's cases share one row, since a row per case would count them. Faculty and admins read every case in full. The stored trace keeps every case with its battery and outcome (section 6). This settles a disagreement: this section and `02-DATA-MODEL.md` withhold a hidden case's name, `01-WIREFRAMES.md` S4 shows an adversarial result "never with the fixture's script", and S7 makes the trace available after a failed Extreme submit, while the replay showed every case in full to whoever opened it.
 - `steps` lists every step of the problem in order once the public cases have run, and is empty when they did not. Added 29 September 2026, for the checklist docs/01 S4 specifies. A step is `pass` when any public case satisfied its `step_check` assertions. The spec never said which case a check reads: read against every public case, 16 of 43 reference solutions left a step red, and read against any case, none did, so authors had written them for the second reading. Hidden and adversarial cases never count, so a step never reports on a case the learner cannot see. Amended 30 September 2026: a step whose check the untouched stub also satisfies reports `unchecked` instead of `pass`, because the public cases cannot tell the learner's work from no work. At the time, 76 of the catalogue's 160 steps read green on the stub. The runner computes this by running the stub on the same public cases, once per problem version. Amended again the same day: a step whose work no public case exercises carries its own case. Its `step_check` spec is then a whole case, shaped like a test's and marked by `kind`, and the check runs on that case alone, on every Run, after the gates and whatever they said. It counts toward no gate, reaches no trace, and its input is staged like any case's while its assertions are not. Most such steps describe the lesson the hidden cases teach, and exercising it in a public case would make the naive solution fail the public gate, which docs/04 section 6 forbids. The stub runs the step's case too, so a step case the stub already handles still reads `unchecked`. A step may own several cases under `cases`, and it holds only when every one of them does. That is for a step that keeps some things and drops others: one case with one answer shows only one half, and on 30 September 2026 two build steps read green on code that never kept an order number or never sent a draft. The stub has to hold every case for such a step to read `unchecked`. CI requires the reference to leave every step `pass`: none `fail` and none `unchecked`.
 
 ### Scoring
@@ -423,6 +425,8 @@ score      = max(0, base - hint_pen - budget_pen)
 ```
 
 Weights: public 30, hidden 70 on Easy and Medium. On Hard and Extreme the adversarial battery is required for any score above 70.
+
+The hint count is the attempt's `hints_used`. The worker reads it from the database and sends it as `hints_revealed`, to the runner for a code submission and to the judge for a prompt, design or defence answer; the browser never supplies it. Amended 8 October 2026: until then the runner worker sent no count, the runner took 0, and no code score carried the penalty, whatever the learner had revealed.
 
 ---
 
@@ -467,6 +471,15 @@ Post-processing adds `flags` automatically:
 These flags are what make the trace teach. A learner who sees `repeated_identical_tool_call` diagnoses their own bug without a hint.
 
 Cap serialised trace size at 256KB. When over, keep the first 40 and last 40 steps, replace the middle with a marker step, and set `truncated: true`.
+
+A submission's trace holds one entry per case that ran, in the order it ran, and each entry wraps the shape above with the case's name, its battery and how it ended:
+
+```json
+{"cases": [{"name": "detects_error_in_success_body", "battery": "hidden", "status": "fail",
+            "trace": {"steps": [], "flags": [], "truncated": false}}]}
+```
+
+`battery` and `status` were added 8 October 2026 for the replay rule in section 5, because the stored result leaves a hidden case's name out until the learner passes. A trace stored before then has neither, and the replay reads each case's battery from the problem version's own case list, treating a case the list does not hold as hidden.
 
 ---
 

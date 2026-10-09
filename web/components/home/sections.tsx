@@ -169,10 +169,16 @@ export function RecentActivity({ rows }: { rows: ActivityRow[] }) {
           {rows.map((row) => (
             <Row key={row.slug} className="hover:bg-surface-2">
               <Cell>
-                <span className="inline-flex items-center gap-1.5 text-text-dim">
-                  <StatusIcon kind={row.verdict === "pass" ? "pass" : "fail"} />
-                  {row.verdict === "pass" ? "Passed" : "Not yet"}
-                </span>
+                {row.submitted ? (
+                  <span className="inline-flex items-center gap-1.5 text-text-dim">
+                    <StatusIcon kind={row.verdict === "pass" ? "pass" : "fail"} />
+                    {row.verdict === "pass" ? "Passed" : "Not yet"}
+                  </span>
+                ) : (
+                  // Run checks the public tests only, so its pass is no
+                  // result for the problem.
+                  <span className="text-text-faint">Not submitted yet</span>
+                )}
               </Cell>
               <Cell>
                 <Link href={problemHref(row.slug)} className="font-medium text-text hover:text-accent">
@@ -186,7 +192,7 @@ export function RecentActivity({ rows }: { rows: ActivityRow[] }) {
         </Table>
       ) : (
         <EmptyState icon={History} className="mt-4">
-          Nothing finished yet. The run you started lands here with its result.
+          Nothing finished yet. Run or submit a problem and it lands here.
         </EmptyState>
       )}
     </section>

@@ -34,14 +34,20 @@ function gateKind(gate: GateView): StatusKind | "skipped" {
   return gate.status === "pass" ? "pass" : "fail";
 }
 
-export function Pipeline({ view, visibility }: { view: SubmissionView; visibility: Visibility }) {
+/**
+ * The gates as the view reports them. Whether the hidden and adversarial gates
+ * carry a count is the view's answer, which the tier the result reads under
+ * decided on the server, so this draws a count wherever the view sent one.
+ */
+export function Pipeline({ view }: { view: SubmissionView }) {
   return (
     <ol aria-label="Gates" className="flex flex-wrap items-center gap-1.5">
       {GATES.map((gate, index) => {
         const data = view.gates[gate.key];
         const kind = gateKind(data);
+        const unpublished = gate.key === "hidden" || gate.key === "adversarial";
         const showCount = data.total > 0 && data.status !== "skipped" &&
-          (gate.key !== "hidden" || visibility.hiddenCount);
+          (!unpublished || view.unpublishedCounts);
         return (
           <li key={gate.key} className="flex items-center gap-1.5">
             {index > 0 ? <ChevronRight aria-hidden className="size-3.5 text-text-faint" /> : null}
@@ -114,7 +120,7 @@ export function CodeResults({ view, running, notice, visibility, callBudget }: {
     : verdict === "error" ? (view.message ?? "The runner failed. Your attempt was not counted. Try again.")
     : verdict === "pass" ? (view.kind === "run" ? "Every public test passes. Submit when you are ready."
                             : "Passed. Every gate is green.")
-    : failHeadline(view.gates, visibility);
+    : failHeadline(view.gates, { hiddenCount: view.unpublishedCounts });
   const headKind: StatusKind = verdict === "pass" ? "pass"
     : verdict === "error" || verdict === "timeout" ? "error" : "fail";
 
@@ -140,7 +146,7 @@ export function CodeResults({ view, running, notice, visibility, callBudget }: {
         ) : null}
       </div>
 
-      <Pipeline view={view} visibility={visibility} />
+      <Pipeline view={view} />
 
       {view.gates.static.status === "fail" ? (
         <ul className="space-y-1.5 rounded-panel border border-fail/30 bg-fail-soft px-3 py-2.5">
@@ -180,7 +186,7 @@ export function CodeResults({ view, running, notice, visibility, callBudget }: {
         </p>
       ) : null}
       {view.gates.hidden.total > 0 && view.gates.hidden.status !== "skipped" &&
-        !view.gates.hidden.cases.length && visibility.hiddenCount ? (
+        !view.gates.hidden.cases.length && view.unpublishedCounts ? (
         <p className="text-text-dim">
           Hidden tests: <span className="tnum text-text">{view.gates.hidden.passed} of {view.gates.hidden.total}</span> pass.
           Their names open once you pass the problem.

@@ -40,7 +40,7 @@ Eight screens, in the order a learner meets them. The pictures come from `script
 
 ![Home: a position strip, three Next up cards, four competency bars, the readiness line with the written and oral problems practised and its four counts, and the last five finished attempts](docs/images/home.png)
 
-Home opens on where you stand and one thing to do next. The strip (1) shows your track, your persona, the day you have reached on the 30-day storyline and how many problems you have solved. Next up (2) holds the three problems next on your path, with the one you left unfinished first. Your competencies (3) shows your two strongest and your two weakest. Readiness (4) is the number placement reads, with how many written and oral problems you have practised beside it, so a learner who is screen ready on written problems alone can see it, and its four counts under it. Recent activity (5) lists your last five finished attempts.
+Home opens on where you stand and one thing to do next. The strip (1) shows your track, your persona, the day you have reached on the 30-day storyline and how many problems you have solved. Next up (2) holds the three problems next on your path, with the one you left unfinished first. Your competencies (3) shows your two strongest and your two weakest. Readiness (4) is the number placement reads, with how many written and oral problems you have practised beside it, so a learner who is screen ready on written problems alone can see it, and its four counts under it. Recent activity (5) lists the last five problems you submitted or ran.
 
 ### 2. Find a problem on the chapter map
 
@@ -52,7 +52,7 @@ Problems opens on the chapter map until you filter, search or sort. The four sta
 
 ![The code workspace mid-attempt: the brief and the situation card on the left, a partial solution in the editor, the coach's sentence, and a result with both public cases passed and three of five hidden cases failed](docs/images/workspace.png)
 
-The left pane has three tabs (1): the brief, the guide with the approach map and the hints, and your attempts. The situation card (2) says who was hurt and what it cost before the brief states the task. Your solution (3) is a CodeMirror editor with no model behind it. Run (4) grades the public cases and Submit grades the whole battery. The coach (5) reads your code and says one sentence an author wrote. The result (6) names every public case, reports the hidden cases as a count and shows the gates in order. The picture shows a solution that copies every value the model returns onto the ticket: both public cases pass and three of five hidden cases fail, which is the lesson this problem exists to teach.
+The left pane has three tabs (1): the brief, the guide with the approach map and the hints, and your attempts. The situation card (2) says who was hurt and what it cost before the brief states the task. Your solution (3) is a CodeMirror editor with no model behind it. Run (4) grades the public cases and Submit grades the whole battery. The coach (5) reads your code and says one sentence an author wrote. The result (6) names every public case, reports the hidden cases as a count on Easy, Medium and Hard (Extreme and a rehearsal show only whether each unpublished battery passed) and shows the gates in order. The picture shows a solution that copies every value the model returns onto the ticket: both public cases pass and three of five hidden cases fail, which is the lesson this problem exists to teach.
 
 ### 4. Pick a question and an interviewer
 
@@ -100,9 +100,9 @@ Faculty and admins open Admin on the Overview, with the other sections as tabs (
 | Feature | What you get | Where it lives |
 |---|---|---|
 | Deterministic grading against a scripted model | The same submission always gets the same verdict, grading spends no model tokens, and an author scripts the exact failure every learner meets. | `runner/harness`, `runner/battery`; [docs/03](docs/03-RUNNER-AND-GRADING.md) |
-| The scaffold ladder and the coach | Six layers of support switched by difficulty, hints that cost what the tier says, a step checklist that turns green one step at a time, and a coach that reads your code. | `web/lib/policy`, `web/components/workspace`; [docs/00](docs/00-PRD.md) section 3.2 |
+| The scaffold ladder and the coach | Six layers of support switched by difficulty, hints that cost what the tier says (a revealed hint takes 5 points off the score, capped at 25, on code as on prompt and design answers), a step checklist that turns green one step at a time, and a coach that reads your code. | `web/lib/policy`, `web/components/workspace`; [docs/00](docs/00-PRD.md) section 3.2 |
 | Hidden and adversarial batteries | Ten hostile fixtures, from a tool that lies to a budget squeeze, each with its own assertion and an annotation shown after the attempt. | `runner/harness`; [docs/03](docs/03-RUNNER-AND-GRADING.md) section 3 |
-| Trace replay | Every model call, tool call and observation in order, with flags such as a repeated identical tool call. | `/traces/[id]`, `web/lib/trace`; [docs/03](docs/03-RUNNER-AND-GRADING.md) section 6 |
+| Trace replay | Every model call, tool call and observation in order, with flags such as a repeated identical tool call. Faculty see every case; a learner sees the public cases in full and each hidden or adversarial case as one outcome row with nothing from inside it, collapsed to one row per battery on Extreme and in a rehearsal. | `/traces/[id]`, `web/lib/trace`; [docs/03](docs/03-RUNNER-AND-GRADING.md) section 6 |
 | Prompt surgery | Static rules with zero model calls, then probes run twice each for agreement, then the rubric judge. | `web/lib/gate`, `judge/`; [docs/03](docs/03-RUNNER-AND-GRADING.md) section 4.2 |
 | Design arguments and the defence | A written answer graded against three exemplars, and on Hard and Extreme a 120-word defence of the design after a pass. | `judge/prompts`, `web/app/(focus)/problems/[slug]`; [docs/03](docs/03-RUNNER-AND-GRADING.md) sections 4.3 and 4.4 |
 | The judge | One Lambda for every model call: prompt probes, the rubric judge, the voice beats and, since pull request #46, the follow-up and resume-claims events of interview mode, each call bounded and its token usage recorded. Every prompt is filled in one pass, so a learner's literal `{{NONCE}}` can no longer close the data delimiter. | `judge/`, `judge/prompts/`; [docs/03](docs/03-RUNNER-AND-GRADING.md) section 4, [docs/07](docs/07-VOICE-SCREEN.md) section 5a |
@@ -472,7 +472,7 @@ sequenceDiagram
   end
   K->>DB: Compare-and-set on the lease, the fencing token and the body hash
   K->>DB: Store the trace, refund an error or a timeout, recompute the competency cells through eval/
-  K->>DB: Run the panel behind a savepoint and write the evaluation record, naming the judge prompt that graded it
+  K->>DB: For a submit, a rehearsal submit or a defence, run the panel behind a savepoint and write the evaluation record, naming the judge prompt that graded it
   W-->>B: Verdict, gates, budget, steps and the one voice arrive over SSE
 ```
 
@@ -1002,7 +1002,7 @@ Every row has an identifier a test, a pull request or a document can cite, and n
 | FR4 | Run grades the public cases, Submit grades the public, hidden and adversarial batteries, and a live run makes a trace and never a verdict. | [docs/00](docs/00-PRD.md) section 4 | Run and Submit are built. Until #47 the runner ran every battery on a Run and reported pass only when all three passed; it now runs the static gate, the public cases and the step checks on a Run and nothing else, a Run on a prompt or design problem is refused, and `tests/test_run_kind.py` and `web/tests/run-kind.test.ts` hold it. The live run's step protocol is built and no screen offers it. |
 | FR5 | Code is graded against a scripted model that never touches a network, so the same submission gives byte-identical results. | [docs/03](docs/03-RUNNER-AND-GRADING.md) sections 2 and 5 | Built |
 | FR6 | An adversarial library of ten fixtures, each with an assertion and an annotation revealed after the attempt. | [docs/03](docs/03-RUNNER-AND-GRADING.md) section 3 | Built |
-| FR7 | A replayable trace with automatic flags, capped at 256 KB. | [docs/03](docs/03-RUNNER-AND-GRADING.md) section 6 | Built |
+| FR7 | A replayable trace with automatic flags, capped at 256 KB. | [docs/03](docs/03-RUNNER-AND-GRADING.md) section 6 | Built. The stored trace stays whole; faculty replay every case, and a learner's replay shows unpublished cases only as outcome rows ([docs/01](docs/01-WIREFRAMES.md) S7, decided 8 October 2026). |
 | FR8 | Budget scoring on every run, and a 120-word defence on Hard and Extreme code problems after a pass. | [docs/00](docs/00-PRD.md) sections 7.1 and 7.3 | Built |
 | FR9 | Rehearsal under screen conditions, two a week, with a report. | [docs/00](docs/00-PRD.md) section 7.4 | Built |
 | FR10 | Prompt surgery: static rules with zero model calls, probes run twice for agreement, then the rubric judge. | [docs/03](docs/03-RUNNER-AND-GRADING.md) section 4.2 | Built |
@@ -1480,7 +1480,7 @@ Four integrations are written, unit-tested against recorded fixtures, and have n
 
 Content has its own gate: every problem and voice question validates in CI before it can be imported, every code problem's reference solution passes every gate, and its naive solution fails a hidden test through the real runner.
 
-Twenty-six bugs were found and fixed through the build. Reading a specification, a vendor's documentation or the code itself found eleven, four of them on 8 October 2026 (a judge prompt a learner could close early, a panelist reading the wrong score field, a Run that raised a competency cell and a Run that ran the hidden cases), measuring an assumed figure found two, running the product end to end found nine, a test or a mutant of a reference solution found two, and the first beta tester found two. The stage to remember is S5: phases 1 to 8 produced a system that passed 685 tests and had never been used, and the first afternoon of use found four faults, one of them no sign-in at all. [docs/project/quality.md](docs/project/quality.md) has every bug, how it was found and where it was fixed.
+Thirty-two bugs were found and fixed through the build. Reading a specification, a vendor's documentation or the code itself found seventeen, ten of them on 8 and 9 October 2026 (a judge prompt a learner could close early, a panelist reading the wrong score field, a Run that raised a competency cell, a Run that ran the hidden cases, results readable by anyone holding any cookie, hidden counts and hidden cases shown where the tier hides them, Progress reading a Run as a pass, code scores without the hint penalty, and evaluation records for Runs), measuring an assumed figure found two, running the product end to end found nine, a test or a mutant of a reference solution found two, and the first beta tester found two. The stage to remember is S5: phases 1 to 8 produced a system that passed 685 tests and had never been used, and the first afternoon of use found four faults, one of them no sign-in at all. [docs/project/quality.md](docs/project/quality.md) has every bug, how it was found and where it was fixed.
 
 ## Project record
 
