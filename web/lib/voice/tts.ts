@@ -69,6 +69,10 @@ export class TextTooLong extends Error {}
  * Synthesise every follow-up of this question that has no audio yet, and
  * record the keys. Returns how many were synthesised, which is zero on every
  * call after the first.
+ *
+ * Only for a published question: an unpublished one synthesises nothing and
+ * caches nothing, whoever asks (S15.13). The follow-up audio route refuses it
+ * first; this keeps the rule for any later caller.
  */
 export async function ensureFollowUpAudio(questionId: number): Promise<number> {
   const config = ttsConfig();
@@ -76,8 +80,10 @@ export async function ensureFollowUpAudio(questionId: number): Promise<number> {
 
   const pool = db();
   const { rows } = await pool.query<{ id: string; text: string }>(
-    `select id, text from voice_follow_up
-      where voice_question_id = $1 and audio_key is null and retired_at is null`,
+    `select f.id, f.text from voice_follow_up f
+       join voice_question q on q.id = f.voice_question_id
+      where f.voice_question_id = $1 and f.audio_key is null and f.retired_at is null
+        and q.is_published`,
     [questionId],
   );
   if (rows.length === 0) return 0;
@@ -260,9 +266,11 @@ export async function followUpAudio(
   const config = ttsConfig();
   if (!config) return null;
 
+  // Served only while the follow-up is in its file and its question is published.
   const { rows } = await db().query<{ audio_key: string | null }>(
-    `select audio_key from voice_follow_up
-      where id = $1 and voice_question_id = $2 and retired_at is null`,
+    `select f.audio_key from voice_follow_up f
+       join voice_question q on q.id = f.voice_question_id
+      where f.id = $1 and f.voice_question_id = $2 and f.retired_at is null and q.is_published`,
     [followUpId, questionId],
   );
   const key = rows[0]?.audio_key;

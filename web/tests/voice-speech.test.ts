@@ -165,6 +165,89 @@ describe("the authored follow-up, spoken", () => {
   });
 });
 
+/**
+ * S15.13. The route synthesised and cached any question's follow-ups by id,
+ * published or not, so a signed-in learner could hear a question before it
+ * was published and spend Polly doing it. A retired follow-up was refused only
+ * after its siblings had been synthesised. Both now answer exactly as an id
+ * nobody holds, before Polly is asked anything and before anything is cached.
+ * The docs give staff no preview of unpublished voice content, so nobody is
+ * excepted.
+ */
+describe("a follow-up nobody may hear yet, or any more", () => {
+  const NOBODY = 987_654;
+
+  async function ask(questionId: number, followUpId: number, query: string) {
+    const { GET } = await import("../app/api/voice/questions/[id]/follow-ups/[followUpId]/audio/route.ts");
+    const response = await GET(
+      new Request(`http://local/api/voice/questions/${questionId}/follow-ups/${followUpId}/audio${query}`),
+      { params: Promise.resolve({ id: String(questionId), followUpId: String(followUpId) }) });
+    return { status: response.status, body: await response.text() };
+  }
+
+  /** No Polly call, no stored object, no cached line and no key on a follow-up. */
+  async function nothingSpoken(): Promise<void> {
+    expect(aws.polly).toHaveLength(0);
+    expect(aws.objects.size).toBe(0);
+    const { rows: [cached] } = await db().query<{ lines: number; keys: number }>(
+      `select (select count(*)::int from voice_spoken_line) as lines,
+              (select count(*)::int from voice_follow_up where audio_key is not null) as keys`);
+    expect(cached).toEqual({ lines: 0, keys: 0 });
+  }
+
+  test("an unpublished question's follow-up answers as an unknown id, and is never synthesised", async () => {
+    const questionId = await publishLoop();
+    const followUp = (await loadQuestion(questionId)).followUps[0]!;
+    await db().query("update voice_question set is_published = false where id = $1", [questionId]);
+    for (const query of ["", "?interviewer=cto", "?interviewer=panel", "?interviewer=intern"]) {
+      const unknown = await ask(NOBODY, NOBODY, query);
+      expect(unknown.status, query).toBe(404);
+      expect(await ask(questionId, followUp.id, query), query).toEqual(unknown);
+    }
+    await nothingSpoken();
+  });
+
+  test("a retired follow-up answers as an unknown id, and sets none of its siblings speaking", async () => {
+    const questionId = await publishLoop();
+    const [retired, sibling] = (await loadQuestion(questionId)).followUps;
+    expect(sibling, "the question needs a second follow-up for this test to mean anything").toBeDefined();
+    await db().query("update voice_follow_up set retired_at = now() where id = $1", [retired!.id]);
+    for (const query of ["", "?interviewer=cto"]) {
+      expect(await ask(questionId, retired!.id, query), query).toEqual(await ask(NOBODY, NOBODY, query));
+    }
+    await nothingSpoken();
+  });
+
+  test("a follow-up asked for under another question's id answers as an unknown id", async () => {
+    const questionId = await publishLoop();
+    const followUp = (await loadQuestion(questionId)).followUps[0]!;
+    expect(await ask(NOBODY, followUp.id, "")).toEqual(await ask(NOBODY, NOBODY, ""));
+    await nothingSpoken();
+  });
+});
+
+describe("the question's own lines, unpublished", () => {
+  // The speech route read the question with is_published before it called
+  // Polly, so it had no gap. This keeps it that way.
+  test("answer as an unknown question does, before Polly is asked", async () => {
+    const id = await publishLoop();
+    await db().query("update voice_question set is_published = false where id = $1", [id]);
+    const { GET } = await import("../app/api/voice/questions/[id]/speech/[interviewer]/[line]/route.ts");
+    const speak = async (questionId: number, line: string) => {
+      const response = await GET(
+        new Request(`http://local/api/voice/questions/${questionId}/speech/cto/${line}`),
+        { params: Promise.resolve({ id: String(questionId), interviewer: "cto", line }) });
+      return { status: response.status, body: await response.text() };
+    };
+    for (const line of ["prompt", "opening"]) {
+      const unknown = await speak(987_654, line);
+      expect(unknown.status, line).toBe(404);
+      expect(await speak(id, line), line).toEqual(unknown);
+    }
+    expect(aws.polly).toHaveLength(0);
+  });
+});
+
 describe("the question and the opening line, spoken", () => {
   async function speech(interviewer: string, line: string, questionId?: number) {
     const id = questionId ?? await publishLoop();
