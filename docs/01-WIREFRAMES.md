@@ -164,6 +164,8 @@ Pane behaviour:
 | Submit | Full battery. Disabled with the reason when a cap is hit. Confirmation dialog on Extreme, stating that this is the only attempt today. |
 | Output pane | Public results named and expandable. Hidden results shown as a count. Adversarial results shown by fixture name with the assertion that failed, never with the fixture's script. |
 
+**Amended 8 October 2026.** The Output pane and the Attempts tab show the hidden and adversarial counts only where the tier shows a hidden count (`00-PRD.md` section 3.2). On Extreme, for a rehearsal submit, and for any result on a problem while the learner sits a rehearsal that holds it, each of those two batteries shows whether it passed, with no count and no case name. The server decides it in the results view, which every one of those readers reads (`03-RUNNER-AND-GRADING.md` section 5).
+
 Difficulty changes what renders, not which components exist.
 
 | Difficulty | Left pane contains |
@@ -251,6 +253,16 @@ Rules:
 - Repeated identical tool calls are marked automatically, since that is the most common loop bug.
 - Annotations come from the fixture author and attach to a step index, so a hostile fixture can explain itself after the attempt ends.
 - On a failed Extreme submission the trace is available, because the learning happens there even though the attempt is spent.
+
+**Decided 8 October 2026: who reads which case.** The specs disagreed. `03-RUNNER-AND-GRADING.md` section 5 and `02-DATA-MODEL.md` withhold a hidden case's name, S4 shows an adversarial result "never with the fixture's script", and the rule above makes the trace available after a failed Extreme submit. The replay showed every case in full to whoever opened it, so a learner read each hidden and adversarial case's name, the prompts their code built from its input, the scripted model's replies and every tool argument and output. The decision:
+
+| Reader | A public case | A hidden or adversarial case |
+|---|---|---|
+| Learner | It shows in full, with its name, prompts, model replies, tool calls, outputs and flags. | It shows as one anonymous row in the place it ran, saying how it ended, such as "Hidden case 2 of 4: failed". The row holds no name, input, prompt, model reply, tool argument, output, message or flag. |
+| Learner, where the tier shows no hidden count | It shows in full. | A battery's cases share one row, such as "Adversarial cases: at least one failed", because a row per case would count them. This holds on Extreme, for a rehearsal submit, and for any result on a problem while the learner sits a rehearsal that holds it. |
+| Faculty and admins | It shows in full. | It shows in full, with its battery and its outcome. |
+
+The replay builder on the server (`web/lib/trace/replay.ts`) does the cutting, so nothing of an unpublished case reaches a learner's browser, and the stored trace keeps every case for faculty and for an appeal. A Run's replay holds its public cases and no row for any other, because a Run never runs one. The fixture author's annotation reaches a learner on its case's row once the attempt closes, on a pass or a give-up, which keeps the annotation rule above; faculty read it at any time. The header's call counts and the flags cover the cases the reader reads in full.
 
 ---
 

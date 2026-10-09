@@ -369,6 +369,8 @@ One row per submission per evaluation attempt. Immutable. A re-run writes a new 
 
 Amended 8 October 2026: the newest row is the one shown, which is the same rule in practice. The result writer is the only writer of a `partial` row and it writes the first row, and a re-run, a regrade and an override write only complete rows, so a submission with any complete row has a complete row as its newest.
 
+Amended 8 October 2026: a Run gets no record. It executes the public cases and carries no score (`03` section 1.2), so there is nothing to grade. A submit, a rehearsal submit and a defence each get one, and `EVALUATED_KINDS` in `web/lib/eval/from-result.ts` is where the writer asks. Until then the writer ran the panel over every finished submission and panelist 1 read a missing score as 0, so each Run left a record scored 0, and the report card's evaluation count and the panel's health numbers counted them. A result with no score now gives a record with no score. Rows written before the change stay, since the table is append-only.
+
 ```json
 {
   "evaluation_id": 91823,

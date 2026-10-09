@@ -25,6 +25,8 @@ untouched ──► attempted ──► passed ──► clean
 
 One-way. A `clean` cell never degrades because a later run was scruffy, and a verdict the learner did not earn moves nothing. An `error`, a timeout, a cancellation or a rejection leaves the cell exactly as it was, for the same reason an `error` never consumes an allowance: a runner that died is not evidence about a learner.
 
+**Amended 8 October 2026: the attempt history reads submits.** Its result, its submit count and its best budget come from submits and rehearsal submits, the kinds that earn passed or clean (`02-DATA-MODEL.md` section 7). A problem worked on with Runs and never submitted reads "Not submitted yet" on Progress, Home and the faculty learner page and "not submitted yet" in the CSV, and its last activity still counts the Runs. Until then the history read the latest submission of any kind, so a Run that passed the public cases read Passed, and the Run's call count, over the public cases alone, read as the budget to beat. `web/lib/progress/index.ts` names the kinds in its SQL, since `progress/` imports nothing that runs from `eval/` (section 6).
+
 ---
 
 ## 2. The readiness signal
