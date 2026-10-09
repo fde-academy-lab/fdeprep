@@ -87,9 +87,9 @@ async function handle(message: QueueMessage, options: WorkerOptions): Promise<vo
 
 async function buildEvent(submissionId: number): Promise<Record<string, unknown> | null> {
   const { rows } = await db().query<{
-    body: string; kind: string; source_yaml: string; solved_at: Date | null;
+    body: string; kind: string; source_yaml: string; solved_at: Date | null; hints_used: number;
   }>(
-    `select s.body, s.kind::text as kind, v.source_yaml, a.solved_at
+    `select s.body, s.kind::text as kind, v.source_yaml, a.solved_at, a.hints_used
        from submission s
        join problem_version v on v.id = s.problem_version_id
        join attempt a on a.id = s.attempt_id
@@ -110,6 +110,12 @@ async function buildEvent(submissionId: number): Promise<Record<string, unknown>
     problem: parse(row.source_yaml),
     solution: row.body,
     already_passed: row.solved_at !== null,
+    // docs/03 section 5: every score loses 5 points per hint revealed, capped
+    // at 25. The count is the attempt's, read here on the trusted side as the
+    // judge worker reads it, and never anything the browser sent. Until 8
+    // October 2026 this event carried none and the runner took 0, so no code
+    // score carried the penalty.
+    hints_revealed: row.hints_used,
   };
 }
 
